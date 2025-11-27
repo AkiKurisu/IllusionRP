@@ -1,0 +1,287 @@
+﻿// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel FFT
+#pragma kernel Convolution2D
+
+#pragma multi_compile_local _ QUALITY_HIGH
+#pragma multi_compile_local _ VERTICAL
+#pragma multi_compile_local FORWARD INVERSE CONVOLUTION_2D
+#pragma multi_compile_local _ INOUT_TARGET
+#pragma multi_compile_local _ INPLACE
+// #pragma multi_compile_local _ PADDING
+// #pragma multi_compile_local _ THREAD_REMAP
+#pragma multi_compile_local _ READ_BLOCK
+#pragma multi_compile_local _ WRITE_BLOCK
+#pragma multi_compile_local _ RW_SHIFT
+
+//--------------------------------------------------------------------------------------------------
+// Definitions
+//--------------------------------------------------------------------------------------------------
+
+// #define SQRT_NORMALIZE	1
+
+#if defined(QUALITY_HIGH)
+	#ifdef VERTICAL
+		#define SIZE_512
+	#else
+		#define SIZE_1024
+	#endif
+#else
+	#ifdef VERTICAL
+		#define SIZE_256
+	#else
+		#define SIZE_512
+	#endif
+#endif
+
+//--------------------------------------------------------------------------------------------------
+// Included headers
+//--------------------------------------------------------------------------------------------------
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/fft_config.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/complex_math.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/p2_pass.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/sub_pass.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/rp2_pass.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/rn_pass.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/rpn_pass.hlsl"
+
+//--------------------------------------------------------------------------------------------------
+// Implementation
+//--------------------------------------------------------------------------------------------------
+
+#ifdef EX_PASS_DEC
+	EX_PASS_DEC
+#endif
+
+[numthreads(MAX_S, 1, 1)]
+void FFT(uint2 id : SV_DispatchThreadID)
+{
+#if defined(FORWARD) || defined(INVERSE)
+	#ifdef DEBUG_CONV_ONLY
+		return;
+	#endif
+	#ifndef INPLACE
+    
+    const uint i = id.x;
+    uint2 index[MIN_RADIX];
+    uint r;
+
+    [unroll(MIN_RADIX)]
+    for (r = 0; r < MIN_RADIX; r++)
+    {
+	#ifdef VERTICAL
+        index[r] = id.yx + uint2(0, r * MAX_S);
+	#else
+        index[r] = id.xy + uint2(r * MAX_S, 0);
+	#endif
+    }
+
+    bool wt = 0;
+	[unroll(MIN_RADIX)]
+    for (r = 0; r < MIN_RADIX; r++)
+        buffer[wt][index_transform(i + r * MAX_S)] = read_source(index[r]) INPUT_SCALE;
+	wt = !wt;
+    GroupMemoryBarrierWithGroupSync();
+
+    uint P = SIZE;
+	uint pass_counter;
+    FFT_PASSES
+
+    [unroll(MIN_RADIX)]
+    for (r = 0; r < MIN_RADIX; r++)
+    {
+        write_target(index[r], buffer[!wt][index_transform(i + r * MAX_S)] OUTPUT_SCALE);
+    }
+	
+	#else
+
+	const uint i = id.x;
+	uint2 index[MIN_RADIX];
+	// index remapping
+	uint idx_map[MIN_RADIX];
+	{
+		{
+			[unroll(MIN_RADIX)]
+			for (uint r = 0; r < MIN_RADIX; r++)
+			{
+				idx_map[r] = i + r * MAX_S;
+				#ifdef VERTICAL
+		   			index[r] = id.yx + uint2(0, r * MAX_S);
+				#else
+					index[r] = id.xy + uint2(r * MAX_S, 0);
+				#endif
+			}
+		}
+
+
+		const uint radix_seq RADIX_SEQ;
+		const uint N = SIZE;
+		uint P = 1;
+    	[unroll(PASSES_COUNT - 1)]
+		for (uint R_idx = PASSES_COUNT - 1; R_idx > 0; R_idx--)
+		{
+			uint R = radix_seq[R_idx];
+			[unroll(MIN_RADIX)]
+			for (uint r = 0; r < MIN_RADIX; r++)
+			{
+				shuffle_single_map(idx_map[r], N, R, P);
+			}
+			P *= R;
+		}
+	}
+	uint r;
+	[unroll(MIN_RADIX)]
+	for (r = 0; r < MIN_RADIX; r++)
+		buffer[index_transform(idx_map[r])] = read_source(index[r]) INPUT_SCALE;
+	GroupMemoryBarrierWithGroupSync();
+	
+	uint P = SIZE;
+	uint pass_counter;
+	FFT_PASSES
+	
+	[unroll(MIN_RADIX)]
+	for (r = 0; r < MIN_RADIX; r++)
+		write_target(index[r], buffer[index_transform(i + r * MAX_S)] OUTPUT_SCALE);
+	#endif
+#endif
+}
+
+uint2 TargetSize;
+
+#ifdef CONVOLUTION_2D
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/FFT/real_convolution.hlsl"
+
+static uint2 compute_size;
+
+void RealSpectrumMul(uint2 ij, in uint2 index[MIN_RADIX])
+{
+	[unroll(MIN_RADIX/2+1)]
+	for (uint r = 0; r < MIN_RADIX/2+1; r++)
+	{
+		uint idx = ij.x + r * MAX_S;
+		uint idy = ij.y;
+		if(idx > compute_size.x/2) return;
+		if((idx == 0||compute_size.x-idx == idx) && compute_size.y - idy < idy) continue;
+		
+		uint rev_idx = compute_size.x - idx;
+		if(idx == 0) rev_idx = 0;
+		uint2 xy = index[r];
+		uint2 rev_xy = TargetSize - xy;
+		if(xy.x == 0) rev_xy.x = 0;
+		if(xy.y == 0) rev_xy.y = 0;
+
+		bool same_line = compute_size.y - idy == idy || idy == 0;
+		
+		SymmetricMultiplication(
+			buffer_[thread_task][index_transform(idx)],
+			buffer_[same_line?thread_task:!thread_task][index_transform(rev_idx)],
+			ConvKernelSpectrum[xy],
+			ConvKernelSpectrum[rev_xy]
+			);
+	}
+
+	
+}
+#endif
+
+[numthreads(MAX_S, 1, 2)]
+void Convolution2D(uint3 id : SV_DispatchThreadID)
+{
+#if defined(CONVOLUTION_2D) && defined(INPLACE)
+	#ifdef VERTICAL
+		compute_size = TargetSize.yx;
+	#else
+		compute_size = TargetSize.xy;
+	#endif
+	if (compute_size.y % 2 == 1 && id.y == 0 && id.z == 1) active = false;
+	else active = true;
+	
+	const uint i = id.x;
+	thread_task = id.z;
+	const uint2 xy = id.z == 0? id.xy : uint2(id.x, id.y == 0? compute_size.y/2 : compute_size.y-id.y);
+	uint2 index[MIN_RADIX];
+	//index remapping
+	uint idx_map[MIN_RADIX];
+	ACTIVE_THREAD_BEGIN
+	{
+		{
+			[unroll(MIN_RADIX)]
+			for (uint r = 0; r < MIN_RADIX; r++)
+			{
+				idx_map[r] = i + r * MAX_S;
+				#ifdef VERTICAL
+					index[r] = xy.yx + uint2(0, r * MAX_S);
+				#else
+					index[r] = xy.xy + uint2(r * MAX_S, 0);
+				#endif
+			}
+		}
+		
+		const uint radix_seq RADIX_SEQ;
+		const uint N = SIZE;
+		uint P = 1;
+		[unroll(PASSES_COUNT - 1)]
+		for (uint R_idx = PASSES_COUNT - 1; R_idx > 0; R_idx--)
+		{
+			uint R = radix_seq[R_idx];
+			[unroll(MIN_RADIX)]
+			for (uint r = 0; r < MIN_RADIX; r++)
+			{
+				shuffle_single_map(idx_map[r], N, R, P);
+			}
+			P *= R;
+		}
+		[unroll(MIN_RADIX)]
+		for (uint r = 0; r < MIN_RADIX; r++)
+		{
+			buffer[index_transform(idx_map[r])] = read_source(index[r]) FORWARD_INPUT_SCALE;
+		}
+	}
+	ACTIVE_THREAD_END
+	
+	GroupMemoryBarrierWithGroupSync();
+
+	uint P;
+	uint pass_counter;
+	P = SIZE;
+	{
+		FFT_PASSES
+	}
+	
+	uint r;
+	ACTIVE_THREAD_BEGIN
+	#ifdef FORWARD_OUTPUT_SCALE
+	[unroll(MIN_RADIX)]
+	for (r = 0; r < MIN_RADIX; r++)
+	{
+		uint idx = index_transform(i + r * MAX_S);
+		buffer[idx] = buffer[idx] FORWARD_OUTPUT_SCALE ;
+	}
+	GroupMemoryBarrierWithGroupSync();
+	#endif
+	ACTIVE_THREAD_END
+	
+	
+	ACTIVE_THREAD_BEGIN
+	RealSpectrumMul(xy,index);
+	ACTIVE_THREAD_END
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	P = 1;
+	{
+		FFT_PASSES_REV
+	}
+
+	ACTIVE_THREAD_BEGIN
+	[unroll(MIN_RADIX)]
+	for (r = 0; r < MIN_RADIX; r++)
+	{
+		write_target(index[r], buffer[index_transform(idx_map[r])] INVERSE_OUTPUT_SCALE);
+	}
+	ACTIVE_THREAD_END
+#endif
+}

@@ -1,0 +1,175 @@
+#pragma kernel ContactShadowMap
+
+// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+// #pragma multi_compile _ ENABLE_MSAA
+
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/ScreenSpaceLighting/ShaderVariablesContactShadows.hlsl"
+
+// #define USE_FPTL_LIGHTLIST // Use light tiles for contact shadows
+
+#ifdef SHADER_API_PSSL
+	#include SHADER_COMPILER_GLOBAL_OPTIMIZE_REGISTER_USAGE
+#endif
+
+#define DEFERRED_SHADOW_TILE_SIZE 8
+
+TEXTURE2D_FLOAT(_CameraDepthTexture);
+SAMPLER(sampler_CameraDepthTexture);
+float4 _CameraDepthTexture_TexelSize;
+
+float SampleDepth(float2 uv)
+{
+	return SAMPLE_TEXTURE2D_LOD(_CameraDepthTexture, sampler_CameraDepthTexture, uv, 0).r;    
+}
+
+float LoadDepth(uint2 positionSS)
+{
+	return LOAD_TEXTURE2D(_CameraDepthTexture, positionSS).r;    
+}
+
+float GetDepthCompareThreshold(float step, float rayStartZ, float rayOrthoZ)
+{
+    return abs(rayOrthoZ - rayStartZ) * _ContactShadowThickness * max(0.07, step);
+}
+
+bool CompareDepth(float depthDiff, float compareThreshold)
+{
+    return abs(compareThreshold - depthDiff) < compareThreshold;
+}
+
+// Transforms position from world space to homogenous space
+float4 GTransformWorldToHClip(float3 positionWS)
+{
+	return mul(G_MATRIX_VP, float4(positionWS, 1.0));
+}
+
+// Reference: HDRP
+bool ScreenSpaceShadowRayCast(float3 positionWS, float3 rayDirWS, float rayLength, uint2 positionSS, out float fade)
+{
+
+    // Dither pattern is shifted by 0.5 because we want to jitter the ray starting position backward and forward (so we need values between -0.5 and 0.5)
+    float ditherBias = 0.5f;
+    float dither = InterleavedGradientNoise(positionSS, _FrameCountMod8) - ditherBias;
+
+    float3 rayStartWS = positionWS - positionWS * _ContactShadowBias;
+    float3 rayEndWS = rayStartWS + rayDirWS * rayLength;
+
+    float4 rayStartCS = GTransformWorldToHClip(rayStartWS);
+    float4 rayEndCS = GTransformWorldToHClip(rayEndWS);
+
+    // Here we compute a ray perpendicular to view space. This is the ray we use to compute the threshold for rejecting samples.
+    // This is done this way so that the threshold is less dependent of ray slope.
+    float4 rayOrthoViewSpace = rayStartCS + float4(GetViewToHClipMatrix()[0][2], GetViewToHClipMatrix()[1][2], GetViewToHClipMatrix()[2][2], GetViewToHClipMatrix()[3][2]) * rayLength;
+    rayOrthoViewSpace = rayOrthoViewSpace / rayOrthoViewSpace.w;
+
+    rayStartCS.xyz = rayStartCS.xyz / rayStartCS.w;
+    rayEndCS.xyz = rayEndCS.xyz / rayEndCS.w;
+
+    // Pixel to light ray in clip space.
+    float3 rayDirCS = rayEndCS.xyz - rayStartCS.xyz;
+
+    float step = 1.0f / _SampleCount;
+    float compareThreshold = GetDepthCompareThreshold(step, rayStartCS.z, rayOrthoViewSpace.z);
+
+    float occluded = 0.0f;
+
+    // From this point on, all the marching will be done in UV space + Z
+    float2 startUV = rayStartCS.xy * 0.5f + 0.5f;
+    startUV.y = 1.0f - startUV.y;
+    float3 rayStart = float3(startUV, rayStartCS.z);
+    float3 rayDir = float3(rayDirCS.x * 0.5f, -rayDirCS.y * 0.5f, rayDirCS.z);
+
+    float t = step * dither + step;
+	
+    int i = 0;
+
+    // While instead of for loop to fix HLSLcc compiler error by converting for loop to while loop (case 1158280)
+    while (true)
+    {
+        if (i >= _SampleCount)
+            break;
+
+        float3 sampleAlongRay = rayStart + t * rayDir;
+
+
+        if (any(sampleAlongRay.xy < 0) || any(sampleAlongRay.xy > 1))
+        {
+            break;
+        }
+
+    	// Depth buffer depth for this sample
+    	float sampleDepth = SampleDepth(saturate(sampleAlongRay.xy));
+
+        float depthDiff = sampleDepth - sampleAlongRay.z;
+
+        if (depthDiff > 0.0f && CompareDepth(depthDiff, compareThreshold) && sampleAlongRay.z > 0)
+        {
+        	occluded = 1.0f;
+        	break;
+        }
+
+        t += step;
+        i++;
+    }
+
+    // Off-screen masking
+    // We remove the occlusion if the ray is occluded and only if direction steps out of the screen
+    float2 vignette = max(6.0f * abs(rayStartCS.xy + rayDirCS.xy * t) - 5.0f, 0.0f);
+    fade = occluded;
+    fade *= saturate(1.0f - dot(vignette, vignette));
+
+    return occluded;
+}
+
+bool ComputeContactShadow(PositionInputs posInput, float3 direction, inout float globalFade)
+{
+	bool occluded = false;
+
+	if (_ContactShadowLength > 0.0f)
+	{
+		float fade;
+		//Here LightDirection is not the light direction but the light position
+		float rayLength = _ContactShadowLength * max(0.5, posInput.linearDepth * _ContactShadowDistanceScaleFactor);
+		occluded = ScreenSpaceShadowRayCast(posInput.positionWS, direction, rayLength, posInput.positionSS, fade);
+		// Fade in
+		fade *= saturate((posInput.linearDepth - _ContactShadowMinDistance) * rcp(_ContactShadowFadeInEnd));
+		// Fade out
+		fade *= saturate((_ContactShadowFadeEnd - posInput.linearDepth) * _ContactShadowFadeOneOverRange);
+
+		globalFade = max(globalFade, fade);
+	}
+
+	return occluded;
+}
+
+
+[numthreads(DEFERRED_SHADOW_TILE_SIZE, DEFERRED_SHADOW_TILE_SIZE, 1)]
+void ContactShadowMap(uint2 dispatchThreadId  : SV_DispatchThreadID)
+{
+	if ((float)dispatchThreadId.x > _ScreenSize.x || (float)dispatchThreadId.y > _ScreenSize.y)
+		return;
+    uint2 pixelCoord = dispatchThreadId;
+    float depth = LoadDepth(pixelCoord);
+	
+    PositionInputs posInput = GetPositionInput(pixelCoord.xy, _ScreenSize.zw, depth, G_MATRIX_I_VP, G_MATRIX_V);
+	
+    // discard the shadow if we're on the sky or outside the contact shadow range
+    if (depth == UNITY_RAW_FAR_CLIP_VALUE || posInput.linearDepth - _ContactShadowFadeEnd > 1 || posInput.linearDepth < _ContactShadowMinDistance)
+    {
+        _ContactShadowTextureUAV[COORD_TEXTURE2D_X(pixelCoord)] = 0;
+    }
+    else
+    {
+    	// Currently only support directional light
+	    float globalFade = 0.0;
+    	ComputeContactShadow(posInput, _MainLightPosition.xyz, globalFade);
+        _ContactShadowTextureUAV[COORD_TEXTURE2D_X(pixelCoord)] = globalFade;
+    }
+}

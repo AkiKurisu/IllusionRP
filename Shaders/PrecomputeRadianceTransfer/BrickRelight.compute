@@ -1,0 +1,141 @@
+// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel CSMain
+
+#pragma multi_compile _ _FORWARD_PLUS
+#pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+#pragma multi_compile _ _ADDITIONAL_LIGHTS
+#pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
+
+// #define _DEBUG_SHADOW_OFF 1 // Debug for comparing shadow on off
+
+//--------------------------------------------------------------------------------------------------
+// Included headers
+//--------------------------------------------------------------------------------------------------
+
+#include "Packages/com.unity.render-pipelines.ps5/ShaderLibrary/API/FoveatedRendering_PSSL.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/EvaluateProbeVolume.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/VolumetricShadows.hlsl"
+
+//--------------------------------------------------------------------------------------------------
+// Inputs & outputs
+//--------------------------------------------------------------------------------------------------
+
+RWStructuredBuffer<SurfelIndices> _brickInfo;       // Info for each brick to update
+RWStructuredBuffer<int> _brickIndexMapping;         // Mapping from update index to actual brick index
+RWStructuredBuffer<Surfel> _surfels;                // All surfels
+RWStructuredBuffer<float> _shadowCache;             // Shadow cache for each surfel
+RWStructuredBuffer<BrickRadiance> _brickRadiance;   // Out brick radiance (sized for ALL bricks)
+uint _brickCount;                                   // Number of bricks to update this frame
+
+#define ThreadCount 64
+
+//--------------------------------------------------------------------------------------------------
+// Implementation
+//--------------------------------------------------------------------------------------------------
+
+float3 EvaluateSurfelRadiance(Surfel surfel, uint surfelGlobalIndex)
+{
+    // mainlight property
+    Light mainLight = GetMainLight();
+    
+    float atten = 1.0;
+#ifndef _DEBUG_SHADOW_OFF
+    // mainlight shadow
+    float4 shadowCoord = TransformWorldToShadowCoord(surfel.position);
+    if (!BEYOND_SHADOW_FAR(shadowCoord))
+    {
+        // Shadow is valid, sample and update cache
+        atten = VolumetricSampleShadowmap(
+            TEXTURE2D_ARGS(_MainLightShadowmapTexture, sampler_MainLightShadowmapTexture), 
+            shadowCoord, 
+            GetMainLightShadowSamplingData(), 
+            GetMainLightShadowParams(), 
+            false
+        );
+        
+        // Update shadow cache with new valid result
+        _shadowCache[surfelGlobalIndex] = atten;
+    }
+    else
+    {
+        // Shadow is invalid, use cached result if available
+        atten = _shadowCache[surfelGlobalIndex];
+    }
+#endif
+
+    // radiance from light
+    float NdotL = saturate(dot(surfel.normal, mainLight.direction));
+    half3 directLighting = surfel.albedo * mainLight.color * (NdotL * atten);
+
+#if _FORWARD_PLUS
+    // Forward+ rendering path needs this data before the light loop.
+    float2 uv = ComputeNormalizedDeviceCoordinates(surfel.position, UNITY_MATRIX_VP);
+    InputData inputData = (InputData)0;
+    inputData.normalizedScreenSpaceUV = uv;
+    inputData.positionWS = surfel.position;
+#endif
+    uint pixelLightCount = GetAdditionalLightsCount();
+    LIGHT_LOOP_BEGIN(pixelLightCount)
+        Light light = GetAdditionalLight(lightIndex, surfel.position);
+    #ifdef _DEBUG_SHADOW_OFF
+        light.shadowAttenuation = 1.0f;
+    #else
+        light.shadowAttenuation = VolumetricAdditionalLightRealtimeShadow(lightIndex, surfel.position, light.direction);
+    #endif
+        NdotL = saturate(dot(surfel.normal, light.direction));
+        half3 additionalLighting = surfel.albedo * light.color * (NdotL * light.distanceAttenuation * light.shadowAttenuation);
+        directLighting += additionalLighting;
+    LIGHT_LOOP_END
+    
+    // radiance from last frame (treat as multi bounce indirect)
+    float3 indirectLighting = SampleProbeVolume(surfel.position, surfel.normal, 0) * surfel.albedo;
+    
+    return directLighting + indirectLighting;
+}
+
+[numthreads(ThreadCount, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
+{
+    // Calculate which brick update this thread should process
+    uint updateIndex = groupId.x * ThreadCount + groupIndex;
+
+    // Process this brick's surfels
+    if (updateIndex >= _brickCount)
+    {
+        return;
+    }
+
+    float3 radiance = 0;
+    float3 position = 0;
+    float skyVisibility = 0;
+    SurfelIndices brickInfo = _brickInfo[updateIndex];
+    int actualBrickIndex = _brickIndexMapping[updateIndex];
+    
+    // Process all surfels in this brick
+    for (uint i = 0; i < brickInfo.surfelCount; i++)
+    {
+        uint surfelIndex = brickInfo.surfelStart + i;
+        Surfel surfel = _surfels[surfelIndex];
+        radiance += EvaluateSurfelRadiance(surfel, surfelIndex);
+        position += surfel.position;
+        skyVisibility += surfel.skyMask;
+    }
+        
+    // Calculate averages
+    float weight = 1.0 / (float)brickInfo.surfelCount;
+    radiance *= weight;
+    position *= weight;
+    skyVisibility *= weight;
+
+    // Write results to the actual brick index in the global buffer
+    BrickRadiance brickRad = (BrickRadiance)0;
+    brickRad.averageRadiance = radiance;
+    brickRad.averagePosition = position;
+    brickRad.averageSkyVisibility = skyVisibility;
+    _brickRadiance[actualBrickIndex] = brickRad; // Write to actual brick index
+}

@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9491196a1aed4163afd19ec44523dc66, type: 3}
+  m_Name: IllusionRenderPipelineResources
+  m_EditorClassIdentifier: 
+  alwaysIncludedShaders:
+  - {fileID: 4800000, guid: d9d196ed72cf0a547a1a65cf7fc9f895, type: 3}
+  - {fileID: 4800000, guid: 109e553fc0efe06429d056fb23c59a1c, type: 3}
+  - {fileID: 4800000, guid: 63e7fa58448d546468eba8e6243780a6, type: 3}
+  - {fileID: 4800000, guid: e0028580ff24f3646aca18c6e554641b, type: 3}
+  - {fileID: 4800000, guid: 73412eeca3f8cff4b854e14ce6ea7eca, type: 3}
+  - {fileID: 4800000, guid: 3985cb67ef742544fb95de3e69cf83cf, type: 3}
+  - {fileID: 4800000, guid: f17915c6249b9824fa1d8776df2d5276, type: 3}
+  - {fileID: 4800000, guid: dc78b3fd48a24baf89c5ab2a5773676f, type: 3}
+  - {fileID: 4800000, guid: 69354f209bc80584c956bc3727e37b56, type: 3}
+  - {fileID: 4800000, guid: 5a69d8b5a54ee45288f7b4c341cc2715, type: 3}
+  - {fileID: 4800000, guid: cffeaeec0396a2c4dad475266cc8dfeb, type: 3}
+  - {fileID: 4800000, guid: 08f816187f9af0244a95556ee0cab83f, type: 3}
+  - {fileID: 4800000, guid: 4535befa9d424751b35d3ffeadf518c2, type: 3}
+  - {fileID: 4800000, guid: 209b39890caf4135a5a7c6415db417b3, type: 3}
+  preIntegratedFGD_CharlieFabricLambertShader: {fileID: 4800000, guid: 6b5875a88815e6546ac591e537e0a211, type: 3}
+  preIntegratedFGD_GGXDisneyDiffuseShader: {fileID: 4800000, guid: 202f6c6e19a562c439f3f0fe581e80cf, type: 3}
+  debugShaders:
+  - {fileID: 4800000, guid: 7746387bc7e49cd4fa068adfcb7b1fc6, type: 3}
+  - {fileID: 4800000, guid: a3a85e85940649bebb7d83de5e7d6b5e, type: 3}
+  clearBuffer2D: {fileID: 7200000, guid: 555dfd3ed0cc5d940b569b3705c7cb1f, type: 3}
+  subsurfaceScatteringCS: {fileID: 7200000, guid: d7611ebeaf1c49478593a3ffa5e87c4e, type: 3}
+  contactShadowsCS: {fileID: 7200000, guid: 01b67e9493b00934d815eb2a12fb094c, type: 3}
+  diffuseShadowDenoiserCS: {fileID: 7200000, guid: 24334c26778cd4240b3448d0a289ad0e, type: 3}
+  diffuseDenoiserCS: {fileID: 7200000, guid: d6beb8ede1ec9f746adbbaa9e5814660, type: 3}
+  temporalFilterCS: {fileID: 7200000, guid: af087f3f9bb126842b3d9d3fc5eeae84, type: 3}
+  groundTruthAOTraceCS: {fileID: 7200000, guid: 7d109f2aaf2b4afb8dcd0ade4087e92b, type: 3}
+  groundTruthSpatialDenoiseCS: {fileID: 7200000, guid: ef4c1222fc09e2844a815727d64ced89, type: 3}
+  groundTruthUpsampleDenoiseCS: {fileID: 7200000, guid: cb8632ff99272ed4799882de2c719554, type: 3}
+  screenSpaceReflectionCS: {fileID: 7200000, guid: a1ff92ef9b64403097f34de092192c7f, type: 3}
+  screenSpaceGlobalIlluminationCS: {fileID: 7200000, guid: d3267080bad65a54eb1a2da829ef08f1, type: 3}
+  screenSpaceGlobalIlluminationDenoiseCS: {fileID: 7200000, guid: 6034f22489fed044fac6d35760a7a058, type: 3}
+  bilateralUpsampleCS: {fileID: 7200000, guid: 6b6f6461fb14882439c89a085263733c, type: 3}
+  fastFourierTransformCS: {fileID: 7200000, guid: 5ca31bf4cdfb89949abf61d2b11923a5, type: 3}
+  fastFourierConvolveCS: {fileID: 7200000, guid: b98a6f3eaa1ad384b936476bf6375ae3, type: 3}
+  depthPyramidCS: {fileID: 7200000, guid: 4b866f94bcdbb824eadea4417020a0e9, type: 3}
+  colorPyramidCS: {fileID: 7200000, guid: bf7d605d132097c4c90ef37d8954c619, type: 3}
+  copyChannelCS: {fileID: 7200000, guid: c375962f953a8544b9a2dc9b05982390, type: 3}
+  prtBrickRelightCS: {fileID: 7200000, guid: b1f6253decf2ab64f8999b858a65ee5b, type: 3}
+  prtProbeRelightCS: {fileID: 7200000, guid: c4e4013646393af4b8004d205e0be036, type: 3}
+  prtSurfelSampleCS: {fileID: 7200000, guid: 6d00355db14e92f4db4cee326f26738d, type: 3}
+  reflectionProbeSampleCS: {fileID: 7200000, guid: 3059759fa8654864926090e1c50cdca9, type: 3}
+  volumetricFogRaymarchCS: {fileID: 7200000, guid: fc93eaa800b54824f90d9d95933259bd, type: 3}
+  volumetricFogBlurCS: {fileID: 7200000, guid: fec63be0d22958f4db7201d00e26e8f4, type: 3}
+  volumetricFogUpsampleCS: {fileID: 7200000, guid: 789dabe8cf714997ba9e7e5be4195a59, type: 3}
+  exposureCS: {fileID: 7200000, guid: ed9fcf0a808091d40914c660869ac07a, type: 3}
+  histogramExposureCS: {fileID: 7200000, guid: 7aacc3bb516354e45b576942fd27006e, type: 3}
+  debugImageHistogramCS: {fileID: 7200000, guid: 88871c6508434b5eacce624ded7c1ba0, type: 3}
+  owenScrambled256Tex: {fileID: 2800000, guid: 2a205358e67aa9e4a94a128ac9362f4e, type: 3}
+  scramblingTile1SPP: {fileID: 2800000, guid: 6185473f62ad3e74da4acac5d482917a, type: 3}
+  rankingTile1SPP: {fileID: 2800000, guid: f2fe0251f704c4c478a8063775cffedb, type: 3}
+  scramblingTex: {fileID: 2800000, guid: bf25cd6288e2c8d43854a61a8496a830, type: 3}
+  debugFontTex: {fileID: 2800000, guid: a3ad2df0e49aaa341a3b3a80f93b3f66, type: 3}

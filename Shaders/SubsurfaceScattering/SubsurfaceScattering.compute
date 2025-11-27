@@ -1,0 +1,223 @@
+﻿// =============== Convolves transmitted radiance with the Disney diffusion profile ================
+
+// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel SubsurfaceScattering
+
+//--------------------------------------------------------------------------------------------------
+// Included headers
+//--------------------------------------------------------------------------------------------------
+
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceFillingCurves.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/SubsurfaceScattering/SubsurfaceScattering.hlsl"
+
+//--------------------------------------------------------------------------------------------------
+// Inputs & outputs
+//--------------------------------------------------------------------------------------------------
+
+// StructuredBuffer<uint>  _CoarseStencilBuffer;
+RW_TEXTURE2D_X(float4, _SubsurfaceLighting);
+
+//--------------------------------------------------------------------------------------------------
+// Implementation
+//--------------------------------------------------------------------------------------------------
+
+// groupshared bool processGroup;
+
+uint Get1DAddressFromPixelCoord(uint2 pixCoord, uint2 screenSize, uint eye)
+{
+    // We need to shift the index to look up the right eye info.
+    return (pixCoord.y * screenSize.x + pixCoord.x) + eye * (screenSize.x * screenSize.y);
+}
+
+void StoreResult(uint2 pixelCoord, float3 irradiance)
+{
+    _SubsurfaceLighting[COORD_TEXTURE2D_X(pixelCoord)] = float4(irradiance, 1);
+}
+
+[numthreads(GROUP_SIZE_2D, 1, 1)]
+void SubsurfaceScattering(uint3 groupId          : SV_GroupID,
+                          uint  groupThreadId    : SV_GroupThreadID,
+                          uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    groupThreadId &= GROUP_SIZE_2D - 1; // Help the compiler
+    // Note: any factor of 64 is a suitable wave size for our algorithm.
+    uint waveIndex = WaveReadLaneFirst(groupThreadId / 64);
+    uint laneIndex = groupThreadId % 64;
+    uint quadIndex = laneIndex / 4;
+
+    // Arrange threads in the Morton order to optimally match the memory layout of GCN tiles.
+    uint2 groupCoord  = DecodeMorton2D(groupThreadId);
+    uint2 groupOffset = groupId.xy * GROUP_SIZE_1D;
+    uint2 pixelCoord  = groupOffset + groupCoord;
+    int2  cacheOffset = (int2)groupOffset - TEXTURE_CACHE_BORDER;
+
+    // @IllusionRP: Tile Stencil is not supported yet.
+    // if (groupThreadId == 0)
+    // {
+    //     uint stencilRef = STENCIL_USAGE_SUBSURFACE_SCATTERING;
+    //
+    //     // Check whether the thread group needs to perform any work.
+    //     uint s00Address = Get1DAddressFromPixelCoord(2 * groupId.xy + uint2(0, 0), _ScreenParams.xy, groupId.z);
+    //     uint s10Address = Get1DAddressFromPixelCoord(2 * groupId.xy + uint2(1, 0), _ScreenParams.xy, groupId.z);
+    //     uint s01Address = Get1DAddressFromPixelCoord(2 * groupId.xy + uint2(0, 1), _ScreenParams.xy, groupId.z);
+    //     uint s11Address = Get1DAddressFromPixelCoord(2 * groupId.xy + uint2(1, 1), _ScreenParams.xy, groupId.z);
+    //     
+    //     uint s00 = _CoarseStencilBuffer[s00Address];
+    //     uint s10 = _CoarseStencilBuffer[s10Address];
+    //     uint s01 = _CoarseStencilBuffer[s01Address];
+    //     uint s11 = _CoarseStencilBuffer[s11Address];
+    //
+    //     uint HTileValue = s00 | s10 | s01 | s11;
+    //     // Perform the stencil test (reject at the tile rate).
+    //     processGroup = ((HTileValue & stencilRef) != 0);
+    // }
+
+    // Wait for the LDS.
+    // GroupMemoryBarrierWithGroupSync();
+
+    // if (!processGroup) { return; }
+    
+    float3 centerIrradiance  = LOAD_TEXTURE2D_X(_SubsurfaceDiffuse, pixelCoord).rgb;
+    float  centerDepth       = 0;
+    bool   passedStencilTest = TestLightingForSSS(centerIrradiance);
+
+    // Save some bandwidth by only loading depth values for SSS pixels.
+    if (passedStencilTest)
+    {
+        centerDepth = LoadSceneDepth(pixelCoord);
+    }
+
+#if SSS_USE_LDS_CACHE
+    uint2 cacheCoord = groupCoord + TEXTURE_CACHE_BORDER;
+    // Populate the central region of the LDS cache.
+    StoreSampleToCacheMemory(float4(centerIrradiance, centerDepth), cacheCoord);
+
+    uint numBorderQuadsPerWave = TEXTURE_CACHE_SIZE_1D / 2 - 1;
+    uint halfCacheWidthInQuads = TEXTURE_CACHE_SIZE_1D / 4;
+
+    if (quadIndex < numBorderQuadsPerWave)
+    {
+        // Fetch another texel into the LDS.
+        uint2 startQuad = halfCacheWidthInQuads * DeinterleaveQuad(waveIndex);
+
+        uint2 quadCoord;
+
+        // The traversal order is such that the quad's X coordinate is monotonically increasing.
+        // The corner is always the near the block of the corresponding wavefront.
+        // Note: the compiler can heavily optimize the code below, as the switch is scalar,
+        // and there are very few unique values due to the symmetry.
+        switch (waveIndex)
+        {
+            case 0:  // Bottom left
+                quadCoord.x = max(0, (int)(quadIndex - (halfCacheWidthInQuads - 1)));
+                quadCoord.y = max(0, (int)((halfCacheWidthInQuads - 1) - quadIndex));
+                break;
+            case 1:  // Bottom right
+                quadCoord.x = min(quadIndex, halfCacheWidthInQuads - 1);
+                quadCoord.y = max(0, (int)(quadIndex - (halfCacheWidthInQuads - 1)));
+                break;
+            case 2:  // Top left
+                quadCoord.x = max(0, (int)(quadIndex - (halfCacheWidthInQuads - 1)));
+                quadCoord.y = min(quadIndex, halfCacheWidthInQuads - 1);
+                break;
+            default: // Top right
+                quadCoord.x = min(quadIndex, halfCacheWidthInQuads - 1);
+                quadCoord.y = min(halfCacheWidthInQuads - 1, 2 * (halfCacheWidthInQuads - 1) - quadIndex);
+                break;
+        }
+
+        uint2  cacheCoord2 = 2 * (startQuad + quadCoord) + DeinterleaveQuad(laneIndex);
+        int2   pixelCoord2 = (int2)(groupOffset + cacheCoord2) - TEXTURE_CACHE_BORDER;
+        float3 irradiance2 = LOAD_TEXTURE2D_X(_SubsurfaceDiffuse, pixelCoord2).rgb;
+        float  depth2      = 0;
+
+        // Save some bandwidth by only loading depth values for SSS pixels.
+        if (TestLightingForSSS(irradiance2))
+        {
+            depth2 = LoadSceneDepth(pixelCoord2);
+        }
+
+        // Populate the border region of the LDS cache.
+        StoreSampleToCacheMemory(float4(irradiance2, depth2), cacheCoord2);
+    }
+
+    // Wait for the LDS.
+    GroupMemoryBarrierWithGroupSync();
+#endif
+
+    if (!passedStencilTest) { return; }
+
+    PositionInputs posInput = GetPositionInput(pixelCoord, _ScreenSize.zw);
+
+    // The result of the stencil test allows us to statically determine the material type (SSS).
+    SSSData sssData;
+    DecodeFromSSSBuffer(posInput.positionSS, sssData);
+    
+    float3 S = _ShapeParamsAndMaxScatterDists[sssData.diffusionProfileIndex].rgb;
+    float d = _ShapeParamsAndMaxScatterDists[sssData.diffusionProfileIndex].a;
+    float metersPerUnit = _WorldScalesAndFilterRadiiAndThicknessRemaps[sssData.diffusionProfileIndex].x;
+    float filterRadius = _WorldScalesAndFilterRadiiAndThicknessRemaps[sssData.diffusionProfileIndex].y;
+
+    // Reconstruct the view-space position corresponding to the central sample.
+    float2 centerPosNDC = posInput.positionNDC;
+    float2 cornerPosNDC = centerPosNDC + 0.5 * _ScreenSize.zw;
+
+    float3 centerPosVS  = ComputeViewSpacePosition(centerPosNDC, centerDepth, _InvProjectMatrix);
+    float3 cornerPosVS  = ComputeViewSpacePosition(cornerPosNDC, centerDepth, _InvProjectMatrix);
+
+    // Rescaling the filter is equivalent to inversely scaling the world.
+    float mmPerUnit  = MILLIMETERS_PER_METER * metersPerUnit;
+    float unitsPerMm = rcp(mmPerUnit);
+
+    // Compute the view-space dimensions of the pixel as a quad projected onto geometry.
+    // Assuming square pixels, both X and Y are have the same dimensions.
+    float unitsPerPixel = max(0.0001f, 2 * abs(cornerPosVS.x - centerPosVS.x));
+    float pixelsPerMm   = rcp(unitsPerPixel) * unitsPerMm;
+
+    // Area of a disk.
+    float filterArea   = PI * Sq(filterRadius * pixelsPerMm);
+    uint  sampleCount  = (uint)(filterArea * rcp(SSS_PIXELS_PER_SAMPLE));
+    uint  sampleBudget = _SssSampleBudget;
+    
+    float3 albedo = sssData.diffuseColor;
+
+    if (sampleCount < 1)
+    {
+        StoreResult(pixelCoord, albedo * centerIrradiance);
+        return;
+    }
+
+#if SSS_RANDOM_ROTATION
+    // Note that GenerateHashedRandomFloat() only uses the 23 low bits, hence the 2^24 factor.
+    float phase = TWO_PI * GenerateHashedRandomFloat(uint3(pixelCoord, (uint)(centerDepth * 16777216)));
+#else
+    float phase = 0;
+#endif
+
+    uint n = min(sampleCount, sampleBudget);
+
+    // Accumulate filtered irradiance and bilateral weights (for renormalization).
+    float3 totalIrradiance = 0;
+    float3 totalWeight     = 0;
+
+    float linearDepth = LinearEyeDepth(centerDepth, _ZBufferParams);
+    for (uint i = 0; i < n; i++)
+    {
+        // Integrate over the image or tangent plane in the view space.
+        EvaluateSample(i, n, pixelCoord,
+                       cacheOffset, S, d,
+                       mmPerUnit, pixelsPerMm, phase, 
+                       totalIrradiance, totalWeight, linearDepth);
+    }
+
+    // Total weight is 0 for color channels without scattering.
+    totalWeight = max(totalWeight, FLT_MIN);
+
+    StoreResult(pixelCoord, albedo * (totalIrradiance / totalWeight));
+}

@@ -1,0 +1,21 @@
+﻿#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+//#pragma enable_d3d11_debug_symbols
+
+#pragma kernel GTAOMain
+#define _SOURCE_DEPTH_NORMALS               1
+
+#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/ScreenSpaceLighting/GTAOCommon.hlsl"
+
+#pragma multi_compile HALF_RES FULL_RES
+#pragma multi_compile _ _GBUFFER_NORMALS_OCT
+#pragma multi_compile _ _ORTHOGRAPHIC
+#pragma multi_compile _ PACK_AO_DEPTH
+
+RW_TEXTURE2D_X(float4, _AOPackedData);
+
+[numthreads(8,8,1)]
+void GTAOMain(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint2 positionSS = dispatchThreadId.xy;
+    _AOPackedData[COORD_TEXTURE2D_X(positionSS)] =  GTAO(positionSS);
+}

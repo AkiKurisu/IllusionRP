@@ -1,0 +1,32 @@
+{
+    "name": "Illusion.RenderPipelines.Editor",
+    "rootNamespace": "Illusion.Rendering.Editor",
+    "references": [
+        "GUID:df380645f10b7bc4b97d4f5eb6303d95",
+        "GUID:3eae0364be2026648bf74846acb8a731",
+        "GUID:15fc0a57446b3144c949da3e2b9737a9",
+        "GUID:ab67fb10353d84448ac887a7367cbda8",
+        "GUID:c579267770062bf448e75eb160330b7f",
+        "GUID:bfc869a05342f004ba5c103275ee3e63",
+        "GUID:e61a2a07ba2680848ad23eef5b7c024b"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "URP_INSTALL"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "14.0.9",
+            "define": "URP_INSTALL"
+        }
+    ],
+    "noEngineReferences": false
+}

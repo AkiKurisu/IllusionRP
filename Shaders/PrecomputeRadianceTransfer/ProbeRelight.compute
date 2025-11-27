@@ -1,0 +1,125 @@
+// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel CSMain
+
+#pragma multi_compile _ _FORWARD_PLUS
+#pragma multi_compile _ _RELIGHT_DEBUG_RADIANCE
+
+//--------------------------------------------------------------------------------------------------
+// Included headers
+//--------------------------------------------------------------------------------------------------
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/SphericalHarmonics.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/ProbeVolume.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/GlobalIlluminationFallback.hlsl"
+
+//--------------------------------------------------------------------------------------------------
+// Inputs & outputs
+//--------------------------------------------------------------------------------------------------
+
+// Input
+StructuredBuffer<BrickRadiance> _brickRadiance;
+StructuredBuffer<BrickFactor> _factors;
+RWTexture3D<float3> _coefficientVoxel3D;
+
+// Parameters
+float4 _probePos;
+float4 _coefficientVoxelSize;
+float4 _originalBoundingBoxMin;
+float4 _boundingBoxMin;
+float4 _boundingBoxSize;
+int _factorStart;
+int _factorCount;
+int _indexInProbeVolume;
+
+// Debug
+#ifdef _RELIGHT_DEBUG_RADIANCE
+    RWStructuredBuffer<float> _coefficientSH9;
+#endif
+
+#define ThreadCount 256 // Max Brick Num
+groupshared float3 groupCoefficients[9][ThreadCount];
+
+//--------------------------------------------------------------------------------------------------
+// Implementation
+//--------------------------------------------------------------------------------------------------
+
+[numthreads(ThreadCount, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
+{
+    uint factorIndex = _factorStart + id.x;
+    bool validFactor = factorIndex < uint(_factorStart + _factorCount);
+
+    float3 totalRadiance = 0;
+    float3 dir = 0;
+    if (validFactor)
+    {
+        // Get factor and corresponding brick
+        BrickFactor factor = _factors[factorIndex];
+        BrickRadiance brick = _brickRadiance[factor.brickIndex];
+    
+        // Calculate sky sampling direction
+        dir = normalize(brick.averagePosition - _probePos.xyz);
+    
+        // Sample sky lighting using the correct direction (probe to brick)
+        float2 uv = ComputeNormalizedDeviceCoordinates(brick.averagePosition, UNITY_MATRIX_VP);
+        float weight = 0.0f;
+        float3 skyLighting = 0;
+        skyLighting += SampleReflectionProbes(dir, brick.averagePosition, uv, 1.0f, weight).rgb;
+        skyLighting += SampleAmbientProbe(dir) * (1.0 - weight);
+        skyLighting *= brick.averageSkyVisibility;
+    
+        // Total radiance = brick radiance + sky lighting contribution
+        totalRadiance = (brick.averageRadiance * (1.0 - brick.averageSkyVisibility) + skyLighting) * factor.weight;
+    }
+    
+    // Compute all SH coefficients at once using vectorized approach
+    float shCoeffs[9];
+    EvaluateSH9(dir.xzy, shCoeffs);
+
+    float weight = 4.0 * PI; // float weight = 4.0 * PI / sampleCount;
+
+    // Process each SH coefficient and store to LDS
+    UNITY_UNROLL
+    for (int shIndex = 0; shIndex < 9; shIndex++)
+    {
+        float3 contribution = shCoeffs[shIndex] * totalRadiance * weight;
+
+        groupCoefficients[shIndex][groupIndex] = contribution;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Parallel reduction for non-power-of-2 size
+    for (uint stride = ThreadCount / 2; stride > 0; stride >>= 1)
+    {
+        if (groupIndex < stride)
+        {
+            UNITY_UNROLL
+            for (int shIndex = 0; shIndex < 9; shIndex++)
+            {
+                groupCoefficients[shIndex][groupIndex] += groupCoefficients[shIndex][groupIndex + stride];
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    // Write results
+    if (groupIndex == 0 && _indexInProbeVolume >= 0)
+    {
+        UNITY_UNROLL
+        for (int shIndex = 0; shIndex < 9; shIndex++)
+        {
+            uint3 texCoord = GetProbeTexture3DCoordFromIndex(_indexInProbeVolume, shIndex, _coefficientVoxelSize,
+                                                             _boundingBoxMin, _boundingBoxSize,
+                                                             _originalBoundingBoxMin);
+            _coefficientVoxel3D[texCoord] = groupCoefficients[shIndex][0];
+#ifdef _RELIGHT_DEBUG_RADIANCE
+            _coefficientSH9[shIndex * 3 + 0] = groupCoefficients[shIndex][0].x;
+            _coefficientSH9[shIndex * 3 + 1] = groupCoefficients[shIndex][0].y;
+            _coefficientSH9[shIndex * 3 + 2] = groupCoefficients[shIndex][0].z;
+#endif
+        }
+    }
+}

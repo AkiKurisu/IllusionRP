@@ -1,0 +1,408 @@
+// URP generic includes
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/Sampling.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareDepthPyramid.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/NormalBuffer.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareMotionVectorTexture.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/EvaluateProbeVolume.hlsl"
+
+// Raytracing includes (should probably be in generic files)
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Raytracing/RaytracingSampling.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/GlobalIlluminationFallback.hlsl"
+
+// #pragma enable_d3d11_debug_symbols
+
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel TraceGlobalIllumination          TRACE_GLOBAL_ILLUMINATION=TraceGlobalIllumination GI_TRACE
+#pragma kernel TraceGlobalIlluminationHalf      TRACE_GLOBAL_ILLUMINATION=TraceGlobalIlluminationHalf GI_TRACE HALF_RES
+#pragma kernel ReprojectGlobalIllumination      REPROJECT_GLOBAL_ILLUMINATION=ReprojectGlobalIllumination GI_REPROJECT
+#pragma kernel ReprojectGlobalIlluminationHalf  REPROJECT_GLOBAL_ILLUMINATION=ReprojectGlobalIlluminationHalf GI_REPROJECT HALF_RES
+
+// @IllusionRP: APV not valid in URP 14
+// #pragma multi_compile PROBE_VOLUMES_OFF PROBE_VOLUMES_L1 PROBE_VOLUMES_L2
+
+#pragma multi_compile _ _FORWARD_PLUS
+#pragma multi_compile _ _REFLECTION_PROBE_BOX_PROJECTION
+#pragma multi_compile_local _ _PROBE_VOLUME_ENABLE // For PRTGI
+
+// The dispatch tile resolution
+#define INDIRECT_DIFFUSE_TILE_SIZE 8
+
+// Defines the mip offset for the color buffer
+#define SSGI_MIP_OFFSET 1
+
+#define SSGI_CLAMP_VALUE 7.0f
+
+TEXTURE2D_X(_ColorPyramidTexture);
+
+// Constant buffer that holds all scalar that we need
+CBUFFER_START(UnityScreenSpaceGlobalIllumination)
+    // Ray marching constants
+    int _RayMarchingSteps;
+    float _RayMarchingThicknessScale;
+    float _RayMarchingThicknessBias;
+    int _RayMarchingReflectsSky;
+
+    int _RayMarchingFallbackHierarchy;
+    int _IndirectDiffuseFrameIndex;
+CBUFFER_END
+
+#define RAYMARCHINGFALLBACKHIERARCHY_REFLECTION_PROBES_AND_SKY (3)
+#define RAYMARCHINGFALLBACKHIERARCHY_REFLECTION_PROBES (2)
+#define RAYMARCHINGFALLBACKHIERARCHY_SKY (1)
+#define RAYMARCHINGFALLBACKHIERARCHY_NONE (0)
+
+// Output texture that holds the hit point NDC coordinates
+RW_TEXTURE2D_X(float2, _IndirectDiffuseHitPointTextureRW);
+
+// Epslon value used for the computation
+#define RAY_TRACE_EPS 0.00024414
+
+#if 0
+    #define SSGI_MATRIX_VP           UNITY_MATRIX_VP // Jittered
+    #define SSGI_MATRIX_I_VP         UNITY_MATRIX_I_VP
+    #define WORLD_TO_VIEW_MATRIX     GetWorldToViewMatrix()
+#else
+    #define SSGI_MATRIX_VP           _GlobalViewProjMatrix // Jittered
+    #define SSGI_MATRIX_I_VP         _GlobalInvViewProjMatrix
+    #define WORLD_TO_VIEW_MATRIX     _GlobalViewMatrix
+#endif
+
+bool RayMarch(float3 positionWS, float3 sampleDir, float3 normalWS, float2 positionSS, float deviceDepth, bool killRay, out float3 rayPos)
+{
+    // Initialize ray pos to invalid value
+    rayPos = float3(-1.0, -1.0, -1.0);
+
+    // Due to a warning on Vulkan and Metal if returning early, this is the only way we found to avoid it.
+    bool status = false;
+
+    // We start tracing from the center of the current pixel, and do so up to the far plane.
+    float3 rayOrigin = float3(positionSS + 0.5, deviceDepth);
+
+    float3 reflPosWS  = positionWS + sampleDir;
+    float3 reflPosNDC = ComputeNormalizedDeviceCoordinatesWithZ(reflPosWS, SSGI_MATRIX_VP); // Jittered
+    float3 reflPosSS  = float3(reflPosNDC.xy * _ScreenSize.xy, reflPosNDC.z);
+    float3 rayDir     = reflPosSS - rayOrigin;
+    float3 rcpRayDir  = rcp(rayDir);
+    int2   rayStep    = int2(rcpRayDir.x >= 0 ? 1 : 0,
+                             rcpRayDir.y >= 0 ? 1 : 0);
+    float3 raySign  = float3(rcpRayDir.x >= 0 ? 1 : -1,
+                             rcpRayDir.y >= 0 ? 1 : -1,
+                             rcpRayDir.z >= 0 ? 1 : -1);
+    bool   rayTowardsEye  =  rcpRayDir.z >= 0;
+
+    killRay = killRay || (reflPosSS.z <= 0);
+
+    // If the point is behind the camera or the ray is invalid, this ray should not be cast
+    if (!killRay)
+    {
+        // Extend and clip the end point to the frustum.
+        float tMax;
+        {
+            // Shrink the frustum by half a texel for efficiency reasons.
+            const float halfTexel = 0.5;
+
+            float3 bounds;
+            bounds.x = (rcpRayDir.x >= 0) ? _ScreenSize.x - halfTexel : halfTexel;
+            bounds.y = (rcpRayDir.y >= 0) ? _ScreenSize.y - halfTexel : halfTexel;
+            // If we do not want to intersect the skybox, it is more efficient to not trace too far.
+            float maxDepth = (_RayMarchingReflectsSky != 0) ? -0.00000024 : 0.00000024; // 2^-22
+            bounds.z = (rcpRayDir.z >= 0) ? 1 : maxDepth;
+
+            float3 dist = bounds * rcpRayDir - (rayOrigin * rcpRayDir);
+            tMax = Min3(dist.x, dist.y, dist.z);
+        }
+
+        // Start ray marching from the next texel to avoid self-intersections.
+        float t;
+        {
+            // 'rayOrigin' is the exact texel center.
+            float2 dist = abs(0.5 * rcpRayDir.xy);
+            t = min(dist.x, dist.y);
+        }
+
+        int  mipLevel  = 0;
+        int2 mipOffset = _DepthPyramidMipLevelOffsets[mipLevel];
+        int  iterCount = 0;
+        bool hit       = false;
+        bool miss      = false;
+        bool belowMip0 = false; // This value is set prior to entering the cell
+
+        while (!(hit || miss) && (t <= tMax) && (iterCount < _RayMarchingSteps))
+        {
+            rayPos = rayOrigin + t * rayDir;
+
+            // Ray position often ends up on the edge. To determine (and look up) the right cell,
+            // we need to bias the position by a small epsilon in the direction of the ray.
+            float2 sgnEdgeDist = round(rayPos.xy) - rayPos.xy;
+            float2 satEdgeDist = clamp(raySign.xy * sgnEdgeDist + RAY_TRACE_EPS, 0, RAY_TRACE_EPS);
+            rayPos.xy += raySign.xy * satEdgeDist;
+
+            int2 mipCoord  = (int2)rayPos.xy >> mipLevel;
+            // Bounds define 4 faces of a cube:
+            // 2 walls in front of the ray, and a floor and a base below it.
+            float4 bounds;
+
+            bounds.z  = LOAD_TEXTURE2D_X(_DepthPyramid, mipOffset + mipCoord).r;
+            bounds.xy = (mipCoord + rayStep) << mipLevel;
+
+            // We define the depth of the base as the depth value as:
+            // b = DeviceDepth((1 + thickness) * LinearDepth(d))
+            // b = ((f - n) * d + n * (1 - (1 + thickness))) / ((f - n) * (1 + thickness))
+            // b = ((f - n) * d - n * thickness) / ((f - n) * (1 + thickness))
+            // b = d / (1 + thickness) - n / (f - n) * (thickness / (1 + thickness))
+            // b = d * k_s + k_b
+            bounds.w = bounds.z * _RayMarchingThicknessScale + _RayMarchingThicknessBias;
+
+            float4 dist      = bounds * rcpRayDir.xyzz - (rayOrigin.xyzz * rcpRayDir.xyzz);
+            float  distWall  = min(dist.x, dist.y);
+            float  distFloor = dist.z;
+            float  distBase  = dist.w;
+
+            // Note: 'rayPos' given by 't' can correspond to one of several depth values:
+            // - above or exactly on the floor
+            // - inside the floor (between the floor and the base)
+            // - below the base
+            bool belowFloor  = rayPos.z  < bounds.z;
+            bool aboveBase   = rayPos.z >= bounds.w;
+
+            bool insideFloor = belowFloor && aboveBase;
+            bool hitFloor    = (t <= distFloor) && (distFloor <= distWall);
+
+            // Game rules:
+            // * if the closest intersection is with the wall of the cell, switch to the coarser MIP, and advance the ray.
+            // * if the closest intersection is with the heightmap below,  switch to the finer   MIP, and advance the ray.
+            // * if the closest intersection is with the heightmap above,  switch to the finer   MIP, and do NOT advance the ray.
+            // Victory conditions:
+            // * See below. Do NOT reorder the statements!
+
+            miss      = belowMip0 && insideFloor;
+            hit       = (mipLevel == 0) && (hitFloor || insideFloor);
+            belowMip0 = (mipLevel == 0) && belowFloor;
+
+            // 'distFloor' can be smaller than the current distance 't'.
+            // We can also safely ignore 'distBase'.
+            // If we hit the floor, it's always safe to jump there.
+            // If we are at (mipLevel != 0) and we are below the floor, we should not move.
+            t = hitFloor ? distFloor : (((mipLevel != 0) && belowFloor) ? t : distWall);
+            rayPos.z = bounds.z; // Retain the depth of the potential intersection
+
+            // Warning: both rays towards the eye, and tracing behind objects has linear
+            // rather than logarithmic complexity! This is due to the fact that we only store
+            // the maximum value of depth, and not the min-max.
+            mipLevel += (hitFloor || belowFloor || rayTowardsEye) ? -1 : 1;
+            mipLevel  = clamp(mipLevel, 0, 6);
+            mipOffset = _DepthPyramidMipLevelOffsets[mipLevel];
+            // mipLevel = 0;
+
+            iterCount++;
+        }
+
+        // Treat intersections with the sky as misses.
+        miss = miss || ((_RayMarchingReflectsSky == 0) && (rayPos.z == 0));
+        status = hit && !miss;
+    }
+    return status;
+}
+
+[numthreads(INDIRECT_DIFFUSE_TILE_SIZE, INDIRECT_DIFFUSE_TILE_SIZE, 1)]
+void TRACE_GLOBAL_ILLUMINATION(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 groupThreadId : SV_GroupThreadID,
+    uint2 groupId : SV_GroupID)
+{
+    // UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
+
+    // Compute the pixel position to process
+    uint2 currentCoord = dispatchThreadId.xy;
+    uint2 inputCoord = dispatchThreadId.xy;
+
+#if HALF_RES
+    // Compute the full resolution pixel for the inputs that do not have a pyramid
+    inputCoord = inputCoord * 2;
+#endif
+
+    // Read the depth value as early as possible
+    float deviceDepth = LOAD_TEXTURE2D_X(_DepthPyramid, inputCoord).x;
+
+    // Initialize the hitpoint texture to a miss
+    _IndirectDiffuseHitPointTextureRW[COORD_TEXTURE2D_X(currentCoord.xy)] = float2(99.0, 0.0);
+
+    // Read the pixel normal
+    float3 normalWS;
+    GetNormal(inputCoord.xy, normalWS);
+
+    // Generete a new direction to follow
+    float2 newSample;
+    newSample.x = GetBNDSequenceSample(currentCoord.xy, _IndirectDiffuseFrameIndex, 0);
+    newSample.y = GetBNDSequenceSample(currentCoord.xy, _IndirectDiffuseFrameIndex, 1);
+
+    // Importance sample with a cosine lobe (direction that will be used for ray casting)
+    float3 sampleDir = SampleHemisphereCosine(newSample.x, newSample.y, normalWS);
+
+    // Compute the camera position
+    float3 camPosWS = GetCurrentViewPosition();
+
+    // If this is a background pixel, we flag the ray as a dead ray (we are also trying to keep the usage of the depth buffer the latest possible)
+    bool killRay = deviceDepth == UNITY_RAW_FAR_CLIP_VALUE;
+    // Convert this to a world space position (camera relative)
+    PositionInputs posInput = GetPositionInput(inputCoord, _ScreenSize.zw, deviceDepth, SSGI_MATRIX_I_VP, WORLD_TO_VIEW_MATRIX, 0);
+
+    // Compute the view direction (world space)
+    float3 viewWS = GetWorldSpaceNormalizeViewDir(posInput.positionWS);
+
+    // Apply normal bias with the magnitude dependent on the distance from the camera.
+    // Unfortunately, we only have access to the shading normal, which is less than ideal...
+    posInput.positionWS  = camPosWS + (posInput.positionWS - camPosWS) * (1 - 0.001 * rcp(max(dot(normalWS, viewWS), FLT_EPS)));
+    deviceDepth = ComputeNormalizedDeviceCoordinatesWithZ(posInput.positionWS, SSGI_MATRIX_VP).z;
+
+    // Ray March along our ray
+    float3 rayPos;
+    bool hit = RayMarch(posInput.positionWS, sampleDir, normalWS, posInput.positionSS, deviceDepth, killRay, rayPos);
+
+    // If we had a hit, store the NDC position of the intersection point
+    if (hit)
+    {
+        // Note that we are using 'rayPos' from the penultimate iteration, rather than
+        // recompute it using the last value of 't', which would result in an overshoot.
+        // It also needs to be precisely at the center of the pixel to avoid artifacts.
+        float2 hitPositionNDC = floor(rayPos.xy) * _ScreenSize.zw + (0.5 * _ScreenSize.zw); // Should we precompute the half-texel bias? We seem to use it a lot.
+        _IndirectDiffuseHitPointTextureRW[COORD_TEXTURE2D_X(currentCoord.xy)] = hitPositionNDC;
+    }
+}
+
+// Input hit point texture that holds the NDC position if an intersection was found
+TEXTURE2D_X(_IndirectDiffuseHitPointTexture);
+// Depth buffer of the previous frame (full resolution)
+TEXTURE2D_X(_HistoryDepthTexture);
+RW_TEXTURE2D_X(float3, _IndirectDiffuseTextureRW);
+
+// The maximal difference in depth that is considered acceptable to read from the color pyramid
+#define DEPTH_DIFFERENCE_THRESHOLD 0.1
+
+[numthreads(INDIRECT_DIFFUSE_TILE_SIZE, INDIRECT_DIFFUSE_TILE_SIZE, 1)]
+void REPROJECT_GLOBAL_ILLUMINATION(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 groupThreadId : SV_GroupThreadID,
+    uint2 groupId : SV_GroupID)
+{
+    // UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
+
+    // Compute the pixel position to process
+    uint2 inputCoord = dispatchThreadId.xy;
+    uint2 currentCoord = dispatchThreadId.xy;
+#if HALF_RES
+    // Compute the full resolution pixel for the inputs that do not have a pyramid
+    inputCoord = inputCoord * 2;
+#endif
+
+    // Read the depth and compute the position
+    float deviceDepth = LOAD_TEXTURE2D_X(_DepthPyramid, inputCoord).x;
+    uint2 tileIndex = uint2(inputCoord) / uint2(8, 8);
+    PositionInputs posInput = GetPositionInput(inputCoord, _ScreenSize.zw, deviceDepth, SSGI_MATRIX_I_VP, WORLD_TO_VIEW_MATRIX, tileIndex);
+    float2 uv = posInput.positionNDC;
+
+    // Read the pixel normal
+    float3 normalWS;
+    GetNormal(inputCoord.xy, normalWS);
+
+    // Generete a new direction to follow
+    float2 newSample;
+    newSample.x = GetBNDSequenceSample(currentCoord.xy, _IndirectDiffuseFrameIndex, 0);
+    newSample.y = GetBNDSequenceSample(currentCoord.xy, _IndirectDiffuseFrameIndex, 1);
+
+    // Importance sample with a cosine lobe (direction that will be used for ray casting)
+    float3 sampleDir = SampleHemisphereCosine(newSample.x, newSample.y, normalWS);
+
+    // Read the hit point ndc position to fetch
+    float2 hitPositionNDC = LOAD_TEXTURE2D_X(_IndirectDiffuseHitPointTexture, dispatchThreadId.xy).xy;
+
+    // Grab the depth of the hit point
+    float hitPointDepth = LOAD_TEXTURE2D_X(_DepthPyramid, hitPositionNDC * _ScreenSize.xy).x;
+
+    // Flag that tracks if this ray lead to a valid result
+    bool invalid = false;
+
+    // If this missed, we need to find something else to fallback on
+    if (hitPositionNDC.x > 1.0)
+        invalid = true;
+
+    // Fetch the motion vector of the current target pixel
+    float2 motionVectorNDC;
+    DecodeMotionVector(SAMPLE_TEXTURE2D_X_LOD(_MotionVectorTexture, sampler_LinearClamp, hitPositionNDC, 0), motionVectorNDC);
+    
+
+    float2 prevFrameNDC = hitPositionNDC - motionVectorNDC;
+    float2 prevFrameUV  = prevFrameNDC * _ColorPyramidUvScaleAndLimitPrevFrame.xy;
+
+    // If the previous value to read was out of screen, this is invalid, needs a fallback
+    if ((prevFrameUV.x < 0)
+        || (prevFrameUV.x > _ColorPyramidUvScaleAndLimitPrevFrame.z)
+        || (prevFrameUV.y < 0)
+        || (prevFrameUV.y > _ColorPyramidUvScaleAndLimitPrevFrame.w))
+        invalid = true;
+
+    // Grab the depth of the hit point and reject the history buffer if the depth is too different
+    // TODO: Find a better metric
+    float hitPointHistoryDepth = LOAD_TEXTURE2D_X(_HistoryDepthTexture, prevFrameNDC * _ScreenSize.xy).x;
+    if (abs(hitPointHistoryDepth - hitPointDepth) > DEPTH_DIFFERENCE_THRESHOLD)
+        invalid = true;
+
+    // Based on if the intersection was valid (or not, pick a source for the lighting)
+    float3 color = 0.0;
+    if (!invalid)
+    {
+        // The intersection was considered valid, we can read from the color pyramid
+        color = SAMPLE_TEXTURE2D_X_LOD(_ColorPyramidTexture, sampler_LinearClamp, prevFrameUV, SSGI_MIP_OFFSET).rgb
+                * GetInversePreviousExposureMultiplier();
+    }
+#if defined(PROBE_VOLUMES_L1) || defined(PROBE_VOLUMES_L2)
+    else
+    {
+        BuiltinData apvBuiltinData;
+        ZERO_INITIALIZE(BuiltinData, apvBuiltinData);
+
+        EvaluateAdaptiveProbeVolume(GetAbsolutePositionWS(posInput.positionWS), // @IllusionRP: Camera Relative Rendering not work in URP
+                                    normalWS,
+                                    -normalWS, // Not used
+                                    GetWorldSpaceNormalizeViewDir(posInput.positionWS),
+                                    posInput.positionSS,
+                                    apvBuiltinData.bakeDiffuseLighting,
+                                    apvBuiltinData.backBakeDiffuseLighting); // Not used
+        color = apvBuiltinData.bakeDiffuseLighting;
+    }
+#elif defined(_PROBE_VOLUME_ENABLE)
+    else
+    {
+        color = SampleProbeVolume(posInput.positionWS, normalWS, SampleAmbientProbe(sampleDir));
+    }
+#else
+    else
+    {
+        float weight = 0.0f;
+        if (RAYMARCHINGFALLBACKHIERARCHY_REFLECTION_PROBES & _RayMarchingFallbackHierarchy)
+        {
+            color += SampleReflectionProbes(sampleDir, posInput.positionWS, uv, 1.0f, weight).rgb;
+        }
+        if (RAYMARCHINGFALLBACKHIERARCHY_SKY & _RayMarchingFallbackHierarchy && weight < 1.0f)
+        {
+            color += SampleAmbientProbe(sampleDir) * (1.0 - weight);
+        }
+    }
+#endif
+
+    // TODO: Remove me when you can find where the nans come from
+    if (AnyIsNaN(color))
+        color = 0.0f;
+
+    // Convert to HSV space
+    color = RgbToHsv(color * GetCurrentExposureMultiplier());
+    // Expose and clamp the final color
+    color.z = clamp(color.z, 0.0, SSGI_CLAMP_VALUE);
+    // Convert back to HSV space
+    color = HsvToRgb(color);
+
+    // Write the output to the target pixel
+    _IndirectDiffuseTextureRW[COORD_TEXTURE2D_X(currentCoord)] = color;
+}

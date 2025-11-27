@@ -1,0 +1,195 @@
+// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel VolumetricFogBlur
+
+//--------------------------------------------------------------------------------------------------
+// Included headers
+//--------------------------------------------------------------------------------------------------
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareDownsampledDepthTexture.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ProjectionUtils.hlsl"
+
+//--------------------------------------------------------------------------------------------------
+// Definitions
+//--------------------------------------------------------------------------------------------------
+
+#define GROUP_SIZE_1D               8
+#define GROUP_SIZE_2D               (GROUP_SIZE_1D * GROUP_SIZE_1D)
+#define KERNEL_RADIUS               4
+#define FILTER_SIZE_1D              (GROUP_SIZE_1D + 2 * KERNEL_RADIUS)  // 8 + 2*4 = 16
+#define LDS_SIZE                    (FILTER_SIZE_1D * FILTER_SIZE_1D)    // 16*16 = 256
+
+#define BLUR_DEPTH_FALLOFF          0.5
+
+// Gaussian kernel weights - same as original implementation
+static const float KernelWeights[] = { 0.2026, 0.1790, 0.1240, 0.0672, 0.0285 };
+
+//--------------------------------------------------------------------------------------------------
+// Inputs & outputs
+//--------------------------------------------------------------------------------------------------
+
+// Input texture to blur
+TEXTURE2D_X(_BlurInputTexture);
+
+// Output texture
+RW_TEXTURE2D_X(float4, _BlurOutputTexture);
+
+// Texture dimensions
+float2 _BlurInputTexelSize;
+
+//--------------------------------------------------------------------------------------------------
+// Local Data Store (LDS) Cache
+//--------------------------------------------------------------------------------------------------
+
+groupshared float gs_cacheR[LDS_SIZE];
+groupshared float gs_cacheG[LDS_SIZE];
+groupshared float gs_cacheB[LDS_SIZE];
+groupshared float gs_cacheA[LDS_SIZE];
+groupshared float gs_cacheDepth[LDS_SIZE];
+
+//--------------------------------------------------------------------------------------------------
+// Cache Management Functions - HDRP Style
+//--------------------------------------------------------------------------------------------------
+
+// Get sample from LDS cache using linear index
+float4 GetColorSample(uint index)
+{
+    return float4(gs_cacheR[index], gs_cacheG[index], gs_cacheB[index], gs_cacheA[index]);
+}
+
+float GetDepthSample(uint index)
+{
+    return gs_cacheDepth[index];
+}
+
+// Store sample to LDS cache using linear index
+void StoreSample(uint index, float4 colorSample, float depthSample)
+{
+    gs_cacheR[index] = colorSample.r;
+    gs_cacheG[index] = colorSample.g;
+    gs_cacheB[index] = colorSample.b;
+    gs_cacheA[index] = colorSample.a;
+    gs_cacheDepth[index] = depthSample;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Data Loading Functions
+//--------------------------------------------------------------------------------------------------
+
+// Prefetch data to LDS cache following HDRP pattern
+void PrefetchData(uint groupIndex, uint2 groupOrigin)
+{
+    int2 originXY = (int2)groupOrigin - int2(KERNEL_RADIUS, KERNEL_RADIUS);
+    
+    // Calculate how many samples each thread should load
+    // LDS_SIZE = 256, GROUP_SIZE_2D = 64, so each thread loads 4 samples
+    uint samplesPerThread = (LDS_SIZE + GROUP_SIZE_2D - 1) / GROUP_SIZE_2D; // Ceiling division
+    
+    // Load multiple samples per thread to fill the cache
+    for (uint i = 0; i < samplesPerThread; ++i)
+    {
+        uint sampleID = i + (groupIndex * samplesPerThread);
+        
+        // All threads execute this path, but only valid ones actually load
+        if (sampleID < LDS_SIZE)
+        {
+            int offsetX = sampleID % FILTER_SIZE_1D;
+            int offsetY = sampleID / FILTER_SIZE_1D;
+            
+            int2 sampleCoord = int2(clamp(originXY.x + offsetX, 0, (int)_ScreenSize.x - 1),
+                                   clamp(originXY.y + offsetY, 0, (int)_ScreenSize.y - 1));
+            
+            // Load color and depth
+            float4 colorSample = LOAD_TEXTURE2D_X(_BlurInputTexture, sampleCoord);
+            float rawDepth = LoadDownsampledSceneDepth(sampleCoord);
+            float depthSample = LinearEyeDepthConsiderProjection(rawDepth);
+            
+            // Store to LDS
+            uint LDSIndex = offsetX + offsetY * FILTER_SIZE_1D;
+            StoreSample(LDSIndex, colorSample, depthSample);
+        }
+    }
+}
+
+// Perform separable gaussian blur following HDRP pattern
+float4 PerformSeparableBlur(uint2 groupThreadId)
+{
+    // Values used for accumulation
+    float sumW = 0.0;
+    float4 value = float4(0.0, 0.0, 0.0, 0.0);
+    
+    // Get center sample from LDS
+    int2 centerAddress = (int2)groupThreadId + int2(KERNEL_RADIUS, KERNEL_RADIUS);
+    uint centerLDSIndex = centerAddress.x + centerAddress.y * FILTER_SIZE_1D;
+    float centerDepth = GetDepthSample(centerLDSIndex);
+    
+    // Perform 2D gaussian blur (both horizontal and vertical in one pass)
+    for (int idx = -KERNEL_RADIUS; idx <= KERNEL_RADIUS; ++idx)
+    {
+        for (int idx2 = -KERNEL_RADIUS; idx2 <= KERNEL_RADIUS; ++idx2)
+        {
+            // Compute the tap address in LDS
+            int2 tapAddress = centerAddress + int2(idx2, idx);
+            uint ldsTapAddress = tapAddress.x + tapAddress.y * FILTER_SIZE_1D;
+            
+            // Get samples from LDS
+            float4 currentValue = GetColorSample(ldsTapAddress);
+            float currentDepth = GetDepthSample(ldsTapAddress);
+            
+            // Compute depth-aware bilateral weight
+            float depthDiff = abs(centerDepth - currentDepth);
+            float r2 = BLUR_DEPTH_FALLOFF * depthDiff;
+            float depthWeight = exp(-r2 * r2);
+            
+            // Compute spatial gaussian weight
+            float spatialDistance = length(float2(idx, idx2));
+            int kernelIndex = min((int)spatialDistance, KERNEL_RADIUS);
+            float spatialWeight = (kernelIndex < KERNEL_RADIUS) ? KernelWeights[kernelIndex] : 0.0;
+            
+            // Combined weight
+            float weight = spatialWeight * depthWeight;
+            
+            // Accumulate the value and weight
+            value += currentValue * weight;
+            sumW += weight;
+        }
+    }
+    
+    // Normalize result
+    return value / max(sumW, 1e-6);
+}
+
+
+[numthreads(GROUP_SIZE_1D, GROUP_SIZE_1D, 1)]
+void VolumetricFogBlur(uint3 dispatchThreadId : SV_DispatchThreadID,
+                 uint2 groupThreadId : SV_GroupThreadID,
+                 uint2 groupId : SV_GroupID,
+                 uint groupIndex : SV_GroupIndex)
+{
+    // UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
+    
+    // Compute the coordinate that this thread needs to process
+    uint2 currentCoord = groupId * GROUP_SIZE_1D + groupThreadId;
+    
+    // Store bounds check result but don't return early to avoid varying flow
+    bool isValidPixel = all(currentCoord < (uint2)_ScreenSize.xy);
+    
+    // All threads participate in prefetching to avoid varying flow control
+    PrefetchData(groupIndex, groupId * GROUP_SIZE_1D);
+    
+    // Make sure all values are loaded in LDS by now
+    GroupMemoryBarrierWithGroupSync();
+    
+    // Only process valid pixels, but all threads participate in sync
+    if (isValidPixel)
+    {
+        // Perform blur operation using LDS data
+        float4 blurredResult = PerformSeparableBlur(groupThreadId);
+        
+        // Write result to output texture
+        _BlurOutputTexture[COORD_TEXTURE2D_X(currentCoord)] = blurredResult;
+    }
+}

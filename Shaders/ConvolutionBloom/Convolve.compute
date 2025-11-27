@@ -1,0 +1,120 @@
+﻿// #pragma enable_d3d11_debug_symbols
+#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
+
+#pragma kernel Convolve
+
+Texture2D<float4> Filter;
+RWTexture2D<float4> Target;
+
+float Factor;
+uint2 TargetSize;
+uint2 ImageSize;
+
+//--------------------------------------------------------------------------------------------------
+// Implementation
+//--------------------------------------------------------------------------------------------------
+
+float2 cmul(float2 a, float2 b)
+{
+	return float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+float4 cmul(float4 a, float4 b)
+{
+	return float4(cmul(a.xy, b.xy), cmul(a.zw, b.zw));
+}
+
+float2 cmuli(float2 a)
+{
+	return float2(-a.y, a.x);
+}
+
+float2 cconj(float2 a)
+{
+	return float2(a.x, -a.y);
+}
+
+float4 cconj(float4 a)
+{
+	return float4(a.x, -a.y, a.z, -a.w);
+}
+
+static const float PI = 3.14159265f;
+
+struct decode_out
+{
+	float4 X1;
+	float4 Y1;
+	float4 X2;
+	float4 Y2;
+};
+
+decode_out real_fft_freq_decode(float4 z1, float4 z2)
+{
+	float4 cz1 = cconj(z1);
+	float4 cz2 = cconj(z2);
+	decode_out o;
+	o.X1 = float4(0.5 * (z1.xy + cz2.xy),
+	              -0.5 * cmuli((z1.xy - cz2.xy)));
+	o.Y1 = float4(0.5 * (z1.zw + cz2.zw),
+	              -0.5 * cmuli( (z1.zw - cz2.zw)));
+	o.X2 = float4(0.5 * (z2.xy + cz1.xy),
+	              -0.5 * cmuli( (z2.xy - cz1.xy)));
+	o.Y2 = float4(0.5 * (z2.zw + cz1.zw),
+	              -0.5 * cmuli( (z2.zw - cz1.zw)));
+	return o;
+}
+
+struct encode_out
+{
+	float4 Z1;
+	float4 Z2;
+};
+
+encode_out real_fft_freq_encode(decode_out i)
+{
+	encode_out o;
+	o.Z1 = float4(i.X1.xy + cmuli(i.X1.zw), i.Y1.xy + cmuli(i.Y1.zw));
+	o.Z2 = float4(i.X2.xy + cmuli(i.X2.zw), i.Y2.xy + cmuli(i.Y2.zw));
+	return o;
+}
+
+decode_out multi_convolve(decode_out a, decode_out b)
+{
+	decode_out o;
+	o.X1 = cmul(a.X1, b.X1);
+	o.Y1 = cmul(a.Y1, b.Y1);
+	o.X2 = cmul(a.X2, b.X2);
+	o.Y2 = cmul(a.Y2, b.Y2);
+	return o;
+}
+
+#define SIZE_X 32
+#define SIZE_Y 1
+
+[numthreads(SIZE_X, SIZE_Y, 1)]
+void Convolve(uint3 id: SV_DispatchThreadID)
+{
+	if (id.x >= TargetSize.x) return;
+
+	uint2 rev_id;
+	rev_id.x = TargetSize.x - id.x;
+	rev_id.y = TargetSize.y - id.y;
+	if (id.x == 0) rev_id.x = 0;
+	if (id.y == 0) rev_id.y = 0;
+
+	if (rev_id.y == id.y && id.x > TargetSize.x / 2) return;
+
+
+	decode_out target_decode = real_fft_freq_decode(Target[id.xy], Target[rev_id]);
+
+	decode_out filter_decode = real_fft_freq_decode(Filter[id.xy], Filter[rev_id]);
+
+	target_decode = multi_convolve(target_decode, filter_decode);
+
+	encode_out target_encode = real_fft_freq_encode(target_decode);
+
+
+	Target[id.xy] = target_encode.Z1;
+	Target[rev_id] = target_encode.Z2;
+}

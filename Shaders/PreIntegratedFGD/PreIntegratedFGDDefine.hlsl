@@ -1,0 +1,1 @@
+#define FGDTEXTURE_RESOLUTION (64)

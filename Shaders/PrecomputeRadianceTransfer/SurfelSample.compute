@@ -1,0 +1,71 @@
+#pragma kernel CSMain
+
+//--------------------------------------------------------------------------------------------------
+// Included headers
+//--------------------------------------------------------------------------------------------------
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/ProbeVolume.hlsl"
+
+//--------------------------------------------------------------------------------------------------
+// Inputs & outputs
+//--------------------------------------------------------------------------------------------------
+
+RWStructuredBuffer<Surfel> _surfels;
+TextureCube _worldPosCubemap;
+TextureCube _normalCubemap;
+TextureCube _albedoCubemap;
+SamplerState sampler_point_clamp;
+float _randSeed;
+float4 _probePos;
+
+//--------------------------------------------------------------------------------------------------
+// Implementation
+//--------------------------------------------------------------------------------------------------
+
+// ref: https://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
+float rand(float2 uv)
+{
+    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+// ref: Unreal Engine 4, MonteCarlo.ush
+float3 UniformSphereSample(float u, float v)
+{
+    float phi = degrees(TWO_PI * u);
+    float cosine_theta = 1.0 - 2.0 * v;
+    float sine_theta = sqrt(1.0 - cosine_theta * cosine_theta);
+
+    float x = sine_theta * cos(phi);
+    float y = sine_theta * sin(phi);
+    float z = cosine_theta;
+
+    return float3(x, y, z);
+}
+
+[numthreads(32, 16, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float2 xy = float2(id.x, id.y) / float2(32, 16);
+    xy += float2(1, 1) * _randSeed;
+
+    float u = rand(xy * 1.0);
+    float v = rand(xy * 2.0);
+    float3 dir = UniformSphereSample(u, v);
+
+    Surfel result;
+
+    // opaque geometry
+    result.position = _worldPosCubemap.SampleLevel(sampler_point_clamp, dir, 0).rgb;
+    result.albedo = _albedoCubemap.SampleLevel(sampler_point_clamp, dir, 0).rgb;
+
+    float4 normal_and_mask = _normalCubemap.SampleLevel(sampler_point_clamp, dir, 0);
+    result.normal = normal_and_mask.xyz;
+    result.skyMask = saturate(1.0 - normal_and_mask.w);
+
+    // sample sky
+    result.position += (_probePos.xyz + dir) * result.skyMask;
+
+    uint surfelIndex = id.x * 16 + id.y;
+    _surfels[surfelIndex] = result;
+}
