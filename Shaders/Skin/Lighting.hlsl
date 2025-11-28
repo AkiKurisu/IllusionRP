@@ -136,6 +136,7 @@ half3 SkinSpecular(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
     // Secondary Lobe
     BRDFData brdfData2 = brdfData;
     brdfData2.roughness = max(PerceptualRoughnessToRoughness(SkinData.PerceptualRoughness), HALF_MIN_SQRT);
+    brdfData2.roughness2 = brdfData2.roughness * brdfData2.roughness;
     half3 SpecularLobe2 = SkinGGXSpecularLobe(brdfData2, normalWS, lightDirectionWS, viewDirectionWS);
 
     // Dual Lobe Mix

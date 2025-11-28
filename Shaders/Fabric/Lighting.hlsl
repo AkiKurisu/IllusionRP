@@ -196,7 +196,7 @@ half3 FabricGlobalIllumination(BRDFData brdfData, half3 bakedGI,
     indirectDiffuse *= diffuseFGD * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
     indirectSpecular *= specularFGD * aoFactor.indirectSpecularOcclusion;
 #else
-    indirectDiffuse *= diffuseFGD * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
+    indirectDiffuse *= brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
     // Reference: BRDF.hlsl EnvironmentBRDF
     indirectSpecular *= EnvironmentBRDFSpecular(brdfData, fresnelTerm) * aoFactor.indirectSpecularOcclusion;
 #endif
