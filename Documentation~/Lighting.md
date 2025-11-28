@@ -1,5 +1,7 @@
 # Screen Space Subsurface Scattering
 
+Screen Space Subsurface Scattering (SSSS) simulates the translucency and soft light diffusion characteristic of skin, wax, jade, and other subsurface-scattering materials. When light enters these materials, it scatters beneath the surface before exiting, creating a soft, organic appearance. IllusionRP's SSSS implementation is based on HDRP's approach, using diffusion profiles to define how light scatters through different materials.
+
 ## Diffusion Profile
 
 The Diffusion Profile in IllusionRP is basically the same as HDRP. For documentation, please refer to [HDRP - Diffusion Profile](https://docs.unity.cn/Packages/com.unity.render-pipelines.high-definition@16.0//manual/Diffusion-Profile.html).
@@ -214,15 +216,16 @@ Percentage Closer Soft Shadows (PCSS) adds physically-motivated soft penumbrae t
 - **Find Blocker Sample Count** and **PCF Sample Count** directly affect quality and cost. Start with lower values (16-24) and increase if needed.
 - For large outdoor scenes, start with a modest **Angular Diameter** to avoid overly soft shadows that lose definition.
 
-# Global Illumination
+# Precomputed Radiance Transfer Global Illumination
 
-IllusionRP uses the Main Light's `Indirect Multiplier` to control the intensity of global illumination. This affects all GI sources including baked lightmaps, PRTGI, and SSGI.
+![Settings](./images/prt_settings.png)
 
-## Best Practices
+![Baking](./images/prt_baking.png)
 
-When combining multiple screen space lighting features, consider the following:
+![Results](./images/prt_volume_data.png)
 
-- All of GTAO, SSR, SSGI, and Screen Space Shadows rely on the depth pyramid and sometimes motion vectors and color pyramid. Enabling many features simultaneously increases bandwidth pressure.
-- **Forward+** and **Depth Priming** are recommended (as noted in the main README) because they help depth-based effects and clustered lighting work more efficiently.
-- On low-end platforms, choose one or two features (e.g., GTAO + SSR) instead of enabling everything.
-- For character-focused rendering, prioritize Per-Object Shadows with PCSS and SSR for the best visual quality on characters.
+# Global Illumination Control
+
+IllusionRP uses the Main Light's `Indirect Multiplier` to control the intensity of global illumination. This affects both PRTGI and SSGI.
+
+

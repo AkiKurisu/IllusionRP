@@ -100,23 +100,10 @@ namespace Illusion.Rendering.PRTGI
         internal void BakeProbeVirtualOffset()
         {
             _cachedVirtualOffsetPositions.Clear();
-            try
+            foreach (var probe in Probes)
             {
-                for (int i = 0; i < Probes.Length; i++)
-                {
-                    var probe = Probes[i];
-                    float progress = (float)i / Probes.Length;
-                    EditorUtility.DisplayProgressBar("Bake Virtual Offset",
-                        $"Calculating virtual offset for probe {i + 1}/{Probes.Length} at {probe.Position}",
-                        progress);
-
-                    // Calculate per-probe virtual offset
-                    CalculateProbeVirtualOffset(probe.Position);
-                }
-            }
-            finally
-            {
-                EditorUtility.ClearProgressBar();
+                // Calculate per-probe virtual offset
+                CalculateProbeVirtualOffset(probe.Position);
             }
         }
         

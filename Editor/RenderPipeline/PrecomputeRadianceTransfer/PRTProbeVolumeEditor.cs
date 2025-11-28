@@ -81,17 +81,20 @@ namespace Illusion.Rendering.Editor
 
             serializedObject.Update();
 
-            // Basic ProbeVolume settings
-            DrawGridSettings();
-            DrawProbePlacementSettings();
-            DrawRelightSettings();
-            DrawVoxelSettings();
+            using (new EditorGUI.DisabledScope(PRTVolumeManager.IsBaking))
+            {
+                // Basic ProbeVolume settings
+                DrawGridSettings();
+                DrawProbePlacementSettings();
+                DrawRelightSettings();
+                DrawVoxelSettings();
 
-            // Probe Selection & Debug section
-            DrawDebugSettingsSection();
+                // Probe Selection & Debug section
+                DrawDebugSettingsSection();
 
-            // Bake settings section
-            DrawBakeSettingsSection();
+                // Bake settings section
+                DrawBakeSettingsSection();
+            }
 
             // Action buttons
             using (new EditorGUI.DisabledScope(Application.isPlaying))
@@ -219,19 +222,13 @@ namespace Illusion.Rendering.Editor
             }
         }
 
-        private void DrawActionButtons()
+        private static void DrawActionButtons()
         {
             EditorGUILayout.Space();
             EditorGUILayout.BeginVertical();
 
             if (PRTVolumeManager.IsBaking)
             {
-                // Show progress bar when baking
-                EditorGUILayout.LabelField("Baking Progress", EditorStyles.boldLabel);
-                EditorGUI.ProgressBar(EditorGUILayout.GetControlRect(), PRTBakeManager.Progress,
-                    $"Baking... {PRTBakeManager.Progress:P1}");
-                EditorGUILayout.Space();
-
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Cancel Baking"))
                 {
@@ -242,7 +239,9 @@ namespace Illusion.Rendering.Editor
             else
             {
                 EditorGUILayout.BeginHorizontal();
-                if (ButtonWithDropdownList(Styles.GenerateLightingLabel, Styles.DetailActionLabels, OnActionDropDown))
+                if (ButtonWithDropdownList(Styles.GenerateLightingLabel, 
+                        Styles.DetailActionLabels, 
+                        OnActionDropDown))
                 {
                     PRTBakeManager.GenerateLighting();
                     GUIUtility.ExitGUI();

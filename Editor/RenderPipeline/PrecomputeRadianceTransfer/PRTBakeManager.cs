@@ -15,8 +15,6 @@ namespace Illusion.Rendering.Editor
     public class PRTBakeManager : PRTVolumeManager
     {
         private static CancellationTokenSource _cancellationTokenSource;
-        
-        public static float Progress { get; private set; }
 
         /// <summary>
         /// Bake all probe volume and reflection normalization data in current scene
@@ -142,12 +140,17 @@ namespace Illusion.Rendering.Editor
             IsBaking = true;
             using var prtBaker = new PRTBaker(prtProbeVolume.bakeResolution);
 
-            Progress = 0;
+            int progressId = Progress.Start(
+                $"Bake Probe Volume ({prtProbeVolume.name})",
+                 options: Progress.Options.Managed);
+            
             // Setup progress callbacks
             prtBaker.OnProgressUpdate = (status, progress) =>
             {
-                Progress = progress;
-                EditorUtility.DisplayProgressBar($"Bake Probe Volume ({prtProbeVolume.name})", status, progress);
+                Progress.Report(
+                    progressId,
+                    progress,
+                    status);
             };
 
             try
@@ -172,16 +175,19 @@ namespace Illusion.Rendering.Editor
             }
             finally
             {
+                Progress.Remove(progressId);
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
                 IsBaking = false;
-                EditorUtility.ClearProgressBar();
             }
         }
         
         private static async Task BakeReflectionProbe_Internal(ReflectionProbeAdditionalData reflectionProbe)
         {
             IsBaking = true;
+            int progressId = Progress.Start(
+                $"Bake Reflection Probe ({reflectionProbe.name})",
+                options: Progress.Options.Managed);
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = new CancellationTokenSource();
             using var prtBaker = new PRTBaker(PRTBakeResolution._512);
@@ -189,7 +195,10 @@ namespace Illusion.Rendering.Editor
             // Setup progress callbacks
             prtBaker.OnProgressUpdate = (status, progress) =>
             {
-                EditorUtility.DisplayProgressBar($"Bake Reflection Probe ({reflectionProbe.name})", status, progress);
+                Progress.Report(
+                    progressId,
+                    progress,
+                    status);
             };
 
             try
@@ -214,9 +223,8 @@ namespace Illusion.Rendering.Editor
             }
             finally
             {
-                Progress = 0;
+                Progress.Remove(progressId);
                 IsBaking = false;
-                EditorUtility.ClearProgressBar();
             }
         }
 

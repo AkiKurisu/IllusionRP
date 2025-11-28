@@ -93,21 +93,3 @@ Bloom --> Debug
 ## Limitations
 
 Due to the limitations of URP design, `Native Render Pass` requires the number of custom passes to be less than 20 (see `ScriptableRenderer.kRenderPassMaxCount`), and the number used by IllusionRP far exceeds this threshold. Therefore, you cannot check `Native Render Pass` in RendererAsset after turning on IllusionRP.
-
-# Runtime Debugging
-
-Recommended to install [Chris](https://github.com/AkiKurisu/Chris) to use Unreal-like console variables for debugging rendering features.
-
-> Install from git url `https://github.com/AkiKurisu/Chris`
-
-![Console Variable](./images/console_variables.png)
-
-# Gameplay Integration
-
-Recommended to install [Chris.Gameplay](https://github.com/AkiKurisu/Chris.Gameplay) which provides a in-game graphics setting solution.
-
-`Chris.Graphics` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
-
-> Install from git url `https://github.com/AkiKurisu/Chris.Gameplay`
-
-![Dynamic Volume](./images/dynamic_volume.png)

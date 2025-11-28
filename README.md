@@ -191,7 +191,27 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 > [!NOTE]
 > Advanced Tonemapping only works in `High Dynamic Range` grading mode.
 
-# Document
+# Debugging
+
+Recommended to install [Chris](https://github.com/AkiKurisu/Chris) to use Unreal-like console variables for debugging rendering features.
+
+> Install from git url `https://github.com/AkiKurisu/Chris`
+
+![Console Variable](./images/console_variables.png)
+
+# Gameplay Integration
+
+Recommended to install [Chris.Gameplay](https://github.com/AkiKurisu/Chris.Gameplay) which provides a in-game graphics setting solution.
+
+`Chris.Graphics` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
+
+> Install from git url `https://github.com/AkiKurisu/Chris.Gameplay`
+
+![Dynamic Volume](./images/dynamic_volume.png)
+
+# Documents
+
+Documents are generated with [Devin AI](https://app.devin.ai/), please create an issue if you find any problems.
 
 [Shaders](./Documentation~/Shaders)
 
