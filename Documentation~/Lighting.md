@@ -218,11 +218,121 @@ Percentage Closer Soft Shadows (PCSS) adds physically-motivated soft penumbrae t
 
 # Precomputed Radiance Transfer Global Illumination
 
+Precomputed Radiance Transfer Global Illumination (PRTGI) provides stable, high-quality indirect lighting by baking spherical harmonic coefficients into probe volumes. Unlike screen-space techniques, PRTGI captures global illumination from all directions and works reliably for both static and dynamic objects. It is particularly well-suited for large outdoor environments and can be combined with SSGI for enhanced local bounce lighting.
+
+## Setting Up a PRT Probe Volume
+
+To use PRTGI, you need to create a PRT Probe Volume component in your scene:
+
+1. Create an empty GameObject in your scene and add the **PRT Probe Volume** component.
+2. Position and scale the volume to cover the area where you want indirect lighting.
+3. Configure the probe grid settings based on your scene's scale and detail requirements.
+
 ![Settings](./images/prt_settings.png)
+
+## Properties
+
+### Grid Settings
+
+| Property | Description |
+|----------|-------------|
+| **Probe Size X/Y/Z** | Number of probes along each axis. More probes provide finer detail but increase bake time and memory usage. |
+| **Probe Grid Size** | Spacing between probes in world units. Smaller values capture more detail but require more probes. |
+
+### Probe Placement
+
+| Property | Description |
+|----------|-------------|
+| **Enable Bake Preprocess** | When enabled, performs preprocessing to optimize probe placement before baking. |
+| **Virtual Offset** | Offset applied to probe positions to avoid placing probes inside geometry (X, Y, Z). |
+| **Geometry Bias** | Bias value to prevent probes from being placed too close to surfaces (0-1). |
+| **Ray Origin Bias** | Offset applied to ray origins during baking to avoid self-intersection artifacts (0-1). |
+
+### Relight Settings
+
+| Property | Description |
+|----------|-------------|
+| **Multi Frame Relight** | Distributes relighting computation across multiple frames for smoother performance. |
+| **Probes Per Frame Update** | Number of probes updated per frame when Multi Frame Relight is enabled. |
+| **Local Probe Count** | Number of nearby probes sampled for each pixel during rendering. |
+
+### Voxel Settings
+
+| Property | Description |
+|----------|-------------|
+| **Voxel Probe Size** | Size of voxels used for probe interpolation (X, Y, Z). Affects the smoothness of GI transitions. |
+
+### Debug Settings
+
+| Property | Description |
+|----------|-------------|
+| **Volume Debug Mode** | Visualization mode for debugging probe placement and data. Options include **Probe Grid With Virtual Offset**. |
+| **Bake Virtual Offset** | Button to bake virtual offset data for probe placement optimization. |
+| **Probe Handle Size** | Size of probe gizmos displayed in the Scene view. |
+
+### Bake Settings
+
+| Property | Description |
+|----------|-------------|
+| **Probe Volume Asset** | Reference to the PRT Probe Volume Asset that stores baked data. |
+| **Bake Resolution** | Resolution of the baking process. Higher values produce more accurate results but take longer to bake. |
+
+## Baking Workflow
+
+Follow these steps to bake PRTGI data for your scene:
+
+1. Select the GameObject with the **PRT Probe Volume** component.
+2. In the Inspector, configure the Grid Settings and Probe Placement parameters according to your scene requirements.
+3. Assign or create a **Probe Volume Asset** in the Bake Settings section to store the baked data.
+4. Click the **Generate Lighting** button at the bottom of the Inspector to start the baking process.
 
 ![Baking](./images/prt_baking.png)
 
+During baking, a **Background Tasks** window will appear showing the progress. The window displays the current probe being processed (e.g., "Sampling surfels for probe 29/180") along with a progress percentage and estimated time. You can click **Cancel Baking** to abort the process if needed.
+
+> [!Warning]
+> **Do not modify the scene or edit code while baking is in progress.** Changing scene geometry, lighting, or scripts during the bake process may cause incorrect results or baking failures. Wait for the baking to complete before making any changes.
+
+> [!TIP]
+> For large scenes with many probes, baking can take several minutes. Consider starting with a lower probe count to test your settings, then increase the resolution for the final bake.
+
+## Baked Data
+
+After baking completes, the **PRT Probe Volume Asset** stores all the computed data. You can inspect the asset to view statistics about the baked data:
+
 ![Results](./images/prt_volume_data.png)
+
+The asset inspector displays:
+
+- **Data Counts**: Number of Surfels, Bricks, Factors, and Probes in the baked data.
+- **Memory Usage**: Memory consumption breakdown for each data type (Surfels, Bricks, Factors, Probes) and the total size.
+- **Statistics**: Average Factors per Probe and Average Surfels per Brick, which indicate the complexity of your scene's lighting.
+
+## Enabling PRTGI in the Renderer
+
+To use the baked PRTGI data at runtime:
+
+1. In your URP Renderer asset, select the **Illusion Graphics** renderer feature.
+2. Enable **Precomputed Radiance Transfer GI** in the feature settings.
+3. Ensure your PRT Probe Volume is active in the scene with valid baked data.
+
+## Limitations
+
+> [!Warning]
+> PRTGI captures static lighting only. Dynamic lights and emissive surfaces that change at runtime will not be reflected in the baked GI. Use SSGI in combination with PRTGI for dynamic indirect lighting.
+
+> [!TIP]
+> If you see the warning "This prt probe volume does not have valid data for relighting" in the Inspector, you need to bake the probe volume before it can contribute to scene lighting.
+
+## Performance Considerations
+
+PRTGI runtime performance is primarily affected by the following factors:
+
+- **Probe Count**: More probes increase memory usage and sampling cost. Balance detail requirements with performance.
+- **Local Probe Count**: Higher values produce smoother interpolation but cost more per pixel.
+- **Probes Per Frame Update**: When using Multi Frame Relight, higher values update lighting faster but may cause frame rate hitches.
+
+For mobile platforms, use fewer probes with larger grid spacing and enable Multi Frame Relight to distribute the update cost.
 
 # Global Illumination Control
 
