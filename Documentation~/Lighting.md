@@ -102,7 +102,7 @@ IllusionRP automatically schedules a Forward GBuffer prepass when SSR is active 
 > SSR is screen-space only and cannot reflect objects that are off-screen or hidden behind other geometry. Use reflection probes or PRTGI/SSGI for fully global reflections.
 
 > [!TIP]
-> For character and hero objects, use the `Hybrid Lit` shader or IllusionRP templates with Forward GBuffer enabled to get stable reflections on glossy surfaces.
+> For character objects, use the `Hybrid Lit` shader or IllusionRP templates with Forward GBuffer enabled to get stable reflections on glossy surfaces.
 
 ## Performance Considerations
 
@@ -164,7 +164,7 @@ IllusionRP provides a Screen Space Shadows pass that re-projects the main direct
 The Screen Space Shadows pass is scheduled in the Shadows prepass and writes a screen-space shadow mask texture. This texture combines:
 
 - The main light shadow map (including cascades)
-- Per-object shadow maps for hero characters (if enabled)
+- Per-object shadow maps for characters (if enabled)
 - Contact Shadows (if enabled)
 
 Receivers sample this screen-space shadow mask instead of the standard shadow map, which enables advanced shadow filtering techniques like PCSS.
@@ -225,4 +225,4 @@ When combining multiple screen space lighting features, consider the following:
 - All of GTAO, SSR, SSGI, and Screen Space Shadows rely on the depth pyramid and sometimes motion vectors and color pyramid. Enabling many features simultaneously increases bandwidth pressure.
 - **Forward+** and **Depth Priming** are recommended (as noted in the main README) because they help depth-based effects and clustered lighting work more efficiently.
 - On low-end platforms, choose one or two features (e.g., GTAO + SSR) instead of enabling everything.
-- For character-focused rendering, prioritize Per-Object Shadows with PCSS and SSR for the best visual quality on hero characters.
+- For character-focused rendering, prioritize Per-Object Shadows with PCSS and SSR for the best visual quality on characters.
