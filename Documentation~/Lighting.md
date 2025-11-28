@@ -101,10 +101,10 @@ IllusionRP automatically schedules a Forward GBuffer prepass when SSR is active 
 ## Limitations
 
 > [!Warning]
-> SSR is screen-space only and cannot reflect objects that are off-screen or hidden behind other geometry. Use reflection probes or PRTGI/SSGI for fully global reflections.
+> SSR is screen-space only and cannot reflect objects that are off-screen or hidden behind other geometry, it will sample reflection probes as fallback.
 
 > [!TIP]
-> For character objects, use the `Hybrid Lit` shader or IllusionRP templates with Forward GBuffer enabled to get stable reflections on glossy surfaces.
+> Shader need contribute to SSR should always have Forward GBuffer pass.
 
 ## Performance Considerations
 

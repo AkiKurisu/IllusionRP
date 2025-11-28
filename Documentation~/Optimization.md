@@ -1,8 +1,4 @@
-# Optimization
-
-Some optimization tips.
-
-## Mobile Precision
+# Half Precision
 
 To optimize ALU in mobile platform, shader should use <b>Half Precision</b> (FP16).
 

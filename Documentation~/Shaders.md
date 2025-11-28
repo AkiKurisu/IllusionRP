@@ -93,12 +93,6 @@ If you don't need OIT at all, you can disable it globally by turning off `Order 
 
 IllusionRP uses a Forward GBuffer pass to enable screen-space effects (SSR, SSGI) in forward rendering. Shaders must include a `ForwardGBuffer` pass to receive these effects.
 
-> [!Warning]
-> Several template options will remove the ForwardGBuffer pass, causing materials to lose SSR and SSGI support:
-> - **Forward Only**: Explicitly removes the GBuffer pass.
-> - **Transmission** / **Translucency** (in Fabric and Hybrid Lit templates): These options automatically set Forward Only and exclude the GBuffer pass.
->
-> If you need SSR/SSGI on a material, do not enable these options.
 
 For more technical details, please refer to [URP Forward Rendering Path Screen Space Reflection Practice](https://zhuanlan.zhihu.com/p/1912828657585590857).
 
@@ -129,7 +123,7 @@ Some lighting features require both shader support and pipeline configuration:
 
 ## Shader Stripping
 
-IllusionRP automatically strips unused shader variants to reduce compilation time and build size. For example, if Screen Space Subsurface Scattering is enabled in all renderer features, the disabled variant will be stripped.
+IllusionRP automatically strips unused shader variants to reduce compilation time and build size. For example, if `Screen Space Subsurface Scattering` is enabled in all renderer features, the disabled variant will be stripped.
 
 To disable shader stripping:
 
