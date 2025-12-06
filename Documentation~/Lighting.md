@@ -1,3 +1,184 @@
+# Per Object Shadow
+
+Per Object Shadow provides high-quality shadow casting for individual objects, particularly useful for characters and important scene elements. Each object with a `PerObjectShadowRenderer` component receives its own shadow map tile in a shared atlas, enabling better shadow quality and filtering compared to standard shadow maps.
+
+![Per Object Shadow](./images/per_object_shadow.png)
+
+## Setting Up Per Object Shadows
+
+To use Per Object Shadows, you need to add the `PerObjectShadowRenderer` component to your GameObject:
+
+1. Select the GameObject that should cast per-object shadows (typically a character or important object).
+2. Add the **Per Object Shadow Renderer** component.
+3. Configure the **Cluster Data** array:
+   - **Render Object**: The main renderer used for shadow bounds calculation.
+   - **Renderers**: Additional renderers that should be included in the shadow casting cluster.
+4. Set the **Rendering Layer Mask** to control which rendering layers the shadow casters belong to.
+5. Enable **Cast Shadow** to activate shadow casting for this renderer.
+
+The component automatically registers itself with the shadow system when enabled and unregisters when disabled.
+
+## Properties
+
+### PerObjectShadowRenderer Component
+
+| Property | Description |
+|----------|-------------|
+| **Cast Shadow** | Enable/disable shadow casting for this renderer. |
+| **Cluster Data** | Array of shadow caster clusters. Each cluster contains a render object and additional renderers that cast shadows together. |
+| **Rendering Layer Mask** | Sets the rendering layers for all renderers in the cluster. Used to filter which objects receive shadows. |
+
+### Cluster Data
+
+| Property | Description |
+|----------|-------------|
+| **Render Object** | The primary renderer used for calculating shadow bounds. This renderer is always included in the cluster. |
+| **Renderers** | Additional renderers to include in the shadow casting cluster. All renderers in a cluster cast shadows together. |
+
+### Per Object Shadows Volume Component
+
+You can add the **Illusion/Per Object Shadows** Volume component to configure global per-object shadow settings:
+
+| Property | Description |
+|----------|-------------|
+| **Depth Bits** | Sets the depth buffer precision for the per-object shadow map. Options: **Depth16** or **Depth24**. Higher precision improves shadow quality but uses more memory. |
+| **Tile Resolution** | Sets the resolution for each tile in the per-object shadow atlas. Options range from **256** to **2048**. Higher resolutions provide sharper shadows but increase memory usage. |
+| **Shadow Length Offset** | Controls the offset distance for shadow length calculation (0-1000). Used for culling shadows that are too far from the camera. |
+
+## Integration with Screen Space Shadows
+
+Per Object Shadows are automatically combined with the main directional light shadow map in the Screen Space Shadows pass. This enables advanced shadow filtering techniques like PCSS to work with per-object shadows.
+
+> [!TIP]
+> Per Object Shadows work seamlessly with PCSS. When PCSS is enabled, per-object shadows receive the same soft penumbra filtering as the main light shadows.
+
+## Transparent Object Support
+
+By default, transparent objects cannot receive per-object shadows (similar to Screen Space Shadows). However, you can enable support for transparent objects:
+
+1. In your URP Renderer asset, select the **Illusion Graphics** renderer feature.
+2. Enable **Transparent Receive Per Object Shadows**.
+
+> [!Warning]
+> Enabling transparent object support for per-object shadows will decrease performance, as transparent objects require additional shadow sampling passes.
+
+## Limitations
+
+> [!Warning]
+> Per Object Shadows are limited by the shadow atlas size. If too many objects with `PerObjectShadowRenderer` components are active simultaneously, some shadows may not be rendered. The system prioritizes shadows based on distance and priority.
+
+> [!TIP]
+> Use Rendering Layer Masks to control which objects receive per-object shadows. This helps manage performance by removing duplicated main light shadow sampling to specific layers.
+
+## Customization
+
+If your scene has dynamic renderers that change at runtime (for example, character equipment swapping systems), you can implement a custom shadow caster by directly inheriting from the `IShadowCaster` interface and registering it with `ShadowCasterManager`. 
+
+Here's an example of how to create a custom shadow caster for dynamic renderers:
+
+```csharp
+using UnityEngine;
+using Illusion.Rendering.Shadows;
+
+public class DynamicShadowCaster : MonoBehaviour, IShadowCaster
+{
+    private int _shadowCasterId = -1;
+
+    private float _priority;
+
+    private readonly ShadowRendererList _shadowRendererList = new();
+    
+    // IShadowCaster implementation
+    public int Id { get => _shadowCasterId; set => _shadowCasterId = value; }
+
+    public float Priority { get => _priority; set => _priority = value; }
+    
+    public ShadowRendererList.ReadOnly RendererList => _shadowRendererList.AsReadOnly();
+
+    public Transform Transform => transform;
+    
+    // Main renderer used for bounds calculation
+    public Renderer mainRenderer;
+    
+    // Dynamic list of renderers that can change at runtime
+    private List<Renderer> _dynamicRenderers = new();
+    
+    private void Awake()
+    {
+        // Initialize the shadow renderer list
+        _shadowRendererList.RenderObject = mainRenderer;
+        // Set the bound type to be calculated by render list
+        _shadowRendererList.BoundType = ShadowBoundType.Calculated;
+    }
+    
+    private void OnEnable()
+    {
+        // Register this caster with the shadow system
+        ShadowCasterManager.Register(this);
+        UpdateRendererList();
+    }
+    
+    private void OnDisable()
+    {
+        // Unregister when disabled
+        ShadowCasterManager.Unregister(this);
+    }
+    
+    public bool CanCastShadow()
+    {
+        return isActiveAndEnabled && mainRenderer;
+    }
+    
+    // Call this method whenever renderers change (e.g., when equipment is swapped)
+    public void UpdateRendererList()
+    {
+        _shadowRendererList.Clear();
+        
+        // Add main renderer
+        if (mainRenderer != null)
+        {
+            _shadowRendererList.Add(mainRenderer);
+        }
+        
+        // Add all dynamic renderers
+        foreach (var renderer in _dynamicRenderers)
+        {
+            if (renderer != null && renderer.enabled)
+            {
+                _shadowRendererList.Add(renderer);
+            }
+        }
+    }
+    
+    // Example method for adding renderers dynamically (e.g., when equipping items)
+    public void AddRenderer(Renderer renderer)
+    {
+        if (renderer != null && !_dynamicRenderers.Contains(renderer))
+        {
+            _dynamicRenderers.Add(renderer);
+            UpdateRendererList();
+        }
+    }
+    
+    // Example method for removing renderers dynamically (e.g., when unequipping items)
+    public void RemoveRenderer(Renderer renderer)
+    {
+        if (_dynamicRenderers.Remove(renderer))
+        {
+            UpdateRendererList();
+        }
+    }
+    
+    // Clear all dynamic renderers
+    public void ClearDynamicRenderers()
+    {
+        _dynamicRenderers.Clear();
+        UpdateRendererList();
+    }
+}
+```
+
+
 # Screen Space Subsurface Scattering
 
 Screen Space Subsurface Scattering (SSSS) simulates the translucency and soft light diffusion characteristic of skin, wax, jade, and other subsurface-scattering materials. When light enters these materials, it scatters beneath the surface before exiting, creating a soft, organic appearance. IllusionRP's SSSS implementation is based on HDRP's approach, using diffusion profiles to define how light scatters through different materials.
@@ -105,6 +286,10 @@ IllusionRP automatically schedules a Forward GBuffer prepass when SSR is active 
 
 > [!TIP]
 > Shader need contribute to SSR should always have Forward GBuffer pass.
+> 
+> For shaders created by ASE, you need set stencil mask to 4(0100) manually.
+
+![Forward GBuffer](./images/forward_gbuffer.png)
 
 ## Performance Considerations
 
@@ -327,5 +512,3 @@ The renderer only runs SSGI when the renderer feature toggle, runtime config, an
 # Global Illumination Control
 
 IllusionRP uses the Main Light's `Indirect Multiplier` to control the intensity of global illumination. This affects both PRTGI and SSGI.
-
-

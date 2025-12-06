@@ -24,7 +24,7 @@
     "versionDefines": [
         {
             "name": "com.unity.render-pipelines.universal",
-            "expression": "14.0.9",
+            "expression": "14.0.12",
             "define": "URP_INSTALL"
         }
     ],

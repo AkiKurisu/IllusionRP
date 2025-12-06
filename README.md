@@ -281,6 +281,8 @@ Technical articles related to IllusionRP.
 
 [Unity预计算辐照度全局光照PRTGI实践与拓展（下）](https://zhuanlan.zhihu.com/p/1957865115991908586)
 
+[IllusionRP：Unity URP高质量渲染开发实践](https://zhuanlan.zhihu.com/p/1978425877839761874)
+
 # License
 
 Licensed under the Unity Companion License for Unity-dependent projects--see [Unity Companion License](http://www.unity3d.com/legal/licenses/Unity_Companion_License).

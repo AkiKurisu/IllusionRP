@@ -81,52 +81,52 @@ namespace Illusion.Rendering
         public bool EnableComputeShader { get; set; } = true;
 
         // =================================== Debug ========================================= //
-        [ConfigVariable("r.debug.velocity")]
+        [ConfigVariable("r.debug.velocity", IsEditor = true)]
         public bool EnableMotionVectorsDebug { get; set; }
         
-        [ConfigVariable("r.debug.ssr")]
+        [ConfigVariable("r.debug.ssr", IsEditor = true)]
         public bool EnableScreenSpaceReflectionDebug { get; set; }
         
         /// <summary>
         /// Exposure debug mode.
         /// </summary>
-        [ConfigVariable("r.debug.exposure")]
+        [ConfigVariable("r.debug.exposure", IsEditor = true)]
         public ExposureDebugMode ExposureDebugMode { get; set; } = ExposureDebugMode.None;
         
         /// <summary>
         /// Screen space shadow debug mode.
         /// </summary>
-        [ConfigVariable("r.debug.ssshadow")]
+        [ConfigVariable("r.debug.ssshadow", IsEditor = true)]
         public ScreenSpaceShadowDebugMode ScreenSpaceShadowDebugMode { get; set; } = ScreenSpaceShadowDebugMode.None;
         
         /// <summary>
         /// Enable Per Object Shadow debug mode.
         /// </summary>
-        [ConfigVariable("r.debug.perobjectshadow")]
+        [ConfigVariable("r.debug.perobjectshadow", IsEditor = true)]
         public bool EnablePerObjectShadowDebug { get; set; }
 
         /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.
         /// </summary>
-        [ConfigVariable("r.CenterHistogramAroundMiddleGrey")]
+        [ConfigVariable("r.CenterHistogramAroundMiddleGrey", IsEditor = true)]
         public bool CenterHistogramAroundMiddleGrey { get; set; }
 
         /// <summary>
         /// Whether to show the on scene overlay displaying pixels excluded by the exposure computation via histogram.
         /// </summary>
-        [ConfigVariable("r.DisplayOnSceneOverlay")]
+        [ConfigVariable("r.DisplayOnSceneOverlay", IsEditor = true)]
         public bool DisplayOnSceneOverlay { get; set; } = true;
         
         /// <summary>
         /// Whether to display histogram debug view in rgb mode.
         /// </summary>
-        [ConfigVariable("r.DisplayFinalImageHistogramAsRGB")]
+        [ConfigVariable("r.DisplayFinalImageHistogramAsRGB", IsEditor = true)]
         public bool DisplayFinalImageHistogramAsRGB { get; set; }
 
         /// <summary>
         /// Whether to show only the mask in the picture in picture. If unchecked, the mask view is weighted by the scene color.
         /// </summary>
-        [ConfigVariable("r.DisplayMaskOnly")]
+        [ConfigVariable("r.DisplayMaskOnly", IsEditor = true)]
         public bool DisplayMaskOnly { get; set; }
         // =================================== Debug ========================================= //
 
@@ -141,6 +141,8 @@ namespace Illusion.Rendering
         private sealed class ConfigVariableAttribute : System.Attribute
         {
             public string Name { get; private set; }
+        
+            public bool IsEditor { get; set; }
 
             public ConfigVariableAttribute(string name)
             {

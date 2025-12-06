@@ -10,6 +10,8 @@
     "com.unity.collections": "2.2.1",
     "com.unity.burst": "1.8.13"
   },
+  "changelogUrl": "https://github.com/AkiKurisu/IllusionRP/releases",
+  "licensesUrl": "https://github.com/AkiKurisu/IllusionRP/blob/master/LICENSE",
   "author": {
     "name": "AkiKurisu",
     "url": "https://github.com/AkiKurisu/IllusionRP.git"

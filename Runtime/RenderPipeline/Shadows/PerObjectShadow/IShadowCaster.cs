@@ -20,6 +20,7 @@
  */
 
 using UnityEngine;
+
 namespace Illusion.Rendering.Shadows
 {
     public interface IShadowCaster
