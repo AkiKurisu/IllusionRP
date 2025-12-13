@@ -320,17 +320,6 @@ namespace UnityEngine.Rendering.Universal
         }
 
         /// <summary>
-        /// Calculate UniversalAdditionalCameraData temporal AA jitter.
-        /// </summary>
-        /// <param name="cameraData"></param>
-        /// <returns></returns>
-        public static Vector2 CalculateTemporalAAJitter(CameraData cameraData)
-        {
-            int frameIndex = Time.frameCount + cameraData.taaSettings.jitterFrameCountOffset;
-            return TemporalAA.CalculateJitter(frameIndex);
-        }
-
-        /// <summary>
         /// Get UniversalRenderPipelineAsset default renderer data.
         /// </summary>
         /// <param name="renderPipelineAsset"></param>

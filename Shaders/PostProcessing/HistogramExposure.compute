@@ -1,5 +1,6 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/PostProcessing/HistogramExposureCommon.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/DynamicScalingClamping.hlsl"
 
 
 // TODO List to investigate

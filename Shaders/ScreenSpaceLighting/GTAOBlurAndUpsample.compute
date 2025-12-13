@@ -25,6 +25,7 @@
 
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/ScreenSpaceLighting/GTAOCommon.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/DynamicScalingClamping.hlsl"
 
 TEXTURE2D_X(_AOPackedData);
 RW_TEXTURE2D_X(float, _OcclusionTexture);

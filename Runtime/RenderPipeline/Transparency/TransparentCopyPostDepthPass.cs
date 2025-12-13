@@ -12,21 +12,23 @@ namespace Illusion.Rendering
     /// </summary>
     public class TransparentCopyPostDepthPass : CopyDepthPass, IDisposable
     {
-        private readonly Material _copyDepthMaterial;
-
-        private TransparentCopyPostDepthPass(Material copyDepthMaterial, bool copyResolvedDepth = false)
+        private TransparentCopyPostDepthPass(Shader copyDepthShader, bool copyResolvedDepth = false)
             : base(IllusionRenderPassEvent.TransparentCopyPostDepthPass, 
-                copyDepthMaterial, false, false, copyResolvedDepth)
+                copyDepthShader, false, false, copyResolvedDepth)
         {
-            _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPostDepth");
         }
 
         public static TransparentCopyPostDepthPass Create()
         {
-            var copyDepthMaterial = CoreUtils.CreateEngineMaterial("Hidden/Universal Render Pipeline/CopyDepth");
-            Assert.IsTrue((bool)copyDepthMaterial);
-            return new TransparentCopyPostDepthPass(copyDepthMaterial, RenderingUtils.MultisampleDepthResolveSupported());
+            Shader copyDephPS = null;
+            if (GraphicsSettings.TryGetRenderPipelineSettings<UniversalRendererResources>(
+                    out var universalRendererShaders))
+            {
+                copyDephPS = universalRendererShaders.copyDepthPS;
+            }
+            Assert.IsTrue((bool)copyDephPS);
+            return new TransparentCopyPostDepthPass(copyDephPS, RenderingUtils.MultisampleDepthResolveSupported());
         }
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
@@ -48,11 +50,6 @@ namespace Illusion.Rendering
             {
                 base.Execute(context, ref renderingData);
             }
-        }
-
-        public void Dispose()
-        {
-            CoreUtils.Destroy(_copyDepthMaterial);
         }
     }
 }

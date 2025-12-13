@@ -13,8 +13,6 @@ namespace Illusion.Rendering
     /// </summary>
     public class TransparentCopyPreDepthPass : CopyDepthPass, IDisposable
     {
-        private readonly Material _copyDepthMaterial;
-
         private readonly IllusionRendererData _rendererData;
         
 #if UNITY_SWITCH || UNITY_ANDROID
@@ -27,20 +25,24 @@ namespace Illusion.Rendering
         const int k_DepthBufferBits = 32;
 #endif
 
-        private TransparentCopyPreDepthPass(IllusionRendererData rendererData, Material copyDepthMaterial, bool copyResolvedDepth = false)
+        private TransparentCopyPreDepthPass(IllusionRendererData rendererData, Shader copyDepthShader, bool copyResolvedDepth = false)
             : base(IllusionRenderPassEvent.TransparentCopyPreDepthPass, 
-                copyDepthMaterial, true, false, copyResolvedDepth)
+                copyDepthShader, true, false, copyResolvedDepth)
         {
             _rendererData = rendererData;
-            _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPreDepth");
         }
 
         public static TransparentCopyPreDepthPass Create(IllusionRendererData rendererData)
         {
-            var copyDepthMaterial = CoreUtils.CreateEngineMaterial("Hidden/Universal Render Pipeline/CopyDepth");
-            Assert.IsTrue((bool)copyDepthMaterial);
-            return new TransparentCopyPreDepthPass(rendererData, copyDepthMaterial, RenderingUtils.MultisampleDepthResolveSupported());
+            Shader copyDephPS = null;
+            if (GraphicsSettings.TryGetRenderPipelineSettings<UniversalRendererResources>(
+                    out var universalRendererShaders))
+            {
+                copyDephPS = universalRendererShaders.copyDepthPS;
+            }
+            Assert.IsTrue((bool)copyDephPS);
+            return new TransparentCopyPreDepthPass(rendererData, copyDephPS, RenderingUtils.MultisampleDepthResolveSupported());
         }
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
@@ -71,11 +73,6 @@ namespace Illusion.Rendering
             {
                 base.Execute(context, ref renderingData);
             }
-        }
-
-        public void Dispose()
-        {
-            CoreUtils.Destroy(_copyDepthMaterial);
         }
     }
 }

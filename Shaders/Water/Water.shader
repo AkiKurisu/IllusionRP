@@ -359,7 +359,6 @@ Shader "Universal Render Pipeline/Water"
 			SAMPLER(sampler_Normal_Map);
 			TEXTURE2D(_Blend_Map);
 			SAMPLER(sampler_Blend_Map);
-			uniform float4 _CameraDepthTexture_TexelSize;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"

@@ -255,7 +255,7 @@ namespace Illusion.Rendering
             public Matrix4x4 InvViewProjMatrix;
             public Matrix4x4 PrevInvViewProjMatrix;
 
-            public Vector4 RTHandleScale;
+            // public Vector4 RTHandleScale;
             public Vector4 RTHandleScaleHistory;
 
             // TAA Frame Index ranges from 0 to 7.
@@ -359,7 +359,7 @@ namespace Illusion.Rendering
             // No RTHandleScale in IllusionRP
             // _shaderVariablesGlobal.RTHandleScale = RTHandles.rtHandleProperties.rtHandleScale;
             // _shaderVariablesGlobal.RTHandleScaleHistory = _historyRTSystem.rtHandleProperties.rtHandleScale;
-            _shaderVariablesGlobal.RTHandleScale = Vector4.one;
+            // _shaderVariablesGlobal.RTHandleScale = Vector4.one;
             _shaderVariablesGlobal.RTHandleScaleHistory = Vector4.one;
 
             const int kMaxSampleCount = 8;
@@ -734,9 +734,9 @@ namespace Illusion.Rendering
 #if ENABLE_VR && ENABLE_XR_MODULE
                 multipassId = cameraData.xr.multipassId;
 #endif
-                var taaPersistentData = AdditionalCameraData.taaPersistentData;
-                isNewFrame = taaPersistentData.GetLastAccumFrameIndex(multipassId) != Time.frameCount;
-                return taaPersistentData.accumulationTexture(multipassId);
+                var taaHistory = cameraData.taaHistory;
+                isNewFrame = taaHistory.GetAccumulationVersion(multipassId) != Time.frameCount;
+                return taaHistory.GetAccumulationTexture(multipassId);
             }
 
             // Using history color

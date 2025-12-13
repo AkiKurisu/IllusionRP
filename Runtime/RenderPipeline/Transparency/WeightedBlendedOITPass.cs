@@ -81,22 +81,25 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             
             var drawSettings = CreateDrawingSettings(OitTagId, ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
-            var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
+            ContextContainer frameData = renderingData.frameData;
+            UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
+            var rcmd = CommandBufferHelpers.GetRasterCommandBuffer(cmd);
+            var activeDebugHandler = GetActiveDebugHandler(cameraData);
             if (activeDebugHandler != null)
             {
-                activeDebugHandler.DrawWithDebugRenderState(context, cmd, ref renderingData, ref drawSettings, ref _filteringSettings, ref _renderStateBlock,
-                    (ScriptableRenderContext ctx, ref RenderingData rd, ref DrawingSettings ds, ref FilteringSettings fs, ref RenderStateBlock rsb) =>
-                    {
-                        ctx.DrawRenderers(rd.cullResults, ref ds, ref fs, ref rsb);
-                    });
+                var debugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(context, ref renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
+                debugRendererLists.DrawWithRendererList(rcmd);
             }
             else
             {
-                context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
-
+                var camera = cameraData.camera;
+                RendererList rendererList = default;
+                RendererList objectsWithErrorRendererList = default;
+                RenderingUtils.CreateRendererListWithRenderStateBlock(context, ref renderingData.cullResults, drawSettings, _filteringSettings, _renderStateBlock, ref rendererList);
+                RenderingUtils.CreateRendererListObjectsWithError(context, ref renderingData.cullResults, camera, _filteringSettings, cameraData.defaultOpaqueSortFlags, ref objectsWithErrorRendererList);
+                cmd.DrawRendererList(rendererList);
                 // Render objects that did not match any shader pass with error shader
-                var camera = renderingData.cameraData.camera;
-                RenderingUtils.RenderObjectsWithError(context, ref renderingData.cullResults, camera, _filteringSettings, SortingCriteria.None);
+                RenderingUtils.DrawRendererListObjectsWithError(rcmd, ref objectsWithErrorRendererList);
             }
         }
 
@@ -134,7 +137,7 @@ namespace Illusion.Rendering
 
             if (_nativeRenderPass)
             {
-                using (new ProfilingScope(null, profilingSampler))
+                using (new ProfilingScope((CommandBuffer)null, profilingSampler))
                 {
                     DoNativeRenderPass(context, ref renderingData);
                 }

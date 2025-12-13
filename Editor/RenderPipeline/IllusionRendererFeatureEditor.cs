@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEditor;
-using UnityEditor.Rendering.Universal;
 
 namespace Illusion.Rendering.Editor
 {
@@ -158,7 +157,7 @@ namespace Illusion.Rendering.Editor
         {
             if (Foldout("Shadows", true))
             {
-                EditorUtils.DrawRenderingLayerMask(_perObjectShadowRenderingLayer, Styles.PerObjectShadowRenderingLayerLabel);
+                EditorGUILayout.RenderingLayerMaskField(Styles.PerObjectShadowRenderingLayerLabel, _perObjectShadowRenderingLayer);
                 EditorGUILayout.PropertyField(_transparentReceivePerObjectShadows, Styles.TransparentReceivePerObjectShadowsLabel);
                 EditorGUILayout.PropertyField(_pcssShadows, Styles.PcssShadowsLabel);
                 EditorGUILayout.PropertyField(_contactShadows, Styles.ContactShadowsLabel);

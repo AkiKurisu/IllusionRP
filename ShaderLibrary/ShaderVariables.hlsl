@@ -9,7 +9,6 @@ GLOBAL_CBUFFER_START(ShaderVariablesGlobal, b1)
     float4x4 _GlobalViewProjMatrix;
     float4x4 _GlobalInvViewProjMatrix;
     float4x4 _GlobalPrevInvViewProjMatrix;
-    float4 _RTHandleScale;
     float4 _RTHandleScaleHistory;
     float4 _TaaFrameInfo;
     float4 _ColorPyramidUvScaleAndLimitPrevFrame;
@@ -30,36 +29,10 @@ TEXTURE2D(_PrevExposureTexture);
 
 #define SHADEROPTIONS_PRE_EXPOSITION (1)
 
-// Functions to clamp UVs to use when RTHandle system is used.
-float2 ClampAndScaleUV(float2 UV, float2 texelSize, float numberOfTexels, float2 scale)
-{
-    float2 maxCoord = 1.0f - numberOfTexels * texelSize;
-    return min(UV, maxCoord) * scale;
-}
+// Override URP empty implementation
+#define GetCurrentExposureMultiplier IllusionGetCurrentExposureMultiplier
 
-float2 ClampAndScaleUV(float2 UV, float2 texelSize, float numberOfTexels)
-{
-    return ClampAndScaleUV(UV, texelSize, numberOfTexels, _RTHandleScale.xy);
-}
-
-// This is assuming half a texel offset in the clamp.
-float2 ClampAndScaleUVForBilinear(float2 UV, float2 texelSize)
-{
-    return ClampAndScaleUV(UV, texelSize, 0.5f);
-}
-
-// This is assuming full screen buffer and half a texel offset for the clamping.
-float2 ClampAndScaleUVForBilinear(float2 UV)
-{
-    return ClampAndScaleUV(UV, _ScreenSize.zw, 0.5f);
-}
-
-float2 ClampAndScaleUVForPoint(float2 UV)
-{
-    return min(UV, 1.0f) * _RTHandleScale.xy;
-}
-
-float GetCurrentExposureMultiplier()
+float IllusionGetCurrentExposureMultiplier()
 {
 #if SHADEROPTIONS_PRE_EXPOSITION
     // _ProbeExposureScale is a scale used to perform range compression to avoid saturation of the content of the probes. It is 1.0 if we are not rendering probes.

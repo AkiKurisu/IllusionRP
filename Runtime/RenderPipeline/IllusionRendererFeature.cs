@@ -57,7 +57,7 @@ namespace Illusion.Rendering
         /// <summary>
         /// Override the stencil state for the transparent overdraw pass.
         /// </summary>
-        public TransparentOverdrawStencilStateData oitOverrideStencil;
+        public TransparentOverdrawStencilStateData oitOverrideStencil = new();
 
         /// <summary>
         /// Enable to write transparent depth after depth prepass.
