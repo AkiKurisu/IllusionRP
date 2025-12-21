@@ -85,6 +85,9 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				true:SetPropertyOnPass:Forward:ChangeTagValue,LightMode,UniversalForwardOnly
 				true:SetPropertyOnPass:DepthNormals:ChangeTagValue,LightMode,DepthNormalsOnly
 				true:ExcludePass:GBuffer
+			Option:Diffuse Model:Burley,Chan:Burley
+				Burley:SetDefine:_DISNEY_DIFFUSE_BURLEY 1
+				Chan:RemoveDefine:_DISNEY_DIFFUSE_BURLEY 1
 			Option:Cast Shadows:false,true:true
 				true:IncludePass:ShadowCaster
 				false,disable:ExcludePass:ShadowCaster
@@ -603,6 +606,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				
 				float3 SubsurfaceAlbedo = /*ase_frag_out:Subsurface Albedo;Float3;21;-1;_SubsurfaceAlbedo*/float3(0.5, 0.5, 0.5)/*end*/;
 				float Thickness = /*ase_frag_out:Thickness;Float;22;-1;_Thickness*/1/*end*/;
+				float Wet = /*ase_frag_out:Wet;Float;23;-1;_Wet*/0/*end*/;
 				
 				#ifdef _ALPHATEST_ON
 					clip(Alpha - AlphaClipThreshold);
@@ -701,8 +705,10 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				skinData.Smoothness = saturate(Lobe2Smoothness);
 				skinData.PerceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(skinData.Smoothness);
 				skinData.PerceptualRoughnessMix = lerp(PerceptualSmoothnessToPerceptualRoughness(surfaceData.smoothness), skinData.PerceptualRoughness, _LobeWeight);
+				skinData.Wet = Wet;
 				skinData.F0 = _TransmissionTintsAndFresnel0[DiffusionIndex].a;
 				skinData.DiffusionProfileIndex = DiffusionIndex;
+				skinData.GeomNormal = normalize(WorldNormal);
 				
 				half4 color = SkinDiffuse(inputData, surfaceData, skinData);
 				// Use as subsurface scattering mask instead of stencil
@@ -1018,6 +1024,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				
 				float3 SubsurfaceAlbedo = /*ase_frag_out:Subsurface Albedo;Float3;21;-1;_SubsurfaceAlbedo*/float3(0.5, 0.5, 0.5)/*end*/;
 				float Thickness = /*ase_frag_out:Thickness;Float;22;-1;_Thickness*/1/*end*/;
+				float Wet = /*ase_frag_out:Wet;Float;23;-1;_Wet*/0/*end*/;
 				
 				#ifdef _ALPHATEST_ON
 					clip(Alpha - AlphaClipThreshold);
@@ -1113,6 +1120,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				float3 transmittance = ComputeTransmittanceDisney(_ShapeParamsAndMaxScatterDists[DiffusionIndex].rgb, _TransmissionTintsAndFresnel0[DiffusionIndex].rgb, thickness);
 #endif
 				SkinData skinData = (SkinData)0;
+				skinData.GeomNormal = normalize(WorldNormal);
 				skinData.Scatter = _ScatterAmplitude.rgb * (1 - Thickness);
 				skinData.Transmittance = transmittance;
 				skinData.Thickness = thickness;
@@ -1120,6 +1128,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				skinData.Smoothness = saturate(Lobe2Smoothness);
 				skinData.PerceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(skinData.Smoothness);
 				skinData.PerceptualRoughnessMix = lerp(PerceptualSmoothnessToPerceptualRoughness(surfaceData.smoothness), skinData.PerceptualRoughness, _LobeWeight);
+				skinData.Wet = Wet;
 				skinData.F0 = _TransmissionTintsAndFresnel0[DiffusionIndex].a;
 				skinData.DiffusionProfileIndex = DiffusionIndex;
 

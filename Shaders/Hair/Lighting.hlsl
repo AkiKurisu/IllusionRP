@@ -75,13 +75,13 @@ float ModifiedRefractionIndex(float cosThetaD)
 }
 
 // Gaussian Distribution for M term
-inline half Hair_G(half B, half Theta)
+inline float Hair_G(float B, float Theta)
 {
     // Clamp B for the denominator term, as otherwise the Gaussian normalization returns too high value.
     // This clamps allow to prevent large value for low roughness, while keeping the highlight shape/sharpness 
     // similar.
     const float DenominatorB = max(B, 0.01f); // @IllusionRP: Very important when light intensity is very high.
-    const half SQRT2PI  = 2.50663f;
+    const float SQRT2PI  = 2.50663f;
     return exp(-0.5 * Pow2(Theta) / (B * B)) / (SQRT2PI * DenominatorB);
 }
 
@@ -159,7 +159,7 @@ half3 KajiyaKayDiffuseAttenuation(half3 Albedo, half3 L, half3 V, half3 N, HairD
 {
     const half Scatter = 0.5f;
     Albedo = saturate(ComputeDiffuseColor(Albedo, HairData.Metallic));
-    return KajiyaKayDiffuseAttenuation(Albedo, L, V, N, Scatter, HairData.Shadow);
+    return KajiyaKayDiffuseAttenuation(Albedo, L, V, HairData.Tangent, Scatter, HairData.Shadow);
 }
 
 // Reference: [The Process of Creating Volumetric-based Materials in Uncharted 4]
@@ -174,19 +174,10 @@ half3 UnchartedDiffuseAttenuation(half3 Albedo, half3 L, half3 V, half3 N, HairD
     return Albedo * scatterLight * HairData.Shadow; // * INV_PI
 }
 
-half3 HairKajiyaKay(BRDFData brdfData,half3 L, half3 V, half3 N, HairData HairData)
+half3 HairKajiyaKay(BRDFData brdfData, half3 L, half3 V, float3 N, HairData HairData)
 {
-    half3 T = HairData.Tangent;
-#if _USE_LIGHT_FACING_NORMAL
-    // The Kajiya-Kay model has a "built-in" transmission, and the 'NdotL' is always positive.
-    float cosTL = dot(T, L);
-    float sinTL = sqrt(saturate(1.0 - cosTL * cosTL));
-    float NdotL = sinTL; // Corresponds to the cosine w.r.t. the light-facing normal
-#else
-    // Double-sided Lambert.
-    float NdotL = dot(N, L);
-#endif
-    
+    float3 T = HairData.Tangent;
+    float clampedNdotL = saturate(dot(N, L));
     half LdotV = dot(L, V);
     half invLenLV = rsqrt(max(2.0 * LdotV + 2.0, FLT_EPS));    // invLenLV = rcp(length(L + V)), clamp to avoid rsqrt(0) = inf, inf * 0 = NaN
     half LdotH = saturate(invLenLV * LdotV + invLenLV);
@@ -200,7 +191,6 @@ half3 HairKajiyaKay(BRDFData brdfData,half3 L, half3 V, half3 N, HairData HairDa
     
     half3 spec1 = D_KajiyaKay(T1, H, 50) * 0.1f;
     half3 spec2 = D_KajiyaKay(T2, H,  HairData.HighLight * 4000) * 0.12f;
-    float clampedNdotL = saturate(NdotL);
     
     // Bypass the normal map...
     float geomNdotV = dot(HairData.GeomNormal, V);
@@ -234,24 +224,24 @@ float3 AbsorptionFromReflectance(float3 diffuseColor, float azimuthalRoughness)
     return Pow2(log(diffuseColor) / denom);
 }
 
-half3 HairMarschner(BRDFData brdfData, half3 L, half3 V, half3 N, HairData HairData)
+half3 HairMarschnerNoPI(BRDFData brdfData, half3 L, half3 V, float3 N, HairData HairData)
 {
-    half3 T = ShiftTangent(HairData.Tangent, N, HairData.Noise);
+    float3 T = ShiftTangent(HairData.Tangent, N, HairData.Noise);
 
-    half3 specR = 0;
+    float3 specR = 0;
     half ClampedRoughness = clamp(HairData.Roughness, 1 / 255.0f, 1.0f);
     half VoL = dot(V, L);
     half SinThetaL = clamp(dot(T, L), -1.0f, 1.0f);
     half SinThetaV = clamp(dot(T, V), -1.0f, 1.0f);
-    half CosThetaD = cos(0.5 * abs(asinFast(SinThetaV) - asinFast(SinThetaL)));
+    float CosThetaD = cos(0.5 * abs(asinFast(SinThetaV) - asinFast(SinThetaL)));
 
-    half3 Lp = L - SinThetaL * T;
-    half3 Vp = V - SinThetaV * T;
-    half CosPhi = dot(Lp, Vp) * rsqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
-    half CosHalfPhi = sqrt(saturate(0.5 + 0.5 * CosPhi));
+    float3 Lp = L - SinThetaL * T;
+    float3 Vp = V - SinThetaV * T;
+    float CosPhi = dot(Lp, Vp) * rsqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
+    float CosHalfPhi = sqrt(saturate(0.5 + 0.5 * CosPhi));
 
     // half n = 1.55;
-    half n_prime = 1.19 / CosThetaD + 0.36 * CosThetaD;
+    float n_prime = 1.19 / CosThetaD + 0.36 * CosThetaD;
 
     half Shift = HAIR_SHIFT_VALUE;
     half Alpha[] =
@@ -269,15 +259,15 @@ half3 HairMarschner(BRDFData brdfData, half3 L, half3 V, half3 N, HairData HairD
         HairData.Area + Roughness2 * 2
     };
 
-    half3 Tp;
-    half Mp, Np, Fp, a, h, f;
+    float3 Tp;
+    float Mp, Np, Fp, a, h, f;
     half ThetaH = SinThetaL + SinThetaV;
 
     // R
 #if HAIR_MARSCHNER_R
     half sa = sin(Alpha[0]);
     half ca = cos(Alpha[0]);
-    half ShiftR = 2 * sa * (ca * CosHalfPhi * sqrt(1 - SinThetaV * SinThetaV) + sa * SinThetaV);
+    float ShiftR = 2 * sa * (ca * CosHalfPhi * sqrt(1 - SinThetaV * SinThetaV) + sa * SinThetaV);
     #if 0 // Use Separable R
         float BScale = sqrt(2.0) * CosHalfPhi;
     #else
@@ -313,7 +303,18 @@ half3 HairMarschner(BRDFData brdfData, half3 L, half3 V, half3 N, HairData HairD
     specR += Mp * Np * Fp * Tp;
 #endif
     
-    specR = -min(-specR * INV_PI, 0);
+#if REAL_IS_HALF
+    specR = specR - HALF_MIN;
+    specR = clamp(specR, 0.0, 1000.0); // Prevent FP16 overflow on mobiles
+#endif
+    
+    return half3(specR);
+}
+
+half3 HairMarschner(BRDFData brdfData, half3 L, half3 V, float3 N, HairData HairData)
+{
+    half3 specR = HairMarschnerNoPI(brdfData, L, V, N, HairData);
+    specR *= INV_PI;
     
 #if REAL_IS_HALF
     specR = specR - HALF_MIN;
@@ -324,13 +325,14 @@ half3 HairMarschner(BRDFData brdfData, half3 L, half3 V, half3 N, HairData HairD
 }
 
 half3 HairLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, float lightAttenuation,
-                            half3 normalWS, half3 viewDirectionWS, half shadow,
+                            float3 normalWS, half3 viewDirectionWS, float shadow,
                             HairData HairData, BRDFOcclusionFactor aoFactor)
 {
     half NdotL = saturate(dot(normalWS, lightDirectionWS));
     half3 radiance = lightColor * aoFactor.directSpecularOcclusion * lightAttenuation;
     
     half3 directSpecularR = 0;
+    half3 directDiffuseR = 0;
     half3 clearCoatSpecularR = LitSpecular(brdfData, normalWS, lightDirectionWS, viewDirectionWS) * NdotL;
 
 #if _MARSCHNER_HAIR
@@ -339,10 +341,13 @@ half3 HairLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
     directSpecularR = HairKajiyaKay(brdfData, lightDirectionWS, viewDirectionWS, normalWS, HairData);
 #endif
     
-    directSpecularR = directSpecularR * (1 - 0.8f * HairData.Wet) + clearCoatSpecularR * HairData.Wet;
+    directSpecularR = directSpecularR * (1 - HairData.Wet) + clearCoatSpecularR * HairData.Wet;
     
-#ifdef HAIR_MULTI_SCATTERING
-    directSpecularR += max(0.0, DIFFUSE_ATTENUATION(brdfData.albedo, lightDirectionWS, viewDirectionWS, normalWS, HairData));
+#if HAIR_MULTI_SCATTERING
+    directDiffuseR += max(0.0, DIFFUSE_ATTENUATION(brdfData.albedo, lightDirectionWS, viewDirectionWS, normalWS, HairData));
+#else
+    // Double-sided Lambert.
+    directDiffuseR += saturate(ComputeDiffuseColor(brdfData.albedo, HairData.Metallic)) * NdotL;
 #endif
     
     half3 directSpecularT = HairVolumetricBacklitScatter(brdfData.albedo, lightDirectionWS, viewDirectionWS, HairData.GeomNormal, HairData);
@@ -352,13 +357,13 @@ half3 HairLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
         directSpecularT *= shadow;
     }
     
-    half3 brdf = (directSpecularR * shadow + directSpecularT) * radiance;
+    half3 brdf = (directSpecularR * shadow + directSpecularT) * radiance + directDiffuseR * radiance * shadow;
     brdf = -min(-brdf, 0);
     return brdf;
 }
 
 
-half3 HairLighting(BRDFData brdfData, Light light, half3 normalWS,
+half3 HairLighting(BRDFData brdfData, Light light, float3 normalWS,
                             half3 viewDirectionWS, HairData HairData, BRDFOcclusionFactor aoFactor)
 {
     return HairLighting(brdfData, light.color, light.direction,
@@ -369,16 +374,7 @@ half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFact
     half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, HairData hairData, uint renderingLayers)
 {
     half3 indirectLighting = 0;
-#if _USE_LIGHT_FACING_NORMAL
-    float3 N = ComputeViewFacingNormal(viewDirectionWS, hairData.Tangent);
-
-    // Silence the imaginary square root compiler warning for the cosThetaParam.
-    // The compiler seems to think that the dot product result between view vector and view facing normal produces
-    // a result > 1, thus producing an imaginary square root for sqrt(1 - x).
-    viewDirectionWS = normalize(viewDirectionWS);
-#else
     float3 N = normalWS;
-#endif
     
     half NoV = saturate(dot(N, viewDirectionWS));
     // Secondary lobe as it is often more rough (it is the colored one).
@@ -394,9 +390,10 @@ half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFact
         roughness, 1.0h, normalizedScreenSpaceUV) * hairData.Tint * normalizationFactor;
     
 #if HAIR_INDIRECT_MARSCHNER
-    hairData.Backlit = 0;
+    hairData.Backlit = half(0.0); // Skip TT
+    hairData.Area = half(0.2);
     float3 L = normalize(viewDirectionWS - N * dot(viewDirectionWS, N));
-    indirectSpecular += HairMarschner(brdfData, L, viewDirectionWS, N, hairData);
+    indirectSpecular += min(1.f, 2 * HairMarschnerNoPI(brdfData, L, viewDirectionWS, N, hairData));
 #endif
 
 #if PRE_INTEGRATED_FGD

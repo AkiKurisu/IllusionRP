@@ -93,6 +93,9 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 			Option:Receive Shadows:false,true:true
 				true:RemoveDefine:_RECEIVE_SHADOWS_OFF 1
 				false:SetDefine:_RECEIVE_SHADOWS_OFF 1
+			Option:Multi Scattering:false,true:true
+				true:RemoveDefine:HAIR_MULTI_SCATTERING 0
+				false:SetDefine:HAIR_MULTI_SCATTERING 0
 			Option:Diffuse Attenuation:Kajiya,Uncharted:Kajiya
 				Uncharted:RemoveDefine:_KAJIYA_DIFFUSE_ATTENUATION 1
 				Kajiya:SetDefine:_KAJIYA_DIFFUSE_ATTENUATION 1
@@ -110,11 +113,13 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				true:SetDefine:DepthOnly:pragma multi_compile_instancing
 				true:SetDefine:DepthNormals:pragma multi_compile_instancing
 				true:SetDefine:PostDepthOnly:pragma multi_compile_instancing
+				true:SetDefine:ForwardGBuffer:pragma multi_compile_instancing
 				false:RemoveDefine:Forward:pragma multi_compile_instancing
 				false:RemoveDefine:ShadowCaster:pragma multi_compile_instancing
 				false:RemoveDefine:DepthOnly:pragma multi_compile_instancing
 				false:RemoveDefine:DepthNormals:pragma multi_compile_instancing
 				false:RemoveDefine:PostDepthOnly:pragma multi_compile_instancing
+				false:RemoveDefine:ForwardGBuffer:pragma multi_compile_instancing
 				true:SetDefine:Forward:pragma instancing_options renderinglayer
 				false:RemoveDefine:Forward:pragma instancing_options renderinglayer
 			Option:LOD CrossFade:false,true:true
@@ -123,11 +128,13 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				true:SetDefine:DepthOnly:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				true:SetDefine:DepthNormals:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				true:SetDefine:PostDepthOnly:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
+				true:SetDefine:ForwardGBuffer:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				false:RemoveDefine:Forward:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				false:RemoveDefine:ShadowCaster:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				false:RemoveDefine:DepthOnly:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				false:RemoveDefine:DepthNormals:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 				false:RemoveDefine:PostDepthOnly:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
+				false:RemoveDefine:ForwardGBuffer:pragma multi_compile_fragment _ LOD_FADE_CROSSFADE
 			Option:Built-in Fog:false,true:true
 				true:SetDefine:Forward:pragma multi_compile_fog
 				false:RemoveDefine:Forward:pragma multi_compile_fog
@@ -145,11 +152,13 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				true:SetDefine:DepthOnly:pragma multi_compile _ DOTS_INSTANCING_ON
 				true:SetDefine:DepthNormals:pragma multi_compile _ DOTS_INSTANCING_ON
 				true:SetDefine:PostDepthOnly:pragma multi_compile _ DOTS_INSTANCING_ON
+				true:SetDefine:ForwardGBuffer:pragma multi_compile _ DOTS_INSTANCING_ON
 				false:RemoveDefine:Forward:pragma multi_compile _ DOTS_INSTANCING_ON
 				false:RemoveDefine:ShadowCaster:pragma multi_compile _ DOTS_INSTANCING_ON
 				false:RemoveDefine:DepthOnly:pragma multi_compile _ DOTS_INSTANCING_ON
 				false:RemoveDefine:DepthNormals:pragma multi_compile _ DOTS_INSTANCING_ON
 				false:RemoveDefine:PostDepthOnly:pragma multi_compile _ DOTS_INSTANCING_ON
+				false:RemoveDefine:ForwardGBuffer:pragma multi_compile _ DOTS_INSTANCING_ON
 			Option:Tessellation:false,true:false
 				true:SetDefine:ASE_TESSELLATION 1
 				true:SetDefine:pragma require tessellation tessHW
@@ -2313,6 +2322,232 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 					return half4(NormalizeNormalPerPixel(normalWS), 0.0);
 				#endif
 			}
+			ENDHLSL
+		}
+		
+		/*ase_pass*/
+		Pass
+		{
+			Name "ForwardGBuffer"
+            Tags
+            {
+                "LightMode" = "ForwardGBuffer"
+            }
+            
+            ZWrite Off
+            Cull Off
+            ZTest Equal
+            /*ase_stencil*/
+
+			HLSLPROGRAM
+
+			#pragma target 4.5
+            #pragma shader_feature_local_fragment _SPECULAR_SETUP
+
+			#pragma vertex vert
+			#pragma fragment frag
+
+			#define SHADERPASS SHADERPASS_GBUFFER
+
+			#include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Hair/Lighting.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/TextureStack.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DBuffer.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/ShaderPass.hlsl"
+
+			#if defined(UNITY_INSTANCING_ENABLED) && defined(_TERRAIN_INSTANCED_PERPIXEL_NORMAL)
+				#define ENABLE_TERRAIN_PERPIXEL_NORMAL
+			#endif
+
+			/*ase_pragma*/
+
+			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
+				#define ASE_SV_DEPTH SV_DepthLessEqual
+				#define ASE_SV_POSITION_QUALIFIERS linear noperspective centroid
+			#else
+				#define ASE_SV_DEPTH SV_Depth
+				#define ASE_SV_POSITION_QUALIFIERS
+			#endif
+
+			struct VertexInput
+			{
+				float4 vertex : POSITION;
+				float3 ase_normal : NORMAL;
+				float4 ase_tangent : TANGENT;
+				float4 texcoord : TEXCOORD0;
+				float4 texcoord1 : TEXCOORD1;
+				float4 texcoord2 : TEXCOORD2;
+				/*ase_vdata:p=p;n=n;t=t;uv0=tc0;uv1=tc1;uv2=tc2*/
+				UNITY_VERTEX_INPUT_INSTANCE_ID
+			};
+
+			struct VertexOutput
+			{
+				ASE_SV_POSITION_QUALIFIERS float4 clipPos : SV_POSITION;
+				float4 clipPosV : TEXCOORD0;
+				float4 lightmapUVOrVertexSH : TEXCOORD1;
+				half4 fogFactorAndVertexLight : TEXCOORD2;
+				float4 tSpace0 : TEXCOORD3;
+				float4 tSpace1 : TEXCOORD4;
+				float4 tSpace2 : TEXCOORD5;
+				#if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
+				float4 shadowCoord : TEXCOORD6;
+				#endif
+				#if defined(DYNAMICLIGHTMAP_ON)
+				float2 dynamicLightmapUV : TEXCOORD7;
+				#endif
+				/*ase_interp(8,):sp=sp;wn.xyz=tc3.xyz;wt.xyz=tc4.xyz;wbt.xyz=tc5.xyz;wp.x=tc3.w;wp.y=tc4.w;wp.z=tc5.w;sc=tc6*/
+				UNITY_VERTEX_INPUT_INSTANCE_ID
+				UNITY_VERTEX_OUTPUT_STEREO
+			};
+			
+			CBUFFER_START(UnityPerMaterial)
+			half _OpaqueAlphaCutoff;
+			half _TransparentAlphaCutoff;
+			CBUFFER_END
+
+			/*ase_globals*/
+
+			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityGBuffer.hlsl"
+			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/PBRGBufferPass.hlsl"
+
+			/*ase_funcs*/
+
+			VertexOutput VertexFunction( VertexInput v /*ase_vert_input*/ )
+			{
+				VertexOutput o = (VertexOutput)0;
+				UNITY_SETUP_INSTANCE_ID(v);
+				UNITY_TRANSFER_INSTANCE_ID(v, o);
+				UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+
+				/*ase_vert_code:v=VertexInput;o=VertexOutput*/
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					float3 defaultVertexValue = v.vertex.xyz;
+				#else
+					float3 defaultVertexValue = float3(0, 0, 0);
+				#endif
+
+				float3 vertexValue = /*ase_vert_out:Vertex Offset;Float3;8;-1;_Vertex*/defaultVertexValue/*end*/;
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					v.vertex.xyz = vertexValue;
+				#else
+					v.vertex.xyz += vertexValue;
+				#endif
+
+				v.ase_normal = /*ase_vert_out:Vertex Normal;Float3;10;-1;_Normal*/v.ase_normal/*end*/;
+
+				float3 positionWS = TransformObjectToWorld( v.vertex.xyz );
+				float3 positionVS = TransformWorldToView( positionWS );
+				float4 positionCS = TransformWorldToHClip( positionWS );
+
+				VertexNormalInputs normalInput = GetVertexNormalInputs( v.ase_normal, v.ase_tangent );
+
+				o.tSpace0 = float4( normalInput.normalWS, positionWS.x);
+				o.tSpace1 = float4( normalInput.tangentWS, positionWS.y);
+				o.tSpace2 = float4( normalInput.bitangentWS, positionWS.z);
+
+				#if defined(LIGHTMAP_ON)
+					OUTPUT_LIGHTMAP_UV(v.texcoord1, unity_LightmapST, o.lightmapUVOrVertexSH.xy);
+				#endif
+
+				#if defined(DYNAMICLIGHTMAP_ON)
+					o.dynamicLightmapUV.xy = v.texcoord2.xy * unity_DynamicLightmapST.xy + unity_DynamicLightmapST.zw;
+				#endif
+
+				#if !defined(LIGHTMAP_ON)
+					OUTPUT_SH(normalInput.normalWS.xyz, o.lightmapUVOrVertexSH.xyz);
+				#endif
+
+				#if defined(ENABLE_TERRAIN_PERPIXEL_NORMAL)
+					o.lightmapUVOrVertexSH.zw = v.texcoord.xy;
+					o.lightmapUVOrVertexSH.xy = v.texcoord.xy * unity_LightmapST.xy + unity_LightmapST.zw;
+				#endif
+
+				half3 vertexLight = VertexLighting( positionWS, normalInput.normalWS );
+
+				o.fogFactorAndVertexLight = half4(0, vertexLight);
+
+				#if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
+					VertexPositionInputs vertexInput = (VertexPositionInputs)0;
+					vertexInput.positionWS = positionWS;
+					vertexInput.positionCS = positionCS;
+					o.shadowCoord = GetShadowCoord( vertexInput );
+				#endif
+
+				o.clipPos = positionCS;
+				o.clipPosV = positionCS;
+				return o;
+			}
+			
+			VertexOutput vert ( VertexInput v )
+			{
+				return VertexFunction( v );
+			}
+
+			half4 frag ( VertexOutput IN
+								#ifdef ASE_DEPTH_WRITE_ON
+								,out float outputDepth : ASE_SV_DEPTH
+								#endif
+								/*ase_frag_input*/ ): SV_TARGET
+			{
+				UNITY_SETUP_INSTANCE_ID(IN);
+				UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);
+
+				#ifdef LOD_FADE_CROSSFADE
+					LODDitheringTransition( IN.clipPos.xyz, unity_LODFade.x );
+				#endif
+
+				#if defined(ENABLE_TERRAIN_PERPIXEL_NORMAL)
+					float2 sampleCoords = (IN.lightmapUVOrVertexSH.zw / _TerrainHeightmapRecipSize.zw + 0.5f) * _TerrainHeightmapRecipSize.xy;
+					float3 WorldNormal = TransformObjectToWorldNormal(normalize(SAMPLE_TEXTURE2D(_TerrainNormalmapTexture, sampler_TerrainNormalmapTexture, sampleCoords).rgb * 2 - 1));
+					float3 WorldTangent = -cross(GetObjectToWorldMatrix()._13_23_33, WorldNormal);
+					float3 WorldBiTangent = cross(WorldNormal, -WorldTangent);
+				#else
+					/*ase_local_var:wn*/float3 WorldNormal = normalize( IN.tSpace0.xyz );
+					/*ase_local_var:wt*/float3 WorldTangent = IN.tSpace1.xyz;
+					/*ase_local_var:wbt*/float3 WorldBiTangent = IN.tSpace2.xyz;
+				#endif
+
+				/*ase_local_var:wp*/float3 WorldPosition = float3(IN.tSpace0.w,IN.tSpace1.w,IN.tSpace2.w);
+				/*ase_local_var:wvd*/float3 WorldViewDirection = _WorldSpaceCameraPos.xyz  - WorldPosition;
+				/*ase_local_var:sc*/float4 ShadowCoords = float4( 0, 0, 0, 0 );
+
+				/*ase_local_var:sp*/float4 ClipPos = IN.clipPosV;
+				/*ase_local_var:spu*/float4 ScreenPos = ComputeScreenPos( IN.clipPosV );
+
+				float2 NormalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.clipPos);
+
+				#if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
+					ShadowCoords = IN.shadowCoord;
+				#elif defined(MAIN_LIGHT_CALCULATE_SHADOWS)
+					ShadowCoords = TransformWorldToShadowCoord( WorldPosition );
+				#else
+					ShadowCoords = float4(0, 0, 0, 0);
+				#endif
+
+				WorldViewDirection = SafeNormalize( WorldViewDirection );
+
+				/*ase_frag_code:IN=VertexOutput*/
+				
+				float Smoothness = /*ase_frag_out:Smoothness;Float;0;-1;_Smoothness*/0.5/*end*/;
+
+				#ifdef ASE_DEPTH_WRITE_ON
+					float DepthValue = /*ase_frag_out:Depth Value;Float;17;-1;_DepthValue*/IN.clipPos.z/*end*/;
+				#endif
+				
+
+			    return Smoothness;
+			}
+
 			ENDHLSL
 		}
 	}

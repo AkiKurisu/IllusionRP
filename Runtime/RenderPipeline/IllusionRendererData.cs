@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using Illusion.Rendering.PostProcessing;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using Illusion.Rendering.PostProcessing;
+using Illusion.Rendering.Shadows;
 
 namespace Illusion.Rendering
 {
@@ -263,6 +264,7 @@ namespace Illusion.Rendering
 
             public Vector4 ColorPyramidUvScaleAndLimitPrevFrame;
 
+            public float MicroShadowOpacity;
             public int IndirectDiffuseMode;
             public float IndirectDiffuseLightingMultiplier;
             public uint IndirectDiffuseLightingLayers;
@@ -369,6 +371,9 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame
                 = IllusionRenderingUtils.ComputeViewportScaleAndLimit(_historyRTSystem.rtHandleProperties.previousViewportSize,
                 _historyRTSystem.rtHandleProperties.previousRenderTargetSize);
+            
+            MicroShadows microShadowingSettings = VolumeManager.instance.stack.GetComponent<MicroShadows>();
+            _shaderVariablesGlobal.MicroShadowOpacity = microShadowingSettings.enable.value ? microShadowingSettings.opacity.value : 0.0f;
             
             GetMainLightIndirectIntensityAndRenderingLayers(ref renderingData, out float intensity, out uint layers);
             if (!EnableIndirectDiffuseRenderingLayers)

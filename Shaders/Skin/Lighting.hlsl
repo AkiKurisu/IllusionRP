@@ -2,6 +2,9 @@
 #ifndef UNIVERSAL_LIGHTING_INCLUDED
 #define UNIVERSAL_LIGHTING_INCLUDED
 
+// Use Disney Diffuse
+#define USE_DIFFUSE_LAMBERT_BRDF 0
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/Debugging3D.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
@@ -70,34 +73,47 @@ bool ShouldEvaluateThickObjectTransmission(half3 L, half3 normalWS)
     return NdotL < float(0.0);
 }
 
-half3 SkinDiffuse(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, half shadow, half3 normalWS,
-    half3 viewDirectionWS, SkinData SkinData, bool isPunctualLight)
+half3 SkinDiffuse(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS,
+    float shadow, float occlusion, 
+    float3 normalWS, half3 viewDirectionWS, SkinData SkinData, bool isPunctualLight)
 {
-    float3 h = normalize(viewDirectionWS + lightDirectionWS);
+    float3 h = SafeNormalize(float3(viewDirectionWS) + float3(lightDirectionWS));
     float hDotV = max(dot(h, viewDirectionWS), 0.0);
-    half NdotL = saturate(dot(normalWS, lightDirectionWS));
+    float LoH = saturate(dot(h, lightDirectionWS));
+    half NdotL = dot(normalWS, lightDirectionWS);
+    half NdotH = saturate(dot(normalWS, h));
+    float clampNdotV = ClampNdotV(dot(normalWS, viewDirectionWS));
+    float LdotV = saturate(dot(lightDirectionWS, viewDirectionWS));
     
-    float NdotV = dot(normalWS, viewDirectionWS);
-    float clampNdotV = ClampNdotV(NdotV);
-    float LdotV = dot(lightDirectionWS, viewDirectionWS);
-    half3 diffuseTerm = DirectBRDFDiffuseTermNoPI(NdotL, clampNdotV, LdotV, brdfData.perceptualRoughness);
-
-    half3 radiance = brdfData.albedo * lightColor * shadow;
-    half3 fersnelTerm = diffuseTerm * (1 - F_Schlick(SkinData.F0, hDotV));
+    shadow *= NdotL >= 0.0 ? ComputeMicroShadowing(occlusion, NdotL, _MicroShadowOpacity) : 1.0;
+    NdotL = saturate(NdotL);
+    
+#ifdef _DISNEY_DIFFUSE_BURLEY
+    half3 diffuseTerm = DirectBRDFDiffuseTermNoPI(NdotL, clampNdotV, LdotV, brdfData.perceptualRoughness).xxx;
+    diffuseTerm *= brdfData.albedo;
+#else
+    half3 diffuseTerm = Diffuse_GGX_Rough_NoPI(brdfData.albedo, brdfData.perceptualRoughness, clampNdotV, NdotL, hDotV, NdotH);
+#endif
+    
+    half3 radiance = lightColor * shadow;
+    
+    // half3 fresnelTerm = 1 - F_Schlick(SkinData.F0, LoH);
+    half3 fresnelTerm =  1 - F_Schlick(SkinData.F0, hDotV);
     
 #if SPHERICAL_GAUSSIAN_SSS
     half3 SG = SGDiffuseLighting(normalWS, lightDirectionWS, SkinData.Scatter);
-    half3 DiffuseR = SG * fersnelTerm;
+    half3 DiffuseR = diffuseTerm * SG * fresnelTerm;
 #else
-    float clampNdotL = max(saturate(NdotL), 0.00001);
-    half3 DiffuseR = clampNdotL * fersnelTerm;
+    float clampNdotL = max(saturate(NdotL), 0.0001);
+    half3 DiffuseR = diffuseTerm * fresnelTerm * clampNdotL;
 #endif
 
     DiffuseR *= radiance;
 
     half3 Transmittance = SkinData.Transmittance;
     half flippedNdotL = ComputeWrappedDiffuseLighting(-NdotL, TRANSMISSION_WRAP_LIGHT);
-    [branch] if (isPunctualLight)
+    [branch] 
+    if (isPunctualLight)
     {
         Transmittance = (half3)EvaluateTransmittance_Punctual(NdotL, SkinData);
     }
@@ -105,6 +121,7 @@ half3 SkinDiffuse(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, h
     half3 DiffuseT = Transmittance * lightColor * brdfData.albedo;
 
     [branch]
+    // Use low frequency normal for transmission evaluation
     if (ShouldEvaluateThickObjectTransmission(lightDirectionWS, normalWS))
     {
         DiffuseT *= flippedNdotL;
@@ -124,7 +141,7 @@ void DualLobeSmoothness(in half Smoothness, half Smoothness1, half Smoothness2, 
 }
 
 half3 SkinSpecular(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, float lightAttenuation,
-    half3 normalWS, half3 viewDirectionWS, SkinData SkinData)
+    float3 normalWS, half3 viewDirectionWS, SkinData SkinData)
 {
     half clampedNdotL = max(saturate(dot(normalWS, lightDirectionWS)), 0.00001);
     half3 radiance = lightColor * (lightAttenuation * clampedNdotL);
@@ -141,21 +158,16 @@ half3 SkinSpecular(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
 
     // Dual Lobe Mix
     half3 SpecularLobeTerm = lerp(SpecularLobe1, SpecularLobe2, SkinData.LobeWeight);
-
-#if REAL_IS_HALF
-    SpecularLobeTerm = SpecularLobeTerm - HALF_MIN;
-    SpecularLobeTerm = clamp(SpecularLobeTerm, 0.0, 1000.0); // Prevent FP16 overflow on mobiles
-#endif
     
     brdf += SpecularLobeTerm * radiance;
     brdf = -min(-brdf, 0);
     return brdf;
 }
 
-half3 SkinDiffuse(BRDFData brdfData, Light light, InputData inputData, SkinData SkinData, BRDFOcclusionFactor aoFactor)
+half3 SkinDiffuse(BRDFData brdfData, Light light, InputData inputData, SurfaceData surfaceData, SkinData SkinData, BRDFOcclusionFactor aoFactor)
 {
     return SkinDiffuse(brdfData, light.color * light.distanceAttenuation, light.direction,
-        light.shadowAttenuation,
+        light.shadowAttenuation, surfaceData.occlusion,
         inputData.normalWS, inputData.viewDirectionWS, SkinData, light.distanceAttenuation < float(1.0)) * aoFactor.directAmbientOcclusion;
 }
 
@@ -227,19 +239,25 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
     
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     
+    // Calculate low frequency normal for diffuse GI
+    InputData inputDataLowFreq = inputData;
+    half normalMix = lerp(skinData.LobeWeight, 1, skinData.Wet);
+    half3 normalWS_low = lerp(inputData.normalWS, skinData.GeomNormal, normalMix);
+    inputDataLowFreq.normalWS = normalize(normalWS_low);
+    
 #if PRE_INTEGRATED_FGD && !USE_DIFFUSE_LAMBERT_BRDF
     lightingData.giColor = SkinIBLDiffuse(brdfData, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
-        inputData, skinData.PerceptualRoughnessMix, meshRenderingLayers);
+        inputDataLowFreq, skinData.PerceptualRoughnessMix, meshRenderingLayers);
 #else
     lightingData.giColor = SkinEnvironmentDiffuse(brdfData, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
-        inputData, meshRenderingLayers);
+        inputDataLowFreq, meshRenderingLayers);
 #endif
 
 #ifdef _LIGHT_LAYERS
     if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))
 #endif
     {
-        lightingData.mainLightColor = SkinDiffuse(brdfData, mainLight, inputData, skinData, brdfAOFactor);
+        lightingData.mainLightColor = SkinDiffuse(brdfData, mainLight, inputData, surfaceData, skinData, brdfAOFactor);
     }
     
     uint pixelLightCount = GetAdditionalLightsCount();
@@ -255,7 +273,7 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
 #endif
         {
-            lightingData.additionalLightsColor += SkinDiffuse(brdfData, light, inputData, skinData, brdfAOFactor);
+            lightingData.additionalLightsColor += SkinDiffuse(brdfData, light, inputData, surfaceData, skinData, brdfAOFactor);
         }
     }
     #endif
@@ -267,7 +285,7 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
 #endif
         {
-            lightingData.additionalLightsColor += SkinDiffuse(brdfData, light, inputData, skinData, brdfAOFactor);
+            lightingData.additionalLightsColor += SkinDiffuse(brdfData, light, inputData, surfaceData, skinData, brdfAOFactor);
         }
     LIGHT_LOOP_END
     
@@ -300,7 +318,7 @@ half4 SkinSpecular(InputData inputData, SurfaceData surfaceData, SkinData SkinDa
     AmbientOcclusionFactor aoFactor = IllusionCreateAmbientOcclusionFactor(inputData, surfaceData);
     BRDFOcclusionFactor brdfAOFactor = CreateBRDFOcclusionFactor(aoFactor);
 #if EVALUATE_AO_MULTI_BOUNCE
-    float NdotV = max(saturate(dot(inputData.normalWS, inputData.viewDirectionWS)), 0.00001);
+    float NdotV = ClampNdotV(saturate(dot(inputData.normalWS, inputData.viewDirectionWS)));
     SpecularOcclusionMultiBounce(brdfAOFactor, NdotV, brdfData.perceptualRoughness, surfaceData.occlusion, brdfData.specular);
 #endif
     uint meshRenderingLayers = GetMeshRenderingLayer();

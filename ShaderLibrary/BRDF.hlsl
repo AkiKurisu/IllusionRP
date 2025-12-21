@@ -4,11 +4,49 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
 
-#define GGX_UE             0           // Use Unreal Engine GGX model for comparison purpose.
+// Unreal Engine GGX model for comparison purpose.
+#ifndef GGX_UE
+    #define GGX_UE                              0
+#endif
+
+// Rough Diffuse BRDF Version Selection
+// 1 = Chan 2018 (Original CoD WWII model)
+// 2 = Chan 2024 (Multiscattering Diffuse, Unpublished)
+// 3 = EON (Energy-Preserving Rough Diffuse)
+#ifndef ROUGH_DIFFUSE_BRDF_VERSION
+    #define ROUGH_DIFFUSE_BRDF_VERSION          2
+#endif
 
 inline half Pow5(half x)
 {
     return x * x * x * x * x;
+}
+
+float rcpFast( float x )
+{
+    int i = asint(x);
+    i = 0x7EF311C2 - i;
+    return asfloat(i);
+}
+
+// Relative error : ~3.4% over full
+// Precise format : ~small float
+// 2 ALU
+float rsqrtFast( float x )
+{
+    int i = asint(x);
+    i = 0x5f3759df - (i >> 1);
+    return asfloat(i);
+}
+
+// Relative error : < 0.7% over full
+// Precise format : ~small float
+// 1 ALU
+float sqrtFast( float x )
+{
+    int i = asint(x);
+    i = 0x1FBD1DF5 + (i >> 1);
+    return asfloat(i);
 }
 
 // ===================================== BRDF =============================== //
@@ -109,6 +147,89 @@ half DV_SmithJointGGXAniso_Patch(half TdotH, half BdotH, float NdotH,
     return DV_SmithJointGGXAniso_Patch(TdotH, BdotH, NdotH, NdotV,
                                        TdotL, BdotL, NdotL,
                                        roughnessT, roughnessB, partLambdaV);
+}
+
+// [Portsmouth et al. 2025, "EON: A Practical Energy-Preserving Rough Diffuse BRDF"]
+half3 Diffuse_EON_NoPI(half3 DiffuseColor, half Roughness, half NoV, half NoL, half VoL)
+{
+    // Albedo inversion for EON model to maintain a consistent color with lambert
+    half3 Rho = DiffuseColor * (1.0 + (0.189468 - 0.189468 * DiffuseColor) * Roughness);
+
+    // This is the main shaping term from the Oren-Nayar model (with tweaks by Fujii)
+    half S = VoL - NoV * NoL;
+    half SOverT = max(S * rcp(max(1e-6, max(NoV, NoL))), S);
+    const half constant1_FON = 0.5 - 2.0 / (3.0 * PI);
+    // AF = rcp(1 + Roughness * constant1_FON) is nearly a straight line, so approximate it as such
+    half AF = 1 - Roughness * (1 - 1 / (1 + constant1_FON));
+    half f_ss = AF * (1 + Roughness * SOverT);
+
+    // 4th Order approximation from the paper is a bit too heavy, first order seems to work just as well
+    const half g1 = 0.262048;
+    half GoverPi_V = g1 - g1 * NoV;
+    // Use (1 - Eo) only as a non-reciprocal approach to energy conservation
+    half f_ms = 1.0 - AF * (1 + Roughness * GoverPi_V);
+    // The Rho_ms term from the paper can be approximated as just Rho^2
+    return Rho * (f_ss + Rho * f_ms);
+}
+
+// This models a rough surface that has a GGX NDF where each microfacet has a lambertian response. Various models have been proposed
+// to try and approximate this behavior.
+half3 Diffuse_GGX_Rough_NoPI(half3 DiffuseColor, half Roughness, half NoV, half NoL, half VoH, half NoH)
+{
+    // We saturate each input to avoid out of range negative values which would result in weird darkening at the edge of meshes (resulting from tangent space interpolation).
+    NoV = saturate(NoV);
+    NoL = saturate(NoL);
+    VoH = saturate(VoH);
+    NoH = saturate(NoH);
+
+#if ROUGH_DIFFUSE_BRDF_VERSION == 3
+    // It turns out the EON model in the range [0, 0.4] is nearly a perfect match to a ground truth
+    // simulation of diffuse microfacets oriented with a GGX NDF.
+    half VoL = 2 * VoH * VoH - 1;      // double angle identity to keep signature above consistent with other models
+    return Diffuse_EON_NoPI(DiffuseColor, RetroReflectivityWeight * Roughness * 0.4, NoV, NoL, VoL);
+#elif ROUGH_DIFFUSE_BRDF_VERSION == 2
+    // [ Chan 2024, "Multiscattering Diffuse and Specular BRDFs", Unpublished manuscript ]
+    // Roughness *= RetroReflectivityWeight;
+    const half Alpha = Roughness * Roughness;
+    // The original writeup uses an FSmooth term inspired by Burley diffuse to balance energy between spec/diffuse.
+    // However in our implementation the energy balance between diffuse and spec is handled externally, so we stick
+    // to a plain lambertian for the Roughness=0 limit.
+    const half FSmooth = 1;
+    const half Scale = max(0.55 - 0.2 * Roughness, 1.25 - 1.6 * Roughness);
+    const half Bias = saturate(4 * Alpha);
+    const half FRough = Scale * (NoH + Bias) * rcp(NoH + 0.025) * VoH * VoH;
+    const half DiffuseSS = lerp(FSmooth, FRough, Roughness);
+    const half DiffuseMS = Alpha * 0.38;
+    return DiffuseColor * (DiffuseSS + DiffuseMS);
+#else
+    // [ Chan 2018, "Material Advances in Call of Duty: WWII" ]
+    // It has been extended here to fade out retro reflectivity contribution from area light in order to avoid visual artefacts.
+    float a2 = Roughness * Roughness * Roughness * Roughness;
+    // a2 = 2 / ( 1 + exp2( 18 * g )
+    float g = saturate( (1.0 / 18.0) * log2( 2 * rcpFast(a2) - 1 ) );
+
+    half F0 = VoH + Pow5( 1 - VoH );
+    half FdV = 1 - 0.75 * Pow5( 1 - NoV );
+    half FdL = 1 - 0.75 * Pow5( 1 - NoL );
+
+    // Rough (F0) to smooth (FdV * FdL) response interpolation
+    half Fd = lerp( F0, FdV * FdL, saturate( 2.2 * g - 0.5 ) );
+
+    // Retro reflectivity contribution.
+    half Fb = ( (34.5 * g - 59 ) * g + 24.5 ) * VoH * exp2( -max( 73.2 * g - 21.2, 8.9 ) * sqrtFast( NoH ) );
+    // It fades out when lights become area lights in order to avoid visual artefacts.
+    // Fb *= RetroReflectivityWeight;
+
+    half Lobe = Fd + Fb;
+
+    // We clamp the BRDF lobe value to an arbitrary value of 1 to get some practical benefits at high roughness:
+    // - This is to avoid too bright edges when using normal map on a mesh and the local bases, L, N and V ends up in an top emisphere setup.
+    // - This maintains the full proper rough look of a sphere when not using normal maps.
+    // - This also fixes the furnace test returning too much energy at the edge of a mesh.
+    Lobe = min(1.0, Lobe);
+
+    return DiffuseColor * Lobe;
+#endif
 }
 // ===================================== BRDF =============================== //
 

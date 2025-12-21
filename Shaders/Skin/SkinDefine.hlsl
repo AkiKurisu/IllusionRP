@@ -15,6 +15,7 @@
 
 struct SkinData
 {
+    float3 GeomNormal;                           // Geometric normal (without detail normal map).
     half3 Scatter;
     half3 Transmittance;
     half Thickness;
@@ -22,6 +23,7 @@ struct SkinData
     half Smoothness;                            // Lobe 2 smoothness.
     half PerceptualRoughness;                   // Lobe 2 roughness.
     half PerceptualRoughnessMix;                // Weighted blended roughness from dual lobes.
+    half Wet;
     half F0;
     uint DiffusionProfileIndex;
 };

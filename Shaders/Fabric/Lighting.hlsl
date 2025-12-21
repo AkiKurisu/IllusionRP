@@ -40,7 +40,8 @@ void SheenScattering(BRDFData brdfData, half NoH, half NoV, half NoL, out half S
 #endif
 }
 
-half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, float lightAttenuation,
+half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
+                            float lightAttenuation, half occlusion,
                           half3 normalWS, half3 viewDirectionWS, bool specularHighlightsOff,
                           AnisotropyData anisotropyData, SheenData SheenData, BRDFOcclusionFactor aoFactor)
 {
@@ -52,7 +53,7 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
     half3 H = normalize(lightDirectionWS + viewDirectionWS);
     half NoH = saturate(dot(normalWS, H));
     half NoV = saturate(abs(dot(normalWS, viewDirectionWS)) + 1e-5);
-    half NoL = saturate(dot(normalWS, lightDirectionWS));
+    half NoL = dot(normalWS, lightDirectionWS);
     half VoH = saturate(dot(viewDirectionWS, H));
     half ToV = dot(anisotropyData.T, viewDirectionWS);
     half ToL = dot(anisotropyData.T, lightDirectionWS);
@@ -61,6 +62,8 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
     half BoL = dot(anisotropyData.B, lightDirectionWS);
     half BoH = dot(anisotropyData.B, H);
 
+    lightAttenuation *= NoL >= 0.0 ? ComputeMicroShadowing(occlusion, NoL, _MicroShadowOpacity) : 1.0;
+    NoL = saturate(NoL);
     half3 Radiance = NoL * lightColor * lightAttenuation;
     
     half3 diffuse = Diffuse_OrenNayar(NoV, brdfData.diffuse, brdfData.roughness);
@@ -109,12 +112,25 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
     return brdf * Radiance;
 }
 
-half3 FabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, float lightAttenuation,
+half3 AnisoFabricLighting(BRDFData brdfData, Light light, 
+                    InputData inputData, SurfaceData surfaceData,
+                    bool specularHighlightsOff, AnisotropyData anisotropyData, SheenData SheenData, BRDFOcclusionFactor aoFactor)
+{
+    return AnisoFabricLighting(brdfData, light.color, light.direction,
+                         light.distanceAttenuation * light.shadowAttenuation, surfaceData.occlusion,
+                         inputData.normalWS, inputData.viewDirectionWS,
+                         specularHighlightsOff, anisotropyData, SheenData, aoFactor);
+}
+
+half3 FabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
+                    float lightAttenuation, half occlusion,
                     half3 normalWS, half3 viewDirectionWS,
                     bool specularHighlightsOff, SheenData SheenData, BRDFOcclusionFactor aoFactor)
 {
     half3 H = normalize(lightDirectionWS + viewDirectionWS);
-    half NoL = saturate(dot(normalWS, lightDirectionWS));
+    half NoL = dot(normalWS, lightDirectionWS);
+    lightAttenuation *= NoL >= 0.0 ? ComputeMicroShadowing(occlusion, NoL, _MicroShadowOpacity) : 1.0;
+    NoL = saturate(NoL);
     half3 radiance = lightColor * (lightAttenuation * NoL);
     
     half NoV = saturate(abs(dot(normalWS, viewDirectionWS)) + 1e-5);
@@ -155,11 +171,13 @@ half3 FabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS
 }
 
 
-half3 FabricLighting(BRDFData brdfData, Light light, half3 normalWS,
-                    half3 viewDirectionWS, bool specularHighlightsOff, SheenData SheenData, BRDFOcclusionFactor aoFactor)
+half3 FabricLighting(BRDFData brdfData, Light light, 
+                    InputData inputData, SurfaceData surfaceData,
+                    bool specularHighlightsOff, SheenData SheenData, BRDFOcclusionFactor aoFactor)
 {
     return FabricLighting(brdfData, light.color, light.direction,
-                         light.distanceAttenuation * light.shadowAttenuation, normalWS, viewDirectionWS,
+                         light.distanceAttenuation * light.shadowAttenuation, surfaceData.occlusion,
+                         inputData.normalWS, inputData.viewDirectionWS,
                          specularHighlightsOff, SheenData, aoFactor);
 }
 
@@ -281,12 +299,10 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
     {
         // Since we use sheen light, clear coat is no need in cloth shader
         #ifdef _ANISOTROPY_ON
-        lightingData.mainLightColor = AnisoFabricLighting(brdfData,mainLight.color, mainLight.direction,
-                                                              mainLight.distanceAttenuation * mainLight.shadowAttenuation,
-                                                              bentNormal, inputData.viewDirectionWS,
-                                                              specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
+        lightingData.mainLightColor = AnisoFabricLighting(brdfData, mainLight, inputData, surfaceData,
+                                                    specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
         #else
-        lightingData.mainLightColor = FabricLighting(brdfData, mainLight, inputData.normalWS, inputData.viewDirectionWS,
+        lightingData.mainLightColor = FabricLighting(brdfData, mainLight, inputData, surfaceData,
                                                     specularHighlightsOff, SheenData, brdfOcclusionFactor);
         #endif
     }
@@ -306,12 +322,10 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
     #endif
         {
     #ifdef _ANISOTROPY_ON
-            lightingData.additionalLightsColor += AnisoFabricLighting(brdfData, light.color, light.direction,
-                                                                  light.distanceAttenuation * light.shadowAttenuation,
-                                                                  bentNormal, inputData.viewDirectionWS, specularHighlightsOff,
-                                                                  AnisotropyData, SheenData, brdfOcclusionFactor);
+            lightingData.additionalLightsColor += AnisoFabricLighting(brdfData, light, inputData, surfaceData,
+                                                    specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
     #else
-            lightingData.additionalLightsColor += FabricLighting(brdfData, light, inputData.normalWS, inputData.viewDirectionWS,
+            lightingData.additionalLightsColor += FabricLighting(brdfData, light, inputData, surfaceData,
                                                                           specularHighlightsOff, SheenData, brdfOcclusionFactor);
     #endif
         }
@@ -326,12 +340,10 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
     #endif
         {
     #ifdef _ANISOTROPY_ON
-            lightingData.additionalLightsColor += AnisoFabricLighting(brdfData, light.color, light.direction,
-                                                                  light.distanceAttenuation * light.shadowAttenuation,
-                                                                  bentNormal, inputData.viewDirectionWS, specularHighlightsOff,
-                                                                  AnisotropyData, SheenData, brdfOcclusionFactor);
+            lightingData.additionalLightsColor += AnisoFabricLighting(brdfData, light, inputData, surfaceData,
+                                                    specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
     #else
-            lightingData.additionalLightsColor += FabricLighting(brdfData, light, inputData.normalWS, inputData.viewDirectionWS,
+            lightingData.additionalLightsColor += FabricLighting(brdfData, light, inputData, surfaceData,
                                                                           specularHighlightsOff, SheenData, brdfOcclusionFactor);
     #endif
         }

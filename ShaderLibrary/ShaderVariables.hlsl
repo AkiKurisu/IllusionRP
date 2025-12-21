@@ -14,6 +14,7 @@ GLOBAL_CBUFFER_START(ShaderVariablesGlobal, b1)
     float4 _TaaFrameInfo;
     float4 _ColorPyramidUvScaleAndLimitPrevFrame;
 
+    float _MicroShadowOpacity;
     int _IndirectDiffuseMode;
     float _IndirectDiffuseLightingMultiplier;
     uint _IndirectDiffuseLightingLayers;

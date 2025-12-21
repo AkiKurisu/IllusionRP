@@ -32,18 +32,32 @@ half3 LightingSpecular(half3 lightColor, half3 lightDir, half3 normal, half3 vie
 }
 
 half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat,
-    half3 lightColor, half3 lightDirectionWS, float lightAttenuation,
+    half3 lightColor, half3 lightDirectionWS, 
+    float lightAttenuation, half occlusion,
     half3 normalWS, half3 viewDirectionWS,
     half clearCoatMask, bool specularHighlightsOff, BRDFOcclusionFactor aoFactor)
 {
-    half NdotL = saturate(dot(normalWS, lightDirectionWS));
+    float3 h = SafeNormalize(float3(viewDirectionWS) + float3(lightDirectionWS));
+    half NdotL = dot(normalWS, lightDirectionWS);
+    float hDotV = max(dot(h, viewDirectionWS), 0.0);
+    half NdotH = saturate(dot(normalWS, h));
+    
+    lightAttenuation *= NdotL >= 0.0 ? ComputeMicroShadowing(occlusion, NdotL, _MicroShadowOpacity) : 1.0;
+    NdotL = saturate(NdotL);
+    
     half3 radiance = lightColor * (lightAttenuation * NdotL);
     float NdotV = dot(normalWS, viewDirectionWS);
     float clampNdotV = ClampNdotV(NdotV);
     float LdotV = dot(lightDirectionWS, viewDirectionWS);
 
-    half3 diffuseTerm = DirectBRDFDiffuseTermNoPI(NdotL, clampNdotV, LdotV, brdfData.perceptualRoughness);
-    half3 brdf = brdfData.diffuse * diffuseTerm * aoFactor.directAmbientOcclusion;
+#ifdef _DISNEY_DIFFUSE_BURLEY
+    half3 diffuseTerm = DirectBRDFDiffuseTermNoPI(NdotL, clampNdotV, LdotV, brdfData.perceptualRoughness).xxx;
+    diffuseTerm *= brdfData.diffuse;
+#else
+    half3 diffuseTerm = Diffuse_GGX_Rough_NoPI(brdfData.diffuse, brdfData.perceptualRoughness, clampNdotV, NdotL, hDotV, NdotH);
+#endif
+
+    half3 brdf = diffuseTerm * aoFactor.directAmbientOcclusion;
     
 #ifndef _SPECULARHIGHLIGHTS_OFF
     [branch] if (!specularHighlightsOff)
@@ -71,12 +85,14 @@ half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat,
     return brdf * radiance;
 }
 
-half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat, Light light, half3 normalWS,
-    half3 viewDirectionWS, half clearCoatMask, bool specularHighlightsOff, BRDFOcclusionFactor aoFactor)
+half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat, Light light, 
+    InputData inputData, SurfaceData surfaceData,
+    bool specularHighlightsOff, BRDFOcclusionFactor aoFactor)
 {
     return LightingPhysicallyBased(brdfData, brdfDataClearCoat, light.color, light.direction,
-        light.distanceAttenuation * light.shadowAttenuation, normalWS,
-        viewDirectionWS, clearCoatMask, specularHighlightsOff, aoFactor);
+        light.distanceAttenuation * light.shadowAttenuation, surfaceData.occlusion,
+        inputData.normalWS,
+        inputData.viewDirectionWS, surfaceData.clearCoatMask, specularHighlightsOff, aoFactor);
 }
 
 half3 CalculateBlinnPhong(Light light, InputData inputData, SurfaceData surfaceData)
@@ -160,10 +176,9 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
     if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))
 #endif
     {
-        lightingData.mainLightColor = LightingPhysicallyBased(brdfData, brdfDataClearCoat,
-                                                              mainLight,
-                                                              inputData.normalWS, inputData.viewDirectionWS,
-                                                              surfaceData.clearCoatMask, specularHighlightsOff, brdfOcclusionFactor);
+        lightingData.mainLightColor = LightingPhysicallyBased(brdfData, brdfDataClearCoat, mainLight,
+                                                              inputData, surfaceData, 
+                                                              specularHighlightsOff, brdfOcclusionFactor);
     }
 
     #if defined(_ADDITIONAL_LIGHTS)
@@ -181,8 +196,8 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
 #endif
         {
             lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
-                                                                          inputData.normalWS, inputData.viewDirectionWS,
-                                                                          surfaceData.clearCoatMask, specularHighlightsOff, brdfOcclusionFactor);
+                                                                          inputData, surfaceData, 
+                                                                          specularHighlightsOff, brdfOcclusionFactor);
         }
     }
     #endif
@@ -195,8 +210,8 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
 #endif
         {
             lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
-                                                                          inputData.normalWS, inputData.viewDirectionWS,
-                                                                          surfaceData.clearCoatMask, specularHighlightsOff, brdfOcclusionFactor);
+                                                                          inputData, surfaceData, 
+                                                                          specularHighlightsOff, brdfOcclusionFactor);
         }
     LIGHT_LOOP_END
     #endif

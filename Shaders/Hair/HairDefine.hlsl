@@ -1,19 +1,16 @@
 ﻿// ============================ Shader Define for Hair =============================== //
 
-#define HAIR_PERFORMANCE_HIGH                   (!REAL_IS_HALF || !defined(_ADDITIONAL_LIGHTS_VERTEX))
-
 // Marschner lobes
 #ifndef HAIR_MARSCHNER_R
     #define HAIR_MARSCHNER_R                    1
 #endif
 #ifndef HAIR_MARSCHNER_TT
-    #define HAIR_MARSCHNER_TT                   HAIR_PERFORMANCE_HIGH
+    #define HAIR_MARSCHNER_TT                   1
 #endif
 #ifndef HAIR_MARSCHNER_TRT
     #define HAIR_MARSCHNER_TRT                  1
 #endif
 
-#define _USE_LIGHT_FACING_NORMAL                0               // Enable for Strands Geometry, currently useless
 #define DEFAULT_HAIR_SPECULAR_VALUE             0.0465          // Hair is IOR 1.55
 
 #ifndef HAIR_SHIFT_VALUE
@@ -35,7 +32,7 @@
 #endif
 
 #ifndef HAIR_INDIRECT_MARSCHNER
-    #define HAIR_INDIRECT_MARSCHNER             (HAIR_MOBILE_PERFORMANCE_HIGH && _MARSCHNER_HAIR)
+    #define HAIR_INDIRECT_MARSCHNER             _MARSCHNER_HAIR
 #endif
 
 // 15 degrees
@@ -44,8 +41,8 @@
 
 struct HairData
 {
-    half3 GeomNormal;
-    half3 Tangent;
+    float3 GeomNormal;
+    float3 Tangent;
     half3 Tint;
     half Metallic;
     half Noise;

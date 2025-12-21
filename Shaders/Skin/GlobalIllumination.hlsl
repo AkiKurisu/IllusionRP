@@ -1,4 +1,4 @@
-﻿#ifndef SKIN_GLOBAL_ILLUMINATION_INCLUDED
+#ifndef SKIN_GLOBAL_ILLUMINATION_INCLUDED
 #define SKIN_GLOBAL_ILLUMINATION_INCLUDED
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
@@ -101,7 +101,9 @@ half3 SkinIBLDiffuse(BRDFData brdfData, half3 bakedGI, half3 occlusion,
     diffuseFGD = 1;
 #endif
 
-    half3 result = indirectDiffuse * diffuseFGD;
+    // Disney Diffuse FGD is in range [0.5, 1.5], normalized to Lambert equivalent
+    // To avoid over-brightening, we can clamp or normalize it
+    half3 result = indirectDiffuse * saturate(diffuseFGD);
     if (IsOnlyAOLightingFeatureEnabled())
     {
         result = half3(1,1,1);

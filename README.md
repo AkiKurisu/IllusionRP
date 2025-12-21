@@ -118,6 +118,8 @@ Include <b>Contact Shadows</b> ported from HDRP to capture small details.
 
 ![Contact Shadows](./Documentation~/images/contact_shadows.png)
 
+Support <b>Micro Shadows</b> ported from HDRP to simulate small details embedded in the Material of a GameObject, but not in its Mesh geometry.
+
 Support <b>Fragment Shadow Bias</b> to reduce shadow acne.
 
 > [!Warning]
