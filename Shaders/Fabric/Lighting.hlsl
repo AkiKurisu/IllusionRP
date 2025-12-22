@@ -34,6 +34,7 @@ void SheenScattering(BRDFData brdfData, half NoH, half NoV, half NoL, out half S
         
     half V_Sheen = V_Neubelt(NoL, NoV);
     SheenTerm = D_Sheen * V_Sheen;
+    
 #if REAL_IS_HALF
     SheenTerm  = SheenTerm  - HALF_MIN;
     SheenTerm  = clamp(SheenTerm , 0.0, 100.0); // Prevent FP16 overflow on mobiles
@@ -63,26 +64,20 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
     half BoH = dot(anisotropyData.B, H);
 
     lightAttenuation *= NoL >= 0.0 ? ComputeMicroShadowing(occlusion, NoL, _MicroShadowOpacity) : 1.0;
-    NoL = saturate(NoL);
-    half3 Radiance = NoL * lightColor * lightAttenuation;
+    half flippedNdotL = ComputeWrappedDiffuseLighting(-NoL, TRANSMISSION_WRAP_LIGHT);
+    half clampedNdotL = saturate(NoL);
+    half3 Radiance = lightColor * lightAttenuation;
     
     half3 diffuse = Diffuse_OrenNayar(NoV, brdfData.diffuse, brdfData.roughness);
-
-    // Cheap Subsurface Scattering
-#ifdef FABRIC_SUBSURFACE_SCATTERING
-    half wrap = 0.5f;
-    half3 scatterColor = 0;
-    half scatter = saturate(dot(normalWS, lightDirectionWS) + wrap) / (1 + wrap);
-    diffuse += scatterColor * scatter;
-#endif
     
-    half3 brdf = diffuse * aoFactor.directAmbientOcclusion;
+    half3 brdf = diffuse * aoFactor.directAmbientOcclusion * (flippedNdotL + clampedNdotL);
 
     #ifndef _SPECULARHIGHLIGHTS_OFF
-    [branch] if (!specularHighlightsOff)
+    [branch] 
+    if (!specularHighlightsOff)
     {
         // Anisotropy Specular
-        half DV = DV_SmithJointGGXAniso_Patch(ToH, BoH, NoH, ToV, BoV,NoV, ToL,BoL, NoL, aT, aB);
+        half DV = DV_SmithJointGGXAniso_Patch(ToH, BoH, NoH, ToV, BoV,NoV, ToL,BoL, clampedNdotL, aT, aB);
 
     #if REAL_IS_HALF
         DV  = DV  - HALF_MIN;
@@ -104,7 +99,7 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
         
         // lerp specular to get softer visual effect
         half3 LerpSpecular = lerp(AnisoSpecular, SheenSpecular, SheenData.Sheen);
-        brdf += LerpSpecular * aoFactor.directSpecularOcclusion;
+        brdf += LerpSpecular * aoFactor.directSpecularOcclusion * clampedNdotL;
     }
     #endif // _SPECULARHIGHLIGHTS_OFF
 
@@ -130,21 +125,14 @@ half3 FabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS
     half3 H = normalize(lightDirectionWS + viewDirectionWS);
     half NoL = dot(normalWS, lightDirectionWS);
     lightAttenuation *= NoL >= 0.0 ? ComputeMicroShadowing(occlusion, NoL, _MicroShadowOpacity) : 1.0;
-    NoL = saturate(NoL);
-    half3 radiance = lightColor * (lightAttenuation * NoL);
+    half flippedNdotL = ComputeWrappedDiffuseLighting(-NoL, TRANSMISSION_WRAP_LIGHT);
+    half clampedNdotL = saturate(NoL);
+    half3 radiance = lightColor * lightAttenuation;
     
     half NoV = saturate(abs(dot(normalWS, viewDirectionWS)) + 1e-5);
     half3 diffuse = Diffuse_OrenNayar(NoV, brdfData.diffuse, brdfData.roughness);
-
-    // Cheap Subsurface Scattering
-#ifdef FABRIC_SUBSURFACE_SCATTERING
-    half wrap = 0.5f;
-    half3 scatterColor = 0;
-    half scatter = saturate(dot(normalWS, lightDirectionWS) + wrap) / (1 + wrap);
-    diffuse += scatterColor * scatter;
-#endif
     
-    half3 brdf = diffuse * aoFactor.directAmbientOcclusion;
+    half3 brdf = diffuse * aoFactor.directAmbientOcclusion * (flippedNdotL + clampedNdotL);
 
     #ifndef _SPECULARHIGHLIGHTS_OFF
     [branch] if (!specularHighlightsOff)
@@ -163,7 +151,7 @@ half3 FabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS
 
         // lerp specular to get softer visual effect
         half3 LerpSpecular = lerp(DefaultSpecular, SheenSpecular, SheenData.Sheen);
-        brdf += LerpSpecular * aoFactor.directSpecularOcclusion;
+        brdf += LerpSpecular * aoFactor.directSpecularOcclusion * clampedNdotL;
     }
     #endif // _SPECULARHIGHLIGHTS_OFF
 

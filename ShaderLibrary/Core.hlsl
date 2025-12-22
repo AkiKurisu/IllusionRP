@@ -30,6 +30,10 @@
 #define INDIRECTDIFFUSEMODE_SCREEN_SPACE        (1)
 #define INDIRECTDIFFUSEMODE_RAY_TRACED          (2)
 #define INDIRECTDIFFUSEMODE_MIXED               (3)
+
+// 15 degrees
+#define TRANSMISSION_WRAP_ANGLE                 (PI/12)
+#define TRANSMISSION_WRAP_LIGHT                 cos(PI/2 - TRANSMISSION_WRAP_ANGLE)
 // ============================ Global Shader Define =============================== //
 
 // ================================= Macro Define ================================= //

@@ -6,10 +6,6 @@
 // Reference: Pre- and Post-Scatter in HDRP
 #define PRE_POST_SCATTER                        1
 
-// 15 degrees
-#define TRANSMISSION_WRAP_ANGLE                 (PI/12)
-#define TRANSMISSION_WRAP_LIGHT                 cos(PI/2 - TRANSMISSION_WRAP_ANGLE)
-
 // Unified Translucency effect strength for skin
 #define TRANSLUCENCY_STRENGTH                   4
 
