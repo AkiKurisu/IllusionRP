@@ -92,7 +92,7 @@ namespace Illusion.Rendering.PRTGI
         /// </summary>
         [Range(0f, 1f)]
         public float rayOriginBias = 0.1f;
-        
+
         /// <summary>
         /// Enable multi frame relight to improve performance
         /// </summary>
@@ -129,6 +129,13 @@ namespace Illusion.Rendering.PRTGI
         // Layout: [probeSizeX, probeSizeZ, probeSizeY * 9]
         private RenderTexture _coefficientVoxelRT;
 
+        // Validity texture to store per-probe invalidation masks
+        // Layout: [probeSizeX, probeSizeZ, probeSizeY]
+        // Each texel stores a byte where each bit represents if a neighbor probe is valid
+        private RenderTexture _validityVoxelRT;
+        
+        private float[] _validity;
+
         private SurfelIndices[] _allBricks;
 
         private BrickFactor[] _allFactors;
@@ -143,7 +150,7 @@ namespace Illusion.Rendering.PRTGI
         private int _currentProbeUpdateIndex;
 
         private int _probesToUpdateCount;
-        
+
         private int _lastRoundRobinProbeCount;
 
         private uint _frameCount;
@@ -176,6 +183,11 @@ namespace Illusion.Rendering.PRTGI
         /// 3D Texture to store SH coefficients
         /// </summary>
         public RenderTexture CoefficientVoxel3D => _coefficientVoxelRT;
+
+        /// <summary>
+        /// 3D Texture to store probe validity masks
+        /// </summary>
+        public RenderTexture ValidityVoxel3D => _validityVoxelRT;
 
         /// <summary>
         /// Bounding box minimum corner in grid coordinates
@@ -287,6 +299,8 @@ namespace Illusion.Rendering.PRTGI
             ReleaseProbes();
             _coefficientVoxelRT?.Release();
             _coefficientVoxelRT = null;
+            _validityVoxelRT?.Release();
+            _validityVoxelRT = null;
             _globalSurfelBuffer?.Release();
             _globalSurfelBuffer = null;
         }
@@ -331,7 +345,8 @@ namespace Illusion.Rendering.PRTGI
         private bool IsProbeValid()
         {
             if (Probes == null || !Probes.Any()) return false;
-            return _coefficientVoxelRT && _coefficientVoxelRT.IsCreated();
+            return _coefficientVoxelRT && _coefficientVoxelRT.IsCreated() &&
+                   _validityVoxelRT && _validityVoxelRT.IsCreated();
         }
 
         /// <summary>
@@ -373,6 +388,7 @@ namespace Illusion.Rendering.PRTGI
             _allBricks = cellData.bricks;
             _allFactors = cellData.factors;
             _allProbes = cellData.probes;
+            _validity = cellData.validityMasks;
             _globalSurfelBuffer = new ComputeBuffer(surfels.Length, Surfel.Stride);
             _globalSurfelBuffer.SetData(surfels);
 
@@ -447,27 +463,43 @@ namespace Illusion.Rendering.PRTGI
             }
 
             // Create 3D textures for SH coefficients
-            // Layout: float3[_grid.X, _grid.Z, _grid.Y * 9]
-            // Each depth slice corresponds to one RGB component of SH coefficient
-            InitializeVoxelTexture(CurrentVoxelGrid.X, CurrentVoxelGrid.Z, CurrentVoxelGrid.Y * 9);
+            InitializeVoxelTexture(CurrentVoxelGrid.X, CurrentVoxelGrid.Z, CurrentVoxelGrid.Y);
+
+            // Initialize validity tracking
+            InitializeValidityData();
 
             // Reset probe update rotation when new probes are generated
             ResetProbeUpdateRotation();
         }
 
-        private void InitializeVoxelTexture(int width, int height, int volumeDepth)
+        private void InitializeVoxelTexture(int width, int height, int depth)
         {
             _coefficientVoxelRT?.Release();
+            // Layout: float3[_grid.X, _grid.Z, _grid.Y * 9]
+            // Each depth slice corresponds to one RGB component of SH coefficient
             _coefficientVoxelRT = new RenderTexture(width, height, 0, Texture3DFormat)
             {
                 dimension = TextureDimension.Tex3D,
                 enableRandomWrite = true,
                 filterMode = FilterMode.Point,
                 wrapMode = TextureWrapMode.Clamp,
-                volumeDepth = volumeDepth,
+                volumeDepth = depth * 9,
                 name = "CoefficientVoxelTexture"
             };
             _coefficientVoxelRT.Create();
+
+            // Create validity texture (one byte per probe)
+            _validityVoxelRT?.Release();
+            _validityVoxelRT = new RenderTexture(width, height, 0, RenderTextureFormat.R8)
+            {
+                dimension = TextureDimension.Tex3D,
+                enableRandomWrite = true,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                volumeDepth = depth, // One layer per Y slice
+                name = "ValidityVoxelTexture"
+            };
+            _validityVoxelRT.Create();
         }
 
         private bool EnableMultiFrameRelight()
@@ -491,7 +523,7 @@ namespace Illusion.Rendering.PRTGI
 
             // Update bounding box
             CalculateCameraBoundingBox();
-            
+
             // If bounding box didn't change, but we have no probes in bounding box,
             // we need to populate it (this can happen when camera starts outside volume)
             if (_boundingBoxChanged || _probesInBoundingBox.Count == 0)
@@ -540,7 +572,7 @@ namespace Illusion.Rendering.PRTGI
             // Calculate total budget for this frame
             int totalBudget = _probesToUpdateCount + localProbeCount;
             int remainingBudget = totalBudget;
-            
+
             // Reset round-robin probe count for this frame
             _lastRoundRobinProbeCount = 0;
 
@@ -598,7 +630,7 @@ namespace Illusion.Rendering.PRTGI
 
                         checkedCount++;
                     }
-                    
+
                     _lastRoundRobinProbeCount = addedFromRoundRobin;
                 }
             }
@@ -654,7 +686,7 @@ namespace Illusion.Rendering.PRTGI
                     // still advance by the expected amount to maintain progress
                     _currentProbeUpdateIndex += _probesToUpdateCount;
                 }
-                
+
                 // Wrap around if we've gone past the end
                 if (_probesInBoundingBox.Count > 0)
                 {
@@ -977,19 +1009,18 @@ namespace Illusion.Rendering.PRTGI
             return totalScale;
         }
 
-        // TODO: Support per-probe invalidation
         /// <summary>
         /// Check if a probe should be invalidated based on adjustment volumes
         /// </summary>
         /// <param name="probePosition">World position of the probe</param>
         /// <returns>True if probe should be invalidated</returns>
-        private bool ShouldInvalidateProbe(Vector3 probePosition)
+        private static bool ShouldInvalidateProbe(Vector3 probePosition)
         {
             var adjustmentVolumes = PRTVolumeManager.AdjustmentVolumes;
             for (int i = 0; i < adjustmentVolumes.Count; i++)
             {
                 var volume = adjustmentVolumes[i];
-                if (volume != null && volume.Contains(probePosition))
+                if (volume && volume.Contains(probePosition))
                 {
                     if (volume.ShouldInvalidateProbe())
                         return true;
@@ -997,6 +1028,72 @@ namespace Illusion.Rendering.PRTGI
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Initialize validity data for all probes
+        /// </summary>
+        private void InitializeValidityData()
+        {
+            if (Probes == null || Probes.Length == 0)
+                return;
+
+            // Initialize validity states array (all valid by default)
+            _validity = new float[Probes.Length];
+            for (int i = 0; i < _validity.Length; i++)
+            {
+                _validity[i] = 1;
+            }
+
+            // Update validity based on adjustment volumes
+            UpdateProbeValidityFromVolumes();
+        }
+
+        /// <summary>
+        /// Update probe validity states based on adjustment volumes
+        /// </summary>
+        private void UpdateProbeValidityFromVolumes()
+        {
+            if (Probes == null || _validity == null)
+                return;
+
+            for (int i = 0; i < Probes.Length; i++)
+            {
+                _validity[i] = ShouldInvalidateProbe(Probes[i].Position) ? 0 : 1;
+            }
+        }
+
+        /// <summary>
+        /// Update validity for all probes based on current adjustment volumes
+        /// </summary>
+        public void RefreshProbeValidity()
+        {
+            UpdateProbeValidityFromVolumes();
+        }
+
+        /// <summary>
+        /// Get the full validity masks buffer
+        /// </summary>
+        public float[] GetValidityMasks()
+        {
+            return _validity;
+        }
+
+        /// <summary>
+        /// Check if a probe is valid (not invalidated)
+        /// </summary>
+        /// <param name="probeIndex">Index of the probe</param>
+        /// <returns>True if probe is valid, false if invalidated</returns>
+        public bool IsProbeValid(int probeIndex)
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                return !ShouldInvalidateProbe(Probes[probeIndex].Position);
+            }
+#endif
+            
+            return _validity[probeIndex] == 1;
         }
     }
 }

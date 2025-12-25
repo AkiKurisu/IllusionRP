@@ -223,7 +223,16 @@ namespace Illusion.Rendering.PRTGI
         /// <param name="probePos">Position of the probe</param>
         private void DrawProbeGrid(int probeIndex, Vector3 probePos)
         {
-            Gizmos.color = Color.cyan;
+            // Check if probe is invalidated, if so render as black
+            if (!IsProbeValid(probeIndex))
+            {
+                Gizmos.color = Color.black;
+            }
+            else
+            {
+                Gizmos.color = Color.cyan;
+            }
+            
             Gizmos.DrawWireSphere(probePos, probeHandleSize * 0.1f);
 
             // Draw connections to neighboring probes

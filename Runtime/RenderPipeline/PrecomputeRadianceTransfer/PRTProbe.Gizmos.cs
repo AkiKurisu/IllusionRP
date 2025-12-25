@@ -53,7 +53,20 @@ namespace Illusion.Rendering.PRTGI
 
             var debugData = _volume.GetProbeDebugData(Index);
             if (debugData == null) return;
-            _matPropBlock.SetBuffer(ShaderProperties.CoefficientSH9, debugData.CoefficientSH9);
+            
+            // Check if probe is invalidated, if so render as black
+            if (!_volume.IsProbeValid(Index))
+            {
+                // Set all SH coefficients to zero to render as black
+                _matPropBlock.SetBuffer(ShaderProperties.CoefficientSH9, debugData.CoefficientSH9);
+                _matPropBlock.SetColor(ShaderProperties.TintColor, Color.black);
+            }
+            else
+            {
+                _matPropBlock.SetBuffer(ShaderProperties.CoefficientSH9, debugData.CoefficientSH9);
+                _matPropBlock.SetColor(ShaderProperties.TintColor, Color.white);
+            }
+            
             _renderer.SetPropertyBlock(_matPropBlock);
         }
 
@@ -65,6 +78,7 @@ namespace Illusion.Rendering.PRTGI
         private static class ShaderProperties
         {
             public static readonly int CoefficientSH9 = Shader.PropertyToID("_coefficientSH9");
+            public static readonly int TintColor = Shader.PropertyToID("_TintColor");
         }
     }
 }

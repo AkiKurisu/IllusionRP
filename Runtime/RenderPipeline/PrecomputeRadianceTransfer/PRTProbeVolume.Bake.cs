@@ -67,7 +67,8 @@ namespace Illusion.Rendering.PRTGI
                 await Task.Delay(1, cancellationToken);
             }
 
-            asset.CellData = surfelGrid.GenerateCell(Probes);
+            RefreshProbeValidity();
+            asset.CellData = surfelGrid.GenerateCell(Probes, _validity);
         }
 
         /// <summary>

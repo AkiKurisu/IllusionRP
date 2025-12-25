@@ -54,6 +54,7 @@ half SampleProbeVolumeReflectionNormalize(float3 worldPos, float3 normal, float2
                        reflectionDir,
                        bakedGI,
                        _coefficientVoxel3D,
+                       _validityVoxel3D,
                        _coefficientVoxelGridSize,
                        _coefficientVoxelCorner,
                        _coefficientVoxelSize,

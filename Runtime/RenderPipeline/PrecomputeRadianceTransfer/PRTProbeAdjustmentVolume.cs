@@ -8,7 +8,7 @@ namespace Illusion.Rendering.PRTGI
         OverrideVirtualOffsetSettings,
         [InspectorName("Intensity Scale (Not Ready)")]
         IntensityScale,
-        [InspectorName("Invalidate Probes (Not Ready)")]
+        [InspectorName("Invalidate Probes")]
         InvalidateProbes
     }
 

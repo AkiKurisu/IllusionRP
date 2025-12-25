@@ -22,7 +22,9 @@
 // Input
 StructuredBuffer<BrickRadiance> _brickRadiance;
 StructuredBuffer<BrickFactor> _factors;
+StructuredBuffer<float> _validityMasks;
 RWTexture3D<float3> _coefficientVoxel3D;
+RWTexture3D<float> _validityVoxel3D;
 
 // Parameters
 float4 _probePos;
@@ -121,5 +123,16 @@ void CSMain(uint3 id : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
             _coefficientSH9[shIndex * 3 + 2] = groupCoefficients[shIndex][0].z;
 #endif
         }
+        
+        // Write validity mask
+        float validityMask = _validityMasks[_indexInProbeVolume];
+        
+        // Calculate validity texture coordinate (without shIndex, depth = y coordinate)
+        uint3 validityTexCoord = GetProbeTexture3DCoordFromIndex(_indexInProbeVolume, 0, _coefficientVoxelSize,
+                                                                   _boundingBoxMin, _boundingBoxSize,
+                                                                   _originalBoundingBoxMin);
+        // Adjust for validity texture (depth is just Y, not Y * 9)
+        validityTexCoord.z = validityTexCoord.z / 9;
+        _validityVoxel3D[validityTexCoord] = validityMask;
     }
 }

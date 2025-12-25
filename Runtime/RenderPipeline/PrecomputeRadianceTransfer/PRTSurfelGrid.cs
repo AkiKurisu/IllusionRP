@@ -44,7 +44,7 @@ namespace Illusion.Rendering.PRTGI
         public int start;
 
         public int count;
-        
+
         public const int Stride = 8;    // int * 2 = 8 bytes
     }
 
@@ -106,17 +106,21 @@ namespace Illusion.Rendering.PRTGI
         // Probe data
         public FactorIndices[] probes;
 
+        // Validity data
+        public float[] validityMasks;
+
         private CellData()
         {
 
         }
 
-        public CellData(Surfel[] inSurfels, SurfelIndices[] surfelIndices, BrickFactor[] brickFactors, FactorIndices[] factorIndices)
+        public CellData(Surfel[] inSurfels, SurfelIndices[] surfelIndices, BrickFactor[] brickFactors, FactorIndices[] factorIndices, float[] validity)
         {
             surfels = inSurfels;
             bricks = surfelIndices;
             factors = brickFactors;
             probes = factorIndices;
+            validityMasks = validity;
         }
 
         public static CellData GeDefault()
@@ -126,7 +130,8 @@ namespace Illusion.Rendering.PRTGI
                 surfels = Array.Empty<Surfel>(),
                 bricks = Array.Empty<SurfelIndices>(),
                 factors = Array.Empty<BrickFactor>(),
-                probes = Array.Empty<FactorIndices>()
+                probes = Array.Empty<FactorIndices>(),
+                validityMasks = Array.Empty<float>()
             };
         }
     }
@@ -207,7 +212,7 @@ namespace Illusion.Rendering.PRTGI
             int x = Mathf.FloorToInt(position.x / precision + 0.5f);
             int y = Mathf.FloorToInt(position.y / precision + 0.5f);
             int z = Mathf.FloorToInt(position.z / precision + 0.5f);
-            
+
             ulong hash = 1469598103934665603UL;
             hash ^= (uint)x; hash *= 1099511628211UL;
             hash ^= (uint)y; hash *= 1099511628211UL;
@@ -310,8 +315,9 @@ namespace Illusion.Rendering.PRTGI
         /// Generate cell data in the grid using Factor-based approach with batch merging
         /// </summary>
         /// <param name="probeGrid">Probes grid (should be ordered before) contributed to.</param>
+        /// <param name="validityMask"></param>
         /// <returns>Tuple containing surfels, brick indices, factors, probe indices</returns>
-        public CellData GenerateCell(PRTProbe[] probeGrid)
+        public CellData GenerateCell(PRTProbe[] probeGrid, float[] validityMask)
         {
             // First get all unique bricks and sort them by their index to ensure consistent ordering
             var uniqueBricks = _bricks.Values.OrderBy(b => b.Index).ToArray();
@@ -426,7 +432,7 @@ namespace Illusion.Rendering.PRTGI
                 };
             }
 
-            return new CellData(reorderedSurfels, brickIndices, allFactors.ToArray(), probeIndices);
+            return new CellData(reorderedSurfels, brickIndices, allFactors.ToArray(), probeIndices, validityMask);
         }
     }
 }

@@ -24,7 +24,8 @@ namespace Illusion.Rendering.Editor
             var brickSize = CalculateBrickDataSize();
             var factorSize = CalculateFactorDataSize();
             var probeSize = CalculateProbeDataSize();
-            var totalSize = surfelSize + brickSize + factorSize + probeSize;
+            var validitySize = CalculateValidityDataSize();
+            var totalSize = surfelSize + brickSize + factorSize + probeSize + validitySize;
 
             // Display counts
             EditorGUILayout.LabelField("Data Counts:", EditorStyles.miniBoldLabel);
@@ -38,6 +39,10 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.LabelField($"Factors: {GetArrayLength(CellData.factors):N0}", GUILayout.Width(120));
                 EditorGUILayout.LabelField($"Probes: {GetArrayLength(CellData.probes):N0}", GUILayout.Width(120));
             }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField($"Validity Masks: {GetArrayLength(CellData.validityMasks):N0}", GUILayout.Width(160));
+            }
 
             EditorGUILayout.Space(5);
 
@@ -50,6 +55,7 @@ namespace Illusion.Rendering.Editor
                 DrawSizeRow("Bricks", brickSize, GetBrickStructSize(), GetArrayLength(CellData.bricks));
                 DrawSizeRow("Factors", factorSize, GetFactorStructSize(), GetArrayLength(CellData.factors));
                 DrawSizeRow("Probes", probeSize, GetProbeStructSize(), GetArrayLength(CellData.probes));
+                DrawSizeRow("Validity", validitySize, GetValidityStructSize(), GetArrayLength(CellData.validityMasks));
 
                 EditorGUILayout.Space(3);
                 using (new EditorGUILayout.HorizontalScope())
@@ -115,6 +121,11 @@ namespace Illusion.Rendering.Editor
             return GetArrayLength(CellData.probes) * GetProbeStructSize();
         }
 
+        private long CalculateValidityDataSize()
+        {
+            return GetArrayLength(CellData.validityMasks) * GetValidityStructSize();
+        }
+
         private static int GetSurfelStructSize()
         {
             // Surfel: Vector3 position (12) + Vector3 normal (12) + Vector3 albedo (12) + float skyMask (4) = 40 bytes
@@ -137,6 +148,12 @@ namespace Illusion.Rendering.Editor
         {
             // FactorIndices: int start (4) + int end (4) = 8 bytes
             return 8;
+        }
+
+        private static int GetValidityStructSize()
+        {
+            // float: 4 bytes
+            return 4;
         }
 
         private static int GetArrayLength<T>(T[] array)

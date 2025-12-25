@@ -29,6 +29,8 @@ namespace Illusion.Rendering.PRTGI
 
         private ComputeBuffer _shadowCacheBuffer;
 
+        private ComputeBuffer _validityMaskBuffer;
+
         private const int BrickRadianceStride = 28; // float3 * 2 + float = 28 bytes
 
         private readonly ProfilingSampler _relightBrickSampler = new("Relight Brick");
@@ -91,7 +93,7 @@ namespace Illusion.Rendering.PRTGI
                 DoReflectionNormalization(cmd, ref renderingData);
 
                 PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
-                bool enableRelight =  _rendererData.SampleProbeVolumes;
+                bool enableRelight = _rendererData.SampleProbeVolumes;
                 enableRelight &= _rendererData.IsLightingActive;
 
                 if (enableRelight)
@@ -184,6 +186,9 @@ namespace Illusion.Rendering.PRTGI
             // Initialize Factor buffer
             InitializeFactorBuffer(volume);
 
+            // Initialize Validity Mask buffer
+            InitializeValidityMaskBuffer(volume);
+
             cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, volume.probeGridSize);
             cmd.SetGlobalVector(ShaderProperties._coefficientVoxelSize, voxelSize);
             cmd.SetGlobalVector(ShaderProperties._coefficientVoxelCorner, voxelCorner);
@@ -191,6 +196,7 @@ namespace Illusion.Rendering.PRTGI
             cmd.SetGlobalVector(ShaderProperties._boundingBoxSize, boundingBoxSize);
             cmd.SetGlobalVector(ShaderProperties._originalBoundingBoxMin, originalBoundingBoxMin);
             cmd.SetGlobalTexture(ShaderProperties._coefficientVoxel3D, volume.CoefficientVoxel3D);
+            cmd.SetGlobalTexture(ShaderProperties._validityVoxel3D, volume.ValidityVoxel3D);
 
 #if UNITY_EDITOR
             if (volume.debugMode == ProbeVolumeDebugMode.ProbeRadiance)
@@ -233,6 +239,20 @@ namespace Illusion.Rendering.PRTGI
             }
 
             _factorBuffer.SetData(factors);
+        }
+
+        private void InitializeValidityMaskBuffer(PRTProbeVolume volume)
+        {
+            var validityMasks = volume.GetValidityMasks();
+            int probeCount = volume.probeSizeX * volume.probeSizeY * volume.probeSizeZ;
+
+            if (_validityMaskBuffer == null || _validityMaskBuffer.count != probeCount)
+            {
+                _validityMaskBuffer?.Release();
+                _validityMaskBuffer = new ComputeBuffer(probeCount, 8);
+            }
+            
+            _validityMaskBuffer.SetData(validityMasks);
         }
 
         private void InitializeBrickBuffer(PRTProbeVolume volume, List<int> brickIndicesToUpdate)
@@ -341,6 +361,12 @@ namespace Illusion.Rendering.PRTGI
                 ShaderProperties._brickRadiance, _brickRadianceBuffer);
             cmd.SetComputeBufferParam(_probeRelightCS, _probeRelightKernel,
                 ShaderProperties._factors, _factorBuffer);
+            cmd.SetComputeTextureParam(_probeRelightCS, _probeRelightKernel,
+                ShaderProperties._coefficientVoxel3D, volume.CoefficientVoxel3D);
+            cmd.SetComputeTextureParam(_probeRelightCS, _probeRelightKernel,
+                ShaderProperties._validityVoxel3D, volume.ValidityVoxel3D);
+            cmd.SetComputeBufferParam(_probeRelightCS, _probeRelightKernel,
+                ShaderProperties._validityMasks, _validityMaskBuffer);
 
 #if UNITY_EDITOR
             // Debug data
@@ -366,6 +392,8 @@ namespace Illusion.Rendering.PRTGI
             _factorBuffer = null;
             _shadowCacheBuffer?.Release();
             _shadowCacheBuffer = null;
+            _validityMaskBuffer?.Release();
+            _validityMaskBuffer = null;
         }
 
         public void Dispose()
@@ -391,6 +419,8 @@ namespace Illusion.Rendering.PRTGI
             public static readonly int _coefficientVoxelCorner = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _coefficientVoxel3D = MemberNameHelpers.ShaderPropertyID();
+
+            public static readonly int _validityVoxel3D = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _indexInProbeVolume = MemberNameHelpers.ShaderPropertyID();
 
@@ -421,6 +451,8 @@ namespace Illusion.Rendering.PRTGI
             public static readonly int _boundingBoxSize = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _originalBoundingBoxMin = MemberNameHelpers.ShaderPropertyID();
+
+            public static readonly int _validityMasks = MemberNameHelpers.ShaderPropertyID();
 
             // Reflection normalization parameters
             public static readonly int _reflectionProbeNormalizationFactor = MemberNameHelpers.ShaderPropertyID();

@@ -1,5 +1,9 @@
 Shader "Hidden/ProbeSHDebug"
 {
+	Properties
+	{
+		TintColor("_TintColor", Color) = (1, 1, 1, 1)
+	}
     SubShader
     {
         Tags
@@ -31,6 +35,7 @@ Shader "Hidden/ProbeSHDebug"
             
             CBUFFER_START(UnityPerMaterial)
             StructuredBuffer<float> _coefficientSH9; // array size: 3x9=27
+            float4 _TintColor;
             CBUFFER_END
 
             struct appdata
@@ -69,6 +74,10 @@ Shader "Hidden/ProbeSHDebug"
 
                 // decode irradiance
                 float3 Lo = IrradianceSH9(c, dir.xzy); // PI is pre-divided
+                
+                // Apply tint color for invalidated probes
+                Lo *= _TintColor.rgb;
+                
                 return float4(Lo, 1.0);
             }
             ENDHLSL
@@ -92,15 +101,9 @@ Shader "Hidden/ProbeSHDebug"
 			#pragma fragment frag
 
 			#define SHADERPASS SHADERPASS_DEPTHNORMALSONLY
-
-			#include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl"
+			
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Hair/Lighting.hlsl"
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/TextureStack.hlsl"
-			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl"
 			#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/ShaderPass.hlsl"
 
 			struct VertexInput
