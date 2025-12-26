@@ -1,5 +1,6 @@
 ﻿#if UNITY_EDITOR
 using UnityEngine;
+using UObject = UnityEngine.Object;
 
 namespace Illusion.Rendering.PRTGI
 {
@@ -72,7 +73,7 @@ namespace Illusion.Rendering.PRTGI
 
         private void ReleaseDebugObject()
         {
-            Object.DestroyImmediate(_renderer.gameObject);
+            UObject.DestroyImmediate(_renderer.gameObject);
         }
         
         private static class ShaderProperties

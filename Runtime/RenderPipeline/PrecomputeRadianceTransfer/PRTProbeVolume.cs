@@ -131,9 +131,10 @@ namespace Illusion.Rendering.PRTGI
 
         // Validity texture to store per-probe invalidation masks
         // Layout: [probeSizeX, probeSizeZ, probeSizeY]
-        // Each texel stores a byte where each bit represents if a neighbor probe is valid
+        // Each texel stores packed data: intensity (24 bits) + validity mask (8 bits)
         private RenderTexture _validityVoxelRT;
-        
+
+        // Validity texture stores packed data: intensity (24 bits) + validity mask (8 bits)
         private float[] _validity;
 
         private SurfelIndices[] _allBricks;
@@ -488,9 +489,9 @@ namespace Illusion.Rendering.PRTGI
             };
             _coefficientVoxelRT.Create();
 
-            // Create validity texture (one byte per probe)
+            // Create validity texture (packed 32-bit float: intensity + validity per probe)
             _validityVoxelRT?.Release();
-            _validityVoxelRT = new RenderTexture(width, height, 0, RenderTextureFormat.R8)
+            _validityVoxelRT = new RenderTexture(width, height, 0, RenderTextureFormat.RFloat)
             {
                 dimension = TextureDimension.Tex3D,
                 enableRandomWrite = true,
@@ -504,7 +505,7 @@ namespace Illusion.Rendering.PRTGI
 
         private bool EnableMultiFrameRelight()
         {
-            return multiFrameRelight && _frameCount > 2;
+            return multiFrameRelight && _frameCount > 5;
         }
 
         public Vector3 GetVoxelMinCorner()
@@ -986,13 +987,12 @@ namespace Illusion.Rendering.PRTGI
                    cameraPos.z >= volumeMin.z && cameraPos.z <= volumeMax.z;
         }
 
-        // TODO: Support per-probe intensity
         /// <summary>
         /// Get intensity scale for a specific probe position
         /// </summary>
         /// <param name="probePosition">World position of the probe</param>
         /// <returns>Combined intensity scale for this probe</returns>
-        private float CalculateProbeIntensityScale(Vector3 probePosition)
+        private static float CalculateProbeIntensityScale(Vector3 probePosition)
         {
             float totalScale = 1f;
             var adjustmentVolumes = PRTVolumeManager.AdjustmentVolumes;
@@ -1042,7 +1042,7 @@ namespace Illusion.Rendering.PRTGI
             _validity = new float[Probes.Length];
             for (int i = 0; i < _validity.Length; i++)
             {
-                _validity[i] = 1;
+                _validity[i] = PackIntensityValidity(1f, 1f);
             }
 
             // Update validity based on adjustment volumes
@@ -1059,7 +1059,12 @@ namespace Illusion.Rendering.PRTGI
 
             for (int i = 0; i < Probes.Length; i++)
             {
-                _validity[i] = ShouldInvalidateProbe(Probes[i].Position) ? 0 : 1;
+                Vector3 probePos = Probes[i].Position;
+                float validity = ShouldInvalidateProbe(probePos) ? 0f : 1f;
+                float intensity = CalculateProbeIntensityScale(probePos);
+
+                // Pack intensity and validity together
+                _validity[i] = PackIntensityValidity(intensity, validity);
             }
         }
 
@@ -1092,8 +1097,30 @@ namespace Illusion.Rendering.PRTGI
                 return !ShouldInvalidateProbe(Probes[probeIndex].Position);
             }
 #endif
-            
-            return _validity[probeIndex] == 1;
+
+            // Unpack validity from packed data
+            uint packedVal = IllusionRenderingUtils.AsUInt(_validity[probeIndex]);
+            uint validityBits = (packedVal >> 24) & 0xFF;
+            float validity = validityBits / 255f;
+
+            return validity > 0.5f;
+        }
+
+
+        /// <summary>
+        /// Pack intensity (0-5 range) and validity (0-1 range) into a single float for GPU upload
+        /// </summary>
+        private static float PackIntensityValidity(float intensity, float validity)
+        {
+            // Normalize intensity from [0, 5] to [0, 1]
+            float normalizedIntensity = Mathf.Clamp01(intensity / 5.0f);
+
+            // Pack into 32-bit uint: intensity (bits 0-23) + validity (bits 24-31)
+            uint packedIntensity = (uint)(normalizedIntensity * 16777215f); // 2^24 - 1
+            uint packedValidity = (uint)(Mathf.Clamp01(validity) * 255f) << 24; // 2^8 - 1, shifted to bits 24-31
+            uint packedVal = packedIntensity | packedValidity;
+
+            return IllusionRenderingUtils.AsFloat(packedVal);
         }
     }
 }

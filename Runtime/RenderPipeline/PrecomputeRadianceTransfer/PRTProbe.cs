@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;
-using Object = UnityEngine.Object;
+using UObject = UnityEngine.Object;
 
 namespace Illusion.Rendering.PRTGI
 {
@@ -29,13 +29,13 @@ namespace Illusion.Rendering.PRTGI
 #if UNITY_EDITOR
             var probeObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             probeObject.name = $"PRTProbe {index}";
-            Object.DestroyImmediate(probeObject.GetComponent<SphereCollider>());
-            _renderer = probeObject.GetComponent<MeshRenderer>();
-            _renderer.material = CoreUtils.CreateEngineMaterial(IllusionShaders.ProbeSHDebug);
-            _renderer.enabled = false;
             probeObject.hideFlags = HideFlags.HideAndDontSave;
             probeObject.transform.SetParent(probeVolume.transform);
             probeObject.transform.position = Position;
+            UObject.DestroyImmediate(probeObject.GetComponent<SphereCollider>());
+            _renderer = probeObject.GetComponent<MeshRenderer>();
+            _renderer.material = CoreUtils.CreateEngineMaterial(IllusionShaders.ProbeSHDebug);
+            _renderer.enabled = false;
             float size = _volume.probeHandleSize;
             probeObject.transform.localScale = new Vector3(size, size, size);
             _matPropBlock = new MaterialPropertyBlock();

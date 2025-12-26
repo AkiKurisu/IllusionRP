@@ -235,6 +235,8 @@ namespace Illusion.Rendering
         
         public static float AsFloat(uint val) { unsafe { return *((float*)&val); } }
         
+        public static uint AsUInt(float val) { unsafe { return *((uint*)&val); } }
+        
         // These two convertion functions are used to store GUID assets inside materials,
         // a unity asset GUID is exactly 16 bytes long which is also a Vector4 so by adding a
         // Vector4 field inside the shader we can store references of an asset inside the material

@@ -106,7 +106,7 @@ namespace Illusion.Rendering.PRTGI
         // Probe data
         public FactorIndices[] probes;
 
-        // Validity data
+        // Packed validity data: intensity (24 bits, 0-5 range) + validity mask (8 bits, 0-1 range)
         public float[] validityMasks;
 
         private CellData()

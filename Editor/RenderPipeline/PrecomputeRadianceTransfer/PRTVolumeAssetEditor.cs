@@ -152,7 +152,7 @@ namespace Illusion.Rendering.Editor
 
         private static int GetValidityStructSize()
         {
-            // float: 4 bytes
+            // Packed float: intensity (24 bits) + validity (8 bits) = 4 bytes per probe
             return 4;
         }
 

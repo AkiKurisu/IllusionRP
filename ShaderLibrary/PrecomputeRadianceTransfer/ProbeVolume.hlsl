@@ -117,4 +117,37 @@ uint3 GetProbeTexture3DCoordFromIndex(uint probeIndex, uint shIndex, float4 voxe
     uint3 texCoord = GetProbeTexture3DCoordFrom3DCoord(bboxCoord, shIndex);
     return texCoord;
 }
+
+//--------------------------------------------------------------------------------------------------
+// Packing utilities for intensity and validity
+//--------------------------------------------------------------------------------------------------
+
+// Pack intensity (0-5 range, 24 bits) and validity (0-1 range, 8 bits) into a single float
+float PackIntensityValidity(float intensity, float validity)
+{
+    // Normalize intensity from [0, 5] to [0, 1] for packing
+    float normalizedIntensity = saturate(intensity / 5.0);
+    
+    // Pack into 32-bit uint: intensity (bits 0-23) + validity (bits 24-31)
+    uint packedIntensity = uint(normalizedIntensity * 16777215.0); // 2^24 - 1
+    uint packedValidity = uint(saturate(validity) * 255.0) << 24; // 2^8 - 1, shifted to bits 24-31
+    uint packedVal = packedIntensity | packedValidity;
+    
+    return asfloat(packedVal);
+}
+
+// Unpack intensity and validity from a single float
+void UnpackIntensityValidity(float packedData, out float intensity, out float validity)
+{
+    uint packedVal = asuint(packedData);
+    
+    // Extract intensity from bits 0-23
+    uint intensityBits = packedVal & 0x00FFFFFF; // Mask to get lower 24 bits
+    float normalizedIntensity = float(intensityBits) / 16777215.0;
+    intensity = normalizedIntensity * 5.0; // Denormalize back to [0, 5]
+    
+    // Extract validity from bits 24-31
+    uint validityBits = (packedVal >> 24) & 0xFF; // Shift and mask to get upper 8 bits
+    validity = float(validityBits) / 255.0;
+}
 #endif // defined(PRT_SH_INCLUDED)

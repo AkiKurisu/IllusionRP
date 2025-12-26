@@ -20,7 +20,7 @@ float _coefficientVoxelGridSize;
 Texture3D<float3> _coefficientVoxel3D;
 Texture3D<float> _validityVoxel3D;
 
-real3 TrilinearInterpolation(in real3 value[8], in real validity[8], real3 rate)
+real3 TrilinearInterpolation(in real3 value[8], in real validity[8], in real intensity[8], real3 rate)
 {
     // Calculate interpolation weights for each corner
     real w[8];
@@ -33,14 +33,15 @@ real3 TrilinearInterpolation(in real3 value[8], in real validity[8], real3 rate)
     w[6] = rate.x * rate.y * (1.0 - rate.z);
     w[7] = rate.x * rate.y * rate.z;
     
-    // Combine interpolation weight with validity weight
+    // Combine interpolation weight with validity weight, then apply intensity
     real totalWeight = 0.0;
     real3 result = real3(0, 0, 0);
     
     for (int i = 0; i < 8; i++)
     {
         real combinedWeight = w[i] * validity[i];
-        result += value[i] * combinedWeight;
+        // Apply per-probe intensity to the radiance value
+        result += value[i] * intensity[i] * combinedWeight;
         totalWeight += combinedWeight;
     }
     
@@ -91,6 +92,7 @@ real3 EvaluateProbeVolumeSH(
     };
     
     real validity[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    real intensity[8] = { 1, 1, 1, 1, 1, 1, 1, 1 }; // Add intensity array
 
     // near 8 probes
     for (int i = 0; i < 8; i++)
@@ -103,6 +105,7 @@ real3 EvaluateProbeVolumeSH(
         {
             // Mark as invalid, will be skipped in weighted interpolation
             validity[i] = 0.0;
+            intensity[i] = 1.0;
             Lo[i] = bakedGI; // fallback value if all probes are invalid
             continue;
         }
@@ -123,15 +126,16 @@ real3 EvaluateProbeVolumeSH(
         DecodeSHCoefficientFromVoxel3D(c, coefficientVoxel3D, neighborProbeCoord);
         Lo[i] = IrradianceSH9(c, normal.xzy);
         
-        // Load validity weight for this probe
+        // Load and unpack validity + intensity
         int3 validityCoord = int3(neighborCoord.x, neighborCoord.z, neighborCoord.y);
-        validity[i] = validityVoxel3D.Load(int4(validityCoord, 0));
+        float packedData = validityVoxel3D.Load(int4(validityCoord, 0));
+        UnpackIntensityValidity(packedData, intensity[i], validity[i]);
     }
 
-    // trilinear interpolation
+    // trilinear interpolation with intensity
     float3 minCorner = GetProbePositionFromTexture3DCoord(probeCoord, voxelGridSize, boundingBoxVoxelCorner);
     real3 rate = saturate((worldPos - minCorner) / voxelGridSize);
-    real3 color = TrilinearInterpolation(Lo, validity, rate);
+    real3 color = TrilinearInterpolation(Lo, validity, intensity, rate);
     
     return color;
 }
