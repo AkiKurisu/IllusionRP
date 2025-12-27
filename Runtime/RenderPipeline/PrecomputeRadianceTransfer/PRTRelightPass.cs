@@ -249,7 +249,7 @@ namespace Illusion.Rendering.PRTGI
             if (_validityMaskBuffer == null || _validityMaskBuffer.count != probeCount)
             {
                 _validityMaskBuffer?.Release();
-                _validityMaskBuffer = new ComputeBuffer(probeCount, 8);
+                _validityMaskBuffer = new ComputeBuffer(probeCount, 4);
             }
             
             _validityMaskBuffer.SetData(validityMasks);
