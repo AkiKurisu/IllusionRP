@@ -5,6 +5,23 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-12-27
+
+This version is compatible with Unity 2022.3.62f1.
+
+### Added
+- Add Enable Relight Shadow.
+- Add PRT Per-Probe Invalidate.
+- Add PRT Per-Probe Intensity.
+
+### Changed
+- Remove HDFabric ASE transparency and transmission effect.
+- Disable SSGI when use Lightmap.
+
+### Fixed
+- Fix PRTProbeVolume relight may miss probe.
+- Fix PRTGI toggle not work in debugger.
+
 ## [1.1.0] - 2025-12-21
 
 This version is compatible with Unity 2022.3.62f1.
