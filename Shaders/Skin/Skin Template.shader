@@ -26,7 +26,6 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 		/*ase_subshader_options:Name=Additional Options
 			Option:Workflow:Specular,Metallic:Specular
 				Specular:ShowPort:Forward:Specular
-				Specular:HidePort:Forward:Metallic
 				Specular:SetDefine:Forward:pragma shader_feature_local_fragment _SPECULAR_SETUP
 				Specular:SetDefine:GBuffer:pragma shader_feature_local_fragment _SPECULAR_SETUP
 				Metallic:RemoveDefine:_SPECULAR_SETUP 1
@@ -676,10 +675,19 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				half Lobe2Smoothness;
 				DualLobeSmoothness(Smoothness, _Smoothness1, _Smoothness2, Lobe1Smoothness, Lobe2Smoothness);
 
+				half3 albedo =  PreModifySubsurfaceScatteringAlbedo(BaseColor, SubsurfaceAlbedo);
 				SurfaceData surfaceData;
-				surfaceData.albedo              = PreModifySubsurfaceScatteringAlbedo(BaseColor, SubsurfaceAlbedo);
+#ifdef _SPECULAR_SETUP
+				surfaceData.albedo              = albedo * (1.0 - saturate(Metallic));
+#else
+				surfaceData.albedo              = albedo;
+#endif
 				surfaceData.metallic            = saturate(Metallic);
+#ifdef _SPECULAR_SETUP
+				surfaceData.specular            = lerp(Specular, albedo, surfaceData.metallic);
+#else
 				surfaceData.specular            = Specular;
+#endif
 				surfaceData.smoothness          = saturate(Lobe1Smoothness),
 				surfaceData.occlusion           = Occlusion,
 				surfaceData.emission            = Emission,
@@ -706,7 +714,11 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				skinData.PerceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(skinData.Smoothness);
 				skinData.PerceptualRoughnessMix = lerp(PerceptualSmoothnessToPerceptualRoughness(surfaceData.smoothness), skinData.PerceptualRoughness, _LobeWeight);
 				skinData.Wet = Wet;
+#ifdef _SPECULAR_SETUP
+				skinData.F0 = lerp(_TransmissionTintsAndFresnel0[DiffusionIndex].a, albedo, Metallic);
+#else
 				skinData.F0 = _TransmissionTintsAndFresnel0[DiffusionIndex].a;
+#endif
 				skinData.DiffusionProfileIndex = DiffusionIndex;
 				skinData.GeomNormal = normalize(WorldNormal);
 				
@@ -1095,9 +1107,17 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				DualLobeSmoothness(Smoothness, _Smoothness1, _Smoothness2, Lobe1Smoothness, Lobe2Smoothness);
 				
 				SurfaceData surfaceData;
+#ifdef _SPECULAR_SETUP
+				surfaceData.albedo              = BaseColor * (1.0 - saturate(Metallic));
+#else
 				surfaceData.albedo              = BaseColor;
+#endif
 				surfaceData.metallic            = saturate(Metallic);
+#ifdef _SPECULAR_SETUP
+				surfaceData.specular            = lerp(Specular, BaseColor, surfaceData.metallic);
+#else
 				surfaceData.specular            = Specular;
+#endif
 				surfaceData.smoothness          = saturate(Lobe1Smoothness),
 				surfaceData.occlusion           = Occlusion,
 				surfaceData.emission            = Emission,
@@ -1129,7 +1149,11 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				skinData.PerceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(skinData.Smoothness);
 				skinData.PerceptualRoughnessMix = lerp(PerceptualSmoothnessToPerceptualRoughness(surfaceData.smoothness), skinData.PerceptualRoughness, _LobeWeight);
 				skinData.Wet = Wet;
+#ifdef _SPECULAR_SETUP
+				skinData.F0 = lerp(_TransmissionTintsAndFresnel0[DiffusionIndex].a, BaseColor, Metallic);
+#else
 				skinData.F0 = _TransmissionTintsAndFresnel0[DiffusionIndex].a;
+#endif
 				skinData.DiffusionProfileIndex = DiffusionIndex;
 
 				#if _SCREEN_SPACE_SSS
