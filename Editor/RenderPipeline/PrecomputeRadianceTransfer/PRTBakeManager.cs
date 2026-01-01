@@ -32,10 +32,10 @@ namespace Illusion.Rendering.Editor
                 totalStopwatch.Stop();
                 Debug.Log($"[PRTBaker] Bake completed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
             }
-            catch
+            catch (Exception exception)
             {
                 totalStopwatch.Stop();
-                Debug.LogError($"[PRTBaker] Bake failed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
+                Debug.LogError($"[PRTBaker] Bake failed, total time: {FormatElapsed(totalStopwatch.Elapsed)}, {exception}");
             }
         }
 
