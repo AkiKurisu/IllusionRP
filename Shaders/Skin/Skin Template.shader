@@ -678,13 +678,13 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				half3 albedo =  PreModifySubsurfaceScatteringAlbedo(BaseColor, SubsurfaceAlbedo);
 				SurfaceData surfaceData;
 #ifdef _SPECULAR_SETUP
-				surfaceData.albedo              = albedo * (1.0 - saturate(Metallic));
+				surfaceData.albedo              = ComputeDiffuseColor(albedo, saturate(Metallic));
 #else
 				surfaceData.albedo              = albedo;
 #endif
 				surfaceData.metallic            = saturate(Metallic);
 #ifdef _SPECULAR_SETUP
-				surfaceData.specular            = lerp(Specular, albedo, surfaceData.metallic);
+				surfaceData.specular            = lerp(Specular, albedo, saturate(Metallic));
 #else
 				surfaceData.specular            = Specular;
 #endif
@@ -1108,13 +1108,13 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				
 				SurfaceData surfaceData;
 #ifdef _SPECULAR_SETUP
-				surfaceData.albedo              = BaseColor * (1.0 - saturate(Metallic));
+				surfaceData.albedo              = ComputeDiffuseColor(albedo, saturate(Metallic));
 #else
 				surfaceData.albedo              = BaseColor;
 #endif
 				surfaceData.metallic            = saturate(Metallic);
 #ifdef _SPECULAR_SETUP
-				surfaceData.specular            = lerp(Specular, BaseColor, surfaceData.metallic);
+				surfaceData.specular            = lerp(Specular, BaseColor, saturate(Metallic));
 #else
 				surfaceData.specular            = Specular;
 #endif
