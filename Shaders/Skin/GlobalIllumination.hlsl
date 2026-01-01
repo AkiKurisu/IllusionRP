@@ -42,10 +42,14 @@ float CalculateSpecularOcclusion(float3 N, float Roughness, float AO, float3 V, 
     return SpecularOcclusion;
 }
 
-half3 SkinEnvironmentDiffuse(BRDFData brdfData, half3 bakedGI, half3 occlusion, InputData inputData, uint renderingLayers)
+half3 SkinEnvironmentDiffuse(BRDFData brdfData, half3 bakedGI, half3 occlusion, InputData inputData, uint renderingLayers, half F0)
 {
     half3 indirectDiffuse = EvaluateIndirectDiffuse(inputData.positionWS, inputData.normalWS, inputData.normalizedScreenSpaceUV, bakedGI);
-    half3 color = indirectDiffuse * brdfData.diffuse;
+    
+    float clampedNdotV = ClampNdotV(dot(inputData.normalWS, inputData.viewDirectionWS));
+    half3 fresnelTerm = 1.0 - F_Schlick(F0, clampedNdotV);
+    half3 color = indirectDiffuse * brdfData.albedo * fresnelTerm;
+    
     if (IsOnlyAOLightingFeatureEnabled())
     {
         color = half3(1,1,1);
@@ -84,7 +88,7 @@ half3 SkinEnvironmentSpecular(BRDFData brdfData, half3 occlusion, InputData inpu
 
 // Reference: HDRP Lit.PreLightData.GetPreLightData
 half3 SkinIBLDiffuse(BRDFData brdfData, half3 bakedGI, half3 occlusion,
-    InputData inputData, half perceptualRoughness, uint renderingLayers)
+    InputData inputData, half perceptualRoughness, uint renderingLayers, half F0)
 {
     float clampedNdotV = ClampNdotV(dot(inputData.normalWS, inputData.viewDirectionWS));
     
@@ -92,7 +96,10 @@ half3 SkinIBLDiffuse(BRDFData brdfData, half3 bakedGI, half3 occlusion,
     float3 diffuseFGD;
     float3 reflectivity;
     half3 indirectDiffuse = EvaluateIndirectDiffuse(inputData.positionWS, inputData.normalWS, inputData.normalizedScreenSpaceUV, bakedGI);
-    indirectDiffuse *= brdfData.diffuse;
+    
+    half3 fresnelTerm = 1.0 - F_Schlick(F0, clampedNdotV);
+    indirectDiffuse *= brdfData.albedo * fresnelTerm;
+    
     GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, perceptualRoughness, 0,
         specularFGD, diffuseFGD, reflectivity);
 

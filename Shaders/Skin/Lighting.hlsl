@@ -247,10 +247,10 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
     
 #if PRE_INTEGRATED_FGD && !USE_DIFFUSE_LAMBERT_BRDF
     lightingData.giColor = SkinIBLDiffuse(brdfData, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
-        inputDataLowFreq, skinData.PerceptualRoughnessMix, meshRenderingLayers);
+        inputDataLowFreq, skinData.PerceptualRoughnessMix, meshRenderingLayers, skinData.F0);
 #else
     lightingData.giColor = SkinEnvironmentDiffuse(brdfData, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
-        inputDataLowFreq, meshRenderingLayers);
+        inputDataLowFreq, meshRenderingLayers, skinData.F0);
 #endif
 
 #ifdef _LIGHT_LAYERS
