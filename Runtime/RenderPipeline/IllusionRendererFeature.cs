@@ -221,6 +221,8 @@ namespace Illusion.Rendering
 
         private VolumetricLightManager _volumetricLightManager;
 
+        private SetupPass _setupPass;
+
         private AdvancedTonemappingPass _advancedTonemappingPass;
 
         private ExposurePass _exposurePass;
@@ -323,6 +325,8 @@ namespace Illusion.Rendering
             _exposurePass = new ExposurePass(_rendererData);
             _processingPostPass = new PostProcessingPostPass(_rendererData);
 
+            _setupPass = new SetupPass(this, _rendererData);
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             _exposureDebugPass = new ExposureDebugPass(_rendererData);
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
@@ -392,6 +396,9 @@ namespace Illusion.Rendering
             bool useTransparentOverdrawPass = orderIndependentTransparency && oitTransparentOverdrawPass && !isPreviewCamera;
 
             bool isOffscreenDepth = UniversalRenderingUtility.IsOffscreenDepthTexture(in renderingData.cameraData);
+
+            // Setup pass must run first (handles configuration for both Unity 2022 and 2023)
+            renderer.EnqueuePass(_setupPass);
 
             // BeforeRendering
             renderer.EnqueuePass(_ggxAndDisneyDiffusePass);
@@ -538,6 +545,116 @@ namespace Illusion.Rendering
             renderer.EnqueuePass(_processingPostPass);
         }
 
+        public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
+        {
+            RenderingData renderingDataCopy = renderingData;
+            PerformSetup(renderingData.cameraData.renderer, 
+                ref renderingDataCopy, _rendererData);
+        }
+        
+        // Ref: MainLightShadowCasterPass.Setup
+        private static bool CanRenderMainLightShadow(ref RenderingData renderingData)
+        {
+            if (!renderingData.shadowData.mainLightShadowsEnabled)
+                return false;
+
+#if UNITY_EDITOR
+            if (CoreUtils.IsSceneLightingDisabled(renderingData.cameraData.camera))
+                return false;
+#endif
+
+            if (!renderingData.shadowData.supportsMainLightShadows)
+                return false;
+
+            int shadowLightIndex = renderingData.lightData.mainLightIndex;
+            if (shadowLightIndex == -1)
+                return false;
+
+            VisibleLight shadowLight = renderingData.lightData.visibleLights[shadowLightIndex];
+            Light light = shadowLight.light;
+            if (light.shadows == LightShadows.None)
+                return false;
+
+            if (!renderingData.cullResults.GetShadowCasterBounds(shadowLightIndex, out _))
+                return false;
+
+            return true;
+        }
+
+        private static bool CanRenderAdditionalLightShadow(in RenderingData renderingData)
+        {
+            return renderingData.shadowData.supportsAdditionalLightShadows;
+        }
+
+        private void PerformSetup(ScriptableRenderer renderer, ref RenderingData renderingData, IllusionRendererData rendererData)
+        {
+            UpdateRenderDataSettings();
+            rendererData.Update(renderer, in renderingData);
+            var config = IllusionRuntimeRenderingConfig.Get();
+            bool isPreviewOrReflectCamera =
+                renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
+
+            var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
+            rendererData.ContactShadowsSampling = contactShadows
+                                                  && !isPreviewOrReflectCamera
+                                                  && config.EnableContactShadows
+                                                  && contactShadowParam.enable.value;
+            rendererData.PCSSShadowSampling = pcssShadows
+                                              && !isPreviewOrReflectCamera
+                                              && config.EnablePercentageCloserSoftShadows;
+
+            var screenSpaceGlobalIlluminationParam =
+                VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
+            bool useScreenSpaceGlobalIllumination = screenSpaceGlobalIllumination
+                                                    && config.EnableScreenSpaceGlobalIllumination
+                                                    && !isPreviewOrReflectCamera
+                                                    && screenSpaceGlobalIlluminationParam.enable.value;
+            rendererData.SampleScreenSpaceIndirectDiffuse = useScreenSpaceGlobalIllumination;
+
+            var screenSpaceReflectionParam = VolumeManager.instance.stack.GetComponent<ScreenSpaceReflection>();
+            bool useScreenSpaceReflection = config.EnableScreenSpaceReflection
+                                            && screenSpaceReflection && !isPreviewOrReflectCamera
+                                            && screenSpaceReflectionParam.enable.value;
+            rendererData.SampleScreenSpaceReflection = useScreenSpaceReflection;
+            rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination;
+
+            // Re-order light shadow caster pass renderPassEvent better for async compute.
+            // Ref: https://developer.nvidia.com/blog/advanced-api-performance-async-compute-and-overlap/
+            bool enableAsyncCompute = rendererData.PreferComputeShader
+                                      && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
+
+            // Shadow Caster has bug in URP14.0.12 when there is no main/additional light in scene which will clear pre-z.
+            // So skip re-order when shadow is not rendered.
+            bool reorderMainLightShadowPass = enableAsyncCompute && CanRenderMainLightShadow(ref renderingData);
+            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(renderer);
+            if (mainLightShadowCasterPass != null)
+            {
+                mainLightShadowCasterPass.renderPassEvent = reorderMainLightShadowPass
+                    ? IllusionRenderPassEvent.LightsShadowCasterPass
+                    : RenderPassEvent.BeforeRenderingShadows;
+            }
+
+            bool reorderAdditionalLightShadowPass =
+                enableAsyncCompute && CanRenderAdditionalLightShadow(renderingData);
+            var additionalLightsShadowCasterPass =
+                UniversalRenderingUtility.GetAdditionalLightsShadowCasterPass(renderer);
+            if (additionalLightsShadowCasterPass != null)
+            {
+                additionalLightsShadowCasterPass.renderPassEvent = reorderAdditionalLightShadowPass
+                    ? IllusionRenderPassEvent.LightsShadowCasterPass
+                    : RenderPassEvent.BeforeRenderingShadows;
+            }
+
+            var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
+            _sceneShadowCasterManager.Cull(in renderingData,
+                PerObjectShadowCasterPass.MaxShadowCount,
+                shadow.perObjectShadowLengthOffset.value,
+                IllusionRuntimeRenderingConfig.Get().EnablePerObjectShadowDebug);
+            _perObjShadowPass.Setup(_sceneShadowCasterManager, shadow.perObjectShadowTileResolution.value,
+                shadow.perObjectShadowDepthBits.value);
+            _volumetricFogPass.Setup(_volumetricLightManager);
+        }
+
         private void UpdateRenderDataSettings()
         {
             var config = IllusionRuntimeRenderingConfig.Get();
@@ -549,99 +666,11 @@ namespace Illusion.Rendering
                                                 && config.EnableComputeShader;
             _rendererData.RequireHistoryColor = requireHistoryColor;
             _rendererData.NativeRenderPass = nativeRenderPass
+#if !UNITY_2023_1_OR_NEWER
                                              && SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2
+#endif
                                              && config.EnableNativeRenderPass;
             _rendererData.EnableIndirectDiffuseRenderingLayers = enableIndirectDiffuseRenderingLayers;
-        }
-
-        // Ref: MainLightShadowCasterPass.Setup
-        private static bool CanRenderMainLightShadow(in RenderingData renderingData)
-        {
-            if (!renderingData.shadowData.mainLightShadowsEnabled)
-                return false;
-            
-#if UNITY_EDITOR
-            if (CoreUtils.IsSceneLightingDisabled(renderingData.cameraData.camera))
-                return false;
-#endif
-
-            if (!renderingData.shadowData.supportsMainLightShadows)
-                return false;
-            
-            int shadowLightIndex = renderingData.lightData.mainLightIndex;
-            if (shadowLightIndex == -1)
-                return false;
-            
-            VisibleLight shadowLight = renderingData.lightData.visibleLights[shadowLightIndex];
-            Light light = shadowLight.light;
-            if (light.shadows == LightShadows.None)
-                return false;
-
-            if (!renderingData.cullResults.GetShadowCasterBounds(shadowLightIndex, out _))
-                return false;
-
-            return true;
-        }
-        
-        private static bool CanRenderAdditionalLightShadow(in RenderingData renderingData)
-        {
-            return renderingData.shadowData.supportsAdditionalLightShadows;
-        }
-        
-        public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
-        {
-            UpdateRenderDataSettings();
-            _rendererData.Update(renderer, in renderingData);
-            var config = IllusionRuntimeRenderingConfig.Get();
-            bool isPreviewOrReflectCamera = renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
-            var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
-            _rendererData.ContactShadowsSampling = contactShadows 
-                                                   && !isPreviewOrReflectCamera
-                                                   && config.EnableContactShadows
-                                                   && contactShadowParam.enable.value;
-            _rendererData.PCSSShadowSampling = pcssShadows
-                                               && !isPreviewOrReflectCamera
-                                               && config.EnablePercentageCloserSoftShadows;
-            var screenSpaceGlobalIlluminationParam = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
-            bool useScreenSpaceGlobalIllumination = screenSpaceGlobalIllumination 
-                                                    && config.EnableScreenSpaceGlobalIllumination
-                                                    && !isPreviewOrReflectCamera
-                                                    && screenSpaceGlobalIlluminationParam.enable.value;
-            _rendererData.SampleScreenSpaceIndirectDiffuse = useScreenSpaceGlobalIllumination;
-            var screenSpaceReflectionParam = VolumeManager.instance.stack.GetComponent<ScreenSpaceReflection>();
-            bool useScreenSpaceReflection = config.EnableScreenSpaceReflection
-                                            && screenSpaceReflection && !isPreviewOrReflectCamera
-                                            && screenSpaceReflectionParam.enable.value;
-            _rendererData.SampleScreenSpaceReflection = useScreenSpaceReflection;
-            _rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination;
-            
-            // Re-order light shadow caster pass renderPassEvent better for async compute.
-            // Ref: https://developer.nvidia.com/blog/advanced-api-performance-async-compute-and-overlap/
-            bool enableAsyncCompute = _rendererData.PreferComputeShader 
-                                      && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
-            
-            // Shadow Caster has bug in URP14.0.12 when there is no main/additional light in scene which will clear pre-z.
-            // So skip re-order when shadow is not rendered.
-            bool reorderMainLightShadowPass = enableAsyncCompute && CanRenderMainLightShadow(renderingData);
-            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(renderer);
-            if (mainLightShadowCasterPass != null)
-            {
-                mainLightShadowCasterPass.renderPassEvent = reorderMainLightShadowPass ? IllusionRenderPassEvent.LightsShadowCasterPass : RenderPassEvent.BeforeRenderingShadows;
-            }
-            bool reorderAdditionalLightShadowPass = enableAsyncCompute && CanRenderAdditionalLightShadow(renderingData);
-            var additionalLightsShadowCasterPass = UniversalRenderingUtility.GetAdditionalLightsShadowCasterPass(renderer);
-            if (additionalLightsShadowCasterPass != null)
-            {
-                additionalLightsShadowCasterPass.renderPassEvent = reorderAdditionalLightShadowPass ? IllusionRenderPassEvent.LightsShadowCasterPass : RenderPassEvent.BeforeRenderingShadows;
-            }
-            
-            var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
-            _sceneShadowCasterManager.Cull(in renderingData,
-                PerObjectShadowCasterPass.MaxShadowCount,
-                shadow.perObjectShadowLengthOffset.value,
-                IllusionRuntimeRenderingConfig.Get().EnablePerObjectShadowDebug);
-            _perObjShadowPass.Setup(_sceneShadowCasterManager, shadow.perObjectShadowTileResolution.value, shadow.perObjectShadowDepthBits.value);
-            _volumetricFogPass.Setup(_volumetricLightManager);
         }
 
         private static void SafeDispose<TDisposable>(ref TDisposable disposable) where TDisposable : class, IDisposable
@@ -675,6 +704,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _colorPyramidPass);
             SafeDispose(ref _exposurePass);
             SafeDispose(ref _prtRelightPass);
+            SafeDispose(ref _setupPass);
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             SafeDispose(ref _motionVectorsDebugPass);

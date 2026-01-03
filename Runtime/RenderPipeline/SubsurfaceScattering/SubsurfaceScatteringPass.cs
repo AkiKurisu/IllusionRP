@@ -224,7 +224,7 @@ namespace Illusion.Rendering
             
             if (_nativeRenderPass)
             {
-                using (new ProfilingScope(null, profilingSampler))
+                using (new ProfilingScope((CommandBuffer)null, profilingSampler))
                 {
                     DoNativeRenderPass(context, ref renderingData);
                 }

@@ -3,6 +3,9 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -41,6 +44,60 @@ namespace Illusion.Rendering
                 name: $"{viewName}_CameraColorBufferMipChain{frameIndex}");
         }
 
+#if UNITY_2023_1_OR_NEWER
+        private class ColorPyramidPassData
+        {
+            internal TextureHandle InputColorTexture;
+            internal TextureHandle OutputColorPyramid;
+            internal MipGenerator MipGenerator;
+            internal Camera Camera;
+            internal IllusionRendererData RendererData;
+            internal bool RequireHistoryDepthNormal;
+            internal RenderingData RenderingData;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            TextureHandle cameraColor = renderer.activeColorTexture;
+
+            // Ensure history buffer is allocated
+            if (_rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain) == null)
+            {
+                _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain,
+                    HistoryBufferAllocatorFunction, 1);
+            }
+
+            var colorPyramidRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
+            TextureHandle colorPyramidHandle = renderGraph.ImportTexture(colorPyramidRT);
+
+            // TODO: Convert to ComputePassData
+            // Generate color pyramid
+            using (var builder = renderGraph.AddRenderPass<ColorPyramidPassData>("Color Pyramid", out var passData, profilingSampler))
+            {
+                passData.InputColorTexture = builder.ReadTexture(cameraColor);
+                passData.OutputColorPyramid = builder.WriteTexture(colorPyramidHandle);
+                passData.MipGenerator = _rendererData.MipGenerator;
+                passData.Camera = renderingData.cameraData.camera;
+                passData.RendererData = _rendererData;
+                passData.RequireHistoryDepthNormal = _rendererData.RequireHistoryDepthNormal;
+                passData.RenderingData = renderingData;
+
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc((ColorPyramidPassData data, RenderGraphContext context) =>
+                {
+                    Vector2Int pyramidSize = new Vector2Int(data.Camera.pixelWidth, data.Camera.pixelHeight);
+                    data.RendererData.ColorPyramidHistoryMipCount = data.MipGenerator.RenderColorGaussianPyramid(context.cmd, 
+                        pyramidSize, data.InputColorTexture, passData.OutputColorPyramid);
+                });
+            }
+
+            // Set global texture for shaders
+            RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties._ColorPyramidTexture, colorPyramidHandle);
+        }
+#endif
+        
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             var camera = renderingData.cameraData.camera;

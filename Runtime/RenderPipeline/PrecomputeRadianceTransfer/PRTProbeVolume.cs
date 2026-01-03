@@ -1064,14 +1064,6 @@ namespace Illusion.Rendering.PRTGI
         }
 
         /// <summary>
-        /// Update validity for all probes based on current adjustment volumes
-        /// </summary>
-        public void RefreshProbeValidity()
-        {
-            UpdateProbeValidityFromVolumes();
-        }
-
-        /// <summary>
         /// Get the full validity masks buffer
         /// </summary>
         public float[] GetValidityMasks()

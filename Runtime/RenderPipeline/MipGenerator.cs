@@ -1,6 +1,11 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using System;
+using Unity.Collections.LowLevel.Unsafe;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering;
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -187,6 +192,12 @@ namespace Illusion.Rendering
         private readonly int _colorGaussianKernel;
 
         private readonly MaterialPropertyBlock _propertyBlock;
+
+        private LocalKeyword _enableCheckBoard;
+        
+        private readonly ComputeBuffer _depthPyramidConstantBuffer;
+
+        private readonly DepthPyramidConstants[] _constantsArray;
         
         public MipGenerator(IllusionRendererData rendererData)
         {
@@ -199,6 +210,10 @@ namespace Illusion.Rendering
             _colorDownsampleKernel = _colorPyramidCS.FindKernel("KColorDownsample");
             _colorGaussianKernel = _colorPyramidCS.FindKernel("KColorGaussian");
             _propertyBlock = new MaterialPropertyBlock();
+            _enableCheckBoard = new LocalKeyword(_depthPyramidCs, "ENABLE_CHECKERBOARD");
+            _depthPyramidConstantBuffer = new ComputeBuffer(1, UnsafeUtility.SizeOf<DepthPyramidConstants>(),
+                ComputeBufferType.Constant);
+            _constantsArray = new DepthPyramidConstants[1];
         }
 
         public void Release()
@@ -282,6 +297,71 @@ namespace Illusion.Rendering
                 dstIndex0 += minCount;
             }
         }
+        
+#if UNITY_2023_1_OR_NEWER
+         // Generates an in-place depth pyramid
+        // TODO: Mip-mapping depth is problematic for precision at lower mips, generate a packed atlas instead
+        public void RenderMinDepthPyramid(ComputeCommandBuffer cmd, TextureHandle texture, PackedMipChainInfo info)
+        {
+            var cs = _depthPyramidCs;
+            int kernel = _depthDownsampleKernel;
+
+            cmd.SetComputeTextureParam(cs, kernel, IllusionShaderProperties._DepthMipChain, texture);
+
+            // Note: Gather() doesn't take a LOD parameter and we cannot bind an SRV of a MIP level,
+            // and we don't support Min samplers either. So we are forced to perform 4x loads.
+            for (int dstIndex0 = 1; dstIndex0 < info.mipLevelCount;)
+            {
+                int minCount = Mathf.Min(info.mipLevelCount - dstIndex0, 4);
+                int cbCount = 0;
+                if (dstIndex0 < info.mipLevelCountCheckerboard)
+                {
+                    cbCount = info.mipLevelCountCheckerboard - dstIndex0;
+                    Debug.Assert(dstIndex0 == 1, "expected to make checkerboard mips on the first pass");
+                    Debug.Assert(cbCount <= minCount, "expected fewer checkerboard mips than min mips");
+                    Debug.Assert(cbCount <= 2, "expected 2 or fewer checkerboard mips for now");
+                }
+
+                Vector2Int srcOffset = info.mipLevelOffsets[dstIndex0 - 1];
+                Vector2Int srcSize = info.mipLevelSizes[dstIndex0 - 1];
+                int dstIndex1 = Mathf.Min(dstIndex0 + 1, info.mipLevelCount - 1);
+                int dstIndex2 = Mathf.Min(dstIndex0 + 2, info.mipLevelCount - 1);
+                int dstIndex3 = Mathf.Min(dstIndex0 + 3, info.mipLevelCount - 1);
+
+                DepthPyramidConstants cb = new DepthPyramidConstants
+                {
+                    _MinDstCount = (uint)minCount,
+                    _CbDstCount = (uint)cbCount,
+                    _SrcOffset = srcOffset,
+                    _SrcLimit = srcSize - Vector2Int.one,
+                    _DstSize0 = info.mipLevelSizes[dstIndex0],
+                    _DstSize1 = info.mipLevelSizes[dstIndex1],
+                    _DstSize2 = info.mipLevelSizes[dstIndex2],
+                    _DstSize3 = info.mipLevelSizes[dstIndex3],
+                    _MinDstOffset0 = info.mipLevelOffsets[dstIndex0],
+                    _MinDstOffset1 = info.mipLevelOffsets[dstIndex1],
+                    _MinDstOffset2 = info.mipLevelOffsets[dstIndex2],
+                    _MinDstOffset3 = info.mipLevelOffsets[dstIndex3],
+                    _CbDstOffset0 = info.mipLevelOffsetsCheckerboard[dstIndex0],
+                    _CbDstOffset1 = info.mipLevelOffsetsCheckerboard[dstIndex1],
+                };
+                
+                _constantsArray[0] = cb;
+                _depthPyramidConstantBuffer.SetData(_constantsArray);
+                cmd.SetBufferData(_depthPyramidConstantBuffer, _constantsArray);
+                cmd.SetComputeConstantBufferParam(cs, IllusionShaderProperties.DepthPyramidConstants, _depthPyramidConstantBuffer, 0, _depthPyramidConstantBuffer.stride);
+                cmd.SetKeyword(cs, ref _enableCheckBoard, cbCount != 0);
+
+                Vector2Int dstSize = info.mipLevelSizes[dstIndex0];
+                int depth = ((RenderTexture)texture).volumeDepth;
+                cmd.DispatchCompute(cs, kernel, IllusionRenderingUtils.DivRoundUp(dstSize.x, 8),
+                    IllusionRenderingUtils.DivRoundUp(dstSize.y, 8), depth);
+
+                dstIndex0 += minCount;
+            }
+        }
+#endif
+        
         // Generates the gaussian pyramid of source into destination
         // We can't do it in place as the color pyramid has to be read while writing to the color
         // buffer in some cases (e.g. refraction, distortion)

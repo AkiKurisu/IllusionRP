@@ -92,9 +92,8 @@ half3 SkinIBLDiffuse(BRDFData brdfData, half3 bakedGI, half3 occlusion,
     float3 diffuseFGD;
     float3 reflectivity;
     half3 indirectDiffuse = EvaluateIndirectDiffuse(inputData.positionWS, inputData.normalWS, inputData.normalizedScreenSpaceUV, bakedGI);
-    indirectDiffuse *= brdfData.diffuse;
-    GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, perceptualRoughness, 0,
-        specularFGD, diffuseFGD, reflectivity);
+    indirectDiffuse *= brdfData.albedo;
+    GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, perceptualRoughness, 0, specularFGD, diffuseFGD, reflectivity);
 
     // Fallback to SkinEnvironmentDiffuse actually
 #if USE_DIFFUSE_LAMBERT_BRDF

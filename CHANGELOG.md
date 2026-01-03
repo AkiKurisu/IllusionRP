@@ -5,6 +5,44 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-1-3
+
+This version is compatible with Unity 2022.3.62f1.
+
+### Added
+
+- Allow use metallic port in Skin Template.
+
+### Compatibility
+
+Following features are now compatible with Unity 2023.2.22f1.
+
+- `DepthPyramidPass` 
+- `WeightedBlendedOITPass` 
+- `TransparentOverdrawPass` 
+- `CopyHistoryColorPass` 
+- `ForwardGBufferPass` 
+- `TransparentCopyPreDepthPass` 
+- `TransparentCopyPostDepthPass` 
+- `TransparentDepthNormalPostPass` 
+- `TransparentDepthOnlyPostPass` 
+- `PreIntegratedFGDPass`
+
+### Changed
+
+- Remove unused lighting functions.
+- Refactor renderer setup into dedicated SetupPass.
+- Refactor DepthPyramidPass to use strongly-typed pass data and ComputePass APIs for Unity 2023.1 or newer. 
+- Update shader and C# code to conditionally include RTHandleScale and related clamping functions based on Unity version. 
+- Change LitOITPassFragment to return an OITFragmentOutput struct instead of using out parameters. 
+- Refactor OIT pass for RenderGraph and data structure.
+- Refactor depth and normal texture handling in transparency passes.
+- Refactor PreIntegratedFGD to use RTHandle and RenderGraph.
+
+### Fixed
+
+- Fix prt bake validity execption.
+
 ## [1.1.1] - 2025-12-27
 
 This version is compatible with Unity 2022.3.62f1.

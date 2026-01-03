@@ -256,7 +256,9 @@ namespace Illusion.Rendering
             public Matrix4x4 InvViewProjMatrix;
             public Matrix4x4 PrevInvViewProjMatrix;
 
+#if !UNITY_2023_1_OR_NEWER
             public Vector4 RTHandleScale;
+#endif
             public Vector4 RTHandleScaleHistory;
 
             // TAA Frame Index ranges from 0 to 7.
@@ -361,7 +363,9 @@ namespace Illusion.Rendering
             // No RTHandleScale in IllusionRP
             // _shaderVariablesGlobal.RTHandleScale = RTHandles.rtHandleProperties.rtHandleScale;
             // _shaderVariablesGlobal.RTHandleScaleHistory = _historyRTSystem.rtHandleProperties.rtHandleScale;
+#if !UNITY_2023_1_OR_NEWER
             _shaderVariablesGlobal.RTHandleScale = Vector4.one;
+#endif
             _shaderVariablesGlobal.RTHandleScaleHistory = Vector4.one;
 
             const int kMaxSampleCount = 8;
