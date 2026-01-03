@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
 using UnityEngine.Rendering;
 
 namespace Illusion.Rendering
@@ -22,7 +23,7 @@ namespace Illusion.Rendering
 
         private readonly Material[] _preIntegratedFGDMaterial = new Material[(int)FGDIndex.Count];
 
-        private readonly RenderTexture[] _preIntegratedFgd = new RenderTexture[(int)FGDIndex.Count];
+        private readonly RTHandle[] _preIntegratedFgd = new RTHandle[(int)FGDIndex.Count];
 
         private readonly IllusionRenderPipelineResources _renderPipelineResources;
 
@@ -36,7 +37,7 @@ namespace Illusion.Rendering
             }
         }
 
-        public void Build(FGDIndex index)
+        public RTHandle Build(FGDIndex index)
         {
             Debug.Assert(index != FGDIndex.Count);
             Debug.Assert(_refCounting[(int)index] >= 0);
@@ -49,26 +50,30 @@ namespace Illusion.Rendering
                 {
                     case FGDIndex.FGD_GGXAndDisneyDiffuse:
                         _preIntegratedFGDMaterial[(int)index] = CoreUtils.CreateEngineMaterial(_renderPipelineResources.preIntegratedFGD_GGXDisneyDiffuseShader);
-                        _preIntegratedFgd[(int)index] = new RenderTexture(res, res, 0, GraphicsFormat.A2B10G10R10_UNormPack32)
-                        {
-                            hideFlags = HideFlags.HideAndDontSave,
-                            filterMode = FilterMode.Bilinear,
-                            wrapMode = TextureWrapMode.Clamp,
-                            name = CoreUtils.GetRenderTargetAutoName(res, res, 1, GraphicsFormat.A2B10G10R10_UNormPack32, "PreIntegratedFGD_GGXDisneyDiffuse")
-                        };
-                        _preIntegratedFgd[(int)index].Create();
+                        _preIntegratedFgd[(int)index] = RTHandles.Alloc(
+                            res,
+                            res,
+                            slices: 1,
+                            dimension: TextureDimension.Tex2D,
+                            colorFormat: GraphicsFormat.A2B10G10R10_UNormPack32,
+                            filterMode: FilterMode.Bilinear,
+                            wrapMode: TextureWrapMode.Clamp,
+                            name: "PreIntegratedFGD_GGXDisneyDiffuse"
+                        );
                         break;
 
                     case FGDIndex.FGD_CharlieAndFabricLambert:
                         _preIntegratedFGDMaterial[(int)index] = CoreUtils.CreateEngineMaterial(_renderPipelineResources.preIntegratedFGD_CharlieFabricLambertShader);
-                        _preIntegratedFgd[(int)index] = new RenderTexture(res, res, 0, GraphicsFormat.A2B10G10R10_UNormPack32)
-                        {
-                            hideFlags = HideFlags.HideAndDontSave,
-                            filterMode = FilterMode.Bilinear,
-                            wrapMode = TextureWrapMode.Clamp,
-                            name = CoreUtils.GetRenderTargetAutoName(res, res, 1, GraphicsFormat.A2B10G10R10_UNormPack32, "PreIntegratedFGD_CharlieFabricLambert")
-                        };
-                        _preIntegratedFgd[(int)index].Create();
+                        _preIntegratedFgd[(int)index] = RTHandles.Alloc(
+                            res,
+                            res,
+                            slices: 1,
+                            dimension: TextureDimension.Tex2D,
+                            colorFormat: GraphicsFormat.A2B10G10R10_UNormPack32,
+                            filterMode: FilterMode.Bilinear,
+                            wrapMode: TextureWrapMode.Clamp,
+                            name: "PreIntegratedFGD_CharlieFabricLambert"
+                        );
                         break;
                 }
 
@@ -76,40 +81,13 @@ namespace Illusion.Rendering
             }
 
             _refCounting[(int)index]++;
+            return _preIntegratedFgd[(int)index];
         }
 
         public void RenderInit(CommandBuffer cmd, FGDIndex index)
         {
-            // Here we have to test IsCreated because in some circumstances (like loading RenderDoc), the texture is internally destroyed but we don't know from C# side.
-            // In this case IsCreated will return false, allowing us to re-render the texture (setting the texture as current RT during DrawFullScreen will automatically re-create it internally)
-            if (_isInit[(int)index] && _preIntegratedFgd[(int)index].IsCreated())
-                return;
-
-            // If we are in wireframe mode, the drawfullscreen will not work as expected, but we don't need the LUT anyway
-            // So create the texture to avoid errors, it will be initialized by the first render without wireframe
-            if (GL.wireframe)
-            {
-                _preIntegratedFgd[(int)index].Create();
-                return;
-            }
-
-            CoreUtils.DrawFullScreen(cmd, _preIntegratedFGDMaterial[(int)index], new RenderTargetIdentifier(_preIntegratedFgd[(int)index]));
+            CoreUtils.DrawFullScreen(cmd, _preIntegratedFGDMaterial[(int)index], _preIntegratedFgd[(int)index]);
             _isInit[(int)index] = true;
-        }
-
-        public void Cleanup(FGDIndex index)
-        {
-            _refCounting[(int)index]--;
-
-            if (_refCounting[(int)index] == 0)
-            {
-                CoreUtils.Destroy(_preIntegratedFGDMaterial[(int)index]);
-                CoreUtils.Destroy(_preIntegratedFgd[(int)index]);
-
-                _isInit[(int)index] = false;
-            }
-
-            Debug.Assert(_refCounting[(int)index] >= 0);
         }
 
         public void Bind(CommandBuffer cmd, FGDIndex index)
@@ -127,6 +105,52 @@ namespace Illusion.Rendering
                 default:
                     break;
             }
+        }
+        
+#if UNITY_2023_1_OR_NEWER
+        public bool IsInit(FGDIndex index)
+        {
+            return _isInit[(int)index];
+        }
+        
+        public void RenderInit(LowLevelCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
+        {
+            cmd.SetRenderTarget(textureHandle, 0, CubemapFace.Unknown, -1);
+            cmd.DrawProcedural(Matrix4x4.identity, _preIntegratedFGDMaterial[(int)index], 0, MeshTopology.Triangles, 3, 1, null);
+            _isInit[(int)index] = true;
+        }
+        
+        public void Bind(LowLevelCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
+        {
+            switch (index)
+            {
+                case FGDIndex.FGD_GGXAndDisneyDiffuse:
+                    cmd.SetGlobalTexture(IllusionShaderProperties._PreIntegratedFGD_GGXDisneyDiffuse, textureHandle);
+                    break;
+
+                case FGDIndex.FGD_CharlieAndFabricLambert:
+                    cmd.SetGlobalTexture(IllusionShaderProperties._PreIntegratedFGD_CharlieAndFabric, textureHandle);
+                    break;
+                case FGDIndex.Count:
+                default:
+                    break;
+            }
+        }
+#endif
+
+        public void Cleanup(FGDIndex index)
+        {
+            _refCounting[(int)index]--;
+
+            if (_refCounting[(int)index] == 0)
+            {
+                CoreUtils.Destroy(_preIntegratedFGDMaterial[(int)index]);
+                CoreUtils.Destroy(_preIntegratedFgd[(int)index]);
+
+                _isInit[(int)index] = false;
+            }
+
+            Debug.Assert(_refCounting[(int)index] >= 0);
         }
     }
 }
