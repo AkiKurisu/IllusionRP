@@ -45,15 +45,15 @@ namespace Illusion.Rendering
         }
 
 #if UNITY_2023_1_OR_NEWER
-        private class PassData
+        private class ColorPyramidPassData
         {
-            internal TextureHandle inputColorTexture;
-            internal TextureHandle outputColorPyramid;
-            internal MipGenerator mipGenerator;
-            internal Camera camera;
-            internal IllusionRendererData rendererData;
-            internal bool requireHistoryDepthNormal;
-            internal RenderingData renderingData;
+            internal TextureHandle InputColorTexture;
+            internal TextureHandle OutputColorPyramid;
+            internal MipGenerator MipGenerator;
+            internal Camera Camera;
+            internal IllusionRendererData RendererData;
+            internal bool RequireHistoryDepthNormal;
+            internal RenderingData RenderingData;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
@@ -71,42 +71,30 @@ namespace Illusion.Rendering
             var colorPyramidRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
             TextureHandle colorPyramidHandle = renderGraph.ImportTexture(colorPyramidRT);
 
+            // TODO: Convert to ComputePassData
             // Generate color pyramid
-            using (var builder = renderGraph.AddRenderPass<PassData>("Color Pyramid", out var passData, profilingSampler))
+            using (var builder = renderGraph.AddRenderPass<ColorPyramidPassData>("Color Pyramid", out var passData, profilingSampler))
             {
-                passData.inputColorTexture = builder.ReadTexture(cameraColor);
-                passData.outputColorPyramid = builder.WriteTexture(colorPyramidHandle);
-                passData.mipGenerator = _rendererData.MipGenerator;
-                passData.camera = renderingData.cameraData.camera;
-                passData.rendererData = _rendererData;
-                passData.requireHistoryDepthNormal = _rendererData.RequireHistoryDepthNormal;
-                passData.renderingData = renderingData;
+                passData.InputColorTexture = builder.ReadTexture(cameraColor);
+                passData.OutputColorPyramid = builder.WriteTexture(colorPyramidHandle);
+                passData.MipGenerator = _rendererData.MipGenerator;
+                passData.Camera = renderingData.cameraData.camera;
+                passData.RendererData = _rendererData;
+                passData.RequireHistoryDepthNormal = _rendererData.RequireHistoryDepthNormal;
+                passData.RenderingData = renderingData;
 
                 builder.AllowPassCulling(false);
 
-                builder.SetRenderFunc((PassData data, RenderGraphContext context) =>
+                builder.SetRenderFunc((ColorPyramidPassData data, RenderGraphContext context) =>
                 {
-                    ExecutePass(context.cmd, data);
+                    Vector2Int pyramidSize = new Vector2Int(data.Camera.pixelWidth, data.Camera.pixelHeight);
+                    data.RendererData.ColorPyramidHistoryMipCount = data.MipGenerator.RenderColorGaussianPyramid(context.cmd, 
+                        pyramidSize, data.InputColorTexture, passData.OutputColorPyramid);
                 });
             }
 
             // Set global texture for shaders
             RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties._ColorPyramidTexture, colorPyramidHandle);
-        }
-
-        private static void ExecutePass(CommandBuffer cmd, PassData data)
-        {
-            // Generate color pyramid
-            var colorPyramidRT = data.rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
-            Vector2Int pyramidSize = new Vector2Int(data.camera.pixelWidth, data.camera.pixelHeight);
-            data.rendererData.ColorPyramidHistoryMipCount =
-                data.mipGenerator.RenderColorGaussianPyramid(cmd, pyramidSize, data.inputColorTexture, colorPyramidRT.rt);
-
-            // Copy History if needed
-            if (data.requireHistoryDepthNormal)
-            {
-                data.rendererData.CopyHistoryGraphicsBuffers(cmd, ref data.renderingData);
-            }
         }
 #endif
         

@@ -244,11 +244,14 @@ void LitPassFragment(
 #endif
 }
 
+struct OITFragmentOutput
+{
+    half4 Accumulate    : SV_Target0;
+    half4 Revealage     : SV_Target1;
+};
+
 // Used in OIT shader
-void LitOITPassFragment(
-    Varyings input
-    , out float4 ouputColor : SV_Target0, out float4 ouputAlpha : SV_Target1
-)
+OITFragmentOutput LitOITPassFragment(Varyings input)
 {
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -286,8 +289,11 @@ void LitOITPassFragment(
     float z = abs(TransformWorldToView(input.positionWS).z);
     half a = color.a;
     color = float4(color.rgb, 1) * OITWeight(color.rgb, color.a, z);
-    ouputColor = color;
-    ouputAlpha = a;
+    
+    OITFragmentOutput output = (OITFragmentOutput)0;
+    output.Accumulate = color;
+    output.Revealage = a.xxxx;
+    return output;
     // ===================== OIT ====================== //
 }
 

@@ -26,6 +26,7 @@ namespace Illusion.Rendering
             renderPassEvent = IllusionRenderPassEvent.TransparentDepthOnlyPostPass;
             _filteringSettings = new FilteringSettings(RenderQueueRange.all);
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
+            profilingSampler = new ProfilingSampler("Transparent Post Depth");
         }
 
 #if !UNITY_2023_1_OR_NEWER
@@ -79,16 +80,22 @@ namespace Illusion.Rendering
             if (renderingData.cameraData.cameraType == CameraType.Preview)
                 return;
 #endif
-
+            
             UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderer);
+            TextureHandle depthTexture = renderer.activeDepthTexture;
+            
+            // If texture is not available in frameResources, fall back to activeDepthTexture
+            if (!depthTexture.IsValid())
+            {
+                depthTexture = renderer.activeDepthTexture;
+            }
+            
             if (!depthTexture.IsValid()) return;
 
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))
             {
                 // Setup depth texture
-                TextureHandle depthHandle = renderGraph.ImportTexture(depthTexture);
-                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle);
+                passData.DepthTexture = builder.UseTextureFragmentDepth(depthTexture);
 
                 // Setup renderer list
                 var drawSettings = RenderingUtils.CreateDrawingSettings(PostDepthNormalsTagId,
