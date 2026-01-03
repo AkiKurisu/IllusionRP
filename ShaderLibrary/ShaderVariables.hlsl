@@ -9,7 +9,9 @@ GLOBAL_CBUFFER_START(ShaderVariablesGlobal, b1)
     float4x4 _GlobalViewProjMatrix;
     float4x4 _GlobalInvViewProjMatrix;
     float4x4 _GlobalPrevInvViewProjMatrix;
+#if UNITY_VERSION < 202310
     float4 _RTHandleScale;
+#endif
     float4 _RTHandleScaleHistory;
     float4 _TaaFrameInfo;
     float4 _ColorPyramidUvScaleAndLimitPrevFrame;
@@ -31,6 +33,7 @@ TEXTURE2D(_PrevExposureTexture);
 
 #define SHADEROPTIONS_PRE_EXPOSITION (1)
 
+#if UNITY_VERSION < 202310
 // Functions to clamp UVs to use when RTHandle system is used.
 float2 ClampAndScaleUV(float2 UV, float2 texelSize, float numberOfTexels, float2 scale)
 {
@@ -59,6 +62,7 @@ float2 ClampAndScaleUVForPoint(float2 UV)
 {
     return min(UV, 1.0f) * _RTHandleScale.xy;
 }
+#endif
 
 float GetCurrentExposureMultiplier()
 {

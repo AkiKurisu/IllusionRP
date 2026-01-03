@@ -1,6 +1,8 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/PostProcessing/HistogramExposureCommon.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
-
+#if UNITY_VERSION >= 202310
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/DynamicScalingClamping.hlsl"
+#endif
 
 // TODO List to investigate
 //      - Worth considering multiple histograms per lane in the thread. (i.e. sharedHisto[BINS][NUMB_HIST] )
