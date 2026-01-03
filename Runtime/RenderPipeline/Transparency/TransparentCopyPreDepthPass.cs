@@ -5,13 +5,22 @@ using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.Universal.Internal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
     /// <summary>
     /// Copy current depth before writing transparent post depth, should be used with <see cref="TransparentDepthNormalPostPass"/>.
     /// </summary>
-    public class TransparentCopyPreDepthPass : CopyDepthPass, IDisposable
+    public class TransparentCopyPreDepthPass : 
+#if !UNITY_2023_1_OR_NEWER
+        CopyDepthPass,
+#else
+        ScriptableRenderPass,
+#endif
+        IDisposable
     {
         private readonly Material _copyDepthMaterial;
 
@@ -27,13 +36,26 @@ namespace Illusion.Rendering
         const int k_DepthBufferBits = 32;
 #endif
 
+#if UNITY_2023_1_OR_NEWER
+        private readonly bool _copyResolvedDepth;
+        private CopyDepthPass _copyDepthPass;
+#endif
+
         private TransparentCopyPreDepthPass(IllusionRendererData rendererData, Material copyDepthMaterial, bool copyResolvedDepth = false)
+#if !UNITY_2023_1_OR_NEWER
             : base(IllusionRenderPassEvent.TransparentCopyPreDepthPass, 
                 copyDepthMaterial, true, false, copyResolvedDepth)
+#endif
         {
             _rendererData = rendererData;
             _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPreDepth");
+#if UNITY_2023_1_OR_NEWER
+            renderPassEvent = IllusionRenderPassEvent.TransparentCopyPreDepthPass;
+            _copyResolvedDepth = copyResolvedDepth;
+            _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, true, false, copyResolvedDepth);
+            _copyDepthPass.profilingSampler = profilingSampler;
+#endif
         }
 
         public static TransparentCopyPreDepthPass Create(IllusionRendererData rendererData)
@@ -43,6 +65,7 @@ namespace Illusion.Rendering
             return new TransparentCopyPreDepthPass(rendererData, copyDepthMaterial, RenderingUtils.MultisampleDepthResolveSupported());
         }
 
+#if !UNITY_2023_1_OR_NEWER
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             ConfigureInput(ScriptableRenderPassInput.Depth);
@@ -72,6 +95,36 @@ namespace Illusion.Rendering
                 base.Execute(context, ref renderingData);
             }
         }
+#endif
+
+#if UNITY_2023_1_OR_NEWER
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderer);
+            if (!depthTexture.IsValid()) return;
+
+            // Allocate pre-depth texture
+            var depthDescriptor = renderingData.cameraData.cameraTargetDescriptor;
+            depthDescriptor.graphicsFormat = GraphicsFormat.None;
+            depthDescriptor.depthStencilFormat = k_DepthStencilFormat;
+            depthDescriptor.depthBufferBits = k_DepthBufferBits;
+            depthDescriptor.msaaSamples = 1; // Depth-Only pass don't use MSAA
+
+            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.CameraPreDepthTextureRT, depthDescriptor, 
+                wrapMode: TextureWrapMode.Clamp, name: "_CameraPreDepthTexture");
+
+            TextureHandle source = renderGraph.ImportTexture(depthTexture);
+            TextureHandle destination = renderGraph.ImportTexture(_rendererData.CameraPreDepthTextureRT);
+
+            // Use the CopyDepthPass's Render method for RenderGraph
+            _copyDepthPass.CopyToDepth = false;
+            _copyDepthPass.Render(renderGraph, destination, source, ref renderingData, bindAsCameraDepth: false, passName: "Copy Pre Depth");
+
+            // Set global texture
+            RenderGraphUtils.SetGlobalTexture(renderGraph, "_CameraPreDepthTexture", destination);
+        }
+#endif
 
         public void Dispose()
         {

@@ -2,6 +2,9 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -25,6 +28,7 @@ namespace Illusion.Rendering
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
         }
 
+#if !UNITY_2023_1_OR_NEWER
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             ConfigureInput(ScriptableRenderPassInput.Depth);
@@ -60,6 +64,49 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
+#endif
+
+#if UNITY_2023_1_OR_NEWER
+        private class PassData
+        {
+            internal RendererListHandle RendererList;
+            internal TextureHandle DepthTexture;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+#if UNITY_EDITOR
+            if (renderingData.cameraData.cameraType == CameraType.Preview)
+                return;
+#endif
+
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderer);
+            if (!depthTexture.IsValid()) return;
+
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))
+            {
+                // Setup depth texture
+                TextureHandle depthHandle = renderGraph.ImportTexture(depthTexture);
+                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle);
+
+                // Setup renderer list
+                var drawSettings = RenderingUtils.CreateDrawingSettings(PostDepthNormalsTagId,
+                    ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
+                var rendererListParams = new RendererListParams(renderingData.cullResults, drawSettings, _filteringSettings);
+                passData.RendererList = renderGraph.CreateRendererList(rendererListParams);
+                builder.UseRendererList(passData.RendererList);
+
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+
+                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                {
+                    context.cmd.DrawRendererList(data.RendererList);
+                });
+            }
+        }
+#endif
 
         public void Dispose()
         {
