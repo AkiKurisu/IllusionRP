@@ -42,12 +42,12 @@ namespace Illusion.Rendering
         private bool _nativeRenderPass;
 #endif
 
-        private PassData _passData;
+        private OITPassData _oitPassData;
 
         public WeightedBlendedOITPass(LayerMask layerMask, IllusionRendererData rendererData)
         {
             _rendererData = rendererData;
-            _passData = new PassData();
+            _oitPassData = new OITPassData();
             renderPassEvent = IllusionRenderPassEvent.OrderIndependentTransparentPass;
             _filteringSettings = new FilteringSettings(RenderQueueRange.all, layerMask);
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Depth)
@@ -57,9 +57,9 @@ namespace Illusion.Rendering
             profilingSampler = new ProfilingSampler("Order Independent Transparency");
         }
 
+#if !UNITY_2023_1_OR_NEWER
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
-#if !UNITY_2023_1_OR_NEWER
             _nativeRenderPass = _rendererData.NativeRenderPass && renderingData.cameraData.isRenderPassSupportedCamera;
             if (_nativeRenderPass) return;
             
@@ -77,30 +77,13 @@ namespace Illusion.Rendering
 
             _oitBuffers[0] = _accumulate;
             _oitBuffers[1] = _revealage;
-#endif
         }
+#endif
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             ConfigureInput(ScriptableRenderPassInput.Color);
         }
-
-#if UNITY_2023_1_OR_NEWER
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
-        {
-#if UNITY_EDITOR
-            if (renderingData.cameraData.cameraType == CameraType.Preview)
-                return;
-#endif
-            if (!_compositeMat.Value) return;
-
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle colorTarget = renderer.activeColorTexture;
-            TextureHandle depthTarget = renderer.activeDepthTexture;
-
-            Render(renderGraph, colorTarget, depthTarget, ref renderingData);
-        }
-#endif
 
 #if !UNITY_2023_1_OR_NEWER
         private void DoAccumulate(CommandBuffer cmd, ScriptableRenderContext context, ref RenderingData renderingData)
@@ -154,118 +137,7 @@ namespace Illusion.Rendering
             _compositeMat.Value.SetTexture(Properties._RevealageTex, _revealage);
             Blitter.BlitCameraTexture(cmd,colorHandle, colorHandle, _compositeMat.Value, 0);
         }
-#endif
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-#if UNITY_EDITOR
-            if (renderingData.cameraData.cameraType == CameraType.Preview)
-                return;
-#endif
-            if (!_compositeMat.Value) return;
-
-#if !UNITY_2023_1_OR_NEWER
-            if (_nativeRenderPass)
-            {
-                using (new ProfilingScope(null, profilingSampler))
-                {
-                    DoNativeRenderPass(context, ref renderingData);
-                }
-            }
-            else
-            {
-                var cmd = CommandBufferPool.Get();
-                using (new ProfilingScope(cmd, profilingSampler))
-                {
-                    ClearBuffers(cmd, context);
-                    
-                    using (new ProfilingScope(cmd, _accumulateSampler))
-                    {
-                        DoAccumulate(cmd, context, ref renderingData);
-                    }
-                    
-                    using (new ProfilingScope(cmd, _compositeSampler))
-                    {
-                        DoComposite(cmd, ref renderingData);
-                    }
-                }
-                context.ExecuteCommandBuffer(cmd);
-                CommandBufferPool.Release(cmd);
-            }
-#else
-            InitPassData(ref renderingData, ref _passData);
-            InitRendererLists(ref renderingData, ref _passData, context, null, false);
-
-            using (new ProfilingScope(renderingData.commandBuffer, profilingSampler))
-            {
-                ExecutePass(CommandBufferHelpers.GetRasterCommandBuffer(renderingData.commandBuffer), _passData, ref renderingData);
-            }
-#endif
-        }
-
-#if UNITY_2023_1_OR_NEWER
-        private void InitPassData(ref RenderingData renderingData, ref PassData passData)
-        {
-            passData.CompositeMaterial = _compositeMat.Value;
-        }
-
-        private void InitRendererLists(ref RenderingData renderingData, ref PassData passData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
-        {
-            var sortFlags = renderingData.cameraData.defaultOpaqueSortFlags;
-            var filterSettings = _filteringSettings;
-
-#if UNITY_EDITOR
-            // When rendering the preview camera, we want the layer mask to be forced to Everything
-            if (renderingData.cameraData.isPreviewCamera)
-            {
-                filterSettings.layerMask = -1;
-            }
-#endif
-
-            DrawingSettings drawSettings = CreateDrawingSettings(OitTagId, ref renderingData, sortFlags);
-
-            var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
-            if (useRenderGraph)
-            {
-                if (activeDebugHandler != null)
-                {
-                    passData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(renderGraph, ref renderingData, ref drawSettings, ref filterSettings, ref _renderStateBlock);
-                }
-                else
-                {
-                    RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, renderingData, drawSettings, filterSettings, _renderStateBlock, ref passData.RendererListHdl);
-                }
-            }
-            else
-            {
-                if (activeDebugHandler != null)
-                {
-                    passData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(context, ref renderingData, ref drawSettings, ref filterSettings, ref _renderStateBlock);
-                }
-                else
-                {
-                    RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, filterSettings, _renderStateBlock, ref passData.RendererList);
-                }
-            }
-        }
-
-        internal static void ExecutePass(RasterCommandBuffer cmd, PassData data, ref RenderingData renderingData)
-        {
-            if (data.CompositeMaterial == null) return;
-
-            var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
-            if (activeDebugHandler != null)
-            {
-                data.DebugRendererLists.DrawWithRendererList(cmd);
-            }
-            else
-            {
-                cmd.DrawRendererList(data.RendererList);
-            }
-        }
-#endif
-
-#if !UNITY_2023_1_OR_NEWER
+        
         private void DoNativeRenderPass(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             var camDesc = renderingData.cameraData.cameraTargetDescriptor;
@@ -355,10 +227,100 @@ namespace Illusion.Rendering
                 }
             }
         }
+
+        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        {
+#if UNITY_EDITOR
+            if (renderingData.cameraData.cameraType == CameraType.Preview)
+                return;
+#endif
+            if (!_compositeMat.Value) return;
+
+            if (_nativeRenderPass)
+            {
+                using (new ProfilingScope(null, profilingSampler))
+                {
+                    DoNativeRenderPass(context, ref renderingData);
+                }
+            }
+            else
+            {
+                var cmd = CommandBufferPool.Get();
+                using (new ProfilingScope(cmd, profilingSampler))
+                {
+                    ClearBuffers(cmd, context);
+                    
+                    using (new ProfilingScope(cmd, _accumulateSampler))
+                    {
+                        DoAccumulate(cmd, context, ref renderingData);
+                    }
+                    
+                    using (new ProfilingScope(cmd, _compositeSampler))
+                    {
+                        DoComposite(cmd, ref renderingData);
+                    }
+                }
+                context.ExecuteCommandBuffer(cmd);
+                CommandBufferPool.Release(cmd);
+            }
+        }
+#else
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+#if UNITY_EDITOR
+            if (renderingData.cameraData.cameraType == CameraType.Preview)
+                return;
+#endif
+            if (!_compositeMat.Value) return;
+
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            TextureHandle colorTarget = renderer.activeColorTexture;
+            TextureHandle depthTarget = renderer.activeDepthTexture;
+
+            Render(renderGraph, colorTarget, depthTarget, ref renderingData);
+        }
+
+        private void InitRendererLists(ref RenderingData renderingData, ref OITPassData oitPassData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
+        {
+            var sortFlags = renderingData.cameraData.defaultOpaqueSortFlags;
+            var filterSettings = _filteringSettings;
+
+#if UNITY_EDITOR
+            // When rendering the preview camera, we want the layer mask to be forced to Everything
+            if (renderingData.cameraData.isPreviewCamera)
+            {
+                filterSettings.layerMask = -1;
+            }
 #endif
 
-#if UNITY_2023_1_OR_NEWER
-        internal void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ref RenderingData renderingData)
+            DrawingSettings drawSettings = CreateDrawingSettings(OitTagId, ref renderingData, sortFlags);
+
+            var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
+            if (useRenderGraph)
+            {
+                if (activeDebugHandler != null)
+                {
+                    oitPassData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(renderGraph, ref renderingData, ref drawSettings, ref filterSettings, ref _renderStateBlock);
+                }
+                else
+                {
+                    RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, renderingData, drawSettings, filterSettings, _renderStateBlock, ref oitPassData.RendererListHdl);
+                }
+            }
+            else
+            {
+                if (activeDebugHandler != null)
+                {
+                    oitPassData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(context, ref renderingData, ref drawSettings, ref filterSettings, ref _renderStateBlock);
+                }
+                else
+                {
+                    RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, filterSettings, _renderStateBlock, ref oitPassData.RendererList);
+                }
+            }
+        }
+
+        private void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ref RenderingData renderingData)
         {
             // Create OIT buffers
             var desc = renderingData.cameraData.cameraTargetDescriptor;
@@ -367,22 +329,23 @@ namespace Illusion.Rendering
 
             // Accumulate buffer (ARGBFloat)
             desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
-            var accumulateHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, "_AccumTex", false, FilterMode.Bilinear);
+            var accumulateHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, "_AccumTex", true, Color.clear, FilterMode.Bilinear);
 
             // Revealage buffer (RFloat)
             desc.graphicsFormat = GraphicsFormat.R16_SFloat;
-            var revealageHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, "_RevealageTex", false, FilterMode.Bilinear);
+            var revealageHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, "_RevealageTex", true, Color.white, FilterMode.Bilinear);
 
             // Pass 1: Accumulation - render transparent objects to accumulate and revealage buffers
-            using (var builder = renderGraph.AddRasterRenderPass<PassData>("OIT Accumulate", out var passData, _accumulateSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<OITPassData>("OIT Accumulate", out var passData, _accumulateSampler))
             {
-                InitPassData(ref renderingData, ref passData);
+                passData.CompositeMaterial = _compositeMat.Value;
                 passData.RenderingData = renderingData;
                 passData.AccumulateHandle = builder.UseTextureFragment(accumulateHandle, 0);
                 passData.RevealageHandle = builder.UseTextureFragment(revealageHandle, 1);
-                passData.DepthHandle = builder.UseTextureFragmentDepth(depthTarget, IBaseRenderGraphBuilder.AccessFlags.Read);
+                passData.ColorHandle = builder.UseTexture(colorTarget);
+                passData.DepthHandle = builder.UseTextureFragmentDepth(depthTarget);
 
-                InitRendererLists(ref renderingData, ref passData, default(ScriptableRenderContext), renderGraph, true);
+                InitRendererLists(ref renderingData, ref passData, default, renderGraph, true);
 
                 var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
                 if (activeDebugHandler != null)
@@ -397,14 +360,10 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
-                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc((OITPassData data, RasterGraphContext context) =>
                 {
-                    // Clear accumulate to black and revealage to white
-                    // In RenderGraph, render targets are automatically set based on UseTextureFragment calls
-                    context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
-                    
-                    var activeDebugHandler = GetActiveDebugHandler(ref data.RenderingData);
-                    if (activeDebugHandler != null)
+                    var handler = GetActiveDebugHandler(ref data.RenderingData);
+                    if (handler != null)
                     {
                         data.DebugRendererLists.DrawWithRendererList(context.cmd);
                     }
@@ -416,27 +375,22 @@ namespace Illusion.Rendering
             }
 
             // Pass 2: Composite - blend accumulated results into color target
-            using (var builder = renderGraph.AddRasterRenderPass<PassData>("OIT Composite", out var passData, _compositeSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<OITPassData>("OIT Composite", out var passData, _compositeSampler))
             {
-                InitPassData(ref renderingData, ref passData);
+                passData.CompositeMaterial = _compositeMat.Value;
                 passData.RenderingData = renderingData;
                 passData.CompositeMaterial = _compositeMat.Value;
-                passData.ColorHandle = builder.UseTextureFragment(colorTarget, 0, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
-                passData.AccumulateHandle = builder.UseTexture(accumulateHandle);
-                passData.RevealageHandle = builder.UseTexture(revealageHandle);
-
+                passData.AccumulateHandle = builder.UseTextureFragmentInput(accumulateHandle, 0);
+                passData.RevealageHandle = builder.UseTextureFragmentInput(revealageHandle, 1);
+                passData.ColorHandle = builder.UseTextureFragment(colorTarget, 0);
+                passData.DepthHandle = builder.UseTextureFragmentDepth(depthTarget, IBaseRenderGraphBuilder.AccessFlags.Read);
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
-
-                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+            
+                builder.SetRenderFunc((OITPassData data, RasterGraphContext context) =>
                 {
-                    if (data.CompositeMaterial != null)
-                    {
-                        data.CompositeMaterial.DisableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
-                        data.CompositeMaterial.SetTexture(Properties._AccumTex, data.AccumulateHandle);
-                        data.CompositeMaterial.SetTexture(Properties._RevealageTex, data.RevealageHandle);
-                        Blitter.BlitTexture(context.cmd, data.ColorHandle, new Vector4(1, 1, 0, 0), data.CompositeMaterial, 0);
-                    }
+                    data.CompositeMaterial.EnableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
+                    Blitter.BlitTexture(context.cmd, data.ColorHandle, new Vector4(1, 1, 0, 0), data.CompositeMaterial, 0);
                 });
             }
         }
@@ -451,9 +405,9 @@ namespace Illusion.Rendering
 #endif
         }
 
-        internal class PassData
-        {
 #if UNITY_2023_1_OR_NEWER
+        private class OITPassData
+        {
             internal TextureHandle AccumulateHandle;
             internal TextureHandle RevealageHandle;
             internal TextureHandle DepthHandle;
@@ -465,10 +419,8 @@ namespace Illusion.Rendering
 
             // Required for code sharing between RG and non-RG
             internal RendererList RendererList;
-#else
-            internal Material CompositeMaterial;
-#endif
         }
+#endif
         
         private static class Properties
         {
