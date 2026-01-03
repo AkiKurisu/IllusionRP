@@ -203,6 +203,7 @@ namespace Illusion.Rendering
 #endif
         }
 
+#if UNITY_2023_1_OR_NEWER
         private void InitPassData(ref RenderingData renderingData, ref PassData passData)
         {
             passData.CompositeMaterial = _compositeMat.Value;
@@ -223,7 +224,6 @@ namespace Illusion.Rendering
 
             DrawingSettings drawSettings = CreateDrawingSettings(OitTagId, ref renderingData, sortFlags);
 
-#if UNITY_2023_1_OR_NEWER
             var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
             if (useRenderGraph)
             {
@@ -247,10 +247,8 @@ namespace Illusion.Rendering
                     RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, filterSettings, _renderStateBlock, ref passData.RendererList);
                 }
             }
-#endif
         }
 
-#if UNITY_2023_1_OR_NEWER
         internal static void ExecutePass(RasterCommandBuffer cmd, PassData data, ref RenderingData renderingData)
         {
             if (data.CompositeMaterial == null) return;
@@ -468,7 +466,7 @@ namespace Illusion.Rendering
             // Required for code sharing between RG and non-RG
             internal RendererList RendererList;
 #else
-            internal Material compositeMaterial;
+            internal Material CompositeMaterial;
 #endif
         }
         

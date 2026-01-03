@@ -107,6 +107,7 @@ namespace Illusion.Rendering
 #endif
         }
 
+#if UNITY_2023_1_OR_NEWER
         private void InitRendererLists(ref RenderingData renderingData, ref PassData passData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
         {
             Camera camera = renderingData.cameraData.camera;
@@ -122,8 +123,7 @@ namespace Illusion.Rendering
 #endif
 
             DrawingSettings drawSettings = RenderingUtils.CreateDrawingSettings(passData.ShaderTagIdList, ref renderingData, sortFlags);
-
-#if UNITY_2023_1_OR_NEWER
+            
             var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
             if (useRenderGraph)
             {
@@ -149,8 +149,8 @@ namespace Illusion.Rendering
                     RenderingUtils.CreateRendererListObjectsWithError(context, ref renderingData.cullResults, camera, filterSettings, sortFlags, ref passData.ObjectsWithErrorRendererList);
                 }
             }
-#endif
         }
+#endif
 
 #if !UNITY_2023_1_OR_NEWER
         private static void ExecutePass(ScriptableRenderContext context, PassData data, ref RenderingData renderingData, bool yFlip)
