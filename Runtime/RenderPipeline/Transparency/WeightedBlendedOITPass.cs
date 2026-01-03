@@ -42,12 +42,9 @@ namespace Illusion.Rendering
         private bool _nativeRenderPass;
 #endif
 
-        private OITPassData _oitPassData;
-
         public WeightedBlendedOITPass(LayerMask layerMask, IllusionRendererData rendererData)
         {
             _rendererData = rendererData;
-            _oitPassData = new OITPassData();
             renderPassEvent = IllusionRenderPassEvent.OrderIndependentTransparentPass;
             _filteringSettings = new FilteringSettings(RenderQueueRange.all, layerMask);
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Depth)
