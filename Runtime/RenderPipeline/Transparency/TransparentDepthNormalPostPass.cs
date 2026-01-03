@@ -23,6 +23,7 @@ namespace Illusion.Rendering
             renderPassEvent = IllusionRenderPassEvent.TransparentDepthNormalPostPass;
             _filteringSettings = new FilteringSettings(RenderQueueRange.all);
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
+            profilingSampler = new ProfilingSampler("Transparent Post Depth Normal");
         }
 
 #if !UNITY_2023_1_OR_NEWER
@@ -83,18 +84,22 @@ namespace Illusion.Rendering
 #endif
 
             UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            var depthTexture = UniversalRenderingUtility.GetDepthWriteTexture(ref renderingData.cameraData);
-            var normalTexture = UniversalRenderingUtility.GetNormalTexture(renderer);
+            TextureHandle depthTexture = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+            TextureHandle normalTexture = frameResources.GetTexture(UniversalResource.CameraNormalsTexture);
+            
+            // If textures are not available in frameResources, fall back to activeDepthTexture for depth
+            if (!depthTexture.IsValid())
+            {
+                depthTexture = renderer.activeDepthTexture;
+            }
+            
             if (!depthTexture.IsValid() || !normalTexture.IsValid()) return;
 
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))
             {
                 // Setup normal and depth textures
-                TextureHandle normalHandle = renderGraph.ImportTexture(normalTexture);
-                TextureHandle depthHandle = renderGraph.ImportTexture(depthTexture);
-                
-                passData.NormalTexture = builder.UseTextureFragment(normalHandle, 0);
-                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle);
+                passData.NormalTexture = builder.UseTextureFragment(normalTexture, 0);
+                passData.DepthTexture = builder.UseTextureFragmentDepth(depthTexture);
 
                 // Setup renderer list
                 var drawSettings = RenderingUtils.CreateDrawingSettings(PostDepthNormalsTagId,
