@@ -230,7 +230,9 @@ namespace Illusion.Rendering
                 }
                 return;
             }
-            
+
+            var colorTarget = renderingData.cameraData.renderer.cameraColorTargetHandle;
+            var depthTarget = renderingData.cameraData.renderer.cameraDepthTargetHandle;
             SetupSplitLightingRenderTargets(cmd, ref renderingData);
 
             context.ExecuteCommandBuffer(cmd);
@@ -246,6 +248,8 @@ namespace Illusion.Rendering
             {
                 DoSubsurfaceScattering(cmd);
             }
+            
+            cmd.SetRenderTarget(colorTarget, depthTarget);
 
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
