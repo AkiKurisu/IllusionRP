@@ -215,6 +215,11 @@ namespace Illusion.Rendering
         ScreenSpaceGlobalIllumination2
     }
 
+    public enum IllusionFrameResource
+    {
+        PreviousFrameColor
+    }
+
     public enum IllusionGraphicsFenceEvent
     {
         AmbientOcclusion,

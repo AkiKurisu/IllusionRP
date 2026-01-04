@@ -7,6 +7,9 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Illusion.Rendering.PostProcessing;
 using Illusion.Rendering.Shadows;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -351,11 +354,40 @@ namespace Illusion.Rendering
 
         private void PushGlobalVariables(CommandBuffer cmd, ref RenderingData renderingData)
         {
-            bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
+            PrepareGlobalVariables(ref renderingData);
+            ConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
+        }
+        
+#if UNITY_2023_1_OR_NEWER
+        internal void PushGlobalBuffers(ComputeCommandBuffer cmd, TextureHandle colorTarget, ref RenderingData renderingData)
+        {
+            PushShadowData(cmd);
+            PushGlobalVariables(cmd, colorTarget, ref renderingData);
+        }
+        
+        private void PushGlobalVariables(ComputeCommandBuffer cmd, RTHandle colorTarget, ref RenderingData renderingData)
+        {
+            PrepareGlobalVariables(ref renderingData, colorTarget);
+            ComputeConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
+        }
+#endif
 
+        private void PrepareGlobalVariables(ref RenderingData renderingData, RTHandle rtHandle = null)
+        {
+            bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
+            
             // Match HDRP View Projection Matrix, pre-handle reverse z.
             _shaderVariablesGlobal.ViewMatrix = renderingData.cameraData.camera.worldToCameraMatrix;
-            _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(ref renderingData.cameraData);
+#if UNITY_2023_1_OR_NEWER
+            if (rtHandle != null)
+            {
+                _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(ref renderingData.cameraData, rtHandle);
+            }
+            else
+#endif
+            {
+                _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(ref renderingData.cameraData);
+            }
             var lastInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
             _shaderVariablesGlobal.InvViewProjMatrix = _shaderVariablesGlobal.ViewProjMatrix.inverse;
             _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount > 1 ? _shaderVariablesGlobal.InvViewProjMatrix : lastInvViewProjMatrix;
@@ -374,7 +406,7 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.TaaFrameInfo = new Vector4(0, _taaFrameIndex, FrameCount, useTAA ? 1 : 0);
             _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame
                 = IllusionRenderingUtils.ComputeViewportScaleAndLimit(_historyRTSystem.rtHandleProperties.previousViewportSize,
-                _historyRTSystem.rtHandleProperties.previousRenderTargetSize);
+                    _historyRTSystem.rtHandleProperties.previousRenderTargetSize);
             
             MicroShadows microShadowingSettings = VolumeManager.instance.stack.GetComponent<MicroShadows>();
             _shaderVariablesGlobal.MicroShadowOpacity = microShadowingSettings.enable.value ? microShadowingSettings.opacity.value : 0.0f;
@@ -387,13 +419,19 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.IndirectDiffuseMode = (int)GetIndirectDiffuseMode();
             _shaderVariablesGlobal.IndirectDiffuseLightingMultiplier = intensity;
             _shaderVariablesGlobal.IndirectDiffuseLightingLayers = layers;
-            ConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
         }
-        
+
         private void PushShadowData(CommandBuffer cmd)
         {
             cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
         }
+        
+#if UNITY_2023_1_OR_NEWER
+        private void PushShadowData(ComputeCommandBuffer cmd)
+        {
+            cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
+        }
+#endif
         
         private void GetMainLightIndirectIntensityAndRenderingLayers(ref RenderingData renderingData,
             out float intensity, out uint renderingLayers)
@@ -585,18 +623,7 @@ namespace Illusion.Rendering
             }
         }
 
-        /// <summary>
-        /// Bind global textures
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="renderingData"></param>
-        internal void BindGlobalTextures(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            BindHistoryColor(cmd, renderingData);
-            BindAmbientProbe(cmd);
-        }
-
-        private void BindAmbientProbe(CommandBuffer cmd)
+        internal void BindAmbientProbe(CommandBuffer cmd)
         {
             SphericalHarmonicsL2 ambientProbe = RenderSettings.ambientProbe;
             _ambientProbeBuffer ??= new ComputeBuffer(7, 16);
@@ -612,8 +639,27 @@ namespace Illusion.Rendering
             array.Dispose();
             cmd.SetGlobalBuffer(IllusionShaderProperties._AmbientProbeData, _ambientProbeBuffer);
         }
+        
+#if UNITY_2023_1_OR_NEWER
+        internal void BindAmbientProbe(ComputeCommandBuffer cmd)
+        {
+            SphericalHarmonicsL2 ambientProbe = RenderSettings.ambientProbe;
+            _ambientProbeBuffer ??= new ComputeBuffer(7, 16);
+            var array = new NativeArray<Vector4>(7, Allocator.Temp);
+            array[0] = new Vector4(ambientProbe[0, 3], ambientProbe[0, 1], ambientProbe[0, 2], ambientProbe[0, 0] - ambientProbe[0, 6]);
+            array[1] = new Vector4(ambientProbe[1, 3], ambientProbe[1, 1], ambientProbe[1, 2], ambientProbe[1, 0] - ambientProbe[1, 6]);
+            array[2] = new Vector4(ambientProbe[2, 3], ambientProbe[2, 1], ambientProbe[2, 2], ambientProbe[2, 0] - ambientProbe[2, 6]);
+            array[3] = new Vector4(ambientProbe[0, 4], ambientProbe[0, 5], ambientProbe[0, 6] * 3, ambientProbe[0, 7]);
+            array[4] = new Vector4(ambientProbe[1, 4], ambientProbe[1, 5], ambientProbe[1, 6] * 3, ambientProbe[1, 7]);
+            array[5] = new Vector4(ambientProbe[2, 4], ambientProbe[2, 5], ambientProbe[2, 6] * 3, ambientProbe[2, 7]);
+            array[6] = new Vector4(ambientProbe[0, 8], ambientProbe[1, 8], ambientProbe[2, 8], 1);
+            _ambientProbeBuffer.SetData(array);
+            array.Dispose();
+            cmd.SetGlobalBuffer(IllusionShaderProperties._AmbientProbeData, _ambientProbeBuffer);
+        }
+#endif
 
-        private void BindHistoryColor(CommandBuffer cmd, in RenderingData renderingData)
+        internal void BindHistoryColor(CommandBuffer cmd, in RenderingData renderingData)
         {
             var historyColorRT = GetPreviousFrameColorRT(renderingData.cameraData, out var isNewFrame);
             if (historyColorRT.IsValid())
