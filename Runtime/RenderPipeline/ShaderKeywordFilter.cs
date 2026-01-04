@@ -18,7 +18,9 @@ namespace Illusion.Rendering
         }
 
         // ReSharper disable once UnusedMember.Local
+#if !UNITY_2023_1_OR_NEWER
         [ApplyRulesIfNotGraphicsAPI(GraphicsDeviceType.OpenGLES2)]
+#endif
         [SelectIf(true, overridePriority: true, keywordNames: ShaderKeywordStrings.MainLightShadowScreen)]
         private const bool RequiresScreenSpaceShadowsKeyword = true;
         
