@@ -22,3 +22,19 @@ void KERNEL_NAME41(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint2 positionSS = _RectOffset + dispatchThreadId.xy;
     _Result1[COORD_TEXTURE2D_X(positionSS)] = LOAD_TEXTURE2D_X(_Source4, positionSS).x;
 }
+
+// Full channel copy (xyzw -> xyzw)
+RW_TEXTURE2D_X(float4, _Result4);
+TEXTURE2D_X(_Source4Full);
+
+#pragma kernel KSampleCopy4_4_x_8   KERNEL_NAME44=KSampleCopy4_4_x_8  KERNEL_SIZE=8
+#pragma kernel KSampleCopy4_4_x_1   KERNEL_NAME44=KSampleCopy4_4_x_1  KERNEL_SIZE=1
+
+[numthreads(KERNEL_SIZE, KERNEL_SIZE, 1)]
+void KERNEL_NAME44(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    // UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
+
+    uint2 positionSS = _RectOffset + dispatchThreadId.xy;
+    _Result4[COORD_TEXTURE2D_X(positionSS)] = LOAD_TEXTURE2D_X(_Source4Full, positionSS);
+}

@@ -469,5 +469,110 @@ namespace Illusion.Rendering
 
             return srcMipLevel + 1;
         }
+
+#if UNITY_2023_1_OR_NEWER
+        // RenderGraph version: Copies source texture to destination mip 0 using fragment shader
+        // This is the first step of color pyramid generation, separated for RasterRenderPass
+        public void CopySourceToColorPyramidMip0(RasterCommandBuffer cmd, TextureHandle source, TextureHandle destination, 
+            Vector2Int pyramidSize, Vector4 blitScaleBias, TextureDimension sourceDimension)
+        {
+            // Copies src mip0 to dst mip0
+            // Note that we still use a fragment shader to do the first copy because fragment are faster at copying
+            // data types like R11G11B10 (default) and pretty similar in term of speed with R16G16B16A16.
+            _propertyBlock.SetTexture(IllusionShaderProperties._BlitTexture, source);
+            _propertyBlock.SetVector(IllusionShaderProperties._BlitScaleBias, blitScaleBias);
+            _propertyBlock.SetFloat(IllusionShaderProperties._BlitMipLevel, 0f);
+            // cmd.SetRenderTarget(destination, 0, CubemapFace.Unknown, -1);
+            cmd.SetViewport(new Rect(0, 0, pyramidSize.x, pyramidSize.y));
+            cmd.DrawProcedural(Matrix4x4.identity, Blitter.GetBlitMaterial(sourceDimension), 0, MeshTopology.Triangles, 3, 1, _propertyBlock);
+        }
+
+        // RenderGraph version: Generates gaussian pyramid mips using compute shader
+        // This is the second step of color pyramid generation, separated for ComputePass
+        // Assumes mip 0 has already been populated with source data
+        // Returns the number of mips generated
+        public int RenderColorGaussianPyramidMips(ComputeCommandBuffer cmd, TextureHandle destination, TextureHandle tempPyramid,
+            Vector2Int pyramidSize, bool destinationUseDynamicScale)
+        {
+            int srcMipLevel = 0;
+            int srcMipWidth = pyramidSize.x;
+            int srcMipHeight = pyramidSize.y;
+
+            bool isHardwareDrsOn = DynamicResolutionHandler.instance.HardwareDynamicResIsEnabled();
+            var finalTargetSize = pyramidSize;
+            if (destinationUseDynamicScale && isHardwareDrsOn)
+                finalTargetSize = DynamicResolutionHandler.instance.ApplyScalesOnSize(finalTargetSize);
+
+            // Note: smaller mips are excluded as we don't need them and the gaussian compute works
+            // on 8x8 blocks
+            while (srcMipWidth >= 8 || srcMipHeight >= 8)
+            {
+                int dstMipWidth = Mathf.Max(1, srcMipWidth >> 1);
+                int dstMipHeight = Mathf.Max(1, srcMipHeight >> 1);
+                
+                cmd.SetComputeVectorParam(_colorPyramidCS, IllusionShaderProperties._Size,
+                    new Vector4(srcMipWidth, srcMipHeight, 0f, 0f));
+
+                {
+                    // Downsample.
+                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorDownsampleKernel, IllusionShaderProperties._Source,
+                        destination, srcMipLevel);
+                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorDownsampleKernel, IllusionShaderProperties._Destination,
+                        tempPyramid);
+                    cmd.DispatchCompute(_colorPyramidCS, _colorDownsampleKernel, (dstMipWidth + 7) / 8,
+                        (dstMipHeight + 7) / 8, TextureXR.slices);
+
+                    // Single pass blur
+                    cmd.SetComputeVectorParam(_colorPyramidCS, IllusionShaderProperties._Size,
+                        new Vector4(dstMipWidth, dstMipHeight, 0f, 0f));
+                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorGaussianKernel, IllusionShaderProperties._Source,
+                        tempPyramid);
+                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorGaussianKernel, IllusionShaderProperties._Destination,
+                        destination, srcMipLevel + 1);
+                    cmd.DispatchCompute(_colorPyramidCS, _colorGaussianKernel, (dstMipWidth + 7) / 8,
+                        (dstMipHeight + 7) / 8, TextureXR.slices);
+                }
+
+                srcMipLevel++;
+                srcMipWidth >>= 1;
+                srcMipHeight >>= 1;
+
+                finalTargetSize.x >>= 1;
+                finalTargetSize.y >>= 1;
+            }
+
+            return srcMipLevel + 1;
+        }
+        
+        // Helper method to get or allocate temp downsample pyramid for RenderGraph
+        public RTHandle GetOrAllocateTempDownsamplePyramid(GraphicsFormat format, bool isArray = false)
+        {
+            int rtIndex = isArray ? 1 : 0;
+            
+            // Check if format has changed since last time we generated mips
+            if (_tempDownsamplePyramid[rtIndex] != null && _tempDownsamplePyramid[rtIndex].rt.graphicsFormat != format)
+            {
+                RTHandles.Release(_tempDownsamplePyramid[rtIndex]);
+                _tempDownsamplePyramid[rtIndex] = null;
+            }
+
+            if (_tempDownsamplePyramid[rtIndex] == null)
+            {
+                _tempDownsamplePyramid[rtIndex] = RTHandles.Alloc(
+                    Vector2.one * 0.5f,
+                    isArray ? TextureXR.slices : 1,
+                    dimension: isArray ? TextureDimension.Tex2DArray : TextureDimension.Tex2D,
+                    filterMode: FilterMode.Bilinear,
+                    colorFormat: format,
+                    enableRandomWrite: true,
+                    useMipMap: false,
+                    useDynamicScale: true,
+                    name: "Temporary Downsampled Pyramid"
+                );
+            }
+
+            return _tempDownsamplePyramid[rtIndex];
+        }
+#endif
     }
 }
