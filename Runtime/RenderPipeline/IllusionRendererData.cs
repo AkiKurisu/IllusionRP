@@ -243,6 +243,11 @@ namespace Illusion.Rendering
         private readonly RTHandle _emptyExposureTexture; // RGHalf
 
         private readonly RTHandle _debugExposureData;
+        
+        // Default texture RTHandle wrappers for RenderGraph (lazy initialization)
+        private RTHandle _whiteTextureRTHandle;
+        private RTHandle _blackTextureRTHandle;
+        private RTHandle _grayTextureRTHandle;
 
         private int _taaFrameIndex;
 
@@ -339,6 +344,14 @@ namespace Illusion.Rendering
             CoreUtils.SafeRelease(DebugImageHistogram);
             DebugImageHistogram = null;
             RTHandles.Release(_emptyExposureTexture);
+            
+            // Release default texture RTHandle wrappers
+            RTHandles.Release(_whiteTextureRTHandle);
+            RTHandles.Release(_blackTextureRTHandle);
+            RTHandles.Release(_grayTextureRTHandle);
+            _whiteTextureRTHandle = null;
+            _blackTextureRTHandle = null;
+            _grayTextureRTHandle = null;
         }
 
         /// <summary>
