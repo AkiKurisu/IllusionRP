@@ -38,6 +38,9 @@ namespace Illusion.Rendering
                 // ZTest Equal
                 depthState = new DepthState(false, CompareFunction.Equal)
             };
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Normal);
+#endif
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
