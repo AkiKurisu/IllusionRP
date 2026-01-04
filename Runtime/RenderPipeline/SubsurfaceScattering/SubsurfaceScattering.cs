@@ -58,6 +58,8 @@ namespace Illusion.Rendering
 
             m_Value[AccumulatedCount++] = profile;
         }
+        
+#if UNITY_2023_1_OR_NEWER
         /// <summary>
         /// Sets the value of this parameter to the value in <paramref name="parameter"/>.
         /// Implemented explicitly for DiffusionProfileList because we have internal state to copy.
@@ -70,6 +72,7 @@ namespace Illusion.Rendering
             var param = (DiffusionProfilesParameter)parameter;
             AccumulatedCount = param.AccumulatedCount;
         }
+#endif
         
         /// <summary>
         /// Interpolates two values using a factor <paramref name="t"/>.
