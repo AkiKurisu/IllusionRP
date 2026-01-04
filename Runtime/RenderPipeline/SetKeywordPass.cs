@@ -54,6 +54,7 @@ namespace Illusion.Rendering
             CommandBufferPool.Release(cmd);
         }
         
+#if UNITY_2023_1_OR_NEWER
         private class SetKeywordPassData
         {
             internal string Keyword;
@@ -78,5 +79,6 @@ namespace Illusion.Rendering
                 });
             }
         }
+#endif
     }
 }
