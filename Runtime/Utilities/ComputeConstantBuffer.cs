@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿#if UNITY_2023_1_OR_NEWER
+using System.Collections.Generic;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -399,3 +400,4 @@ namespace Illusion.Rendering
         }
     }
 }
+#endif
