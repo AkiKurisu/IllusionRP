@@ -1,6 +1,7 @@
 ﻿using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 #if UNITY_2023_1_OR_NEWER
+using UnityEngine.Assertions;
 using UnityEngine.Experimental.Rendering.RenderGraphModule;
 #endif
 
@@ -60,6 +61,9 @@ namespace Illusion.Rendering
                 passData.RenderingData = renderingData;
                 
                 var previousFrameRT = _rendererData.GetPreviousFrameColorRT(renderingData.cameraData, out _);
+                if (!previousFrameRT.IsValid()) previousFrameRT = _rendererData.GetBlackTextureRT();
+                Assert.IsTrue(previousFrameRT.IsValid());
+                
                 passData.PreviousFrameColor = renderGraph.ImportTexture(previousFrameRT);
                 frameResources.SetTexture(IllusionFrameResource.PreviousFrameColor, passData.PreviousFrameColor);
                 builder.UseTexture(passData.PreviousFrameColor);
