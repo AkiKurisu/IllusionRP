@@ -29,7 +29,6 @@ namespace Illusion.Rendering
             profilingSampler = new ProfilingSampler("Transparent Post Depth");
         }
 
-#if !UNITY_2023_1_OR_NEWER
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             ConfigureInput(ScriptableRenderPassInput.Depth);
@@ -65,7 +64,6 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
-#endif
 
 #if UNITY_2023_1_OR_NEWER
         private class PassData

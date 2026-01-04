@@ -37,12 +37,11 @@ namespace Illusion.Rendering
                     _rendererFeature.PerformSetup(renderingData.cameraData.renderer, ref renderingData, _rendererData);
                 }
             }
-#else
+#endif
             public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
             {
                 // pass
             } 
-#endif
 
             public void Dispose()
             {

@@ -13,13 +13,7 @@ namespace Illusion.Rendering
     /// <summary>
     /// Copy depth to depth buffer before overdraw.
     /// </summary>
-    public class TransparentCopyPostDepthPass : 
-#if !UNITY_2023_1_OR_NEWER
-        CopyDepthPass,
-#else
-        ScriptableRenderPass,
-#endif
-        IDisposable
+    public class TransparentCopyPostDepthPass : CopyDepthPass, IDisposable
     {
         private readonly Material _copyDepthMaterial;
 
@@ -29,15 +23,12 @@ namespace Illusion.Rendering
 #endif
 
         private TransparentCopyPostDepthPass(Material copyDepthMaterial, bool copyResolvedDepth = false)
-#if !UNITY_2023_1_OR_NEWER
             : base(IllusionRenderPassEvent.TransparentCopyPostDepthPass, 
                 copyDepthMaterial, false, false, copyResolvedDepth)
-#endif
         {
             _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPostDepth");
 #if UNITY_2023_1_OR_NEWER
-            renderPassEvent = IllusionRenderPassEvent.TransparentCopyPostDepthPass;
             _copyResolvedDepth = copyResolvedDepth;
             _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, false, false, copyResolvedDepth);
             _copyDepthPass.profilingSampler = profilingSampler;
@@ -51,7 +42,6 @@ namespace Illusion.Rendering
             return new TransparentCopyPostDepthPass(copyDepthMaterial, RenderingUtils.MultisampleDepthResolveSupported());
         }
 
-#if !UNITY_2023_1_OR_NEWER
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             ConfigureInput(ScriptableRenderPassInput.Depth);
@@ -72,7 +62,6 @@ namespace Illusion.Rendering
                 base.Execute(context, ref renderingData);
             }
         }
-#endif
 
 #if UNITY_2023_1_OR_NEWER
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)

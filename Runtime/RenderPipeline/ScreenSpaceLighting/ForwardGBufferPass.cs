@@ -40,7 +40,6 @@ namespace Illusion.Rendering
             };
         }
 
-#if !UNITY_2023_1_OR_NEWER
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
             var desc = renderingData.cameraData.cameraTargetDescriptor;
@@ -54,7 +53,6 @@ namespace Illusion.Rendering
                 name: "_ForwardGBuffer");
             cmd.SetGlobalTexture(_rendererData.ForwardGBufferRT.name, _rendererData.ForwardGBufferRT.nameID);
         }
-#endif
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
@@ -125,7 +123,6 @@ namespace Illusion.Rendering
         }
 #endif
 
-#if !UNITY_2023_1_OR_NEWER
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             ref var cameraData = ref renderingData.cameraData;
@@ -160,6 +157,5 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
         }
-#endif
     }
 }

@@ -14,13 +14,7 @@ namespace Illusion.Rendering
     /// <summary>
     /// Copy current depth before writing transparent post depth, should be used with <see cref="TransparentDepthNormalPostPass"/>.
     /// </summary>
-    public class TransparentCopyPreDepthPass : 
-#if !UNITY_2023_1_OR_NEWER
-        CopyDepthPass,
-#else
-        ScriptableRenderPass,
-#endif
-        IDisposable
+    public class TransparentCopyPreDepthPass :  CopyDepthPass, IDisposable
     {
         private readonly Material _copyDepthMaterial;
 
@@ -42,16 +36,13 @@ namespace Illusion.Rendering
 #endif
 
         private TransparentCopyPreDepthPass(IllusionRendererData rendererData, Material copyDepthMaterial, bool copyResolvedDepth = false)
-#if !UNITY_2023_1_OR_NEWER
             : base(IllusionRenderPassEvent.TransparentCopyPreDepthPass, 
                 copyDepthMaterial, true, false, copyResolvedDepth)
-#endif
         {
             _rendererData = rendererData;
             _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPreDepth");
 #if UNITY_2023_1_OR_NEWER
-            renderPassEvent = IllusionRenderPassEvent.TransparentCopyPreDepthPass;
             _copyResolvedDepth = copyResolvedDepth;
             _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, true, false, copyResolvedDepth);
             _copyDepthPass.profilingSampler = profilingSampler;
@@ -65,7 +56,6 @@ namespace Illusion.Rendering
             return new TransparentCopyPreDepthPass(rendererData, copyDepthMaterial, RenderingUtils.MultisampleDepthResolveSupported());
         }
 
-#if !UNITY_2023_1_OR_NEWER
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             ConfigureInput(ScriptableRenderPassInput.Depth);
@@ -95,7 +85,6 @@ namespace Illusion.Rendering
                 base.Execute(context, ref renderingData);
             }
         }
-#endif
 
 #if UNITY_2023_1_OR_NEWER
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
