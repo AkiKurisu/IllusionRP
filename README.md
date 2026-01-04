@@ -215,13 +215,7 @@ Recommended to install [Chris](https://github.com/AkiKurisu/Chris) to use Unreal
 
 ![Console Variable](./Documentation~/images/console_variables.png)
 
-# Gameplay Integration
-
-Recommended to install [Chris.Gameplay](https://github.com/AkiKurisu/Chris.Gameplay) which provides a in-game graphics setting solution.
-
-`Chris.Graphics` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
-
-> Install from git url `https://github.com/AkiKurisu/Chris.Gameplay`
+`Chris` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
 
 ![Dynamic Volume](./Documentation~/images/dynamic_volume.png)
 
