@@ -72,10 +72,7 @@ namespace Illusion.Rendering
 
                 builder.SetRenderFunc(static (SetKeywordPassData data, LowLevelGraphContext context) =>
                 {
-                    if (data.State)
-                        context.cmd.EnableShaderKeyword(data.Keyword);
-                    else
-                        context.cmd.DisableShaderKeyword(data.Keyword);
+                    CoreUtils.SetKeyword(context.cmd, data.Keyword, data.State);
                 });
             }
         }
