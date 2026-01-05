@@ -274,9 +274,9 @@ namespace Illusion.Rendering
         public const RenderPassEvent ScreenSpaceGlobalIlluminationPass = RenderPassEvent.AfterRenderingPrePasses + 8;
 
         // Composite shadows to Screen Space Shadows
-        public const RenderPassEvent ScreenSpaceShadowsPass = RenderPassEvent.AfterRenderingGbuffer;
+        public const RenderPassEvent ScreenSpaceShadowsPass = RenderPassEvent.BeforeRenderingOpaques;
 
-        public const RenderPassEvent SubsurfaceScatteringPass = RenderPassEvent.AfterRenderingGbuffer;
+        public const RenderPassEvent SubsurfaceScatteringPass = RenderPassEvent.BeforeRenderingOpaques;
 
         public const RenderPassEvent ScreenSpaceShadowsPostPass = RenderPassEvent.AfterRenderingOpaques;
 
