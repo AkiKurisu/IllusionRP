@@ -495,22 +495,40 @@ namespace Illusion.Rendering.PostProcessing
             // Apply exposure pass for history reset (swap front to back)
             if (!isFixedExposure && resetHistory)
             {
-                using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure", 
-                    out var applyPassData, new ProfilingSampler("Apply Exposure")))
+                // Create intermediate texture
+                var descriptor = renderingData.cameraData.cameraTargetDescriptor;
+                descriptor.depthBufferBits = 0;
+                
+                TextureHandle intermediateTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, descriptor, "_ExposureIntermediateTexture", false, FilterMode.Bilinear);
+                
+                // First pass: blit from activeColorTexture to intermediate texture
+                using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure To Intermediate", 
+                    out var applyPassData, new ProfilingSampler("Apply Exposure To Intermediate")))
                 {
-                    _rendererData.GrabExposureRequiredTextures(out var prevExposure, out var nextExposure);
-                    
                     applyPassData.ApplyExposureMaterial = _applyExposureMaterial.Value;
-                    applyPassData.Source = builder.UseTexture(renderGraph.ImportTexture(nextExposure));
-                    applyPassData.Destination = builder.UseTextureFragment(renderGraph.ImportTexture(prevExposure), 0);
+                    applyPassData.Source = builder.UseTexture(renderer.activeColorTexture);
+                    applyPassData.Destination = builder.UseTextureFragment(intermediateTexture, 0);
                     
                     builder.AllowPassCulling(false);
                     
                     builder.SetRenderFunc(static (ApplyExposurePassData data, RasterGraphContext context) =>
                     {
-                        // Blit to swap front to back
-                        data.ApplyExposureMaterial.SetTexture(IllusionShaderProperties._BlitTexture, data.Source);
-                        context.cmd.DrawProcedural(Matrix4x4.identity, data.ApplyExposureMaterial, 0, MeshTopology.Triangles, 3, 1);
+                        Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, data.ApplyExposureMaterial, 0);
+                    });
+                }
+                
+                // Second pass: blit from intermediate texture back to activeColorTexture
+                using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure From Intermediate", 
+                    out var applyPassData2, new ProfilingSampler("Apply Exposure From Intermediate")))
+                {
+                    applyPassData2.Source = builder.UseTexture(intermediateTexture);
+                    applyPassData2.Destination = builder.UseTextureFragment(renderer.activeColorTexture, 0);
+                    
+                    builder.AllowPassCulling(false);
+                    
+                    builder.SetRenderFunc(static (ApplyExposurePassData data, RasterGraphContext context) =>
+                    {
+                        Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, Blitter.GetBlitMaterial(TextureDimension.Tex2D), 0);
                     });
                 }
             }
