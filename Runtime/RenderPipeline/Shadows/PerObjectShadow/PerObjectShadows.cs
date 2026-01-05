@@ -33,7 +33,13 @@ namespace Illusion.Rendering.Shadows
         public ShadowTileResolutionParameter(ShadowTileResolution value, bool overrideState = false) : base(value, overrideState) { }
     }
 
-    [Serializable, VolumeComponentMenuForRenderPipeline("Illusion/Per Object Shadows", typeof(UniversalRenderPipeline))]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Per Object Shadows")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Per Object Shadows", typeof(UniversalRenderPipeline))]
+#endif
     public class PerObjectShadows : VolumeComponent
     {
         /// <summary>

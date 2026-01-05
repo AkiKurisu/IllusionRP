@@ -8,7 +8,13 @@ namespace Illusion.Rendering.Shadows
     /// <summary>
     /// A volume component that holds settings for the Micro Shadows effect.
     /// </summary>
-    [Serializable, VolumeComponentMenuForRenderPipeline("Illusion/Micro Shadows", typeof(UniversalRenderPipeline))]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Micro Shadows")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Micro Shadows", typeof(UniversalRenderPipeline))]
+#endif
     public class MicroShadows : VolumeComponent
     {
         /// <summary>

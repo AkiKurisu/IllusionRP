@@ -17,7 +17,13 @@ namespace Illusion.Rendering.PostProcessing
         public ConvolutionBloomQualityParameter(ConvolutionBloomQuality value, bool overrideState = false) : base(value, overrideState) { }
     }
 
-    [Serializable, VolumeComponentMenu("Illusion/Convolution Bloom")]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Convolution Bloom")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Convolution Bloom", typeof(UniversalRenderPipeline))]
+#endif
     public sealed class ConvolutionBloom : VolumeComponent, IPostProcessComponent
     {
         public BoolParameter enable = new(false, BoolParameter.DisplayType.EnumPopup);
