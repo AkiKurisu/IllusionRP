@@ -244,9 +244,10 @@ namespace Illusion.Rendering
 
         private readonly RTHandle _debugExposureData;
         
-        // Default texture RTHandle wrappers for RenderGraph (lazy initialization)
         private RTHandle _whiteTextureRTHandle;
+        
         private RTHandle _blackTextureRTHandle;
+        
         private RTHandle _grayTextureRTHandle;
 
         private int _taaFrameIndex;

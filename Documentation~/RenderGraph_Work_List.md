@@ -31,6 +31,7 @@
 - `ColorPyramidPass`
 - `ScreenSpaceShadowsPass`
 - `ScreenSpaceShadowsPostPass`
+- `GroundTruthAmbientOcclusionPass`
 
 ### 待适配的 Pass
 以下 Pass 尚未适配 RenderGraph： 
@@ -38,7 +39,6 @@
 - `PerObjectShadowCasterPreviewPass`
 - `DiffuseShadowDenoisePass`
 - `SubsurfaceScatteringPass`
-- `GroundTruthAmbientOcclusionPass`
 - `ContactShadowsPass`
 - `ScreenSpaceReflectionPass`
 - `SyncGraphicsFencePass`
