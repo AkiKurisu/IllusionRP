@@ -47,9 +47,9 @@ Designed for <b>Forward</b> and <b>Forward+</b> rendering path, <b>Deferred</b> 
 
 # Version
 
-- Unity 2022.3.62
+- Unity 2022.3.62f1 (URP 14.0.12)
 
-- URP 14.0.12
+- Unity 2023.2.22f1 (URP 16.0.6)
 
 # Install
 
