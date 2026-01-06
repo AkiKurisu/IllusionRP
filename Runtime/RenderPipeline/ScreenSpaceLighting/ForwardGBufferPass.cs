@@ -38,23 +38,30 @@ namespace Illusion.Rendering
                 // ZTest Equal
                 depthState = new DepthState(false, CompareFunction.Equal)
             };
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Normal);
+#endif
         }
 
-#if !UNITY_2023_1_OR_NEWER
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
             var desc = renderingData.cameraData.cameraTargetDescriptor;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
+#if UNITY_2023_1_OR_NEWER
+            desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
+                ? GraphicsFormat.R8_UNorm
+                : GraphicsFormat.B8G8R8A8_UNorm;
+#else
             desc.graphicsFormat = RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
-                    ? GraphicsFormat.R8_UNorm
-                    : GraphicsFormat.B8G8R8A8_UNorm;
+                ? GraphicsFormat.R8_UNorm
+                : GraphicsFormat.B8G8R8A8_UNorm;
+#endif
 
             RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ForwardGBuffer");
             cmd.SetGlobalTexture(_rendererData.ForwardGBufferRT.name, _rendererData.ForwardGBufferRT.nameID);
         }
-#endif
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
@@ -125,7 +132,6 @@ namespace Illusion.Rendering
         }
 #endif
 
-#if !UNITY_2023_1_OR_NEWER
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             ref var cameraData = ref renderingData.cameraData;
@@ -160,6 +166,5 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
         }
-#endif
     }
 }

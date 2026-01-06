@@ -139,6 +139,22 @@ namespace Illusion.Rendering
             return math.mul(projMat, viewMat);
         }
         
+#if UNITY_2023_1_OR_NEWER
+        public static float4x4 CalculateViewProjMatrix(ref CameraData cameraData, RTHandle color)
+        {
+            float4x4 viewMat = cameraData.GetViewMatrix();
+            float4x4 projMat = GetGPUProjectionMatrix(ref cameraData, color);
+            return math.mul(projMat, viewMat);
+        }
+
+        private static Matrix4x4 GetGPUProjectionMatrix(ref CameraData cameraData, RTHandle color, int viewIndex = 0)
+        {
+            Matrix4x4 jitterMat = TemporalAA.CalculateJitterMatrix(ref cameraData);
+            // GetGPUProjectionMatrix takes a projection matrix and returns a GfxAPI adjusted version, does not set or get any state.
+            return jitterMat * GL.GetGPUProjectionMatrix(cameraData.GetProjectionMatrixNoJitter(viewIndex), cameraData.IsRenderTargetProjectionMatrixFlipped(color));
+        }
+#endif
+                
         public static float4x4 CalculateViewProjMatrix(ref CameraData cameraData)
         {
             float4x4 viewMat = cameraData.GetViewMatrix();

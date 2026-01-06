@@ -5,7 +5,13 @@ using UnityEngine.Rendering.Universal;
 
 namespace Illusion.Rendering.Shadows
 {
-    [Serializable, VolumeComponentMenuForRenderPipeline("Illusion/Percentage Closer Soft Shadows", typeof(UniversalRenderPipeline))]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Percentage Closer Soft Shadows")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Percentage Closer Soft Shadows", typeof(UniversalRenderPipeline))]
+#endif
     public class PercentageCloserSoftShadows : VolumeComponent
     {
         /// <summary>

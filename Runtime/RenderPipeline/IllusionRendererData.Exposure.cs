@@ -73,6 +73,42 @@ namespace Illusion.Rendering
         public bool CanRunFixedExposurePass() => IsExposureFixed()
                                                  && CurrentExposureTextures.Current != null;
 
+        /// <summary>
+        /// Get RTHandle wrapper for Texture2D.whiteTexture (lazy initialization)
+        /// </summary>
+        public RTHandle GetWhiteTextureRT()
+        {
+            if (_whiteTextureRTHandle == null)
+            {
+                _whiteTextureRTHandle = RTHandles.Alloc(Texture2D.whiteTexture);
+            }
+            return _whiteTextureRTHandle;
+        }
+
+        /// <summary>
+        /// Get RTHandle wrapper for Texture2D.blackTexture (lazy initialization)
+        /// </summary>
+        public RTHandle GetBlackTextureRT()
+        {
+            if (_blackTextureRTHandle == null)
+            {
+                _blackTextureRTHandle = RTHandles.Alloc(Texture2D.blackTexture);
+            }
+            return _blackTextureRTHandle;
+        }
+
+        /// <summary>
+        /// Get RTHandle wrapper for Texture2D.grayTexture (lazy initialization)
+        /// </summary>
+        public RTHandle GetGrayTextureRT()
+        {
+            if (_grayTextureRTHandle == null)
+            {
+                _grayTextureRTHandle = RTHandles.Alloc(Texture2D.grayTexture);
+            }
+            return _grayTextureRTHandle;
+        }
+
         private struct ExposureTextures
         {
             public RTHandle Current;

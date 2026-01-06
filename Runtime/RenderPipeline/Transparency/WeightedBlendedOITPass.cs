@@ -3,10 +3,9 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Experimental.Rendering;
+using Unity.Collections;
 #if UNITY_2023_1_OR_NEWER
 using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#else
-using Unity.Collections;
 #endif
 
 namespace Illusion.Rendering
@@ -32,15 +31,13 @@ namespace Illusion.Rendering
         private RTHandle _revealage;
 
         private readonly RenderTargetIdentifier[] _oitBuffers = new RenderTargetIdentifier[2];
+
+        private bool _nativeRenderPass;
 #endif
 
         private static readonly ShaderTagId OitTagId = new(IllusionShaderPasses.OIT);
 
         private readonly IllusionRendererData _rendererData;
-
-#if !UNITY_2023_1_OR_NEWER
-        private bool _nativeRenderPass;
-#endif
 
         public WeightedBlendedOITPass(LayerMask layerMask, IllusionRendererData rendererData)
         {
@@ -81,7 +78,7 @@ namespace Illusion.Rendering
         {
             ConfigureInput(ScriptableRenderPassInput.Color);
         }
-
+        
 #if !UNITY_2023_1_OR_NEWER
         private void DoAccumulate(CommandBuffer cmd, ScriptableRenderContext context, ref RenderingData renderingData)
         {
@@ -134,6 +131,7 @@ namespace Illusion.Rendering
             _compositeMat.Value.SetTexture(Properties._RevealageTex, _revealage);
             Blitter.BlitCameraTexture(cmd,colorHandle, colorHandle, _compositeMat.Value, 0);
         }
+#endif
         
         private void DoNativeRenderPass(ScriptableRenderContext context, ref RenderingData renderingData)
         {
@@ -184,8 +182,7 @@ namespace Illusion.Rendering
 
                         var drawSettings = CreateDrawingSettings(OitTagId, ref renderingData,
                             renderingData.cameraData.defaultOpaqueSortFlags);
-                        context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings,
-                            ref _renderStateBlock);
+                        context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
                     }
 
                     context.ExecuteCommandBuffer(cmd);
@@ -233,13 +230,16 @@ namespace Illusion.Rendering
 #endif
             if (!_compositeMat.Value) return;
 
+#if !UNITY_2023_1_OR_NEWER
             if (_nativeRenderPass)
+#endif
             {
-                using (new ProfilingScope(null, profilingSampler))
+                using (new ProfilingScope((CommandBuffer)null, profilingSampler))
                 {
                     DoNativeRenderPass(context, ref renderingData);
                 }
             }
+#if !UNITY_2023_1_OR_NEWER
             else
             {
                 var cmd = CommandBufferPool.Get();
@@ -260,8 +260,10 @@ namespace Illusion.Rendering
                 context.ExecuteCommandBuffer(cmd);
                 CommandBufferPool.Release(cmd);
             }
+#endif
         }
-#else
+        
+#if UNITY_2023_1_OR_NEWER
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
         {
 #if UNITY_EDITOR
@@ -413,8 +415,6 @@ namespace Illusion.Rendering
             internal Material CompositeMaterial;
             internal RendererListHandle RendererListHdl;
             internal DebugRendererLists DebugRendererLists;
-
-            // Required for code sharing between RG and non-RG
             internal RendererList RendererList;
         }
 #endif

@@ -1,7 +1,9 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
 using UnityEngine.Rendering;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -86,6 +88,9 @@ namespace Illusion.Rendering
 
         public void RenderInit(CommandBuffer cmd, FGDIndex index)
         {
+            if (_isInit[(int)index])
+                return;
+            
             CoreUtils.DrawFullScreen(cmd, _preIntegratedFGDMaterial[(int)index], _preIntegratedFgd[(int)index]);
             _isInit[(int)index] = true;
         }
@@ -115,6 +120,9 @@ namespace Illusion.Rendering
         
         public void RenderInit(LowLevelCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
         {
+            if (_isInit[(int)index])
+                return;
+
             cmd.SetRenderTarget(textureHandle, 0, CubemapFace.Unknown, -1);
             cmd.DrawProcedural(Matrix4x4.identity, _preIntegratedFGDMaterial[(int)index], 0, MeshTopology.Triangles, 3, 1, null);
             _isInit[(int)index] = true;
@@ -145,7 +153,7 @@ namespace Illusion.Rendering
             if (_refCounting[(int)index] == 0)
             {
                 CoreUtils.Destroy(_preIntegratedFGDMaterial[(int)index]);
-                CoreUtils.Destroy(_preIntegratedFgd[(int)index]);
+                _preIntegratedFgd[(int)index].Release();
 
                 _isInit[(int)index] = false;
             }

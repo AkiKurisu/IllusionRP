@@ -76,13 +76,21 @@ namespace Illusion.Rendering.Editor
         {
             LitGUI.SetMaterialKeywords(material);
 
-            if (surfaceTypeProp != null && (SurfaceType)surfaceTypeProp.floatValue == SurfaceType.Transparent)
+            if (surfaceTypeProp != null)
             {
-                if (material.HasProperty(IllusionShaderProperties.OrderIndependent))
+                if ((SurfaceType)surfaceTypeProp.floatValue == SurfaceType.Transparent)
                 {
-                    var hasOrderIndependent = Mathf.Approximately(material.GetFloat(IllusionShaderProperties.OrderIndependent), 1.0f);
-                    material.SetShaderPassEnabled("UniversalForward", !hasOrderIndependent);
-                    material.SetShaderPassEnabled("OIT", hasOrderIndependent);
+                    if (material.HasProperty(IllusionShaderProperties.OrderIndependent))
+                    {
+                        var hasOrderIndependent =
+                            Mathf.Approximately(material.GetFloat(IllusionShaderProperties.OrderIndependent), 1.0f);
+                        material.SetShaderPassEnabled("UniversalForward", !hasOrderIndependent);
+                        material.SetShaderPassEnabled("OIT", hasOrderIndependent);
+                    }
+                }
+                else
+                {
+                    material.SetShaderPassEnabled("OIT", false);
                 }
             }
 

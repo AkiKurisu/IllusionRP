@@ -26,7 +26,6 @@ namespace Illusion.Rendering
             profilingSampler = new ProfilingSampler("Transparent Post Depth Normal");
         }
 
-#if !UNITY_2023_1_OR_NEWER
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
             // Will not fall back to PostDepthOnly even when ssao, ssr is disabled.
@@ -66,7 +65,6 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
-#endif
 
 #if UNITY_2023_1_OR_NEWER
         private class PassData

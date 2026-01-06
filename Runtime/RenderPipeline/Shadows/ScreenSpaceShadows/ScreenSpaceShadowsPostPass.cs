@@ -22,6 +22,10 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering;
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -39,6 +43,47 @@ namespace Illusion.Rendering.Shadows
         {
             ConfigureTarget(CurrentActive);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private class PassData
+        {
+            internal RenderingData RenderingData;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>("Screen Space Shadows Post Pass", out var passData, profilingSampler))
+            {
+                UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+                TextureHandle color = renderer.activeColorTexture;
+                builder.UseTextureFragment(color, 0);
+                passData.RenderingData = renderingData;
+
+                builder.AllowGlobalStateModification(true);
+
+                builder.SetRenderFunc((PassData data, RasterGraphContext rgContext) =>
+                {
+                    ExecutePass(rgContext.cmd, ref data.RenderingData);
+                });
+            }
+        }
+
+        private static void ExecutePass(RasterCommandBuffer cmd, ref RenderingData renderingData)
+        {
+            ShadowData shadowData = renderingData.shadowData;
+            int cascadesCount = shadowData.mainLightShadowCascadesCount;
+            bool mainLightShadows = renderingData.shadowData.supportsMainLightShadows;
+            bool receiveShadowsNoCascade = mainLightShadows && cascadesCount == 1;
+            bool receiveShadowsCascades = mainLightShadows && cascadesCount > 1;
+
+            // Before transparent object pass, force to disable screen space shadow of main light
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadowScreen, false);
+
+            // then enable main light shadows with or without cascades
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadows, receiveShadowsNoCascade);
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadowCascades, receiveShadowsCascades);
+        }
+#endif
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {

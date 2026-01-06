@@ -9,23 +9,29 @@ namespace Illusion.Rendering
 {
     public class GPUCopy
     {
-        ComputeShader m_Shader;
-        int k_SampleKernel_xyzw2x_8;
-        int k_SampleKernel_xyzw2x_1;
+        private ComputeShader m_Shader;
+        private int k_SampleKernel_xyzw2x_8;
+        private int k_SampleKernel_xyzw2x_1;
+        private int k_SampleKernel_xyzw2xyzw_8;
+        private int k_SampleKernel_xyzw2xyzw_1;
 
         public GPUCopy(ComputeShader shader)
         {
             m_Shader = shader;
             k_SampleKernel_xyzw2x_8 = m_Shader.FindKernel("KSampleCopy4_1_x_8");
             k_SampleKernel_xyzw2x_1 = m_Shader.FindKernel("KSampleCopy4_1_x_1");
+            k_SampleKernel_xyzw2xyzw_8 = m_Shader.FindKernel("KSampleCopy4_4_x_8");
+            k_SampleKernel_xyzw2xyzw_1 = m_Shader.FindKernel("KSampleCopy4_4_x_1");
         }
 
-        static readonly int _RectOffset = Shader.PropertyToID("_RectOffset");
-        static readonly int _Result1 = Shader.PropertyToID("_Result1");
-        static readonly int _Source4 = Shader.PropertyToID("_Source4");
-        static int[] _IntParams = new int[2];
+        private static readonly int _RectOffset = Shader.PropertyToID("_RectOffset");
+        private static readonly int _Result1 = Shader.PropertyToID("_Result1");
+        private static readonly int _Result4 = Shader.PropertyToID("_Result4");
+        private static readonly int _Source4 = Shader.PropertyToID("_Source4");
+        private static readonly int _Source4Full = Shader.PropertyToID("_Source4Full");
+        private static int[] _IntParams = new int[2];
 
-        void SampleCopyChannel(
+        private void SampleCopyChannel(
             CommandBuffer cmd,
             RectInt rect,
             int _source,
@@ -86,7 +92,7 @@ namespace Illusion.Rendering
                     _IntParams[0] = r.x;
                     _IntParams[1] = r.y;
                     cmd.SetComputeIntParams(m_Shader, _RectOffset, _IntParams);
-                    cmd.DispatchCompute(m_Shader, kernel8, (int)Mathf.Max(r.width / 8, 1), (int)Mathf.Max(r.height / 8, 1), slices);
+                    cmd.DispatchCompute(m_Shader, kernel8, Mathf.Max(r.width / 8, 1), Mathf.Max(r.height / 8, 1), slices);
                 }
 
                 for (int i = 0, c = dispatch1RectCount; i < c; ++i)
@@ -96,7 +102,7 @@ namespace Illusion.Rendering
                     _IntParams[0] = r.x;
                     _IntParams[1] = r.y;
                     cmd.SetComputeIntParams(m_Shader, _RectOffset, _IntParams);
-                    cmd.DispatchCompute(m_Shader, kernel1, (int)Mathf.Max(r.width, 1), (int)Mathf.Max(r.height, 1), slices);
+                    cmd.DispatchCompute(m_Shader, kernel1, Mathf.Max(r.width, 1), Mathf.Max(r.height, 1), slices);
                 }
             }
         }
@@ -108,7 +114,7 @@ namespace Illusion.Rendering
         }
         
 #if UNITY_2023_1_OR_NEWER
-        void SampleCopyChannel(
+        private void SampleCopyChannel(
             ComputeCommandBuffer cmd,
             RectInt rect,
             int _source,
@@ -169,7 +175,7 @@ namespace Illusion.Rendering
                     _IntParams[0] = r.x;
                     _IntParams[1] = r.y;
                     cmd.SetComputeIntParams(m_Shader, _RectOffset, _IntParams);
-                    cmd.DispatchCompute(m_Shader, kernel8, (int)Mathf.Max(r.width / 8, 1), (int)Mathf.Max(r.height / 8, 1), slices);
+                    cmd.DispatchCompute(m_Shader, kernel8, Mathf.Max(r.width / 8, 1), Mathf.Max(r.height / 8, 1), slices);
                 }
 
                 for (int i = 0, c = dispatch1RectCount; i < c; ++i)
@@ -179,7 +185,7 @@ namespace Illusion.Rendering
                     _IntParams[0] = r.x;
                     _IntParams[1] = r.y;
                     cmd.SetComputeIntParams(m_Shader, _RectOffset, _IntParams);
-                    cmd.DispatchCompute(m_Shader, kernel1, (int)Mathf.Max(r.width, 1), (int)Mathf.Max(r.height, 1), slices);
+                    cmd.DispatchCompute(m_Shader, kernel1, Mathf.Max(r.width, 1), Mathf.Max(r.height, 1), slices);
                 }
             }
         }
@@ -187,6 +193,12 @@ namespace Illusion.Rendering
         public void SampleCopyChannel_xyzw2x(ComputeCommandBuffer cmd, TextureHandle source, TextureHandle target, RectInt rect)
         {
             SampleCopyChannel(cmd, rect, _Source4, source, _Result1, target, ((RenderTexture)source).volumeDepth, k_SampleKernel_xyzw2x_8, k_SampleKernel_xyzw2x_1);
+        }
+        
+        // Full channel copy (xyzw -> xyzw) for RenderGraph
+        public void SampleCopyChannel_xyzw2xyzw(ComputeCommandBuffer cmd, TextureHandle source, TextureHandle target, RectInt rect, int slices = 1)
+        {
+            SampleCopyChannel(cmd, rect, _Source4Full, source, _Result4, target, slices, k_SampleKernel_xyzw2xyzw_8, k_SampleKernel_xyzw2xyzw_1);
         }
 #endif
     }

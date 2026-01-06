@@ -4,6 +4,9 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -77,16 +80,244 @@ namespace Illusion.Rendering.Shadows
             ConfigureInput(ScriptableRenderPassInput.Depth);
         }
 
+#if UNITY_2023_1_OR_NEWER
+        private class PenumbraPassData
+        {
+            internal TextureHandle PenumbraMaskTexture;
+            internal TextureHandle PenumbraMaskBlurTempTexture;
+            internal TextureHandle DepthTexture;
+            internal RenderingData RenderingData;
+            internal IllusionRendererData RendererData;
+            internal Material PenumbraMaskMaterial;
+            internal RenderTextureDescriptor PenumbraMaskDesc;
+            internal int ColorAttachmentWidth;
+            internal int ColorAttachmentHeight;
+            internal Vector4[] CascadeOffsetScales;
+            internal Vector4[] DirLightPcssParams0;
+            internal Vector4[] DirLightPcssParams1;
+        }
+
+        private class ShadowPassData
+        {
+            internal TextureHandle ScreenSpaceShadowsTexture;
+            internal RenderingData RenderingData;
+            internal IllusionRendererData RendererData;
+            internal Material ShadowMaterial;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            var descriptor = renderingData.cameraData.cameraTargetDescriptor;
+            SetupPenumbraMask(descriptor);
+            
+            descriptor.depthBufferBits = 0;
+            descriptor.msaaSamples = 1;
+            descriptor.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
+                ? GraphicsFormat.R8_UNorm
+                : GraphicsFormat.B8G8R8A8_UNorm;
+
+            // Create screen space shadows texture
+            TextureHandle screenSpaceShadowsTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, descriptor, "_ScreenSpaceShadowmapTexture", true);
+            
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            TextureHandle depthTexture = renderer.activeDepthTexture;
+            
+            // Set global texture for screen space shadows
+            RenderGraphUtils.SetGlobalTexture(renderGraph, "_ScreenSpaceShadowmapTexture", screenSpaceShadowsTexture);
+
+            // PCSS Penumbra Pass - Use UnsafePass for multiple render target switching
+            if (_rendererData.PCSSShadowSampling)
+            {
+                TextureHandle penumbraMaskTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _penumbraMaskDesc, "_PenumbraMaskTex", false);
+                TextureHandle penumbraMaskBlurTempTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _penumbraMaskDesc, "_PenumbraMaskBlurTempTex", false);
+
+                using (var builder = renderGraph.AddLowLevelPass<PenumbraPassData>("PCSS Penumbra Pass", out var passData, _pcssPenumbraSampler))
+                {
+                    passData.PenumbraMaskTexture = builder.UseTexture(penumbraMaskTexture, IBaseRenderGraphBuilder.AccessFlags.Write);
+                    passData.PenumbraMaskBlurTempTexture = builder.UseTexture(penumbraMaskBlurTempTexture, IBaseRenderGraphBuilder.AccessFlags.Write);
+                    passData.DepthTexture = builder.UseTexture(depthTexture);
+                    passData.RenderingData = renderingData;
+                    passData.RendererData = _rendererData;
+                    passData.PenumbraMaskMaterial = _penumbraMaskMat.Value;
+                    passData.PenumbraMaskDesc = _penumbraMaskDesc;
+                    passData.ColorAttachmentWidth = _colorAttachmentWidth;
+                    passData.ColorAttachmentHeight = _colorAttachmentHeight;
+                    passData.CascadeOffsetScales = _cascadeOffsetScales;
+                    passData.DirLightPcssParams0 = _dirLightPcssParams0;
+                    passData.DirLightPcssParams1 = _dirLightPcssParams1;
+
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+
+                    builder.SetRenderFunc((PenumbraPassData data, LowLevelGraphContext context) =>
+                    {
+                        ExecutePenumbraPass(context.cmd, data);
+                    });
+                }
+            }
+
+            // Screen Space Shadows Pass - Use RasterPass for single render target
+            using (var builder = renderGraph.AddRasterRenderPass<ShadowPassData>("Screen Space Shadows Pass", out var passData, _screenSpaceShadowSampler))
+            {
+                passData.ScreenSpaceShadowsTexture = builder.UseTextureFragment(screenSpaceShadowsTexture, 0);
+                passData.RenderingData = renderingData;
+                passData.RendererData = _rendererData;
+                passData.ShadowMaterial = _shadowMaterial.Value;
+
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+
+                builder.SetRenderFunc((ShadowPassData data, RasterGraphContext rgContext) =>
+                {
+                    ExecuteShadowPass(rgContext.cmd, data);
+                });
+            }
+        }
+
+        private static void ExecutePenumbraPass(LowLevelCommandBuffer cmd, PenumbraPassData data)
+        {
+            cmd.EnableShaderKeyword(IllusionShaderKeywords._PCSS_SHADOWS);
+            PackDirLightParamsRenderGraph(cmd, data);
+            RenderPenumbraMaskRenderGraph(cmd, data);
+        }
+
+        private static void ExecuteShadowPass(RasterCommandBuffer cmd, ShadowPassData data)
+        {
+            Material material = data.ShadowMaterial;
+            var config = IllusionRuntimeRenderingConfig.Get();
+            var rendererData = data.RendererData;
+
+            // Setup debug keywords
+            var debugMode = config.ScreenSpaceShadowDebugMode;
+            CoreUtils.SetKeyword(cmd, IllusionShaderKeywords._DEBUG_SCREEN_SPACE_SHADOW_MAINLIGHT, debugMode == ScreenSpaceShadowDebugMode.MainLightShadow);
+            CoreUtils.SetKeyword(cmd, IllusionShaderKeywords._DEBUG_SCREEN_SPACE_SHADOW_CONTACT, debugMode == ScreenSpaceShadowDebugMode.ContactShadow);
+
+            // Bind ContactShadow
+            var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
+            if (rendererData.ContactShadowsSampling)
+            {
+                var contactShadowRT = contactShadowParam.shadowDenoiser.value == ShadowDenoiser.Spatial
+                    ? rendererData.ContactShadowsDenoisedRT
+                    : rendererData.ContactShadowsRT;
+                if (contactShadowRT.IsValid())
+                {
+                    material.SetTexture(IllusionShaderProperties._ContactShadowMap, contactShadowRT);
+                }
+            }
+            CoreUtils.SetKeyword(cmd, IllusionShaderKeywords._CONTACT_SHADOWS, rendererData.ContactShadowsSampling);
+            
+            // Handle PCSS keyword
+            if (rendererData.PCSSShadowSampling)
+            {
+                cmd.EnableShaderKeyword(IllusionShaderKeywords._PCSS_SHADOWS);
+            }
+            else
+            {
+                cmd.DisableShaderKeyword(IllusionShaderKeywords._PCSS_SHADOWS);
+            }
+            
+            Blitter.BlitTexture(cmd, data.ScreenSpaceShadowsTexture, Vector2.one, material, 0);
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadows, false);
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadowCascades, false);
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadowScreen, true);
+        }
+
+        private static void RenderPenumbraMaskRenderGraph(LowLevelCommandBuffer cmd, PenumbraPassData data)
+        {
+            var material = data.PenumbraMaskMaterial;
+            var penumbraMaskDesc = data.PenumbraMaskDesc;
+
+            cmd.SetRenderTarget(data.PenumbraMaskTexture);
+            cmd.SetGlobalVector(ShaderProperties.ColorAttachmentTexelSize,
+                new Vector4(1f / data.ColorAttachmentWidth, 1f / data.ColorAttachmentHeight, data.ColorAttachmentWidth,
+                    data.ColorAttachmentHeight));
+            cmd.SetGlobalVector(ShaderProperties.PenumbraMaskTexelSize, new Vector4(1f / penumbraMaskDesc.width, 1f / penumbraMaskDesc.height, penumbraMaskDesc.width, penumbraMaskDesc.height));
+            cmd.SetGlobalVector(ShaderProperties.BlitScaleBias, new Vector4(1, 1, 0, 0));
+            cmd.DrawProcedural(Matrix4x4.identity, material, 0, MeshTopology.Triangles, 3, 1);
+
+            cmd.SetGlobalTexture(ShaderProperties.PenumbraMaskTex, data.PenumbraMaskTexture);
+            cmd.SetRenderTarget(data.PenumbraMaskBlurTempTexture);
+            cmd.DrawProcedural(Matrix4x4.identity, material, 1, MeshTopology.Triangles, 3, 1);
+
+            cmd.SetGlobalTexture(ShaderProperties.PenumbraMaskTex, data.PenumbraMaskBlurTempTexture);
+            cmd.SetRenderTarget(data.PenumbraMaskTexture);
+            cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1);
+
+            cmd.SetGlobalTexture(ShaderProperties.PenumbraMaskTex, data.PenumbraMaskTexture);
+        }
+
+        private static void PackDirLightParamsRenderGraph(LowLevelCommandBuffer cmd, PenumbraPassData data)
+        {
+            var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
+            var renderingData = data.RenderingData;
+            var rendererData = data.RendererData;
+            
+            if (renderingData.shadowData.supportsSoftShadows)
+            {
+                float renderTargetWidth = renderingData.shadowData.mainLightShadowmapWidth;
+                float renderTargetHeight = renderingData.shadowData.mainLightShadowCascadesCount == 2
+                    ? renderingData.shadowData.mainLightShadowmapHeight >> 1
+                    : renderingData.shadowData.mainLightShadowmapHeight;
+                float invShadowAtlasWidth = 1.0f / renderTargetWidth;
+                float invShadowAtlasHeight = 1.0f / renderTargetHeight;
+                var slices = rendererData.MainLightShadowSliceData;
+                for (int i = 0; i < data.CascadeOffsetScales.Length; i++)
+                {
+                    data.CascadeOffsetScales[i] = new Vector4(
+                        slices[i].offsetX * invShadowAtlasWidth,
+                        slices[i].offsetY * invShadowAtlasHeight,
+                        slices[i].resolution * invShadowAtlasWidth,
+                        slices[i].resolution * invShadowAtlasHeight);
+                }
+
+                cmd.SetGlobalVectorArray(ShaderProperties.CascadeOffsetScales, data.CascadeOffsetScales);
+            }
+
+            cmd.SetGlobalFloat(ShaderProperties.FindBlockerSampleCount, pcssParams.findBlockerSampleCount.value);
+            cmd.SetGlobalFloat(ShaderProperties.PcfSampleCount, pcssParams.pcfSampleCount.value);
+
+            float lightAngularDiameter = pcssParams.angularDiameter.value;
+            float dirlightDepth2Radius = Mathf.Tan(0.5f * Mathf.Deg2Rad * lightAngularDiameter);
+            float minFilterAngularDiameter = Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, pcssParams.minFilterMaxAngularDiameter.value);
+            float halfMinFilterAngularDiameterTangent = Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(minFilterAngularDiameter, lightAngularDiameter));
+            float halfBlockerSearchAngularDiameterTangent = Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, lightAngularDiameter));
+
+            for (int i = 0; i < IllusionRendererData.ShadowCascadeCount; ++i)
+            {
+                float shadowmapDepth2RadialScale = Mathf.Abs(rendererData.MainLightShadowDeviceProjectionMatrixs[i].m00 / rendererData.MainLightShadowDeviceProjectionMatrixs[i].m22);
+                
+                // Reuse arrays from data
+                data.DirLightPcssParams0[i].x = dirlightDepth2Radius * shadowmapDepth2RadialScale;
+                data.DirLightPcssParams0[i].y = 1.0f / data.DirLightPcssParams0[i].x;
+                data.DirLightPcssParams0[i].z = pcssParams.maxPenumbraSize.value / (2.0f * halfMinFilterAngularDiameterTangent);
+                data.DirLightPcssParams0[i].w = pcssParams.maxSamplingDistance.value;
+
+                data.DirLightPcssParams1[i].x = pcssParams.minFilterSizeTexels.value;
+                data.DirLightPcssParams1[i].y = 1.0f / (halfMinFilterAngularDiameterTangent * shadowmapDepth2RadialScale);
+                data.DirLightPcssParams1[i].z = 1.0f / (halfBlockerSearchAngularDiameterTangent * shadowmapDepth2RadialScale);
+            }
+
+            cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssParams0, data.DirLightPcssParams0);
+            cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssParams1, data.DirLightPcssParams1);
+            cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssProjs, rendererData.MainLightShadowDeviceProjectionVectors);
+        }
+#endif
+        
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
             var descriptor = renderingData.cameraData.cameraTargetDescriptor;
             SetupPenumbraMask(descriptor);
             descriptor.depthBufferBits = 0;
             descriptor.msaaSamples = 1;
-            descriptor.graphicsFormat =
-                RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
-                    ? GraphicsFormat.R8_UNorm
-                    : GraphicsFormat.B8G8R8A8_UNorm;
+#if UNITY_2023_1_OR_NEWER
+            descriptor.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
+                ? GraphicsFormat.R8_UNorm
+                : GraphicsFormat.B8G8R8A8_UNorm;
+#else
+            descriptor.graphicsFormat = RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
+                ? GraphicsFormat.R8_UNorm
+                : GraphicsFormat.B8G8R8A8_UNorm;
+#endif
 
             RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ScreenSpaceShadowsRT, descriptor, wrapMode: TextureWrapMode.Clamp,
                 name: "_ScreenSpaceShadowmapTexture");

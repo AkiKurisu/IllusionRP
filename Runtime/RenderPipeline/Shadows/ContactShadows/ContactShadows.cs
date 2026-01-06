@@ -18,7 +18,13 @@ namespace Illusion.Rendering.Shadows
             : base(value, overrideState) { }
     }
     
-    [Serializable, VolumeComponentMenuForRenderPipeline("Illusion/Contact Shadows", typeof(UniversalRenderPipeline))]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Contact Shadows")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Contact Shadows", typeof(UniversalRenderPipeline))]
+#endif
     public class ContactShadows : VolumeComponent
     {
         /// <summary>

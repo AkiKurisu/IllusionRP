@@ -20,6 +20,9 @@
  */
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -30,6 +33,29 @@ namespace Illusion.Rendering.Shadows
             renderPassEvent = RenderPassEvent.AfterRenderingShadows;
             profilingSampler = new ProfilingSampler("MainLightPerObjectSceneShadow (Preview)");
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private class PassData
+        {
+            internal int shadowCountPropertyID;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadow Preview", out var passData, profilingSampler))
+            {
+                passData.shadowCountPropertyID = PerObjectShadowCasterPass.PropertyIds.ShadowCount();
+                
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+                
+                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                {
+                    context.cmd.SetGlobalInt(data.shadowCountPropertyID, 0);
+                });
+            }
+        }
+#endif
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {

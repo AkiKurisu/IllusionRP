@@ -8,7 +8,12 @@ namespace Illusion.Rendering.PostProcessing
 	/// <summary>
 	/// Volume component for the volumetric fog.
 	/// </summary>
-	[VolumeComponentMenuForRenderPipeline("Illusion/Volumetric Fog", typeof(UniversalRenderPipeline))]
+#if UNITY_2023_1_OR_NEWER
+	[SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+	[VolumeComponentMenu("Illusion/Volumetric Fog")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Volumetric Fog", typeof(UniversalRenderPipeline))]
+#endif
 	public sealed class VolumetricFog : VolumeComponent, IPostProcessComponent
 	{
 		#region Public Attributes

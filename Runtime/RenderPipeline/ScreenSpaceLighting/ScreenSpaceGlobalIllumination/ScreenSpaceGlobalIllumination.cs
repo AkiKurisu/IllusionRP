@@ -39,7 +39,13 @@ namespace Illusion.Rendering
             : base(value, overrideState) { }
     }
 
-    [Serializable, VolumeComponentMenuForRenderPipeline("Illusion/Screen Space Global Illumination", typeof(UniversalRenderPipeline))]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Screen Space Global Illumination")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Screen Space Global Illumination", typeof(UniversalRenderPipeline))]
+#endif
     public class ScreenSpaceGlobalIllumination : VolumeComponent
     {
         /// <summary>

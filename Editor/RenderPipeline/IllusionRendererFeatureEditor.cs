@@ -207,11 +207,11 @@ namespace Illusion.Rendering.Editor
                 "If this is enabled, the camera copies the last rendered view so it can be accessed at next frame in the pipeline." +
                 "When temporal anti-aliasing is on, history color will fetch accumulation buffer directly.");
             public static readonly GUIContent RequireEarlyMotionVectorLabel = new("Require Early Motion Vector",
-                "Enable to draw motion vector earlier than drawing objects.");
+                "Enable to draw motion vector before rendering objects. Please note that motion vector will be drawn twice when using RenderGraph.");
             public static readonly GUIContent PreferComputeShaderLabel = new("Prefer Compute Shader",
                 "Whether prefer to calculating effects in compute shader if possible.");
             public static readonly GUIContent NativeRenderPassLabel = new("Native Render Pass",
-                "Enables IllusionRP to use RenderPass API. Has no effect on OpenGLES2.");
+                "Enables IllusionRP to use native render pass API. No need when using RenderGraph.");
 
             // Transparency Settings
             public static readonly GUIContent OrderIndependentTransparencyLabel = new("Order Independent Transparency",

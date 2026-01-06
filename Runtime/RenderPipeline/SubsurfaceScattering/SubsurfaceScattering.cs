@@ -58,7 +58,22 @@ namespace Illusion.Rendering
 
             m_Value[AccumulatedCount++] = profile;
         }
+        
+#if UNITY_2023_1_OR_NEWER
+        /// <summary>
+        /// Sets the value of this parameter to the value in <paramref name="parameter"/>.
+        /// Implemented explicitly for DiffusionProfileList because we have internal state to copy.
+        /// </summary>
+        /// <param name="parameter">The <see cref="VolumeParameter"/> to copy the value from.</param>
+        public override void SetValue(VolumeParameter parameter)
+        {
+            base.SetValue(parameter);
 
+            var param = (DiffusionProfilesParameter)parameter;
+            AccumulatedCount = param.AccumulatedCount;
+        }
+#endif
+        
         /// <summary>
         /// Interpolates two values using a factor <paramref name="t"/>.
         /// </summary>
@@ -114,13 +129,19 @@ namespace Illusion.Rendering
         }
     }
     
-    [Serializable, VolumeComponentMenuForRenderPipeline("Illusion/Subsurface Scattering", typeof(UniversalRenderPipeline))]
+    [Serializable]
+#if UNITY_2023_1_OR_NEWER
+    [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
+    [VolumeComponentMenu("Illusion/Subsurface Scattering")]
+#else
+    [VolumeComponentMenuForRenderPipeline("Illusion/Subsurface Scattering", typeof(UniversalRenderPipeline))]
+#endif
     public class SubsurfaceScattering : VolumeComponent
     {
         public BoolParameter enable = new(false, BoolParameter.DisplayType.EnumPopup);
         
         [SerializeField]
-        public DiffusionProfilesParameter diffusionProfiles = new(default);
+        public DiffusionProfilesParameter diffusionProfiles = new(null);
 
         [Header("Performance")]
         [AdditionalProperty] 

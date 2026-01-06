@@ -21,6 +21,9 @@
 
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -30,20 +33,49 @@ namespace Illusion.Rendering
 
         private readonly bool _state;
 
+        private readonly string _name;
+
         public SetKeywordPass(string keyword, bool state, RenderPassEvent evt)
         {
             renderPassEvent = evt;
-
             _keyword = keyword;
             _state = state;
+            profilingSampler = new ProfilingSampler(_name = $"Set Keyword {keyword} to {state}");
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             var cmd = CommandBufferPool.Get();
-            CoreUtils.SetKeyword(cmd, _keyword, _state);
+            using (new ProfilingScope(cmd, profilingSampler))
+            {
+                CoreUtils.SetKeyword(cmd, _keyword, _state);
+            }
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
+        
+#if UNITY_2023_1_OR_NEWER
+        private class SetKeywordPassData
+        {
+            internal string Keyword;
+            internal bool State;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
+            ref RenderingData renderingData)
+        {
+            using (var builder = renderGraph.AddLowLevelPass<SetKeywordPassData>(_name, out var passData, profilingSampler))
+            {
+                passData.Keyword = _keyword;
+                passData.State = _state;
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc(static (SetKeywordPassData data, LowLevelGraphContext context) =>
+                {
+                    CoreUtils.SetKeyword(context.cmd, data.Keyword, data.State);
+                });
+            }
+        }
+#endif
     }
 }

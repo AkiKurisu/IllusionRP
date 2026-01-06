@@ -3,6 +3,9 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.PostProcessing
 {
@@ -62,6 +65,60 @@ namespace Illusion.Rendering.PostProcessing
                 
         private readonly ProfilingSampler _automaticExposureSampler = new("Automatic Exposure");
         
+        // Cached RTHandle wrappers for custom textures (RenderGraph)
+        private RTHandle _textureMeteringMaskRTHandle;
+        
+        private RTHandle _exposureCurveRTHandle;
+
+#if UNITY_2023_1_OR_NEWER
+        private class ExposurePassData
+        {
+            internal ComputeShader HistogramExposureCs;
+            internal ComputeShader ExposureCs;
+            internal int ExposurePreparationKernel;
+            internal int ExposureReductionKernel;
+            
+            internal TextureHandle Source;
+            internal TextureHandle PrevExposure;
+            internal TextureHandle NextExposure;
+            internal TextureHandle ExposureDebugData;
+            
+            // For setting global textures
+            internal TextureHandle CurrentExposureTexture;
+            internal TextureHandle PreviousExposureTexture;
+            
+            internal ComputeBuffer HistogramBuffer;
+            internal TextureHandle TextureMeteringMask;
+            internal TextureHandle ExposureCurve;
+            
+            internal int[] ExposureVariants;
+            internal Vector4 ExposureParams;
+            internal Vector4 ExposureParams2;
+            internal Vector4 ProceduralMaskParams;
+            internal Vector4 ProceduralMaskParams2;
+            internal Vector4 HistogramExposureParams;
+            internal Vector4 AdaptationParams;
+            
+            internal bool IsFixedExposure;
+            internal bool HistogramUsesCurve;
+            internal bool HistogramOutputDebugData;
+            internal bool ResetPostProcessingHistory;
+            
+            internal int CameraWidth;
+            internal int CameraHeight;
+            
+            internal IllusionRendererData RendererData;
+            internal Material ApplyExposureMaterial;
+        }
+
+        private class ApplyExposurePassData
+        {
+            internal Material ApplyExposureMaterial;
+            internal TextureHandle Source;
+            internal TextureHandle Destination;
+        }
+#endif
+        
         public ExposurePass(IllusionRendererData rendererData)
         {
             _rendererData = rendererData;
@@ -75,6 +132,11 @@ namespace Illusion.Rendering.PostProcessing
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        {
+            PrepareExposureData(ref renderingData);
+        }
+        
+        private void PrepareExposureData(ref RenderingData renderingData)
         {
             _exposure = VolumeManager.instance.stack.GetComponent<Exposure>();
             if (_rendererData.IsExposureFixed())
@@ -223,6 +285,20 @@ namespace Illusion.Rendering.PostProcessing
             cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._OutputTexture, _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Exposure));
             cmd.DispatchCompute(cs, kernel, 1, 1, 1);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private static void DoFixedExposure(ExposurePassData data, ComputeCommandBuffer cmd)
+        {
+            ComputeShader cs = data.ExposureCs;
+            int kernel = cs.FindKernel("KFixedExposure");
+
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._ExposureParams, data.ExposureParams);
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._ExposureParams2, data.ExposureParams2);
+
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._OutputTexture, data.NextExposure);
+            cmd.DispatchCompute(cs, kernel, 1, 1, 1);
+        }
+#endif
         
         private void DoHistogramBasedExposure(CommandBuffer cmd, ref RenderingData renderingData, RTHandle source)
         {
@@ -279,6 +355,59 @@ namespace Illusion.Rendering.PostProcessing
 
             cmd.DispatchCompute(cs, kernel, 1, 1, 1);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private static void DoHistogramBasedExposure(ExposurePassData data, ComputeCommandBuffer cmd)
+        {
+            var cs = data.HistogramExposureCs;
+
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._ProceduralMaskParams, data.ProceduralMaskParams);
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._ProceduralMaskParams2, data.ProceduralMaskParams2);
+
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._HistogramExposureParams, data.HistogramExposureParams);
+
+            // Generate histogram.
+            var kernel = data.ExposurePreparationKernel;
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._PreviousExposureTexture, data.PrevExposure);
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._SourceTexture, data.Source);
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._ExposureWeightMask, data.TextureMeteringMask);
+
+            cmd.SetComputeIntParams(cs, ExposureShaderIDs._Variants, data.ExposureVariants);
+
+            cmd.SetComputeBufferParam(cs, kernel, ExposureShaderIDs._HistogramBuffer, data.HistogramBuffer);
+
+            int threadGroupSizeX = 16;
+            int threadGroupSizeY = 8;
+            int dispatchSizeX = IllusionRenderingUtils.DivRoundUp(data.CameraWidth / 2, threadGroupSizeX);
+            int dispatchSizeY = IllusionRenderingUtils.DivRoundUp(data.CameraHeight / 2, threadGroupSizeY);
+
+            cmd.DispatchCompute(cs, kernel, dispatchSizeX, dispatchSizeY, 1);
+
+            // Now read the histogram
+            kernel = data.ExposureReductionKernel;
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._ExposureParams, data.ExposureParams);
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._ExposureParams2, data.ExposureParams2);
+            cmd.SetComputeVectorParam(cs, ExposureShaderIDs._AdaptationParams, data.AdaptationParams);
+            cmd.SetComputeBufferParam(cs, kernel, ExposureShaderIDs._HistogramBuffer, data.HistogramBuffer);
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._PreviousExposureTexture, data.PrevExposure);
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._OutputTexture, data.NextExposure);
+
+            cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._ExposureCurveTexture, data.ExposureCurve);
+            data.ExposureVariants[3] = 0;
+            if (data.HistogramUsesCurve)
+            {
+                data.ExposureVariants[3] = 2;
+            }
+            cmd.SetComputeIntParams(cs, ExposureShaderIDs._Variants, data.ExposureVariants);
+
+            if (data.HistogramOutputDebugData)
+            {
+                cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._ExposureDebugTexture, data.ExposureDebugData);
+            }
+
+            cmd.DispatchCompute(cs, kernel, 1, 1, 1);
+        }
+#endif
         
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
@@ -309,11 +438,199 @@ namespace Illusion.Rendering.PostProcessing
             CommandBufferPool.Release(cmd);
         }
 
+#if UNITY_2023_1_OR_NEWER
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            PrepareExposureData(ref renderingData);
+            
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            
+            bool isFixedExposure = _rendererData.CanRunFixedExposurePass();
+            bool resetHistory = _rendererData.ResetPostProcessingHistory;
+            ProfilingSampler sampler = isFixedExposure ? _fixedExposureSampler : _automaticExposureSampler;
+            
+            // Main exposure pass
+            using (var builder = renderGraph.AddComputePass<ExposurePassData>("Exposure Pass", out var passData, sampler))
+            {
+                // Setup pass data
+                PreparePassDataForRenderGraph(builder, passData, ref renderingData, renderer, isFixedExposure, renderGraph);
+                
+                _rendererData.GrabExposureRequiredTextures(out var prevExposure, out var nextExposure);
+                passData.PrevExposure = builder.UseTexture(renderGraph.ImportTexture(prevExposure));
+                passData.NextExposure = builder.UseTexture(renderGraph.ImportTexture(nextExposure), IBaseRenderGraphBuilder.AccessFlags.Write);
+                
+                if (!isFixedExposure && passData.HistogramOutputDebugData)
+                {
+                    var exposureDebugData = _rendererData.GetExposureDebugData();
+                    passData.ExposureDebugData = builder.UseTexture(renderGraph.ImportTexture(exposureDebugData), IBaseRenderGraphBuilder.AccessFlags.Write);
+                }
+                
+                // Import textures for SetGlobalTexture
+                var currentExposureRT = _rendererData.GetExposureTexture();
+                var previousExposureRT = _rendererData.GetPreviousExposureTexture();
+                passData.CurrentExposureTexture = builder.UseTexture(renderGraph.ImportTexture(currentExposureRT));
+                passData.PreviousExposureTexture = builder.UseTexture(renderGraph.ImportTexture(previousExposureRT));
+                
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+                
+                // Set render function
+                builder.SetRenderFunc(static (ExposurePassData data, ComputeGraphContext context) =>
+                {
+                    if (data.IsFixedExposure)
+                    {
+                        DoFixedExposure(data, context.cmd);
+                    }
+                    else
+                    {
+                        DoHistogramBasedExposure(data, context.cmd);
+                    }
+                    
+                    // Set global textures using TextureHandle
+                    context.cmd.SetGlobalTexture(IllusionShaderProperties._ExposureTexture, data.CurrentExposureTexture);
+                    context.cmd.SetGlobalTexture(IllusionShaderProperties._PrevExposureTexture, data.PreviousExposureTexture);
+                });
+            }
+            
+            // Apply exposure pass for history reset (swap front to back)
+            if (!isFixedExposure && resetHistory)
+            {
+                // Create intermediate texture
+                var descriptor = renderingData.cameraData.cameraTargetDescriptor;
+                descriptor.depthBufferBits = 0;
+                
+                TextureHandle intermediateTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, descriptor, "_ExposureIntermediateTexture", false, FilterMode.Bilinear);
+                
+                // First pass: blit from activeColorTexture to intermediate texture
+                using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure To Intermediate", 
+                    out var applyPassData, new ProfilingSampler("Apply Exposure To Intermediate")))
+                {
+                    applyPassData.ApplyExposureMaterial = _applyExposureMaterial.Value;
+                    applyPassData.Source = builder.UseTexture(renderer.activeColorTexture);
+                    applyPassData.Destination = builder.UseTextureFragment(intermediateTexture, 0);
+                    
+                    builder.AllowPassCulling(false);
+                    
+                    builder.SetRenderFunc(static (ApplyExposurePassData data, RasterGraphContext context) =>
+                    {
+                        Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, data.ApplyExposureMaterial, 0);
+                    });
+                }
+                
+                // Second pass: blit from intermediate texture back to activeColorTexture
+                using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure From Intermediate", 
+                    out var applyPassData2, new ProfilingSampler("Apply Exposure From Intermediate")))
+                {
+                    applyPassData2.Source = builder.UseTexture(intermediateTexture);
+                    applyPassData2.Destination = builder.UseTextureFragment(renderer.activeColorTexture, 0);
+                    
+                    builder.AllowPassCulling(false);
+                    
+                    builder.SetRenderFunc(static (ApplyExposurePassData data, RasterGraphContext context) =>
+                    {
+                        Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, Blitter.GetBlitMaterial(TextureDimension.Tex2D), 0);
+                    });
+                }
+            }
+        }
+
+        private void PreparePassDataForRenderGraph(IComputeRenderGraphBuilder builder, ExposurePassData passData, ref RenderingData renderingData, 
+            UniversalRenderer renderer, bool isFixedExposure, RenderGraph renderGraph)
+        {
+            passData.RendererData = _rendererData;
+            passData.IsFixedExposure = isFixedExposure;
+            passData.ExposureCs = _exposureCS;
+            passData.HistogramExposureCs = _histogramExposureCs;
+            passData.ApplyExposureMaterial = _applyExposureMaterial.Value;
+            passData.ResetPostProcessingHistory = _rendererData.ResetPostProcessingHistory;
+            
+            if (isFixedExposure)
+            {
+                // Fixed exposure setup
+                float m_DebugExposureCompensation = 0;
+                passData.ExposureParams = new Vector4(_exposure.compensation.value + m_DebugExposureCompensation, 
+                    _exposure.fixedExposure.value, 0f, 0f);
+                passData.ExposureParams2 = new Vector4(0.0f, 0.0f, ColorUtils.lensImperfectionExposureScale, 
+                    ColorUtils.s_LightMeterCalibrationConstant);
+            }
+            else
+            {
+                passData.Source = builder.UseTexture(renderer.activeColorTexture);
+                
+                // Histogram-based exposure setup (from OnCameraSetup)
+                passData.ExposurePreparationKernel = _exposurePreparationKernel;
+                passData.ExposureReductionKernel = _exposureReductionKernel;
+                
+                passData.ExposureVariants = _exposureVariants;
+                
+                // Import Texture2D resources as TextureHandle with cached RTHandle wrappers
+                if (_textureMeteringMaskRTHandle == null || _textureMeteringMask == null)
+                {
+                    // Release old RTHandle if texture changed
+                    if (_textureMeteringMaskRTHandle != null)
+                    {
+                        RTHandles.Release(_textureMeteringMaskRTHandle);
+                        _textureMeteringMaskRTHandle = null;
+                    }
+                    
+                    // Create new RTHandle wrapper
+                    if (_textureMeteringMask != null)
+                    {
+                        _textureMeteringMaskRTHandle = RTHandles.Alloc(_textureMeteringMask);
+                    }
+                }
+                
+                RTHandle meteringMaskHandle = _textureMeteringMaskRTHandle ?? _rendererData.GetWhiteTextureRT();
+                passData.TextureMeteringMask = builder.UseTexture(renderGraph.ImportTexture(meteringMaskHandle));
+                
+                passData.ProceduralMaskParams = _proceduralMaskParams;
+                passData.ProceduralMaskParams2 = _proceduralMaskParams2;
+                passData.ExposureParams = _exposureParams;
+                passData.ExposureParams2 = _exposureParams2;
+                
+                // Import exposure curve texture if available with cached RTHandle wrapper
+                if (_exposureCurveRTHandle == null || _exposureCurve == null)
+                {
+                    // Release old RTHandle if texture changed
+                    if (_exposureCurveRTHandle != null)
+                    {
+                        RTHandles.Release(_exposureCurveRTHandle);
+                        _exposureCurveRTHandle = null;
+                    }
+                    
+                    // Create new RTHandle wrapper
+                    if (_exposureCurve != null)
+                    {
+                        _exposureCurveRTHandle = RTHandles.Alloc(_exposureCurve);
+                    }
+                }
+                
+                RTHandle exposureCurveHandle = _exposureCurveRTHandle ?? _rendererData.GetWhiteTextureRT();
+                passData.ExposureCurve = builder.UseTexture(renderGraph.ImportTexture(exposureCurveHandle));
+                
+                passData.HistogramExposureParams = _histogramExposureParams;
+                passData.AdaptationParams = _adaptationParams;
+                passData.HistogramUsesCurve = _histogramUsesCurve;
+                passData.HistogramOutputDebugData = _histogramOutputDebugData;
+                
+                passData.HistogramBuffer = _rendererData.HistogramBuffer;
+                passData.CameraWidth = renderingData.cameraData.camera.pixelWidth;
+                passData.CameraHeight = renderingData.cameraData.camera.pixelHeight;
+            }
+        }
+#endif
+
         public void Dispose()
         {
             CoreUtils.Destroy(_exposureCurveTexture);
             _exposureCurveTexture = null;
             _applyExposureMaterial.DestroyCache();
+            
+            // Release cached RTHandle wrappers
+            RTHandles.Release(_textureMeteringMaskRTHandle);
+            RTHandles.Release(_exposureCurveRTHandle);
+            _textureMeteringMaskRTHandle = null;
+            _exposureCurveRTHandle = null;
         }
     }
 }

@@ -130,6 +130,11 @@ namespace Illusion.Rendering
             // Initialize point distribution buffer for denoiser (16 samples * 4 frame periods)
             _pointDistribution = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 16 * 4, 2 * sizeof(float));
             _denoiserInitialized = false;
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Depth
+                           | ScriptableRenderPassInput.Normal
+                           | ScriptableRenderPassInput.Motion);
+#endif
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)

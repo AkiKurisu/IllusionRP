@@ -120,6 +120,11 @@ namespace Illusion.Rendering
             _accumulateNoWorldSpeedRejectionBothDebugKernel = _computeShader.FindKernel("ScreenSpaceReflectionsAccumulateNoWorldSpeedRejectionBothDebug");
             _accumulateSmoothSpeedRejectionBothDebugKernel = _computeShader.FindKernel("ScreenSpaceReflectionsAccumulateSmoothSpeedRejectionBothDebug");
             profilingSampler = new ProfilingSampler("Screen Space Reflection");
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Depth
+                           | ScriptableRenderPassInput.Normal
+                           | ScriptableRenderPassInput.Motion);
+#endif
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)

@@ -13,8 +13,6 @@ namespace Illusion.Rendering
 
         private readonly PreIntegratedFGD.FGDIndex _index;
 
-        private static readonly ProfilingSampler PreIntegratedFGDSampler = new("PreIntegrated FGD");
-
         private readonly RTHandle _rtHandle;
 
         public PreIntegratedFGDPass(IllusionRendererData rendererData, PreIntegratedFGD.FGDIndex fgdIndex)
@@ -23,6 +21,7 @@ namespace Illusion.Rendering
             _rendererData = rendererData;
             _index = fgdIndex;
             _rtHandle = _rendererData.PreIntegratedFGD.Build(fgdIndex);
+            profilingSampler = new ProfilingSampler("PreIntegrated FGD");
         }
 
 #if UNITY_2023_1_OR_NEWER
@@ -33,10 +32,8 @@ namespace Illusion.Rendering
 
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
         {
-            if (_rendererData.PreIntegratedFGD.IsInit(_index)) return;
-            
             // Render the FGD texture if needed
-            using (var builder = renderGraph.AddLowLevelPass<PreIntegratedFGDPassData>("PreIntegrated FGD", out var passData, PreIntegratedFGDSampler))
+            using (var builder = renderGraph.AddLowLevelPass<PreIntegratedFGDPassData>("PreIntegrated FGD", out var passData, profilingSampler))
             {
                 passData.OutputTexture = renderGraph.ImportTexture(_rtHandle);
 
@@ -56,8 +53,11 @@ namespace Illusion.Rendering
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             CommandBuffer cmd = CommandBufferPool.Get();
-            _rendererData.PreIntegratedFGD.RenderInit(cmd, _index);
-            _rendererData.PreIntegratedFGD.Bind(cmd, _index);
+            using (new ProfilingScope(cmd, profilingSampler))
+            {
+                _rendererData.PreIntegratedFGD.RenderInit(cmd, _index);
+                _rendererData.PreIntegratedFGD.Bind(cmd, _index);
+            }
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }

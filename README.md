@@ -47,9 +47,9 @@ Designed for <b>Forward</b> and <b>Forward+</b> rendering path, <b>Deferred</b> 
 
 # Version
 
-- Unity 2022.3.62
+- Unity 2022.3.62f1 (URP 14.0.12)
 
-- URP 14.0.12
+- Unity 2023.2.22f1 (URP 16.0.6)
 
 # Install
 
@@ -215,13 +215,7 @@ Recommended to install [Chris](https://github.com/AkiKurisu/Chris) to use Unreal
 
 ![Console Variable](./Documentation~/images/console_variables.png)
 
-# Gameplay Integration
-
-Recommended to install [Chris.Gameplay](https://github.com/AkiKurisu/Chris.Gameplay) which provides a in-game graphics setting solution.
-
-`Chris.Graphics` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
-
-> Install from git url `https://github.com/AkiKurisu/Chris.Gameplay`
+`Chris` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
 
 ![Dynamic Volume](./Documentation~/images/dynamic_volume.png)
 

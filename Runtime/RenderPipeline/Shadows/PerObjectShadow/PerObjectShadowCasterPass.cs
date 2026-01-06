@@ -23,6 +23,10 @@ using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering;
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -119,6 +123,214 @@ namespace Illusion.Rendering.Shadows
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private class PassData
+        {
+            internal PerObjectShadowCasterPass Pass;
+            internal TextureHandle ShadowmapTexture;
+            internal RenderingData RenderingData;
+            internal ShadowCasterManager CasterManager;
+            internal int ShadowMapSizeInTile;
+            internal int TileResolution;
+            internal Matrix4x4[] ShadowMatrixArray;
+            internal Vector4[] ShadowMapRectArray;
+            internal float[] ShadowCasterIdArray;
+            internal Vector4[] ShadowBiases;
+            internal Vector4[] PerObjShadowPcssParams0;
+            internal Vector4[] PerObjShadowPcssParams1;
+            internal Vector4[] PerObjShadowPcssProjs;
+            internal IllusionRendererData RendererData;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            if (_casterManager.VisibleCount <= 0)
+            {
+                // No shadows to render, set shadow count to 0
+                using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadow (No Shadows)", out var passData, profilingSampler))
+                {
+                    passData.Pass = this;
+                    
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+                    
+                    builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                    {
+                        context.cmd.SetGlobalInt(PropertyIds.ShadowCount(), 0);
+                    });
+                }
+                return;
+            }
+
+            // Pass 1: Render shadow map
+            TextureHandle shadowTexture;
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadowmap", out var passData, profilingSampler))
+            {
+                InitPassData(ref passData, ref renderingData);
+                
+                passData.ShadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _shadowMap.rt.descriptor, "_MainLightPerObjectShadow", true);
+                builder.UseTextureFragmentDepth(passData.ShadowmapTexture);
+                
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+                
+                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                {
+                    RenderShadowMapRG(context.cmd, data);
+                });
+                
+                shadowTexture = passData.ShadowmapTexture;
+            }
+            
+            // Pass 2: Set global shadow properties
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>("Set Per-Object Shadow Globals", out var passData, profilingSampler))
+            {
+                InitPassData(ref passData, ref renderingData);
+                passData.ShadowmapTexture = shadowTexture;
+                
+                if (shadowTexture.IsValid())
+                    builder.UseTexture(shadowTexture);
+                
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+                
+                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                {
+                    SetupShadowGlobalsRG(context.cmd, data);
+                });
+            }
+            
+            // The camera need to be setup again after the shadows since those passes override some settings
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            renderer.SetupRenderGraphCameraProperties(renderGraph, ref renderingData, renderer.isActiveTargetBackBuffer);
+        }
+
+        private void InitPassData(ref PassData passData, ref RenderingData renderingData)
+        {
+            passData.Pass = this;
+            passData.RenderingData = renderingData;
+            passData.CasterManager = _casterManager;
+            passData.ShadowMapSizeInTile = _shadowMapSizeInTile;
+            passData.TileResolution = _tileResolution;
+            passData.ShadowMatrixArray = _shadowMatrixArray;
+            passData.ShadowMapRectArray = _shadowMapRectArray;
+            passData.ShadowCasterIdArray = _shadowCasterIdArray;
+            passData.ShadowBiases = _perObjShadowBiases;
+            passData.PerObjShadowPcssParams0 = _perObjShadowPcssParams0;
+            passData.PerObjShadowPcssParams1 = _perObjShadowPcssParams1;
+            passData.PerObjShadowPcssProjs = _perObjShadowPcssProjs;
+            passData.RendererData = _rendererData;
+        }
+
+        private static void RenderShadowMapRG(RasterCommandBuffer cmd, PassData data)
+        {
+            cmd.SetGlobalDepthBias(1.0f, 2.5f);
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
+
+            for (int i = 0; i < data.CasterManager.VisibleCount; i++)
+            {
+                data.CasterManager.GetMatrices(i, out Matrix4x4 viewMatrix, out Matrix4x4 projectionMatrix);
+
+                int mainLightIndex = data.RenderingData.lightData.mainLightIndex;
+                VisibleLight mainLight = data.RenderingData.lightData.visibleLights[mainLightIndex];
+                Vector4 shadowBias = ShadowUtils.GetShadowBias(ref mainLight, mainLightIndex,
+                    ref data.RenderingData.shadowData, projectionMatrix, data.Pass._shadowMap.rt.width);
+                data.ShadowBiases[i] = shadowBias;
+                ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref mainLight, shadowBias);
+
+                Vector2Int tilePos = new(i % data.ShadowMapSizeInTile, i / data.ShadowMapSizeInTile);
+                DrawShadowRG(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
+                data.ShadowMatrixArray[i] = data.Pass.GetShadowMatrix(tilePos, in viewMatrix, projectionMatrix);
+                data.ShadowMapRectArray[i] = data.Pass.GetShadowMapRect(tilePos);
+                data.ShadowCasterIdArray[i] = data.CasterManager.GetId(i);
+            }
+
+            cmd.SetGlobalDepthBias(0.0f, 0.0f);
+            CoreUtils.SetKeyword(cmd, KeywordNames._CASTING_SELF_SHADOW, false);
+        }
+
+        private static void DrawShadowRG(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
+        {
+            cmd.SetViewProjectionMatrices(view, proj);
+
+            Rect viewport = new(tilePos * data.TileResolution, new Vector2(data.TileResolution, data.TileResolution));
+            cmd.SetViewport(viewport);
+
+            cmd.EnableScissorRect(new Rect(viewport.x + 4, viewport.y + 4, viewport.width - 8, viewport.height - 8));
+            data.CasterManager.Draw(cmd, casterIndex);
+            cmd.DisableScissorRect();
+        }
+
+        private static void SetupShadowGlobalsRG(RasterCommandBuffer cmd, PassData data)
+        {
+            // Set shadow map texture
+            cmd.SetGlobalTexture(PropertyIds.ShadowMap(), data.ShadowmapTexture);
+            cmd.SetGlobalInt(PropertyIds.ShadowCount(), data.CasterManager.VisibleCount);
+            cmd.SetGlobalMatrixArray(PropertyIds.ShadowMatrices(), data.ShadowMatrixArray);
+            cmd.SetGlobalVectorArray(PropertyIds.ShadowMapRects(), data.ShadowMapRectArray);
+            cmd.SetGlobalVectorArray(PropertyIds.ShadowBiases(), data.ShadowBiases);
+            cmd.SetGlobalFloatArray(PropertyIds.ShadowCasterIds(), data.ShadowCasterIdArray);
+
+            // Set shadow sampling data
+            int renderTargetWidth = data.Pass._shadowMap.rt.width;
+            int renderTargetHeight = data.Pass._shadowMap.rt.height;
+            float invShadowAtlasWidth = 1.0f / renderTargetWidth;
+            float invShadowAtlasHeight = 1.0f / renderTargetHeight;
+            float invHalfShadowAtlasWidth = 0.5f * invShadowAtlasWidth;
+            float invHalfShadowAtlasHeight = 0.5f * invShadowAtlasHeight;
+
+            cmd.SetGlobalVector(PropertyIds.ShadowOffset0(),
+                new Vector4(-invHalfShadowAtlasWidth, -invHalfShadowAtlasHeight, invHalfShadowAtlasWidth, -invHalfShadowAtlasHeight));
+            cmd.SetGlobalVector(PropertyIds.ShadowOffset1(),
+                new Vector4(-invHalfShadowAtlasWidth, invHalfShadowAtlasHeight, invHalfShadowAtlasWidth, invHalfShadowAtlasHeight));
+            cmd.SetGlobalVector(PropertyIds.ShadowMapSize(),
+                new Vector4(invShadowAtlasWidth, invShadowAtlasHeight, renderTargetWidth, renderTargetHeight));
+
+            // Set PCSS data if enabled
+            if (data.RendererData.PCSSShadowSampling)
+            {
+                var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
+                float lightAngularDiameter = pcssParams.angularDiameter.value;
+                float dirlightDepth2Radius = Mathf.Tan(0.5f * Mathf.Deg2Rad * lightAngularDiameter);
+                float minFilterAngularDiameter =
+                    Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, pcssParams.minFilterMaxAngularDiameter.value);
+                float halfMinFilterAngularDiameterTangent =
+                    Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(minFilterAngularDiameter, lightAngularDiameter));
+
+                float halfBlockerSearchAngularDiameterTangent =
+                    Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, lightAngularDiameter));
+
+                for (int i = 0; i < data.CasterManager.VisibleCount; i++)
+                {
+                    data.CasterManager.GetMatrices(i, out _, out Matrix4x4 projectionMatrix);
+
+                    // Calculate shadowmap depth to radial scale for per-object shadow
+                    float shadowmapDepth2RadialScale = Mathf.Abs(projectionMatrix.m00 / projectionMatrix.m22);
+
+                    // PCSS Parameters 0
+                    data.PerObjShadowPcssParams0[i].x = dirlightDepth2Radius * shadowmapDepth2RadialScale;
+                    data.PerObjShadowPcssParams0[i].y = 1.0f / data.PerObjShadowPcssParams0[i].x;
+                    data.PerObjShadowPcssParams0[i].z = pcssParams.maxPenumbraSize.value / (2.0f * halfMinFilterAngularDiameterTangent);
+                    data.PerObjShadowPcssParams0[i].w = pcssParams.maxSamplingDistance.value;
+
+                    // PCSS Parameters 1
+                    data.PerObjShadowPcssParams1[i].x = pcssParams.minFilterSizeTexels.value;
+                    data.PerObjShadowPcssParams1[i].y = 1.0f / (halfMinFilterAngularDiameterTangent * shadowmapDepth2RadialScale);
+                    data.PerObjShadowPcssParams1[i].z = 1.0f / (halfBlockerSearchAngularDiameterTangent * shadowmapDepth2RadialScale);
+                    data.PerObjShadowPcssParams1[i].w = 0;
+
+                    // Projection parameters
+                    data.PerObjShadowPcssProjs[i] = new Vector4(projectionMatrix.m00, projectionMatrix.m11, projectionMatrix.m22, projectionMatrix.m23);
+                }
+
+                // Set global shader properties
+                cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssParams0, data.PerObjShadowPcssParams0);
+                cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssParams1, data.PerObjShadowPcssParams1);
+                cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssProjs, data.PerObjShadowPcssProjs);
+            }
+        }
+#endif
 
         private void RenderShadowMap(CommandBuffer cmd, ref RenderingData renderingData)
         {
