@@ -25,6 +25,10 @@ Following features are now compatible with RenderGraph.
 - `PerObjectShadowCasterPass`
 - `PerObjectShadowCasterPreviewPass`
 
+### Fixed
+
+- Fix PreIntegratedFGD performance bug introduced from 1.1.2.
+
 ## [1.1.2] - 2026-1-3
 
 This version is compatible with Unity 2022.3.62f1.
