@@ -32,11 +32,11 @@
 - `ScreenSpaceShadowsPass`
 - `ScreenSpaceShadowsPostPass`
 - `GroundTruthAmbientOcclusionPass`
+- `PerObjectShadowCasterPass`
+- `PerObjectShadowCasterPreviewPass`
 
 ### 待适配的 Pass
 以下 Pass 尚未适配 RenderGraph： 
-- `PerObjectShadowCasterPass`
-- `PerObjectShadowCasterPreviewPass`
 - `DiffuseShadowDenoisePass`
 - `SubsurfaceScatteringPass`
 - `ContactShadowsPass`

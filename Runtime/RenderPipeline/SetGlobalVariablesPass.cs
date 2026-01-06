@@ -62,7 +62,6 @@ namespace Illusion.Rendering
                 
                 var previousFrameRT = _rendererData.GetPreviousFrameColorRT(renderingData.cameraData, out _);
                 if (!previousFrameRT.IsValid()) previousFrameRT = _rendererData.GetBlackTextureRT();
-                Assert.IsTrue(previousFrameRT.IsValid());
                 
                 passData.PreviousFrameColor = renderGraph.ImportTexture(previousFrameRT);
                 frameResources.SetTexture(IllusionFrameResource.PreviousFrameColor, passData.PreviousFrameColor);

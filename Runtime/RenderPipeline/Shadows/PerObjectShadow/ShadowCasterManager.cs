@@ -26,6 +26,9 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering;
+#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -76,6 +79,17 @@ namespace Illusion.Rendering.Shadows
                 result.Caster.RendererList.Draw(cmd, m_RendererIndexList[i]);
             }
         }
+        
+#if UNITY_2023_1_OR_NEWER
+        public void Draw(RasterCommandBuffer cmd, int index)
+        {
+            ref ShadowCasterCullingResult result = ref m_CullResults[index];
+            for (int i = result.RendererIndexStartInclusive; i < result.RendererIndexEndExclusive; i++)
+            {
+                result.Caster.RendererList.Draw(cmd, m_RendererIndexList[i]);
+            }
+        }
+#endif
 
         public unsafe void Cull(in RenderingData renderingData, int maxCount, float shadowLengthOffset, bool debugMode)
         {

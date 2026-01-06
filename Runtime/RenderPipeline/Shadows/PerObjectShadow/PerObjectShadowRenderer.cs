@@ -215,10 +215,13 @@ namespace Illusion.Rendering.Shadows
         
         private void SetupRenderingLayers(uint inRenderingLayerMask)
         {
+            if (_casterClusters == null) return;
+            
             foreach (var cluster in _casterClusters)
             {
                 foreach (var renderer in cluster.Renderers)
                 {
+                    if (!renderer) continue;
                     renderer.renderingLayerMask = inRenderingLayerMask;
                 }
             }
