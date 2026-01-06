@@ -53,7 +53,7 @@ namespace Illusion.Rendering
                 ? GraphicsFormat.R8_UNorm
                 : GraphicsFormat.B8G8R8A8_UNorm;
 #else
-            descriptor.graphicsFormat = RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
+            desc.graphicsFormat = RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
                 ? GraphicsFormat.R8_UNorm
                 : GraphicsFormat.B8G8R8A8_UNorm;
 #endif
