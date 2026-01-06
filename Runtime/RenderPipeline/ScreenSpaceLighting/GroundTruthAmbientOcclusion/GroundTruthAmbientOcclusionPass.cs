@@ -438,12 +438,16 @@ namespace Illusion.Rendering
             // Stencil has been written to depth attachment in depth normal prepass
             var depthStencilTexture = UniversalRenderingUtility.GetDepthWriteTexture(ref renderingData.cameraData);
             if (!depthStencilTexture.IsValid()) return;
+            
+            var cameraTexture = UniversalRenderingUtility.GetNormalTexture(renderingData.cameraData.renderer);
+            if (!cameraTexture.IsValid()) return;
 
             if (_tracingInCS)
             {
                 cmd.SetComputeTextureParam(_tracingCS, _tracingKernel, ShaderConstants._AOPackedData, _ssaoTextures[0]);
                 cmd.SetComputeTextureParam(_tracingCS, _tracingKernel, IllusionShaderProperties._StencilTexture, 
                     depthStencilTexture, 0, RenderTextureSubElement.Stencil);
+                cmd.SetComputeTextureParam(_tracingCS, _tracingKernel, IllusionShaderProperties._CameraNormalsTexture, cameraTexture);
                 ConstantBuffer.Push(cmd, _variables, _tracingCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                 
                 int groupsX = IllusionRenderingUtils.DivRoundUp(_rtWidth, 8);
@@ -452,6 +456,7 @@ namespace Illusion.Rendering
             }
             else
             {
+                _material.Value.SetTexture(IllusionShaderProperties._CameraNormalsTexture, cameraTexture);
                 _material.Value.SetTexture(IllusionShaderProperties._StencilTexture, depthStencilTexture, RenderTextureSubElement.Stencil);
                 RTHandle cameraDepthTargetHandle = renderingData.cameraData.renderer.cameraDepthTargetHandle;
                 RenderAndSetBaseMap(cmd, cameraDepthTargetHandle, _ssaoTextures[0], ShaderPasses.AmbientOcclusion);
