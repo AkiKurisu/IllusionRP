@@ -80,16 +80,9 @@ namespace Illusion.Rendering
             if (renderingData.cameraData.cameraType == CameraType.Preview)
                 return;
 #endif
-
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle depthTexture = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
-            TextureHandle normalTexture = frameResources.GetTexture(UniversalResource.CameraNormalsTexture);
             
-            // If textures are not available in frameResources, fall back to activeDepthTexture for depth
-            if (!depthTexture.IsValid())
-            {
-                depthTexture = renderer.activeDepthTexture;
-            }
+            TextureHandle depthTexture = UniversalRenderingUtility.GetDepthWriteTextureHandle(ref renderingData.cameraData);
+            TextureHandle normalTexture = frameResources.GetTexture(UniversalResource.CameraNormalsTexture);
             
             if (!depthTexture.IsValid() || !normalTexture.IsValid()) return;
 

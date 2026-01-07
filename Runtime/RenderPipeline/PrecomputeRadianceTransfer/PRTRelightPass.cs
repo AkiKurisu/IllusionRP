@@ -4,6 +4,9 @@ using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.PRTGI
 {
@@ -114,6 +117,358 @@ namespace Illusion.Rendering.PRTGI
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private class ReflectionNormalizationPassData
+        {
+            internal IllusionRendererData RendererData;
+            internal ComputeBuffer ReflectionProbeComputeBuffer;
+            internal ReflectionProbeData[] ReflectionProbeData;
+            internal NativeArray<VisibleReflectionProbe> VisibleReflectionProbes;
+            internal bool HasReflectionNormalization;
+            internal Vector4 ReflectionNormalizationFactor;
+        }
+
+        private class PRTRelightPassData
+        {
+            internal IllusionRendererData RendererData;
+            internal PRTProbeVolume Volume;
+            internal ComputeShader BrickRelightCS;
+            internal ComputeShader ProbeRelightCS;
+            internal int BrickRelightKernel;
+            internal int ProbeRelightKernel;
+            internal ComputeBuffer BrickRadianceBuffer;
+            internal ComputeBuffer BrickIndexMappingBuffer;
+            internal ComputeBuffer SurfelIndicesBuffer;
+            internal ComputeBuffer FactorBuffer;
+            internal ComputeBuffer ShadowCacheBuffer;
+            internal ComputeBuffer ValidityMaskBuffer;
+            internal TextureHandle CoefficientVoxel3D;
+            internal TextureHandle ValidityVoxel3D;
+            internal PRTProbe[] ProbesToUpdate;  // Changed to array to avoid ListPool recycling
+            internal int[] BrickIndicesToUpdate;  // Changed to array to avoid ListPool recycling
+            internal Vector4 VoxelCorner;
+            internal Vector4 VoxelSize;
+            internal Vector4 BoundingBoxMin;
+            internal Vector4 BoundingBoxSize;
+            internal Vector4 OriginalBoundingBoxMin;
+            internal float VoxelGridSize;
+            internal bool EnableRelightShadow;
+#if UNITY_EDITOR
+            internal ProbeVolumeDebugMode DebugMode;
+            internal int[] CoefficientClearValue;
+#endif
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            if (renderingData.cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return;
+#if UNITY_EDITOR
+            if (PRTVolumeManager.IsBaking) return;
+#endif
+
+            // Reflection Normalization Pass
+            RecordReflectionNormalizationPass(renderGraph, ref renderingData);
+
+            PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
+            bool enableRelight = _rendererData.SampleProbeVolumes;
+            enableRelight &= _rendererData.IsLightingActive;
+
+            if (enableRelight)
+            {
+                if (_volume != volume)
+                {
+                    ReleaseVolumeBuffer();
+                }
+                _volume = volume;
+
+                // Get probes that need to be updated
+                using (ListPool<PRTProbe>.Get(out var probesToUpdate))
+                {
+                    // Ensure bounding box update before upload gpu
+                    volume.GetProbesToUpdate(probesToUpdate);
+
+                    if (probesToUpdate.Count > 0)
+                    {
+                        RecordPRTRelightPass(renderGraph, volume, probesToUpdate, ref renderingData);
+                    }
+                }
+
+                volume.AdvanceRenderFrame();
+            }
+            else
+            {
+                // Mark voxel invalid using a low-level pass
+                using (var builder = renderGraph.AddLowLevelPass<EmptyPassData>("PRT Mark Voxel Invalid", 
+                    out var passData, new ProfilingSampler("PRT Mark Voxel Invalid")))
+                {
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+
+                    builder.SetRenderFunc(static (EmptyPassData data, LowLevelGraphContext context) =>
+                    {
+                        context.cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, 0);
+                    });
+                }
+            }
+        }
+
+        private class EmptyPassData { }
+
+        private void RecordReflectionNormalizationPass(RenderGraph renderGraph, ref RenderingData renderingData)
+        {
+            using (var builder = renderGraph.AddLowLevelPass<ReflectionNormalizationPassData>("PRT Reflection Normalization", 
+                out var passData, new ProfilingSampler("PRT Reflection Normalization")))
+            {
+                passData.RendererData = _rendererData;
+                passData.ReflectionProbeComputeBuffer = _reflectionProbeComputeBuffer;
+                passData.ReflectionProbeData = _reflectionProbeData;
+                passData.VisibleReflectionProbes = renderingData.cullResults.visibleReflectionProbes;
+
+                // Check if reflection normalization is active
+                var reflectionNormalization = VolumeManager.instance.stack.GetComponent<ReflectionNormalization>();
+                passData.HasReflectionNormalization = reflectionNormalization != null && reflectionNormalization.IsActive();
+                if (passData.HasReflectionNormalization)
+                {
+                    passData.ReflectionNormalizationFactor = new Vector4(
+                        reflectionNormalization.minNormalizationFactor.value,
+                        reflectionNormalization.minNormalizationFactor.value,
+                        0, reflectionNormalization.probeVolumeWeight.value);
+                }
+                else
+                {
+                    passData.ReflectionNormalizationFactor = Vector4.zero;
+                }
+
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+
+                builder.SetRenderFunc(static (ReflectionNormalizationPassData data, LowLevelGraphContext context) =>
+                {
+                    var probes = data.VisibleReflectionProbes;
+                    for (int i = 0; i < probes.Length; i++)
+                    {
+                        if (!PRTVolumeManager.TryGetReflectionProbeAdditionalData(probes[i].reflectionProbe, out var additionalData))
+                        {
+                            data.ReflectionProbeData[i].normalizeWithProbeVolume = 0;
+                            continue;
+                        }
+
+                        if (!additionalData.TryGetSHForNormalization(out var outL0L1, out var outL21, out var outL22))
+                        {
+                            data.ReflectionProbeData[i].normalizeWithProbeVolume = 0;
+                            continue;
+                        }
+
+                        data.ReflectionProbeData[i].L0L1 = outL0L1;
+                        data.ReflectionProbeData[i].L2_1 = outL21;
+                        data.ReflectionProbeData[i].L2_2 = outL22;
+                        data.ReflectionProbeData[i].normalizeWithProbeVolume = 1;
+                    }
+
+                    data.ReflectionProbeComputeBuffer.SetData(data.ReflectionProbeData);
+                    context.cmd.SetGlobalBuffer(ShaderProperties._reflectionProbeNormalizationData, data.ReflectionProbeComputeBuffer);
+                    context.cmd.SetGlobalVector(ShaderProperties._reflectionProbeNormalizationFactor, data.ReflectionNormalizationFactor);
+                });
+            }
+        }
+
+        private void RecordPRTRelightPass(RenderGraph renderGraph, PRTProbeVolume volume, List<PRTProbe> probesToUpdate, ref RenderingData renderingData)
+        {
+            // Prepare pass data
+            Vector3 corner = volume.GetVoxelMinCorner();
+            Vector4 voxelCorner = new Vector4(corner.x, corner.y, corner.z, 0);
+            Vector4 voxelSize = new Vector4(volume.probeSizeX, volume.probeSizeY, volume.probeSizeZ, 0);
+            Vector4 boundingBoxMin = new Vector4(volume.BoundingBoxMin.x, volume.BoundingBoxMin.y, volume.BoundingBoxMin.z, 0);
+            Vector4 boundingBoxSize = new Vector4(volume.CurrentVoxelGrid.X, volume.CurrentVoxelGrid.Y, volume.CurrentVoxelGrid.Z, 0);
+            Vector4 originalBoundingBoxMin = new Vector4(volume.OriginalBoxMin.x, volume.OriginalBoxMin.y, volume.OriginalBoxMin.z, 0);
+
+            // Get bricks that need to be updated
+            using (ListPool<int>.Get(out var brickIndicesToUpdate))
+            {
+                volume.GetBricksToUpdate(probesToUpdate, brickIndicesToUpdate);
+
+                // Initialize buffers
+                InitializeFactorBuffer(volume);
+                InitializeValidityMaskBuffer(volume);
+                InitializeBrickBuffer(volume, brickIndicesToUpdate);
+
+                // Import textures
+                TextureHandle coefficientVoxel3D = renderGraph.ImportTexture(RTHandles.Alloc(volume.CoefficientVoxel3D));
+                TextureHandle validityVoxel3D = renderGraph.ImportTexture(RTHandles.Alloc(volume.ValidityVoxel3D));
+
+                // Relight Bricks Pass
+                using (var builder = renderGraph.AddComputePass<PRTRelightPassData>("PRT Relight Bricks", 
+                    out var passData, _relightBrickSampler))
+                {
+                    SetupBrickRelightPassData(passData, volume, brickIndicesToUpdate, coefficientVoxel3D, validityVoxel3D,
+                        voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
+
+                    passData.CoefficientVoxel3D = builder.UseTexture(coefficientVoxel3D);
+                    passData.ValidityVoxel3D = builder.UseTexture(validityVoxel3D);
+
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+
+                    builder.SetRenderFunc(static (PRTRelightPassData data, ComputeGraphContext context) =>
+                    {
+                        // Set global variables
+                        context.cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, data.VoxelGridSize);
+                        context.cmd.SetGlobalVector(ShaderProperties._coefficientVoxelSize, data.VoxelSize);
+                        context.cmd.SetGlobalVector(ShaderProperties._coefficientVoxelCorner, data.VoxelCorner);
+                        context.cmd.SetGlobalVector(ShaderProperties._boundingBoxMin, data.BoundingBoxMin);
+                        context.cmd.SetGlobalVector(ShaderProperties._boundingBoxSize, data.BoundingBoxSize);
+                        context.cmd.SetGlobalVector(ShaderProperties._originalBoundingBoxMin, data.OriginalBoundingBoxMin);
+                        context.cmd.SetGlobalTexture(ShaderProperties._coefficientVoxel3D, data.CoefficientVoxel3D);
+                        context.cmd.SetGlobalTexture(ShaderProperties._validityVoxel3D, data.ValidityVoxel3D);
+
+#if UNITY_EDITOR
+                        if (data.DebugMode == ProbeVolumeDebugMode.ProbeRadiance)
+                        {
+                            CoreUtils.SetKeyword(context.cmd, ShaderKeywords._RELIGHT_DEBUG_RADIANCE, true);
+                        }
+                        else
+#endif
+                        {
+                            CoreUtils.SetKeyword(context.cmd, ShaderKeywords._RELIGHT_DEBUG_RADIANCE, false);
+                        }
+
+                        // Set shadow keyword
+                        CoreUtils.SetKeyword(context.cmd, ShaderKeywords._PRT_RELIGHT_SHADOW, data.EnableRelightShadow);
+
+                        // Relight bricks
+                        context.cmd.SetComputeBufferParam(data.BrickRelightCS, data.BrickRelightKernel,
+                            ShaderProperties._surfels, data.Volume.GlobalSurfelBuffer);
+                        context.cmd.SetComputeBufferParam(data.BrickRelightCS, data.BrickRelightKernel,
+                            ShaderProperties._brickRadiance, data.BrickRadianceBuffer);
+                        context.cmd.SetComputeBufferParam(data.BrickRelightCS, data.BrickRelightKernel,
+                            ShaderProperties._brickInfo, data.SurfelIndicesBuffer);
+                        context.cmd.SetComputeBufferParam(data.BrickRelightCS, data.BrickRelightKernel,
+                            ShaderProperties._brickIndexMapping, data.BrickIndexMappingBuffer);
+                        context.cmd.SetComputeBufferParam(data.BrickRelightCS, data.BrickRelightKernel,
+                            ShaderProperties._shadowCache, data.ShadowCacheBuffer);
+                        context.cmd.SetComputeIntParam(data.BrickRelightCS, ShaderProperties._brickCount, data.BrickIndicesToUpdate.Length);
+
+                        int threadGroups = (data.BrickIndicesToUpdate.Length + 63) / 64;
+                        context.cmd.DispatchCompute(data.BrickRelightCS, data.BrickRelightKernel, threadGroups, 1, 1);
+                    });
+                }
+
+                // Relight Probes Pass
+                using (var builder = renderGraph.AddComputePass<PRTRelightPassData>("PRT Relight Probes", 
+                    out var probePassData, _relightProbeSampler))
+                {
+                    SetupProbeRelightPassData(probePassData, volume, probesToUpdate, brickIndicesToUpdate, 
+                        coefficientVoxel3D, validityVoxel3D, voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
+
+                    probePassData.CoefficientVoxel3D = builder.UseTexture(coefficientVoxel3D);
+                    probePassData.ValidityVoxel3D = builder.UseTexture(validityVoxel3D);
+
+                    builder.AllowPassCulling(false);
+                    builder.AllowGlobalStateModification(true);
+
+                    builder.SetRenderFunc(static (PRTRelightPassData data, ComputeGraphContext context) =>
+                    {
+                        var allProbes = data.Volume.GetAllProbes();
+                        foreach (var probe in data.ProbesToUpdate)
+                        {
+                            var factorIndices = allProbes[probe.Index];
+                            context.cmd.SetComputeVectorParam(data.ProbeRelightCS, ShaderProperties._probePos,
+                                new Vector4(probe.Position.x, probe.Position.y, probe.Position.z, 1));
+                            context.cmd.SetComputeIntParam(data.ProbeRelightCS, ShaderProperties._factorStart, factorIndices.start);
+                            context.cmd.SetComputeIntParam(data.ProbeRelightCS, ShaderProperties._factorCount,
+                                factorIndices.end - factorIndices.start + 1);
+                            context.cmd.SetComputeIntParam(data.ProbeRelightCS, ShaderProperties._indexInProbeVolume, probe.Index);
+
+                            context.cmd.SetComputeBufferParam(data.ProbeRelightCS, data.ProbeRelightKernel,
+                                ShaderProperties._brickRadiance, data.BrickRadianceBuffer);
+                            context.cmd.SetComputeBufferParam(data.ProbeRelightCS, data.ProbeRelightKernel,
+                                ShaderProperties._factors, data.FactorBuffer);
+                            context.cmd.SetComputeTextureParam(data.ProbeRelightCS, data.ProbeRelightKernel,
+                                ShaderProperties._coefficientVoxel3D, data.CoefficientVoxel3D);
+                            context.cmd.SetComputeTextureParam(data.ProbeRelightCS, data.ProbeRelightKernel,
+                                ShaderProperties._validityVoxel3D, data.ValidityVoxel3D);
+                            context.cmd.SetComputeBufferParam(data.ProbeRelightCS, data.ProbeRelightKernel,
+                                ShaderProperties._validityMasks, data.ValidityMaskBuffer);
+
+#if UNITY_EDITOR
+                            // Debug data
+                            if (data.DebugMode == ProbeVolumeDebugMode.ProbeRadiance)
+                            {
+                                var debugData = data.Volume.GetProbeDebugData(probe.Index);
+                                context.cmd.SetBufferData(debugData.CoefficientSH9, data.CoefficientClearValue);
+                                context.cmd.SetComputeBufferParam(data.ProbeRelightCS, data.ProbeRelightKernel, 
+                                    ShaderProperties._coefficientSH9, debugData.CoefficientSH9);
+                            }
+#endif
+                            context.cmd.DispatchCompute(data.ProbeRelightCS, data.ProbeRelightKernel, 1, 1, 1);
+                        }
+                    });
+                }
+            }
+        }
+
+        private void SetupBrickRelightPassData(PRTRelightPassData passData, PRTProbeVolume volume, 
+            List<int> brickIndicesToUpdate, TextureHandle coefficientVoxel3D, TextureHandle validityVoxel3D,
+            Vector4 voxelCorner, Vector4 voxelSize, Vector4 boundingBoxMin, Vector4 boundingBoxSize, Vector4 originalBoundingBoxMin)
+        {
+            passData.RendererData = _rendererData;
+            passData.Volume = volume;
+            passData.BrickRelightCS = _brickRelightCS;
+            passData.ProbeRelightCS = _probeRelightCS;
+            passData.BrickRelightKernel = _brickRelightKernel;
+            passData.ProbeRelightKernel = _probeRelightKernel;
+            passData.BrickRadianceBuffer = _brickRadianceBuffer;
+            passData.BrickIndexMappingBuffer = _brickIndexMappingBuffer;
+            passData.SurfelIndicesBuffer = _surfelIndicesBuffer;
+            passData.FactorBuffer = _factorBuffer;
+            passData.ShadowCacheBuffer = _shadowCacheBuffer;
+            passData.ValidityMaskBuffer = _validityMaskBuffer;
+            passData.BrickIndicesToUpdate = brickIndicesToUpdate.ToArray();  // Copy to avoid ListPool recycling
+            passData.VoxelCorner = voxelCorner;
+            passData.VoxelSize = voxelSize;
+            passData.BoundingBoxMin = boundingBoxMin;
+            passData.BoundingBoxSize = boundingBoxSize;
+            passData.OriginalBoundingBoxMin = originalBoundingBoxMin;
+            passData.VoxelGridSize = volume.probeGridSize;
+            passData.EnableRelightShadow = volume.enableRelightShadow;
+#if UNITY_EDITOR
+            passData.DebugMode = volume.debugMode;
+            passData.CoefficientClearValue = _coefficientClearValue;
+#endif
+        }
+
+        private void SetupProbeRelightPassData(PRTRelightPassData passData, PRTProbeVolume volume, 
+            List<PRTProbe> probesToUpdate, List<int> brickIndicesToUpdate, TextureHandle coefficientVoxel3D, TextureHandle validityVoxel3D,
+            Vector4 voxelCorner, Vector4 voxelSize, Vector4 boundingBoxMin, Vector4 boundingBoxSize, Vector4 originalBoundingBoxMin)
+        {
+            passData.RendererData = _rendererData;
+            passData.Volume = volume;
+            passData.BrickRelightCS = _brickRelightCS;
+            passData.ProbeRelightCS = _probeRelightCS;
+            passData.BrickRelightKernel = _brickRelightKernel;
+            passData.ProbeRelightKernel = _probeRelightKernel;
+            passData.BrickRadianceBuffer = _brickRadianceBuffer;
+            passData.BrickIndexMappingBuffer = _brickIndexMappingBuffer;
+            passData.SurfelIndicesBuffer = _surfelIndicesBuffer;
+            passData.FactorBuffer = _factorBuffer;
+            passData.ShadowCacheBuffer = _shadowCacheBuffer;
+            passData.ValidityMaskBuffer = _validityMaskBuffer;
+            passData.ProbesToUpdate = probesToUpdate.ToArray();  // Copy to avoid ListPool recycling
+            passData.BrickIndicesToUpdate = brickIndicesToUpdate.ToArray();  // Copy to avoid ListPool recycling
+            passData.VoxelCorner = voxelCorner;
+            passData.VoxelSize = voxelSize;
+            passData.BoundingBoxMin = boundingBoxMin;
+            passData.BoundingBoxSize = boundingBoxSize;
+            passData.OriginalBoundingBoxMin = originalBoundingBoxMin;
+            passData.VoxelGridSize = volume.probeGridSize;
+            passData.EnableRelightShadow = volume.enableRelightShadow;
+#if UNITY_EDITOR
+            passData.DebugMode = volume.debugMode;
+            passData.CoefficientClearValue = _coefficientClearValue;
+#endif
+        }
+#endif
 
         private void DoReflectionNormalization(CommandBuffer cmd, ref RenderingData renderingData)
         {

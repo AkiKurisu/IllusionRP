@@ -1,7 +1,11 @@
 ﻿#if DEVELOPMENT_BUILD || UNITY_EDITOR
 using System;
+using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -13,6 +17,14 @@ namespace Illusion.Rendering
         {
             profilingSampler = new ProfilingSampler("Motion Vectors Debug");
             renderPassEvent = IllusionRenderPassEvent.MotionVectorDebugPass;
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Motion);
+#endif
+        }
+
+        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
+        {
+            ConfigureInput(ScriptableRenderPassInput.Motion);
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
@@ -32,6 +44,46 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private class MotionVectorsDebugPassData
+        {
+            internal Material MotionVectorDebugMaterial;
+            internal TextureHandle MotionVectorColor;
+            internal TextureHandle ColorDestination;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
+            ref RenderingData renderingData)
+        {
+            ref var cameraData = ref renderingData.cameraData;
+            UniversalRenderer renderer = (UniversalRenderer)cameraData.renderer;
+
+
+            var motionVectorFromResources = renderer.resources.GetTexture(UniversalResource.MotionVectorColor);
+            if (!motionVectorFromResources.IsValid()) return;
+
+            
+            TextureHandle colorTargetHandle = renderer.activeColorTexture;
+            
+            using (var builder = renderGraph.AddRasterRenderPass<MotionVectorsDebugPassData>("Motion Vectors Debug", 
+                out var passData, profilingSampler))
+            {
+                passData.MotionVectorDebugMaterial = _motionVectorDebugMaterial.Value;
+                passData.MotionVectorColor = builder.UseTexture(motionVectorFromResources);
+                passData.ColorDestination = builder.UseTextureFragment(colorTargetHandle, 0);
+                
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+                
+                builder.SetRenderFunc(static (MotionVectorsDebugPassData data, RasterGraphContext context) =>
+                {
+                    data.MotionVectorDebugMaterial.SetTexture(IllusionShaderProperties._MotionVectorTexture, data.MotionVectorColor);
+                    Blitter.BlitTexture(context.cmd, new Vector4(1, 1, 0, 0), data.MotionVectorDebugMaterial, 0);
+                });
+            }
+        }
+#endif
 
         public void Dispose()
         {

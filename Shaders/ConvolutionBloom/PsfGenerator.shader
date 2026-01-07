@@ -9,6 +9,8 @@
     }
     SubShader
     {
+        Tags { "RenderPipeline" = "UniversalPipeline" }
+        
         // No culling or depth
         Cull Off
         ZWrite Off
@@ -16,39 +18,17 @@
 
         Pass
         {
-            CGPROGRAM
-            #pragma vertex vert
+            HLSLPROGRAM
+            #pragma vertex Vert
             #pragma fragment frag
 
-            #include "UnityCG.cginc"
-
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                float4 vertex : SV_POSITION;
-            };
-
-            v2f vert(appdata v)
-            {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
-                return o;
-            }
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 
             float4 _FFT_EXTEND;
             int _ScreenX;
             int _ScreenY;
             int _EnableRemap;
-
-
-            static const float PI = 3.14159265358979323846f;
 
             float gaussian(float2 xy, float sigma)
             {
@@ -200,15 +180,15 @@
             }
             
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(Varyings i) : SV_Target
             {
-                float2 uv = i.uv;
-                if (_EnableRemap) uv = UV_Convert(i.uv);
-                float2 offset = (uv * 2 - 1);
+                float2 uv = i.texcoord.xy;
+                if (_EnableRemap) uv = UV_Convert(uv);
+                float2 offset = uv * 2 - 1;
                 float4 psf = PSF2(offset);
                 return psf;
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }
