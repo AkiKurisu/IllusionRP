@@ -375,7 +375,7 @@ namespace Illusion.Rendering
 #if UNITY_2023_1_OR_NEWER
         internal void PushGlobalBuffers(ComputeCommandBuffer cmd, TextureHandle colorTarget, ref RenderingData renderingData)
         {
-            PushShadowData(cmd);
+            PushShadowData(cmd.GetNativeCommandBuffer());
             PushGlobalVariables(cmd, colorTarget, ref renderingData);
         }
         
@@ -439,13 +439,6 @@ namespace Illusion.Rendering
         {
             cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
         }
-        
-#if UNITY_2023_1_OR_NEWER
-        private void PushShadowData(ComputeCommandBuffer cmd)
-        {
-            cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
-        }
-#endif
         
         private void GetMainLightIndirectIntensityAndRenderingLayers(ref RenderingData renderingData,
             out float intensity, out uint renderingLayers)
