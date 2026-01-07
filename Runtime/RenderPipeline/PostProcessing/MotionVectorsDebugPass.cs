@@ -17,6 +17,14 @@ namespace Illusion.Rendering
         {
             profilingSampler = new ProfilingSampler("Motion Vectors Debug");
             renderPassEvent = IllusionRenderPassEvent.MotionVectorDebugPass;
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Motion);
+#endif
+        }
+
+        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
+        {
+            ConfigureInput(ScriptableRenderPassInput.Motion);
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
@@ -51,8 +59,7 @@ namespace Illusion.Rendering
             ref var cameraData = ref renderingData.cameraData;
             UniversalRenderer renderer = (UniversalRenderer)cameraData.renderer;
 
-            // Try to get motion vector texture from renderer resources first (preferred for RenderGraph)
-            TextureHandle motionVectorColorHandle = TextureHandle.nullHandle;
+
             var motionVectorFromResources = renderer.resources.GetTexture(UniversalResource.MotionVectorColor);
             if (!motionVectorFromResources.IsValid()) return;
 
@@ -63,7 +70,7 @@ namespace Illusion.Rendering
                 out var passData, profilingSampler))
             {
                 passData.MotionVectorDebugMaterial = _motionVectorDebugMaterial.Value;
-                passData.MotionVectorColor = builder.UseTexture(motionVectorColorHandle);
+                passData.MotionVectorColor = builder.UseTexture(motionVectorFromResources);
                 passData.ColorDestination = builder.UseTextureFragment(colorTargetHandle, 0);
                 
                 builder.AllowPassCulling(false);
