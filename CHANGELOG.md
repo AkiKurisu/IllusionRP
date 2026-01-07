@@ -5,6 +5,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-1-8
+
+This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.
+
+### Compatibility
+
+Following features are now compatible with RenderGraph.
+
+- `AdvancedTonemappingPass`
+- `MotionVectorsDebugPass`
+- `PRTRelightPass`
+- `ScreenSpaceReflectionPass`
+- `ConvolutionBloomPass`
+
+### Fixed
+
+- Fix GroundTruthAmbientOcclusionPass missing CameraNormalTexture.
+- Fix Motion Vectors Debug Pass for Unity 2023.1 compatibility.
+- Fix Apply Exposure not work for Unity 2023.1 compatibility.
+
 ## [1.1.3] - 2026-1-6
 
 This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.
