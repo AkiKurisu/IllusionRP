@@ -560,7 +560,7 @@ namespace Illusion.Rendering
         private void RenderAndSetBaseMap(CommandBuffer cmd, RTHandle baseMap,
             RTHandle target, ShaderPasses pass)
         {
-            if (baseMap.rt == null)
+            if (!baseMap.rt)
             {
                 // Obsolete usage of RTHandle aliasing a RenderTargetIdentifier
                 Vector2 viewportScale = baseMap.useScaling ? new Vector2(baseMap.rtHandleProperties.rtHandleScale.x, baseMap.rtHandleProperties.rtHandleScale.y) : Vector2.one;
@@ -593,11 +593,8 @@ namespace Illusion.Rendering
             var settings = VolumeManager.instance.stack.GetComponent<GroundTruthAmbientOcclusion>();
             
             // Determine execution paths
-            // bool useAsyncCompute = _tracingInCS && _blurInCS 
-            //                        && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
-            
-            // TODO: Has wrong graphics fence dependency due to NativePassCompiler bug.
-            bool useAsyncCompute = false;
+            bool useAsyncCompute = _tracingInCS && _blurInCS 
+                                   && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
             
             bool useRedComponentOnly = _supportsR8RenderTextureFormat && actualBlurQuality == AmbientOcclusionBlurQuality.Spatial;
             bool packAODepth = _tracingInCS && _blurInCS;
@@ -645,7 +642,7 @@ namespace Illusion.Rendering
             
             // Get depth pyramid and stencil textures
             TextureHandle depthPyramid = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
-            TextureHandle depthStencilTexture = ((UniversalRenderer)renderingData.cameraData.renderer).activeDepthTexture;
+            TextureHandle depthStencilTexture = UniversalRenderingUtility.GetDepthWriteTextureHandle(ref renderingData.cameraData);
             
             // Tracing Pass
             TextureHandle tracedAO;
@@ -705,11 +702,8 @@ namespace Illusion.Rendering
             }
             
             // Set global texture and parameters
-            SetGlobalVector(renderGraph, settings);
-            if (!useAsyncCompute)
-            {
-                SetGlobalAOTexture(renderGraph, denoisedAO, profilingSampler);
-            }
+            SetGlobalAOParam(renderGraph, settings);
+            SetGlobalAOTexture(renderGraph, denoisedAO);
         }
 
         private TextureHandle RenderAOComputePass(RenderGraph renderGraph, TextureHandle aoPackedData, 
@@ -909,7 +903,7 @@ namespace Illusion.Rendering
             }
         }
         
-        private void SetGlobalVector(RenderGraph renderGraph, GroundTruthAmbientOcclusion settings)
+        private void SetGlobalAOParam(RenderGraph renderGraph, GroundTruthAmbientOcclusion settings)
         {
             using (var builder = renderGraph.AddLowLevelPass<SetGlobalVectorPassData>("Set Global AO Vector", out var passData, profilingSampler))
             {
@@ -925,7 +919,7 @@ namespace Illusion.Rendering
             }
         }
 
-        private static void SetGlobalAOTexture(RenderGraph renderGraph, TextureHandle aoTexture, ProfilingSampler profilingSampler)
+        private void SetGlobalAOTexture(RenderGraph renderGraph, TextureHandle aoTexture)
         {
             using (var builder = renderGraph.AddLowLevelPass<SetGlobalAOPassData>("Set Global AO Texture", out var passData, profilingSampler))
             {

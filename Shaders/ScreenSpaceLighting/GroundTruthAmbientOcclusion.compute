@@ -7,8 +7,8 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/ScreenSpaceLighting/GTAOCommon.hlsl"
 
 #pragma multi_compile HALF_RES FULL_RES
-#pragma multi_compile _ _GBUFFER_NORMALS_OCT
-#pragma multi_compile _ _ORTHOGRAPHIC
+// #pragma multi_compile _ _GBUFFER_NORMALS_OCT
+// #pragma multi_compile _ _ORTHOGRAPHIC
 #pragma multi_compile _ PACK_AO_DEPTH
 
 RW_TEXTURE2D_X(float4, _AOPackedData);

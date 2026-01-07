@@ -28,10 +28,11 @@ Shader "Hidden/GroundTruthAmbientOcclusion"
             HLSLPROGRAM
             #pragma vertex Vert
             #pragma fragment GTAOFrag
-            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
-            #pragma multi_compile_local _SOURCE_DEPTH _SOURCE_DEPTH_NORMALS
-            #pragma multi_compile_local _RECONSTRUCT_NORMAL_LOW _RECONSTRUCT_NORMAL_MEDIUM _RECONSTRUCT_NORMAL_HIGH
-            #pragma multi_compile_local _ _ORTHOGRAPHIC
+            // #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+            // #pragma multi_compile_local _SOURCE_DEPTH _SOURCE_DEPTH_NORMALS
+            #define _SOURCE_DEPTH_NORMALS 1
+            // #pragma multi_compile_local _RECONSTRUCT_NORMAL_LOW _RECONSTRUCT_NORMAL_MEDIUM _RECONSTRUCT_NORMAL_HIGH
+            // #pragma multi_compile_local _ _ORTHOGRAPHIC
             #pragma multi_compile_local FULL_RES HALF_RES
             #include_with_pragmas "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRenderingKeywords.hlsl"
             #include "GroundTruthAmbientOcclusion.hlsl"
