@@ -84,8 +84,7 @@ namespace Illusion.Rendering
 
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
         {
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle depthTexture = renderer.activeDepthTexture;
+            TextureHandle depthTexture = UniversalRenderingUtility.GetDepthWriteTextureHandle(ref renderingData.cameraData);
 
             // Allocate Forward GBuffer RT
             var desc = renderingData.cameraData.cameraTargetDescriptor;
