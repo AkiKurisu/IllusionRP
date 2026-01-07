@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.Rendering.Universal.Internal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace UnityEngine.Rendering.Universal
 {
@@ -134,6 +137,27 @@ namespace UnityEngine.Rendering.Universal
 
             return depthTexture;
         }
+        
+#if UNITY_2023_1_OR_NEWER
+        /// <summary>
+        /// Get UniversalRenderer depth texture that actually written to.
+        /// </summary>
+        /// <param name="cameraData"></param>
+        /// <returns></returns>
+        public static TextureHandle GetDepthWriteTextureHandle(ref CameraData cameraData)
+        {
+            UniversalRenderer renderer = (UniversalRenderer)cameraData.renderer;
+            var depthTexture = renderer.resources.GetTexture(UniversalResource.CameraDepthTexture);
+            // Reference: DepthNormalOnlyPass, PreZ will output depth to attachment directly.
+            if (cameraData.renderer.useDepthPriming
+                && (cameraData.renderType == CameraRenderType.Base || cameraData.clearDepth))
+            {
+                depthTexture = renderer.resources.GetTexture(UniversalResource.CameraDepth);
+            }
+
+            return depthTexture;
+        }
+#endif
 
         /// <summary>
         /// Set UniversalRenderer depth texture.
