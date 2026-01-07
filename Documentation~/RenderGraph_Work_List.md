@@ -34,10 +34,12 @@
 - `GroundTruthAmbientOcclusionPass`
 - `PerObjectShadowCasterPass`
 - `PerObjectShadowCasterPreviewPass`
+- 
 - `AdvancedTonemappingPass`
 - `MotionVectorsDebugPass`
 - `PRTRelightPass`
 - `ScreenSpaceReflectionPass`
+- `ConvolutionBloomPass`
 
 ### 待适配的 Pass
 以下 Pass 尚未适配 RenderGraph： 
@@ -46,5 +48,4 @@
 - `ContactShadowsPass`
 - `SyncGraphicsFencePass`
 - `ScreenSpaceGlobalIlluminationPass`
-- `ConvolutionBloomPass`
 - `VolumetricFogPass`

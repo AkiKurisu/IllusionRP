@@ -2,7 +2,6 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
 {
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
         _FFT_EXTEND ("FFT EXTEND", Vector) = (0.1, 0.1,0,0)
         _Threshlod ("Threshlod", float) = 10
         _ThresholdKnee ("ThresholdKnee", float) = 0.1
@@ -12,6 +11,8 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
     }
     SubShader
     {
+        Tags { "RenderPipeline" = "UniversalPipeline" }
+        
         // No culling or depth
         Cull Off
         ZWrite Off
@@ -21,7 +22,7 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
         Pass
         {
             HLSLPROGRAM
-            #pragma vertex vert
+            #pragma vertex Vert
             #pragma fragment frag
             #pragma multi_compile_local _ _USE_RGBM
 
@@ -31,29 +32,6 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRendering.hlsl"
-
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                float4 vertex : SV_POSITION;
-            };
-
-            v2f vert(appdata v)
-            {
-                v2f o;
-                o.vertex = TransformObjectToHClip(v.vertex.xyz);
-                o.uv = v.uv;
-                return o;
-            }
-
-            // sampler2D _MainTex;
-            Texture2D _MainTex;
             
             float4 _FFT_EXTEND;
             float _Threshlod;
@@ -99,27 +77,29 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
                 return 0.299 * col.x + 0.587 * col.y + 0.114 * col.z;
             }
 
-            half4 frag(v2f i) : SV_Target
+            half4 frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
                 float2 fft_extend = _FFT_EXTEND.xy;
-                float2 uv = i.uv / (1 - 2 * fft_extend) - fft_extend;
+                float2 uv = input.texcoord.xy / (1 - 2 * fft_extend) - fft_extend;
                 if (uv.x > 1 || uv.y > 1 || uv.x < 0 || uv.y < 0) return 0;
 
 
                 float2 texelSize = _TexelSize.xy * 2;
-                half4 A = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(-1.0, -1.0));
-                half4 B = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(0.0, -1.0));
-                half4 C = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(1.0, -1.0));
-                half4 D = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(-0.5, -0.5));
-                half4 E = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(0.5, -0.5));
-                half4 F = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(-1.0, 0.0));
-                half4 G = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv);
-                half4 H = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(1.0, 0.0));
-                half4 I = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(-0.5, 0.5));
-                half4 J = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(0.5, 0.5));
-                half4 K = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(-1.0, 1.0));
-                half4 L = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(0.0, 1.0));
-                half4 M = SAMPLE_TEXTURE2D_X(_MainTex, sampler_LinearClamp, uv + texelSize * float2(1.0, 1.0));
+                half4 A = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(-1.0, -1.0));
+                half4 B = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(0.0, -1.0));
+                half4 C = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(1.0, -1.0));
+                half4 D = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(-0.5, -0.5));
+                half4 E = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(0.5, -0.5));
+                half4 F = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(-1.0, 0.0));
+                half4 G = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv);
+                half4 H = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(1.0, 0.0));
+                half4 I = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(-0.5, 0.5));
+                half4 J = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(0.5, 0.5));
+                half4 K = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(-1.0, 1.0));
+                half4 L = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(0.0, 1.0));
+                half4 M = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(1.0, 1.0));
 
                 half2 div = (1.0 / 4.0) * half2(0.5, 0.125);
 
