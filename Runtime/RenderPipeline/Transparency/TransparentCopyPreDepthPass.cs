@@ -21,18 +21,17 @@ namespace Illusion.Rendering
         private readonly IllusionRendererData _rendererData;
         
 #if UNITY_SWITCH || UNITY_ANDROID
-        const GraphicsFormat k_DepthStencilFormat = GraphicsFormat.D24_UNorm_S8_UInt;
+        private const GraphicsFormat k_DepthStencilFormat = GraphicsFormat.D24_UNorm_S8_UInt;
 
-        const int k_DepthBufferBits = 24;
+        private const int k_DepthBufferBits = 24;
 #else
-        const GraphicsFormat k_DepthStencilFormat = GraphicsFormat.D32_SFloat_S8_UInt;
+        private const GraphicsFormat k_DepthStencilFormat = GraphicsFormat.D32_SFloat_S8_UInt;
         
-        const int k_DepthBufferBits = 32;
+        private const int k_DepthBufferBits = 32;
 #endif
 
 #if UNITY_2023_1_OR_NEWER
-        private readonly bool _copyResolvedDepth;
-        private CopyDepthPass _copyDepthPass;
+        private readonly CopyDepthPass _copyDepthPass;
 #endif
 
         private TransparentCopyPreDepthPass(IllusionRendererData rendererData, Material copyDepthMaterial, bool copyResolvedDepth = false)
@@ -43,9 +42,11 @@ namespace Illusion.Rendering
             _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPreDepth");
 #if UNITY_2023_1_OR_NEWER
-            _copyResolvedDepth = copyResolvedDepth;
-            _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, true, false, copyResolvedDepth);
-            _copyDepthPass.profilingSampler = profilingSampler;
+            _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, true, false, copyResolvedDepth)
+                {
+                    profilingSampler = profilingSampler
+                };
+            ConfigureInput(ScriptableRenderPassInput.Depth);
 #endif
         }
 
@@ -89,10 +90,8 @@ namespace Illusion.Rendering
 #if UNITY_2023_1_OR_NEWER
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
         {
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderer);
-            if (!depthTexture.IsValid()) return;
-
+            TextureHandle source = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+            
             // Allocate pre-depth texture
             var depthDescriptor = renderingData.cameraData.cameraTargetDescriptor;
             depthDescriptor.graphicsFormat = GraphicsFormat.None;
@@ -102,12 +101,10 @@ namespace Illusion.Rendering
 
             RenderingUtils.ReAllocateIfNeeded(ref _rendererData.CameraPreDepthTextureRT, depthDescriptor, 
                 wrapMode: TextureWrapMode.Clamp, name: "_CameraPreDepthTexture");
-
-            TextureHandle source = renderGraph.ImportTexture(depthTexture);
+            
             TextureHandle destination = renderGraph.ImportTexture(_rendererData.CameraPreDepthTextureRT);
 
-            // Use the CopyDepthPass's Render method for RenderGraph
-            _copyDepthPass.CopyToDepth = false;
+            _copyDepthPass.CopyToDepth = true;
             _copyDepthPass.Render(renderGraph, destination, source, ref renderingData, bindAsCameraDepth: false, passName: "Copy Pre Depth");
 
             // Set global texture

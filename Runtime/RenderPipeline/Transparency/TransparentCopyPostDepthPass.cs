@@ -18,8 +18,7 @@ namespace Illusion.Rendering
         private readonly Material _copyDepthMaterial;
 
 #if UNITY_2023_1_OR_NEWER
-        private readonly bool _copyResolvedDepth;
-        private CopyDepthPass _copyDepthPass;
+        private readonly CopyDepthPass _copyDepthPass;
 #endif
 
         private TransparentCopyPostDepthPass(Material copyDepthMaterial, bool copyResolvedDepth = false)
@@ -29,9 +28,11 @@ namespace Illusion.Rendering
             _copyDepthMaterial = copyDepthMaterial;
             profilingSampler = new ProfilingSampler("CopyPostDepth");
 #if UNITY_2023_1_OR_NEWER
-            _copyResolvedDepth = copyResolvedDepth;
-            _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, false, false, copyResolvedDepth);
-            _copyDepthPass.profilingSampler = profilingSampler;
+            _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDepthMaterial, false, false, copyResolvedDepth)
+            {
+                profilingSampler = profilingSampler
+            };
+            ConfigureInput(ScriptableRenderPassInput.Depth);
 #endif
         }
 
@@ -67,14 +68,10 @@ namespace Illusion.Rendering
         public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
         {
             UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderer);
-            if (!depthTexture.IsValid()) return;
+            TextureHandle source = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+            TextureHandle destination = renderer.activeDepthTexture;
 
-            TextureHandle source = renderGraph.ImportTexture(depthTexture);
-            TextureHandle destination = renderGraph.ImportTexture(renderingData.cameraData.renderer.cameraDepthTargetHandle);
-
-            // Use the CopyDepthPass's Render method for RenderGraph
-            _copyDepthPass.CopyToDepth = false;
+            _copyDepthPass.CopyToDepth = true;
             _copyDepthPass.Render(renderGraph, destination, source, ref renderingData, bindAsCameraDepth: false, passName: "Copy Post Depth");
         }
 #endif
