@@ -602,7 +602,7 @@ namespace Illusion.Rendering
             float scaleFactor = _downSample ? 0.5f : 1.0f;
             
             // Create AO packed data texture (intermediate result from tracing)
-            var aoPackedDesc = new TextureDesc(Vector2.one * scaleFactor, false, false)
+            var aoPackedDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
             {
                 colorFormat = packAODepth ? GraphicsFormat.R32_SFloat :
                     useRedComponentOnly ? GraphicsFormat.R8_UNorm : GraphicsFormat.B8G8R8A8_UNorm,
@@ -617,7 +617,7 @@ namespace Illusion.Rendering
             
             if (!_blurInCS && actualBlurQuality >= AmbientOcclusionBlurQuality.Bilateral)
             {
-                var blurDesc = new TextureDesc(Vector2.one * scaleFactor, false, false)
+                var blurDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
                 {
                     colorFormat = aoPackedDesc.colorFormat,
                     name = "AO Blur Temp 1"
@@ -632,7 +632,7 @@ namespace Illusion.Rendering
             }
             
             // Create final output texture (full resolution)
-            var outputDesc = new TextureDesc(Vector2.one, false, false)
+            var outputDesc = new TextureDesc(_rtWidth * downsampleDivider, _rtHeight * downsampleDivider, false, false)
             {
                 colorFormat = _supportsR8RenderTextureFormat ? GraphicsFormat.R8_UNorm : GraphicsFormat.B8G8R8A8_UNorm,
                 enableRandomWrite = _blurInCS,
@@ -664,7 +664,7 @@ namespace Illusion.Rendering
                 {
                     // Half-res: spatial denoise then upsample
                     // Create temporary texture for spatial denoised result
-                    var spatialDenoisedDesc = new TextureDesc(Vector2.one * scaleFactor, false, false)
+                    var spatialDenoisedDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
                     {
                         colorFormat = GraphicsFormat.R32_SFloat,
                         enableRandomWrite = true,
