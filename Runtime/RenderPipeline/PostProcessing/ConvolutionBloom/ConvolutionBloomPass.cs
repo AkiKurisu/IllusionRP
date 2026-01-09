@@ -298,6 +298,7 @@ namespace Illusion.Rendering.PostProcessing
             internal TextureHandle Filter;
             internal bool HighQuality;
             internal bool DisableDispatchMergeOptimization;
+            internal bool DisableReadWriteOptimization;
             internal Vector2Int Size;
         }
 
@@ -332,9 +333,12 @@ namespace Illusion.Rendering.PostProcessing
             float intensity = bloomParams.intensity.value;
             var fftExtend = bloomParams.fftExtend.value;
             bool highQuality = bloomParams.quality.value == ConvolutionBloomQuality.High;
-
+            if (!bloomParams.disableReadWriteOptimization.value) fftExtend.y = 0;
+            
             UpdateRenderTextureSize(bloomParams);
 
+            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            TextureHandle colorTexture = renderer.activeColorTexture;
             var targetX = renderingData.cameraData.camera.pixelWidth;
             var targetY = renderingData.cameraData.camera.pixelHeight;
             
@@ -343,37 +347,30 @@ namespace Illusion.Rendering.PostProcessing
             {
                 RenderOTFUpdatePass(renderGraph, bloomParams, new Vector2Int(targetX, targetY), highQuality);
             }
-
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle colorTexture = renderer.activeColorTexture;
-
+            
             // Import RTHandles as TextureHandles
             TextureHandle fftTargetHandle = renderGraph.ImportTexture(_fftTarget);
             TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
 
             // Pass 1: Bright mask extraction
             fftTargetHandle = RenderBrightMaskPass(renderGraph, colorTexture, fftTargetHandle,
-                bloomParams, threshold, thresholdKnee, clampMax, new Vector2Int(targetX, targetY));
+                bloomParams, threshold, thresholdKnee, clampMax, new Vector2Int(targetX, targetY), fftExtend);
 
             // Pass 2: FFT Convolution
-            TextureHandle convolvedResult = RenderConvolutionPass(renderGraph, fftTargetHandle, otfHandle,
+            fftTargetHandle = RenderConvolutionPass(renderGraph, fftTargetHandle, otfHandle,
                 bloomParams, highQuality);
 
             // Pass 3: Bloom blend
-            RenderBloomBlendPass(renderGraph, convolvedResult, colorTexture, intensity, fftExtend);
+            RenderBloomBlendPass(renderGraph, fftTargetHandle, colorTexture, intensity, fftExtend);
         }
 
         private TextureHandle RenderBrightMaskPass(RenderGraph renderGraph, TextureHandle source,
             TextureHandle destination, ConvolutionBloom bloomParams, float threshold, float thresholdKnee,
-            float maxClamp, Vector2Int screenSize)
+            float maxClamp, Vector2Int screenSize, Vector2 fftExtend)
         {
             using (var builder = renderGraph.AddRasterRenderPass<BrightMaskPassData>("Convolution Bloom Bright Mask", out var passData, _brightMaskSampler))
             {
                 passData.BrightMaskMaterial = _brightMaskMaterial.Value;
-                
-                Vector2 fftExtend = bloomParams.fftExtend.value;
-                if (!bloomParams.disableReadWriteOptimization.value) fftExtend.y = 0;
-                
                 passData.FFTExtend = fftExtend;
                 passData.Threshold = threshold;
                 passData.ThresholdKnee = thresholdKnee;
@@ -410,6 +407,7 @@ namespace Illusion.Rendering.PostProcessing
                 passData.Filter = ortFilter;
                 passData.HighQuality = highQuality;
                 passData.DisableDispatchMergeOptimization = bloomParams.disableDispatchMergeOptimization.value;
+                passData.DisableReadWriteOptimization = bloomParams.disableReadWriteOptimization.value;
                 passData.Size = new Vector2Int((int)_convolutionSizeX, (int)_convolutionSizeY);
 
                 // Mark textures as used in the pass
@@ -427,11 +425,15 @@ namespace Illusion.Rendering.PostProcessing
                     }
                     else
                     {
-                        int paddingY = (data.Size.y - ((RTHandle)data.Target).rt.height) / 2;
-                        var verticalRange = new Vector2Int(0, ((RTHandle)data.Target).rt.height);
-                        var offset = new Vector2Int(0, -paddingY);
-                        data.FFTKernel.ConvolveOpt(context.cmd, data.Target, data.Filter,
-                            data.Size, Vector2Int.zero, verticalRange, offset);
+                        Vector2Int offset = Vector2Int.zero;
+                        Vector2Int verticalRange = Vector2Int.zero;
+                        if (!data.DisableReadWriteOptimization)
+                        {
+                            int paddingY = (data.Size.y - ((RTHandle)data.Target).rt.height) / 2;
+                            verticalRange = new Vector2Int(0, ((RTHandle)data.Target).rt.height);
+                            offset = new Vector2Int(0, -paddingY);
+                        }
+                        data.FFTKernel.ConvolveOpt(context.cmd, data.Target, data.Filter, data.Size, Vector2Int.zero, verticalRange, offset);
                     }
                 });
 
