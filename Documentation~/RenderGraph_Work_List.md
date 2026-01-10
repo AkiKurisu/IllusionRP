@@ -40,6 +40,7 @@
 - `PRTRelightPass`
 - `ScreenSpaceReflectionPass`
 - `ConvolutionBloomPass`
+
 - `SubsurfaceScatteringPass`
 - `DiffuseShadowDenoisePass`
 - `ContactShadowsPass`
