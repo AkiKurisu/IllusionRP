@@ -52,7 +52,7 @@ TEXTURE2D_X(_HistoryNormalTexture);
 // Buffer that stores the result of the validation pass of the history
 RW_TEXTURE2D_X(uint, _ValidationBufferRW);
 // Velocity buffer for history rejection // @IllusionRP not used now.
-TEXTURE2D_X(_VelocityBuffer);
+// TEXTURE2D_X(_VelocityBuffer);
 // This holds the fov angle of a pixel
 float _PixelSpreadAngleTangent;
 // Value that tells us if the current history should be discarded based on scene-level data
@@ -239,7 +239,8 @@ void TEMPORAL_ACCUMULATION(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 g
 #endif
 
     // Get the velocity of the current sample
-    float movingIntersection = _OccluderMotionRejection ? LOAD_TEXTURE2D_X(_VelocityBuffer, currentCoord).r > MINIMAL_MOTION_DISTANCE : 0.0f;
+    // float movingIntersection = _OccluderMotionRejection ? LOAD_TEXTURE2D_X(_VelocityBuffer, currentCoord).r > MINIMAL_MOTION_DISTANCE : 0.0f;
+    float movingIntersection = 0.0f;
 
     // Accumulation factor that tells us how much we need to keep the history data
     float accumulationFactor = 0.0;

@@ -183,7 +183,6 @@ namespace Illusion.Rendering
             _targetDescriptor.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
             _targetDescriptor.enableRandomWrite = _reprojectInCS || _needAccumulate;
             RenderingUtils.ReAllocateIfNeeded(ref _ssrLightingRT, _targetDescriptor, name: "_SsrLightingTexture", filterMode: FilterMode.Point);
-            cmd.SetGlobalTexture(_ssrLightingRT.name, _ssrLightingRT);
 
             CoreUtils.SetKeyword(_computeShader, "SSR_APPROX", _needAccumulate);
         }
@@ -440,12 +439,12 @@ namespace Illusion.Rendering
                 IllusionShaderProperties._ColorPyramidTexture, preFrameColorRT);
             cmd.SetComputeTextureParam(_computeShader, kernel, Properties.SsrAccumTexture, ssrAccum);
             cmd.SetComputeTextureParam(_computeShader, kernel, Properties.SsrAccumPrev, ssrAccumPrev);
-            cmd.SetComputeTextureParam(_computeShader, kernel, Properties.SsrLightingTextureRW, _ssrLightingRT);
+            // cmd.SetComputeTextureParam(_computeShader, kernel, Properties.SsrLightingTextureRW, _ssrLightingRT);
 
             ConstantBuffer.Push(cmd, _variables, _computeShader, Properties.ShaderVariablesScreenSpaceReflection);
                 
-            int groupsX = IllusionRenderingUtils.DivRoundUp((int)_rtWidth, 8);
-            int groupsY = IllusionRenderingUtils.DivRoundUp((int)_rtHeight, 8);
+            int groupsX = IllusionRenderingUtils.DivRoundUp(_rtWidth, 8);
+            int groupsY = IllusionRenderingUtils.DivRoundUp(_rtHeight, 8);
             cmd.DispatchCompute(_computeShader, kernel, groupsX, groupsY,
                 IllusionRendererData.MaxViewCount);
         }
@@ -544,7 +543,12 @@ namespace Illusion.Rendering
                     using (new ProfilingScope(cmd, _accumulationSampler))
                     {
                         ExecuteAccumulation(cmd, ref cameraData, useAsyncCompute);
+                        cmd.SetGlobalTexture(_ssrLightingRT.name, _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation));
                     }
+                }
+                else
+                {
+                    cmd.SetGlobalTexture(_ssrLightingRT.name, _ssrLightingRT);
                 }
                 
                 if (useAsyncCompute)
@@ -642,8 +646,8 @@ namespace Illusion.Rendering
                 passData.ComputeShader = _computeShader;
                 passData.TracingKernel = _tracingKernel;
                 passData.TracingInCS = _tracingInCS;
-                passData.Width = (int)_rtWidth;
-                passData.Height = (int)_rtHeight;
+                passData.Width = _rtWidth;
+                passData.Height = _rtHeight;
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
                 passData.OffsetBuffer = _rendererData.DepthMipChainInfo.GetOffsetBufferData(_rendererData.DepthPyramidMipLevelOffsetsBuffer);
                 
@@ -854,16 +858,16 @@ namespace Illusion.Rendering
                 passData.Variables = _variables;
                 passData.ComputeShader = _computeShader;
                 passData.AccumulationKernel = kernel;
-                passData.Width = (int)_rtWidth;
-                passData.Height = (int)_rtHeight;
+                passData.Width = _rtWidth;
+                passData.Height = _rtHeight;
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
 
                 passData.HitPointTexture = builder.UseTexture(hitPointTexture);
                 passData.ColorPyramidTexture = builder.UseTexture(colorPyramidTexture);
                 passData.MotionVectorTexture = builder.UseTexture(motionVectorTexture);
-                passData.SsrAccum = builder.UseTexture(ssrAccum);
+                passData.SsrAccum = builder.UseTexture(ssrAccum, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
                 passData.SsrAccumPrev = builder.UseTexture(ssrAccumPrev);
-                passData.SsrLightingTextureRW = builder.UseTexture(ssrLightingTextureRW, IBaseRenderGraphBuilder.AccessFlags.Write);
+                // passData.SsrLightingTextureRW = builder.UseTexture(ssrLightingTextureRW, IBaseRenderGraphBuilder.AccessFlags.Write);
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -877,14 +881,14 @@ namespace Illusion.Rendering
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel, Properties.SsrAccumTexture, data.SsrAccum);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel, Properties.SsrAccumPrev, data.SsrAccumPrev);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel,Properties.SsrHitPointTexture, data.HitPointTexture);
-                    context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel, Properties.SsrLightingTextureRW, data.SsrLightingTextureRW);
+                    // context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel, Properties.SsrLightingTextureRW, data.SsrLightingTextureRW);
                     
                     int groupsX = IllusionRenderingUtils.DivRoundUp(data.Width, 8);
                     int groupsY = IllusionRenderingUtils.DivRoundUp(data.Height, 8);
                     context.cmd.DispatchCompute(data.ComputeShader, data.AccumulationKernel, groupsX, groupsY, data.ViewCount);
                 });
                 
-                return passData.SsrLightingTextureRW;
+                return passData.SsrAccum;
             }
         }
         
@@ -925,7 +929,6 @@ namespace Illusion.Rendering
             // Check if SSR is enabled
             if (!IsSSREnabled(ref renderingData))
             {
-                Debug.Log("Skip SSR");
                 return;
             }
             
@@ -965,28 +968,31 @@ namespace Illusion.Rendering
                 name = "SSR_HitPoint_Texture"
             });
             
-            TextureHandle ssrLightingTexture = renderGraph.CreateTexture(new TextureDesc(_rtWidth, _rtHeight, false, false)
-            {
-                colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
-                clearBuffer = !useAsyncCompute && !_needAccumulate,
-                clearColor = Color.clear,
-                enableRandomWrite = _reprojectInCS || _needAccumulate,
-                name = "SSR_Lighting_Texture"
-            });
-            
+            // @IllusionRP: 
+            // Notice if we use RenderGraph.CreateTexture, ssr lighting texture may be re-used before lighting.
+            // So we should always use SsrAccum(RTHandle) instead of SsrLighting in RenderGraph.
+            // TextureHandle ssrLightingTexture = renderGraph.CreateTexture(new TextureDesc(_rtWidth, _rtHeight, false, false)
+            // {
+            //     colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
+            //     clearBuffer = !useAsyncCompute && !_needAccumulate,
+            //     clearColor = Color.clear,
+            //     enableRandomWrite = _reprojectInCS || _needAccumulate,
+            //     name = "SSR_Lighting_Texture"
+            // });
+
             // Clear operations for async compute or PBR accumulation
-            if (_needAccumulate)
-            {
-                var ssrAccumRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
-                TextureHandle ssrAccum = renderGraph.ImportTexture(ssrAccumRT);
-                ClearTexturePass(renderGraph, ssrAccum, Color.clear, useAsyncCompute);
+            var ssrAccumRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
+            TextureHandle ssrAccum = renderGraph.ImportTexture(ssrAccumRT);
+            ClearTexturePass(renderGraph, ssrAccum, Color.clear, useAsyncCompute);
+
+            // @IllusionRP: Always use SSrAccum
+            TextureHandle ssrLightingTexture = ssrAccum;
                 
-                if (_previousAccumNeedClear)
-                {
-                    var ssrAccumPrevRT = _rendererData.GetPreviousFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
-                    TextureHandle ssrAccumPrev = renderGraph.ImportTexture(ssrAccumPrevRT);
-                    ClearTexturePass(renderGraph, ssrAccumPrev, Color.clear, useAsyncCompute);
-                }
+            if (_previousAccumNeedClear)
+            {
+                var ssrAccumPrevRT = _rendererData.GetPreviousFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
+                TextureHandle ssrAccumPrev = renderGraph.ImportTexture(ssrAccumPrevRT);
+                ClearTexturePass(renderGraph, ssrAccumPrev, Color.clear, useAsyncCompute);
             }
             
             if (useAsyncCompute)
@@ -1013,10 +1019,8 @@ namespace Illusion.Rendering
             {
                 if (_needAccumulate)
                 {
-                    var ssrAccumRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
-                    TextureHandle ssrAccumTexture = renderGraph.ImportTexture(ssrAccumRT);
                     reprojectedResult = RenderReprojectionComputePass(renderGraph, tracedHitPoint, colorPyramidTexture,
-                        motionVectorTexture, normalTexture, ssrLightingTexture, ssrAccumTexture, useAsyncCompute);
+                        motionVectorTexture, normalTexture, ssrLightingTexture, ssrAccum, useAsyncCompute);
                 }
                 else
                 {
@@ -1034,9 +1038,7 @@ namespace Illusion.Rendering
             TextureHandle finalResult;
             if (_needAccumulate)
             {
-                var ssrAccumRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
                 var ssrAccumPrevRT = _rendererData.GetPreviousFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
-                TextureHandle ssrAccum = renderGraph.ImportTexture(ssrAccumRT);
                 TextureHandle ssrAccumPrev = renderGraph.ImportTexture(ssrAccumPrevRT);
                 
                 finalResult = RenderAccumulationPass(renderGraph, tracedHitPoint, colorPyramidTexture, motionVectorTexture,

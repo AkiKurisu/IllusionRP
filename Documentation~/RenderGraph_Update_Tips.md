@@ -166,3 +166,43 @@ public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources f
 }
 #endif
 ```
+
+## RenderGraph.CreateTexture的管理
+
+使用`RenderGraph.CreateTexture`创建的纹理在最后一次被使用后（计数管理），在TextureDesc没有标记需要discard的情况下，可以被RenderGraph中的其他Pass复用（这也是为什么需要有TextureHandle再次封装RTHandle的原因之一，这样能有效减少需要Allocate的RT数量）。
+
+但需要注意如果该纹理需要被`SetGlobalTexture`隐式给Lighting Pass使用，应该使用唯一的RTHandle进行管理，否则就会被其他Pass错误写入。
+
+下面代码就是在某些情况下遇到了屏幕空间反射的结果`SsrLightingTexture`被SSGI中`Intermediate Texture`错误写入，故相较于HDRP进行了调整。
+
+```csharp
+// Create transient textures for hit points and lighting
+TextureHandle hitPointTexture = renderGraph.CreateTexture(new TextureDesc(_rtWidth, _rtHeight, false, false)
+{
+    colorFormat = GraphicsFormat.R16G16_UNorm,
+    clearBuffer = !useAsyncCompute,
+    clearColor = Color.clear,
+    enableRandomWrite = _tracingInCS,
+    name = "SSR_HitPoint_Texture"
+});
+
+// @IllusionRP: 
+// Notice if we use RenderGraph.CreateTexture, ssr lighting texture may be re-used before lighting.
+// So we should always use SsrAccum(RTHandle) instead of SsrLighting in RenderGraph.
+// TextureHandle ssrLightingTexture = renderGraph.CreateTexture(new TextureDesc(_rtWidth, _rtHeight, false, false)
+// {
+//     colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
+//     clearBuffer = !useAsyncCompute && !_needAccumulate,
+//     clearColor = Color.clear,
+//     enableRandomWrite = _reprojectInCS || _needAccumulate,
+//     name = "SSR_Lighting_Texture"
+// });
+
+// Clear operations for async compute or PBR accumulation
+var ssrAccumRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
+TextureHandle ssrAccum = renderGraph.ImportTexture(ssrAccumRT);
+ClearTexturePass(renderGraph, ssrAccum, Color.clear, useAsyncCompute);
+
+// @IllusionRP: Always use SSrAccum
+TextureHandle ssrLightingTexture = ssrAccum;
+```
