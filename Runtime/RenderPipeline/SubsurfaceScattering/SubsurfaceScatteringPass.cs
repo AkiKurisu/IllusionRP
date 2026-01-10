@@ -3,6 +3,9 @@ using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering
 {
@@ -126,10 +129,7 @@ namespace Illusion.Rendering
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
-            UpdateCurrentDiffusionProfileSettings(param);
-            UpdateShaderVariablesSubsurface(param, ref _shaderVariablesSubsurface);
-            _sampleBudget= (int)param.sampleBudget.value;
+            PrepareSubsurfaceData();
 
             CommandBuffer cmd = CommandBufferPool.Get();
             using (new ProfilingScope(cmd, profilingSampler))
@@ -143,6 +143,7 @@ namespace Illusion.Rendering
                 cmd.SetViewProjectionMatrices(renderingData.cameraData.GetViewMatrix(), renderingData.cameraData.GetProjectionMatrix());
                 cmd.SetViewport(new Rect(0f, 0f, _width, _height));
 
+                var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
                 // Disney sss
                 if (param.enable.value 
                     && _rendererData.IsLightingActive 
@@ -203,6 +204,14 @@ namespace Illusion.Rendering
 
                 cb.DiffusionProfileHashTable[i * 4] = _sssDiffusionProfileHashes[i];
             }
+        }
+
+        private void PrepareSubsurfaceData()
+        {
+            var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
+            UpdateCurrentDiffusionProfileSettings(param);
+            UpdateShaderVariablesSubsurface(param, ref _shaderVariablesSubsurface);
+            _sampleBudget = (int)param.sampleBudget.value;
         }
 
         private RTHandle GetPreDepthTexture(ref RenderingData renderingData)
@@ -383,6 +392,247 @@ namespace Illusion.Rendering
                 Blitter.BlitCameraTexture(cmd, _diffuseRT[2], _diffuseRT[2], _scatteringMaterial.Value, 0);
             }
         }
+
+#if UNITY_2023_1_OR_NEWER
+        private class SplitLightingPassData
+        {
+            internal TextureHandle DiffuseTexture;
+            internal TextureHandle AlbedoTexture;
+            internal TextureHandle DepthTexture;
+            internal RendererListHandle RendererListHdl;
+            internal RenderingData RenderingData;
+        }
+
+        private class ScatteringComputePassData
+        {
+            internal ComputeShader ComputeShader;
+            internal int SubsurfaceScatteringKernel;
+            internal TextureHandle DiffuseTexture;
+            internal TextureHandle AlbedoTexture;
+            internal TextureHandle LightingTexture;
+            internal int SampleBudget;
+            internal int Width;
+            internal int Height;
+        }
+
+        private class ScatteringRasterPassData
+        {
+            internal Material ScatteringMaterial;
+            internal TextureHandle DiffuseTexture;
+            internal TextureHandle AlbedoTexture;
+            internal TextureHandle LightingTexture;
+        }
+
+        private class SetGlobalPassData
+        {
+            internal IllusionRendererData RendererData;
+            internal TextureHandle SubsurfaceLightingTexture;
+            internal ShaderVariablesSubsurface ShaderVariablesSubsurface;
+            internal Matrix4x4 InverseProjectMatrix;
+            internal Matrix4x4 ViewMatrix;
+            internal Matrix4x4 ProjectionMatrix;
+            internal int Width;
+            internal int Height;
+        }
+
+        private void RenderSplitLighting(RenderGraph renderGraph, TextureHandle diffuseHandle, TextureHandle albedoHandle, 
+            TextureHandle depthHandle, ref RenderingData renderingData)
+        {
+            using (var builder = renderGraph.AddRasterRenderPass<SplitLightingPassData>(
+                "SSS Split Lighting", out var passData, _samplingProfiler))
+            {
+                // Setup MRT: diffuse (attachment 0) + albedo (attachment 1)
+                passData.DiffuseTexture = builder.UseTextureFragment(diffuseHandle, 0);
+                passData.AlbedoTexture = builder.UseTextureFragment(albedoHandle, 1);
+                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle, IBaseRenderGraphBuilder.AccessFlags.Read);
+                passData.RenderingData = renderingData;
+
+                // Create renderer list with SubsurfaceDiffuse shader tag
+                var drawingSettings = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, ref renderingData, SortingCriteria.None);
+                var rendererListParams = new RendererListParams(renderingData.cullResults, drawingSettings, _filteringSettings);
+                passData.RendererListHdl = renderGraph.CreateRendererList(rendererListParams);
+                builder.UseRendererList(passData.RendererListHdl);
+
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc(static (SplitLightingPassData data, RasterGraphContext context) =>
+                {
+                    // Clear render targets
+                    context.cmd.ClearRenderTarget(false, true, Color.clear);
+                    
+                    // Draw renderers with SubsurfaceDiffuse shader tag
+                    context.cmd.DrawRendererList(data.RendererListHdl);
+                });
+            }
+        }
+
+        private void RenderScatteringCompute(RenderGraph renderGraph, TextureHandle diffuseHandle, 
+            TextureHandle albedoHandle, TextureHandle lightingHandle)
+        {
+            using (var builder = renderGraph.AddComputePass<ScatteringComputePassData>(
+                "SSS Scattering (CS)", out var passData, _scatteringProfiler))
+            {
+                passData.ComputeShader = _computeShader;
+                passData.SubsurfaceScatteringKernel = _subsurfaceScatteringKernel;
+                passData.DiffuseTexture = builder.UseTexture(diffuseHandle);
+                passData.AlbedoTexture = builder.UseTexture(albedoHandle);
+                passData.LightingTexture = builder.UseTexture(lightingHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                passData.SampleBudget = _sampleBudget;
+                passData.Width = _width;
+                passData.Height = _height;
+
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc(static (ScatteringComputePassData data, ComputeGraphContext context) =>
+                {
+                    // Set compute shader parameters
+                    context.cmd.SetComputeIntParam(data.ComputeShader, ShaderIDs._SssSampleBudget, data.SampleBudget);
+                    context.cmd.SetComputeTextureParam(data.ComputeShader, data.SubsurfaceScatteringKernel, 
+                        ShaderIDs._SubsurfaceDiffuse, data.DiffuseTexture);
+                    context.cmd.SetComputeTextureParam(data.ComputeShader, data.SubsurfaceScatteringKernel, 
+                        ShaderIDs._SubsurfaceAlbedo, data.AlbedoTexture);
+                    context.cmd.SetComputeTextureParam(data.ComputeShader, data.SubsurfaceScatteringKernel, 
+                        ShaderIDs._SubsurfaceLighting, data.LightingTexture);
+
+                    var numTilesX = (data.Width + 15) / 16;
+                    var numTilesY = (data.Height + 15) / 16;
+                    var numTilesZ = IllusionRendererData.MaxViewCount;
+                    
+                    // Dispatch compute shader
+                    context.cmd.DispatchCompute(data.ComputeShader, data.SubsurfaceScatteringKernel, 
+                        numTilesX, numTilesY, numTilesZ);
+                });
+            }
+        }
+
+        private void RenderScatteringRaster(RenderGraph renderGraph, TextureHandle diffuseHandle, 
+            TextureHandle albedoHandle, TextureHandle lightingHandle)
+        {
+            using (var builder = renderGraph.AddRasterRenderPass<ScatteringRasterPassData>(
+                "SSS Scattering (FS)", out var passData, _scatteringProfiler))
+            {
+                passData.ScatteringMaterial = _scatteringMaterial.Value;
+                passData.DiffuseTexture = builder.UseTexture(diffuseHandle);
+                passData.AlbedoTexture = builder.UseTexture(albedoHandle);
+                passData.LightingTexture = builder.UseTextureFragment(lightingHandle, 0);
+
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc(static (ScatteringRasterPassData data, RasterGraphContext context) =>
+                {
+                    // Disable native render pass keyword
+                    data.ScatteringMaterial.DisableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
+                    
+                    // Set material textures
+                    data.ScatteringMaterial.SetTexture(ShaderIDs._SubsurfaceDiffuse, data.DiffuseTexture);
+                    data.ScatteringMaterial.SetTexture(ShaderIDs._SubsurfaceAlbedo, data.AlbedoTexture);
+                    
+                    // Blit with scattering material
+                    Blitter.BlitTexture(context.cmd, data.LightingTexture, Vector2.one, data.ScatteringMaterial, 0);
+                });
+            }
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            // Prepare subsurface scattering data
+            PrepareSubsurfaceData();
+
+            // Setup texture allocation
+            _scatteringInCS = _rendererData.PreferComputeShader;
+            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            desc.depthBufferBits = 0;
+            desc.msaaSamples = 1;
+            desc.colorFormat = RenderTextureFormat.ARGBHalf;
+            _width = desc.width;
+            _height = desc.height;
+
+            // Allocate diffuse and albedo textures
+            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[0], desc, FilterMode.Point, TextureWrapMode.Clamp,
+                name: nameof(ShaderIDs._SubsurfaceDiffuse));
+
+            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[1], desc, FilterMode.Point, TextureWrapMode.Clamp,
+                name: nameof(ShaderIDs._SubsurfaceAlbedo));
+
+            // Allocate lighting texture
+            desc.enableRandomWrite = _scatteringInCS;
+            desc.colorFormat = _supportFastRendering ? RenderTextureFormat.RGB111110Float : RenderTextureFormat.ARGBHalf;
+            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[2], desc, FilterMode.Point, TextureWrapMode.Clamp, 
+                name: nameof(ShaderIDs._SubsurfaceLighting));
+
+            // Import textures into RenderGraph
+            TextureHandle diffuseHandle = renderGraph.ImportTexture(_diffuseRT[0]);
+            TextureHandle albedoHandle = renderGraph.ImportTexture(_diffuseRT[1]);
+            TextureHandle lightingHandle = renderGraph.ImportTexture(_diffuseRT[2]);
+
+            // Get depth texture
+            var preDepthTexture = _rendererData.CameraPreDepthTextureRT;
+            if (!preDepthTexture.IsValid() || renderingData.cameraData.cameraType == CameraType.Preview)
+            {
+                preDepthTexture = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+            }
+            TextureHandle depthHandle = renderGraph.ImportTexture(preDepthTexture);
+            var invProjectMatrix = IllusionRenderingUtils.GetGPUProjectionMatrix(ref renderingData.cameraData, _diffuseRT[2]).inverse;
+
+            // Check if SSS is enabled
+            var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
+            if (!param.enable.value 
+                || !_rendererData.IsLightingActive 
+                || renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection)
+            {
+                // Set global texture even if disabled
+                RenderGraphUtils.SetGlobalTexture(renderGraph, ShaderIDs._SubsurfaceLighting, lightingHandle);
+                return;
+            }
+
+            // Pass 1: Set global variables and constant buffer
+            using (var builder = renderGraph.AddComputePass<SetGlobalPassData>(
+                "SSS Setup Global Variables", out var setupPassData, new ProfilingSampler("SSS Setup")))
+            {
+                setupPassData.RendererData = _rendererData;
+                setupPassData.SubsurfaceLightingTexture = builder.UseTexture(lightingHandle);
+                setupPassData.ShaderVariablesSubsurface = _shaderVariablesSubsurface;
+                setupPassData.InverseProjectMatrix = invProjectMatrix;
+                setupPassData.ViewMatrix = renderingData.cameraData.GetViewMatrix();
+                setupPassData.ProjectionMatrix = renderingData.cameraData.GetProjectionMatrix();
+                setupPassData.Width = _width;
+                setupPassData.Height = _height;
+
+                builder.AllowGlobalStateModification(true);
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc((SetGlobalPassData data, ComputeGraphContext context) =>
+                {
+                    // Set global buffer
+                    ComputeConstantBuffer.PushGlobal(context.cmd, data.ShaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
+
+                    // Set global matrices
+                    context.cmd.SetGlobalMatrix(ShaderIDs._InvProjectMatrix, data.InverseProjectMatrix);
+                    context.cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
+                    context.cmd.SetViewport(new Rect(0f, 0f, data.Width, data.Height));
+
+                    // Set global texture
+                    context.cmd.SetGlobalTexture(ShaderIDs._SubsurfaceLighting, data.SubsurfaceLightingTexture);
+                });
+            }
+
+            // Pass 2: Split lighting rendering (RasterPass with MRT)
+            RenderSplitLighting(renderGraph, diffuseHandle, albedoHandle, depthHandle, ref renderingData);
+
+            // Pass 3: Subsurface scattering (Compute or Raster)
+            if (_scatteringInCS)
+            {
+                RenderScatteringCompute(renderGraph, diffuseHandle, albedoHandle, lightingHandle);
+            }
+            else
+            {
+                RenderScatteringRaster(renderGraph, diffuseHandle, albedoHandle, lightingHandle);
+            }
+
+            // Set global texture for shaders
+            RenderGraphUtils.SetGlobalTexture(renderGraph, ShaderIDs._SubsurfaceLighting, lightingHandle);
+        }
+#endif
 
         public void Dispose()
         {
