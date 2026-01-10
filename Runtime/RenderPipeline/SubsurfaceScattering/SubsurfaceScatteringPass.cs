@@ -313,7 +313,9 @@ namespace Illusion.Rendering
                         cmd.Clear();
 
                         var diffuseSetting = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, ref renderingData, SortingCriteria.None);
-                        context.DrawRenderers(renderingData.cullResults, ref diffuseSetting, ref _filteringSettings);
+                        var rendererListParams = new RendererListParams(renderingData.cullResults, diffuseSetting, _filteringSettings);
+                        var rendererList = context.CreateRendererList(ref rendererListParams);
+                        cmd.DrawRendererList(rendererList);
                     }
 
                     context.ExecuteCommandBuffer(cmd);
@@ -365,7 +367,9 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
             var diffuseSetting = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, ref renderingData, SortingCriteria.None);
-            context.DrawRenderers(renderingData.cullResults, ref diffuseSetting, ref _filteringSettings);
+            var rendererListParams = new RendererListParams(renderingData.cullResults, diffuseSetting, _filteringSettings);
+            var rendererList = context.CreateRendererList(ref rendererListParams);
+            cmd.DrawRendererList(rendererList);
         }
 
         private void DoSubsurfaceScattering(CommandBuffer cmd)

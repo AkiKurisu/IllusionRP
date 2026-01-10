@@ -182,7 +182,9 @@ namespace Illusion.Rendering
 
                         var drawSettings = CreateDrawingSettings(OitTagId, ref renderingData,
                             renderingData.cameraData.defaultOpaqueSortFlags);
-                        context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
+                        var rendererList = default(RendererList);
+                        RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, _filteringSettings, _renderStateBlock, ref rendererList);
+                        cmd.DrawRendererList(rendererList);
                     }
 
                     context.ExecuteCommandBuffer(cmd);
