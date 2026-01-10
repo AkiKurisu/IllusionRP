@@ -5,6 +5,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2026-1-10
+
+This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.
+
+### Compatibility
+
+Following features are now compatible with RenderGraph.
+
+- `SubsurfaceScatteringPass`
+- `DiffuseShadowDenoisePass`
+- `ContactShadowsPass`
+- `SyncGraphicsFencePass` (No need when using RenderGraph)
+
+### Fixed
+
+- Fix GTAO scene view bug when using RenderGraph in Unity 2023.
+- Fix SSR scene view bug when using RenderGraph in Unity 2023.
+- Fix ConvolutionBloomPass blend result incorrect bug when using RenderGraph in Unity 2023.
+- Fix copy depth and transparency bug when using RenderGraph in Unity 2023.
+
 ## [1.1.4] - 2026-1-8
 
 This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.

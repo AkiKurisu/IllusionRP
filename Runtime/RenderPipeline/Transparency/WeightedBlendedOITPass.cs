@@ -180,9 +180,15 @@ namespace Illusion.Rendering
                         context.ExecuteCommandBuffer(cmd);
                         cmd.Clear();
 
-                        var drawSettings = CreateDrawingSettings(OitTagId, ref renderingData,
-                            renderingData.cameraData.defaultOpaqueSortFlags);
+                        var drawSettings = CreateDrawingSettings(OitTagId, ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
+                        
+#if UNITY_2023_1_OR_NEWER
+                        var rendererList = default(RendererList);
+                        RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, _filteringSettings, _renderStateBlock, ref rendererList);
+                        cmd.DrawRendererList(rendererList);
+#else
                         context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
+#endif
                     }
 
                     context.ExecuteCommandBuffer(cmd);

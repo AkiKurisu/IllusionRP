@@ -17,9 +17,9 @@ namespace Illusion.Rendering
 
         private RTHandle _ssrLightingRT;
 
-        private float _rtHeight;
+        private int _rtHeight;
 
-        private float _rtWidth;
+        private int _rtWidth;
 
         private float _screenHeight;
 
@@ -137,8 +137,8 @@ namespace Illusion.Rendering
             _screenHeight = renderingData.cameraData.cameraTargetDescriptor.height;
             _isDownsampling = volume.DownSample.value;
             int downsampleDivider = _isDownsampling ? 2 : 1;
-            _rtWidth = _screenWidth / downsampleDivider;
-            _rtHeight = _screenHeight / downsampleDivider;
+            _rtWidth = (int)_screenWidth / downsampleDivider;
+            _rtHeight = (int)_screenHeight / downsampleDivider;
             
             // @IllusionRP: Have not handled downsampling in compute shader yet.
             _tracingInCS = volume.mode == ScreenSpaceReflectionMode.HizSS 
@@ -925,6 +925,7 @@ namespace Illusion.Rendering
             // Check if SSR is enabled
             if (!IsSSREnabled(ref renderingData))
             {
+                Debug.Log("Skip SSR");
                 return;
             }
             
@@ -955,7 +956,7 @@ namespace Illusion.Rendering
             CoreUtils.SetKeyword(_computeShader, "SSR_APPROX", _needAccumulate);
             
             // Create transient textures for hit points and lighting
-            TextureHandle hitPointTexture = renderGraph.CreateTexture(new TextureDesc(Vector2.one * (_isDownsampling ? 0.5f : 1.0f), false, false)
+            TextureHandle hitPointTexture = renderGraph.CreateTexture(new TextureDesc(_rtWidth, _rtHeight, false, false)
             {
                 colorFormat = GraphicsFormat.R16G16_UNorm,
                 clearBuffer = !useAsyncCompute,
@@ -964,7 +965,7 @@ namespace Illusion.Rendering
                 name = "SSR_HitPoint_Texture"
             });
             
-            TextureHandle ssrLightingTexture = renderGraph.CreateTexture(new TextureDesc(Vector2.one * (_isDownsampling ? 0.5f : 1.0f), false, false)
+            TextureHandle ssrLightingTexture = renderGraph.CreateTexture(new TextureDesc(_rtWidth, _rtHeight, false, false)
             {
                 colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
                 clearBuffer = !useAsyncCompute && !_needAccumulate,

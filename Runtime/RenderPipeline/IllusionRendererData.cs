@@ -779,7 +779,7 @@ namespace Illusion.Rendering
         public RTHandle GetPreviousFrameColorRT(CameraData cameraData, out bool isNewFrame)
         {
             // Using color pyramid
-            if (cameraData.cameraType == CameraType.Game)
+            if (cameraData.cameraType is CameraType.Game or CameraType.SceneView)
             {
                 var previewsColorRT = GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
                 if (previewsColorRT != null)

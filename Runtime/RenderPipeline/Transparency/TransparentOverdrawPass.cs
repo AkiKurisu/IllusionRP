@@ -40,8 +40,6 @@ namespace Illusion.Rendering
 
         private readonly List<ShaderTagId> _shaderTagIdList = new();
 
-        private readonly ProfilingSampler _profilingSampler;
-
         private PassData _passData;
 
         private static readonly int DrawObjectPassDataPropID = Shader.PropertyToID("_DrawObjectPassData");
@@ -49,9 +47,8 @@ namespace Illusion.Rendering
         private TransparentOverdrawPass(ShaderTagId[] shaderTagIds, RenderPassEvent evt, RenderQueueRange renderQueueRange, 
             LayerMask layerMask, StencilState stencilState, int stencilReference)
         {
-            profilingSampler = new ProfilingSampler(nameof(TransparentOverdrawPass));
             _passData = new PassData();
-            _profilingSampler = new ProfilingSampler("Transparent Overdraw");
+            profilingSampler = new ProfilingSampler("Transparent Overdraw");
             foreach (var sid in shaderTagIds)
             {
                 _shaderTagIdList.Add(sid);
@@ -82,7 +79,7 @@ namespace Illusion.Rendering
         {
             UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
             TextureHandle colorTarget = renderer.activeColorTexture;
-            TextureHandle depthTarget = renderer.activeDepthTexture;
+            TextureHandle depthTarget = frameResources.GetTexture(UniversalResource.CameraDepth); // Restore to offscreen depth
 
             Render(renderGraph, colorTarget, depthTarget, ref renderingData);
         }
@@ -93,22 +90,23 @@ namespace Illusion.Rendering
             _passData.RenderStateBlock = _renderStateBlock;
             _passData.FilteringSettings = _filteringSettings;
             _passData.ShaderTagIdList = _shaderTagIdList;
-            _passData.ProfilingSampler = _profilingSampler;
 
 #if !UNITY_2023_1_OR_NEWER
             ExecutePass(context, _passData, ref renderingData, renderingData.cameraData.IsCameraProjectionMatrixFlipped());
 #else
             InitRendererLists(ref renderingData, ref _passData, context, null, false);
 
-            using (new ProfilingScope(renderingData.commandBuffer, _profilingSampler))
+            using (new ProfilingScope(renderingData.commandBuffer, profilingSampler))
             {
-                ExecutePass(CommandBufferHelpers.GetRasterCommandBuffer(renderingData.commandBuffer), _passData, ref renderingData, renderingData.cameraData.IsCameraProjectionMatrixFlipped());
+                ExecutePass(CommandBufferHelpers.GetRasterCommandBuffer(renderingData.commandBuffer), _passData, 
+                    _passData.RendererList, _passData.ObjectsWithErrorRendererList,
+                    ref renderingData, renderingData.cameraData.IsCameraProjectionMatrixFlipped());
             }
 #endif
         }
 
 #if UNITY_2023_1_OR_NEWER
-        private void InitRendererLists(ref RenderingData renderingData, ref PassData passData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
+        private static void InitRendererLists(ref RenderingData renderingData, ref PassData passData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
         {
             Camera camera = renderingData.cameraData.camera;
             var sortFlags = SortingCriteria.CommonTransparent;
@@ -153,10 +151,10 @@ namespace Illusion.Rendering
 #endif
 
 #if !UNITY_2023_1_OR_NEWER
-        private static void ExecutePass(ScriptableRenderContext context, PassData data, ref RenderingData renderingData, bool yFlip)
+        private void ExecutePass(ScriptableRenderContext context, PassData data, ref RenderingData renderingData, bool yFlip)
         {
             var cmd = renderingData.commandBuffer;
-            using (new ProfilingScope(cmd, data.ProfilingSampler))
+            using (new ProfilingScope(cmd, profilingSampler))
             {
                 // Global render pass data containing various settings.
                 // x,y,z are currently unused
@@ -221,7 +219,7 @@ namespace Illusion.Rendering
             }
         }
 #else
-        private static void ExecutePass(RasterCommandBuffer cmd, PassData data, ref RenderingData renderingData, bool yFlip)
+        private static void ExecutePass(RasterCommandBuffer cmd, PassData data, RendererList rendererList, RendererList objectsWithErrorRendererList, ref RenderingData renderingData, bool yFlip)
         {
             // Global render pass data containing various settings.
             // x,y,z are currently unused
@@ -234,7 +232,7 @@ namespace Illusion.Rendering
             // scaleBias.z = bias
             // scaleBias.w = unused
             float flipSign = yFlip ? -1.0f : 1.0f;
-            Vector4 scaleBias = (flipSign < 0.0f)
+            Vector4 scaleBias = flipSign < 0.0f
                 ? new Vector4(flipSign, 1.0f, -1.0f, 1.0f)
                 : new Vector4(flipSign, 0.0f, 1.0f, 1.0f);
             cmd.SetGlobalVector(ShaderPropertyId.scaleBiasRt, scaleBias);
@@ -251,22 +249,21 @@ namespace Illusion.Rendering
             }
             else
             {
-                cmd.DrawRendererList(data.RendererList);
+                cmd.DrawRendererList(rendererList);
                 // Render objects that did not match any shader pass with error shader
-                RenderingUtils.DrawRendererListObjectsWithError(cmd, ref data.ObjectsWithErrorRendererList);
+                RenderingUtils.DrawRendererListObjectsWithError(cmd, ref objectsWithErrorRendererList);
             }
         }
 #endif
 
 #if UNITY_2023_1_OR_NEWER
-        internal void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ref RenderingData renderingData)
+        private void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ref RenderingData renderingData)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<PassData>("Transparent Overdraw", out var passData, _profilingSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>("Transparent Overdraw", out var passData, profilingSampler))
             {
                 passData.RenderStateBlock = _renderStateBlock;
                 passData.FilteringSettings = _filteringSettings;
                 passData.ShaderTagIdList = _shaderTagIdList;
-                passData.ProfilingSampler = _profilingSampler;
                 passData.RenderingData = renderingData;
 
                 if (colorTarget.IsValid())
@@ -290,12 +287,12 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
-                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {
                     ref var renderingData = ref data.RenderingData;
                     bool yFlip = renderingData.cameraData.IsRenderTargetProjectionMatrixFlipped(data.ColorHandle, data.DepthHandle);
 
-                    ExecutePass(context.cmd, data, ref renderingData, yFlip);
+                    ExecutePass(context.cmd, data, data.RendererListHdl, data.ObjectsWithErrorRendererListHdl, ref renderingData, yFlip);
                 });
             }
         }
@@ -308,8 +305,6 @@ namespace Illusion.Rendering
             internal FilteringSettings FilteringSettings;
 
             internal List<ShaderTagId> ShaderTagIdList;
-
-            internal ProfilingSampler ProfilingSampler;
 
 #if UNITY_2023_1_OR_NEWER
             internal TextureHandle ColorHandle;

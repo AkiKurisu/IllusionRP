@@ -1,9 +1,11 @@
 ﻿using System;
-using Illusion.Rendering.RayTracing;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Experimental.Rendering.RenderGraphModule;
+#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -12,13 +14,8 @@ namespace Illusion.Rendering.Shadows
     /// </summary>
     public class DiffuseShadowDenoisePass : ScriptableRenderPass, IDisposable
     {
-        // The resources required by this component
-        private readonly ComputeShader _shadowDenoiser;
-
-        // Kernels that we are using
-        private readonly int _bilateralFilterHSingleDirectionalKernel;
-
-        private readonly int _bilateralFilterVSingleDirectionalKernel;
+        // The denoiser instance
+        private readonly DiffuseShadowDenoiser _denoiser;
 
         // Camera parameters
         private int _texWidth;
@@ -52,12 +49,18 @@ namespace Illusion.Rendering.Shadows
             _rendererData = rendererData;
             renderPassEvent = IllusionRenderPassEvent.DiffuseShadowDenoisePass;
             _profilingSampler = new ProfilingSampler("Diffuse Shadow Denoise");
-            _shadowDenoiser = _rendererData.RuntimeResources.diffuseShadowDenoiserCS;
-            _bilateralFilterHSingleDirectionalKernel = _shadowDenoiser.FindKernel("BilateralFilterHSingleDirectional");
-            _bilateralFilterVSingleDirectionalKernel = _shadowDenoiser.FindKernel("BilateralFilterVSingleDirectional");
+            _denoiser = new DiffuseShadowDenoiser(_rendererData.RuntimeResources.diffuseShadowDenoiserCS);
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal);
+#endif
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        {
+            PrepareTextures(ref renderingData);
+        }
+
+        private void PrepareTextures(ref RenderingData renderingData)
         {
             var desc = renderingData.cameraData.cameraTargetDescriptor;
             desc.enableRandomWrite = true;
@@ -70,29 +73,20 @@ namespace Illusion.Rendering.Shadows
 
             // Output buffer
             RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ContactShadowsDenoisedRT, desc, name: "Denoised Buffer");
-
-
             // TODO: Add distance based denoise support
             // _distanceBuffer = null;
+        }
 
+        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
+        {
             ConfigureInput(ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal);
         }
 
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        private void PrepareDenoiseParameters(ref RenderingData renderingData)
         {
-            if (!_rendererData.ContactShadowsSampling) return;
-            
-            // Prepare data
             var cameraData = renderingData.cameraData;
             var camera = cameraData.camera;
-            var renderer = cameraData.renderer;
             var contactShadows = VolumeManager.instance.stack.GetComponent<ContactShadows>();
-
-            _depthStencilBuffer = UniversalRenderingUtility.GetDepthTexture(renderer);
-            if (_depthStencilBuffer == null) return;
-
-            _normalBuffer = UniversalRenderingUtility.GetNormalTexture(renderer);
-            if (_normalBuffer == null) return;
 
             _cameraFov = camera.fieldOfView * Mathf.PI / 180.0f;
             // Convert the angular diameter of the directional light to radians (from degrees)
@@ -105,71 +99,67 @@ namespace Illusion.Rendering.Shadows
             _texWidth = actualWidth;
             _texHeight = actualHeight;
             _viewCount = 1;
+        }
 
+        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        {
+            if (!_rendererData.ContactShadowsSampling) return;
+            
+            // Prepare data
+            var cameraData = renderingData.cameraData;
+            var renderer = cameraData.renderer;
+
+            _depthStencilBuffer = UniversalRenderingUtility.GetDepthTexture(renderer);
+            if (_depthStencilBuffer == null) return;
+
+            _normalBuffer = UniversalRenderingUtility.GetNormalTexture(renderer);
+            if (_normalBuffer == null) return;
+
+            PrepareDenoiseParameters(ref renderingData);
 
             var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, _profilingSampler))
-            {
-                // TODO: Add distance based denoise support
-                // Raise the distance based denoiser keyword
-                // CoreUtils.SetKeyword(cmd, "DISTANCE_BASED_DENOISER", true);
-
-                // Evaluate the dispatch parameters
-                int numTilesX = IllusionRenderingUtils.DivRoundUp(_texWidth, 8);
-                int numTilesY = IllusionRenderingUtils.DivRoundUp(_texHeight, 8);
-
-                // Bind input uniforms for both dispatches
-                cmd.SetComputeFloatParam(_shadowDenoiser, RayTracingShaderProperties.RaytracingLightAngle, _lightAngle);
-                cmd.SetComputeIntParam(_shadowDenoiser, RayTracingShaderProperties.DenoiserFilterRadius, _kernelSize);
-                cmd.SetComputeFloatParam(_shadowDenoiser, RayTracingShaderProperties.CameraFOV, _cameraFov);
-
-                // Bind Input Textures
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterHSingleDirectionalKernel, RayTracingShaderProperties.DepthTexture,
-                    _depthStencilBuffer);
-
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterHSingleDirectionalKernel,
-                    RayTracingShaderProperties.NormalBufferTexture, _normalBuffer);
-
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterHSingleDirectionalKernel,
-                    RayTracingShaderProperties.DenoiseInputTexture, _rendererData.ContactShadowsRT);
-
-                // TODO: Add distance based denoise support
-                // cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterHSingleDirectionalKernel,
-                //     RayTracingShaderIds.DistanceTexture, _distanceBuffer);
-
-                // Bind output textures
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterHSingleDirectionalKernel,
-                    RayTracingShaderProperties.DenoiseOutputTextureRW, _intermediateBuffer);
-
-                // Do the Horizontal pass
-                cmd.DispatchCompute(_shadowDenoiser, _bilateralFilterHSingleDirectionalKernel, numTilesX, numTilesY, _viewCount);
-
-                // Bind Input Textures
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterVSingleDirectionalKernel, RayTracingShaderProperties.DepthTexture,
-                    _depthStencilBuffer);
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterVSingleDirectionalKernel,
-                    RayTracingShaderProperties.NormalBufferTexture, _normalBuffer);
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterVSingleDirectionalKernel,
-                    RayTracingShaderProperties.DenoiseInputTexture, _intermediateBuffer);
-
-                // TODO: Add distance based denoise support
-                // cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterVSingleDirectionalKernel,
-                //     RayTracingShaderIds.DistanceTexture, _distanceBuffer);
-
-                // Bind output textures
-                cmd.SetComputeTextureParam(_shadowDenoiser, _bilateralFilterVSingleDirectionalKernel,
-                    RayTracingShaderProperties.DenoiseOutputTextureRW, _rendererData.ContactShadowsDenoisedRT);
-
-                // Do the Vertical pass
-                cmd.DispatchCompute(_shadowDenoiser, _bilateralFilterVSingleDirectionalKernel, numTilesX, numTilesY, _viewCount);
-
-                // TODO: Add distance based denoise support
-                // CoreUtils.SetKeyword(cmd, "DISTANCE_BASED_DENOISER", false);
-            }
+            
+            // Call denoiser
+            _denoiser.DenoiseBuffer(cmd,
+                _depthStencilBuffer, _normalBuffer,
+                _rendererData.ContactShadowsRT, _intermediateBuffer, _rendererData.ContactShadowsDenoisedRT,
+                _texWidth, _texHeight, _viewCount,
+                _lightAngle, _cameraFov, _kernelSize,
+                _profilingSampler);
 
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
+
+#if UNITY_2023_1_OR_NEWER
+        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        {
+            if (!_rendererData.ContactShadowsSampling) return;
+            
+            // TODO: Replace with TransientTexture
+            PrepareTextures(ref renderingData);
+            
+            // Prepare parameters
+            PrepareDenoiseParameters(ref renderingData);
+
+            // Import depth and normal textures
+            TextureHandle depthHandle = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+            TextureHandle normalHandle = frameResources.GetTexture(UniversalResource.CameraNormalsTexture);
+
+            // Import input and output textures
+            TextureHandle noisyHandle = renderGraph.ImportTexture(_rendererData.ContactShadowsRT);
+            TextureHandle denoisedHandle = renderGraph.ImportTexture(_rendererData.ContactShadowsDenoisedRT);
+            TextureHandle intermediateHandle = renderGraph.ImportTexture(_intermediateBuffer);
+            
+            // Call denoiser RenderGraph version - writes directly to output
+            _denoiser.DenoiseBuffer(renderGraph,
+                depthHandle, normalHandle, 
+                noisyHandle, intermediateHandle, denoisedHandle,
+                _texWidth, _texHeight, _viewCount,
+                _lightAngle, _cameraFov, _kernelSize,
+                _profilingSampler);
+        }
+#endif
 
         public void Dispose()
         {

@@ -24,6 +24,9 @@ namespace Illusion.Rendering
             _filteringSettings = new FilteringSettings(RenderQueueRange.all);
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
             profilingSampler = new ProfilingSampler("Transparent Post Depth Normal");
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal);
+#endif
         }
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
@@ -45,8 +48,13 @@ namespace Illusion.Rendering
             context.ExecuteCommandBuffer(cmd);
             var drawSettings = RenderingUtils.CreateDrawingSettings(PostDepthNormalsTagId,
                 ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
-            context.DrawRenderers(renderingData.cullResults, ref drawSettings,
-                ref _filteringSettings, ref _renderStateBlock);
+#if UNITY_2023_1_OR_NEWER
+            var rendererList = default(RendererList);
+            RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, _filteringSettings, _renderStateBlock, ref rendererList);
+            cmd.DrawRendererList(rendererList);
+#else
+            context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
+#endif
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)

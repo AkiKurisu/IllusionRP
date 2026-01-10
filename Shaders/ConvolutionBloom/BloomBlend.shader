@@ -2,7 +2,7 @@ Shader "Hidden/ConvolutionBloom/Blend"
 {
     Properties
     {
-        _FFT_EXTEND ("FFT EXTEND", Vector) = (0.1, 0.1,0,0)
+        _FFT_EXTEND ("FFT EXTEND", Vector) = (0.1, 0.1, 0, 0)
         _Intensity ("Intensity", Float) = 1
     }
     SubShader
