@@ -517,6 +517,7 @@ namespace Illusion.Rendering.PostProcessing
                     });
                 }
                 
+                // TODO: Optimize one blit in Unity 6
                 // Second pass: blit from intermediate texture back to activeColorTexture
                 using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure From Intermediate", 
                     out var applyPassData2, new ProfilingSampler("Apply Exposure From Intermediate")))
