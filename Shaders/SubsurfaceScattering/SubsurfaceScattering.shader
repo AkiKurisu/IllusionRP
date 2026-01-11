@@ -10,6 +10,7 @@ Shader "Hidden/SubsurfaceScattering"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 		#include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
         #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/SubsurfaceScattering/SubsurfaceScattering.hlsl"
+        #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
         
         half4 Fragment(Varyings input) : SV_Target
         {
@@ -30,8 +31,8 @@ Shader "Hidden/SubsurfaceScattering"
             float2 centerPosNDC = posInput.positionNDC;
             float2 cornerPosNDC = centerPosNDC + 0.5 * _ScreenSize.zw;
             
-            float3 centerPosVS = ComputeViewSpacePosition(centerPosNDC, depth, _InvProjectMatrix);
-            float3 cornerPosVS = ComputeViewSpacePosition(cornerPosNDC, depth, _InvProjectMatrix);
+            float3 centerPosVS = ComputeViewSpacePosition(centerPosNDC, depth, _GlobalInvProjMatrix);
+            float3 cornerPosVS = ComputeViewSpacePosition(cornerPosNDC, depth, _GlobalInvProjMatrix);
             
             float linearDepth = LinearEyeDepth(depth, _ZBufferParams);
 

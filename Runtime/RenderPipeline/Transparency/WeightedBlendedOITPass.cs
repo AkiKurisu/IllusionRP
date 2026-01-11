@@ -96,7 +96,6 @@ namespace Illusion.Rendering
 
         private void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ContextContainer frameData)
         {
-            var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             // Create OIT buffers
             var desc = cameraData.cameraTargetDescriptor;

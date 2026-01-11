@@ -16,13 +16,6 @@ namespace Illusion.Rendering.Shadows
 
         private readonly IllusionRendererData _rendererData;
 
-        private struct PcssCascadeData
-        {
-            public Vector4 DirLightPcssParams0;
-
-            public Vector4 DirLightPcssParams1;
-        }
-
         private RenderTextureDescriptor _penumbraMaskDesc;
 
         private RTHandle _penumbraMaskTex;
@@ -32,8 +25,6 @@ namespace Illusion.Rendering.Shadows
         private int _colorAttachmentWidth;
 
         private int _colorAttachmentHeight;
-
-        private readonly PcssCascadeData[] _pcssCascadeData;
 
         private readonly Vector4[] _cascadeOffsetScales;
 
@@ -55,7 +46,6 @@ namespace Illusion.Rendering.Shadows
             // PCSS
             _pcssPenumbraSampler = new ProfilingSampler("PCSS Penumbra");
             _penumbraMaskDesc = new RenderTextureDescriptor();
-            _pcssCascadeData = new PcssCascadeData[IllusionRendererData.ShadowCascadeCount];
             _cascadeOffsetScales = new Vector4[IllusionRendererData.ShadowCascadeCount];
             _dirLightPcssParams0 = new Vector4[IllusionRendererData.ShadowCascadeCount];
             _dirLightPcssParams1 = new Vector4[IllusionRendererData.ShadowCascadeCount];

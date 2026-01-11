@@ -30,8 +30,7 @@ namespace Illusion.Rendering
             {
                 using (new ProfilingScope((CommandBuffer)null, profilingSampler))
                 {
-                    var renderingData = new RenderingData(frameData);
-                    _rendererFeature.PerformSetup(renderingData.cameraData.renderer, ref renderingData, _rendererData);
+                    _rendererFeature.PerformSetup(frameData, _rendererData);
                 }
             }
             

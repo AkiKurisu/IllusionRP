@@ -186,7 +186,6 @@ namespace Illusion.Rendering
             internal IllusionRendererData RendererData;
             internal TextureHandle SubsurfaceLightingTexture;
             internal ShaderVariablesSubsurface ShaderVariablesSubsurface;
-            internal Matrix4x4 InverseProjectMatrix;
             internal Matrix4x4 ViewMatrix;
             internal Matrix4x4 ProjectionMatrix;
             internal int Width;
@@ -349,7 +348,6 @@ namespace Illusion.Rendering
             {
                 depthHandle = renderGraph.ImportTexture(preDepthTexture);
             }
-            var invProjectMatrix = IllusionRenderingUtils.GetGPUProjectionMatrix(cameraData, _diffuseRT[2]).inverse;
 
             // Check if SSS is enabled
             var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
@@ -370,7 +368,6 @@ namespace Illusion.Rendering
                 builder.UseTexture(lightingHandle);
                 setupPassData.SubsurfaceLightingTexture = lightingHandle;
                 setupPassData.ShaderVariablesSubsurface = _shaderVariablesSubsurface;
-                setupPassData.InverseProjectMatrix = invProjectMatrix;
                 setupPassData.ViewMatrix = cameraData.GetViewMatrix();
                 setupPassData.ProjectionMatrix = cameraData.GetProjectionMatrix();
                 setupPassData.Width = _width;
@@ -385,7 +382,6 @@ namespace Illusion.Rendering
                     ComputeConstantBuffer.PushGlobal(context.cmd, data.ShaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
 
                     // Set global matrices
-                    context.cmd.SetGlobalMatrix(ShaderIDs._InvProjectMatrix, data.InverseProjectMatrix);
                     context.cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
                     context.cmd.SetViewport(new Rect(0f, 0f, data.Width, data.Height));
 
@@ -429,8 +425,6 @@ namespace Illusion.Rendering
             public static readonly int _SubsurfaceAlbedo = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _SubsurfaceLighting = MemberNameHelpers.ShaderPropertyID();
-
-            public static readonly int _InvProjectMatrix = MemberNameHelpers.ShaderPropertyID();
             
             public static readonly int _SssSampleBudget = MemberNameHelpers.ShaderPropertyID();
         }

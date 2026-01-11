@@ -38,6 +38,7 @@ namespace Illusion.Rendering
                 copyDephPS = universalRendererShaders.copyDepthPS;
             }
             profilingSampler = new ProfilingSampler("CopyPreDepth");
+            renderPassEvent = IllusionRenderPassEvent.TransparentCopyPreDepthPass;
             _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDephPS, true, false, RenderingUtils.MultisampleDepthResolveSupported())
                 {
                     profilingSampler = profilingSampler

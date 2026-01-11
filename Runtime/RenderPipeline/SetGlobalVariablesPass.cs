@@ -21,15 +21,10 @@ namespace Illusion.Rendering
         private class SetGlobalVariablesPassData
         {
             internal IllusionRendererData RendererData;
-            
             internal UniversalCameraData CameraData;
-
             internal UniversalLightData LightData;
-
             internal TextureHandle ActiveColor;
-            
             internal TextureHandle PreviousFrameColor;
-
             internal TextureHandle MotionVectorColor;
         }
 
@@ -37,7 +32,7 @@ namespace Illusion.Rendering
         {
             var cameraData = frameData.Get<UniversalCameraData>();
             var lightData = frameData.Get<UniversalLightData>();
-            using (var builder = renderGraph.AddComputePass<SetGlobalVariablesPassData>("Set Global Variables", out var passData, profilingSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<SetGlobalVariablesPassData>("Set Global Variables", out var passData, profilingSampler))
             {
                 var resource = frameData.Get<UniversalResourceData>();
                 TextureHandle cameraColor = resource.activeColorTexture;
@@ -61,9 +56,10 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
-                builder.SetRenderFunc(static (SetGlobalVariablesPassData data, ComputeGraphContext context) =>
+                builder.SetRenderFunc(static (SetGlobalVariablesPassData data, RasterGraphContext context) =>
                 {
-                    data.RendererData.PushGlobalBuffers(context.cmd, data.ActiveColor, data.CameraData, data.LightData);
+                    bool yFlip = RenderingUtils.IsHandleYFlipped(context, in data.ActiveColor);
+                    data.RendererData.PushGlobalBuffers(context.cmd, data.CameraData, data.LightData, yFlip);
                     context.cmd.SetGlobalTexture(IllusionShaderProperties._HistoryColorTexture, data.PreviousFrameColor);
                     context.cmd.SetGlobalTexture(IllusionShaderProperties._MotionVectorTexture, data.MotionVectorColor);
                     data.RendererData.BindAmbientProbe(context.cmd);

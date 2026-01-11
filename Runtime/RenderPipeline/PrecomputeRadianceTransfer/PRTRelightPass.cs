@@ -125,16 +125,16 @@ namespace Illusion.Rendering.PRTGI
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             var renderingData = frameData.Get<UniversalRenderingData>();
+           
+            RecordReflectionNormalizationPass(renderGraph, renderingData);
+            
             if (cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return;
+            
 #if UNITY_EDITOR
             if (PRTVolumeManager.IsBaking) return;
 #endif
-
-            // Reflection Normalization Pass
-            RecordReflectionNormalizationPass(renderGraph, renderingData);
 
             PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
             bool enableRelight = _rendererData.SampleProbeVolumes;

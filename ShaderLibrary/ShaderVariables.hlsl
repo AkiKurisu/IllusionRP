@@ -7,6 +7,7 @@
 GLOBAL_CBUFFER_START(ShaderVariablesGlobal, b1)
     float4x4 _GlobalViewMatrix;
     float4x4 _GlobalViewProjMatrix;
+    float4x4 _GlobalInvProjMatrix;
     float4x4 _GlobalInvViewProjMatrix;
     float4x4 _GlobalPrevInvViewProjMatrix;
 #if UNITY_VERSION < 202310

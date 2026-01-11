@@ -132,14 +132,14 @@ namespace Illusion.Rendering
             return rtHandle != null && rtHandle.rt;
         }
 
-        public static float4x4 CalculateViewProjMatrix(UniversalCameraData cameraData, RTHandle color)
+        public static float4x4 CalculateViewProjMatrix(UniversalCameraData cameraData, bool yFlip)
         {
             float4x4 viewMat = cameraData.GetViewMatrix();
-            float4x4 projMat = GetGPUProjectionMatrix(cameraData, color);
+            float4x4 projMat = GetGPUProjectionMatrix(cameraData, yFlip);
             return math.mul(projMat, viewMat);
         }
 
-        public static Matrix4x4 GetGPUProjectionMatrix(UniversalCameraData cameraData, RTHandle color, int viewIndex = 0)
+        public static Matrix4x4 GetGPUProjectionMatrix(UniversalCameraData cameraData, bool yFlip, int viewIndex = 0)
         {
             TemporalAA.JitterFunc jitterFunc;
             if (cameraData.IsSTPEnabled())
@@ -152,7 +152,7 @@ namespace Illusion.Rendering
             }
             Matrix4x4 jitterMat = TemporalAA.CalculateJitterMatrix(cameraData, jitterFunc);
             // GetGPUProjectionMatrix takes a projection matrix and returns a GfxAPI adjusted version, does not set or get any state.
-            return jitterMat * GL.GetGPUProjectionMatrix(cameraData.GetProjectionMatrixNoJitter(viewIndex), cameraData.IsRenderTargetProjectionMatrixFlipped(color));
+            return jitterMat * GL.GetGPUProjectionMatrix(cameraData.GetProjectionMatrixNoJitter(viewIndex), yFlip);
         }
 
         public static float ComputeViewportScale(int viewportSize, int bufferSize)

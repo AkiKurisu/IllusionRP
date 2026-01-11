@@ -29,8 +29,6 @@
     SAMPLER(sampler_SubsurfaceAlbedo);
 #endif
 
-// Already handle inverse Z.
-float4x4 _InvProjectMatrix;
 int _SssSampleBudget;
 
 //--------------------------------------------------------------------------------------------------

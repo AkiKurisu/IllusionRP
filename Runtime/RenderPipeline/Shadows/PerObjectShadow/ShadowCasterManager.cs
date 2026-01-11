@@ -91,12 +91,12 @@ namespace Illusion.Rendering.Shadows
         }
 #endif
 
-        public unsafe void Cull(in RenderingData renderingData, int maxCount, float shadowLengthOffset, bool debugMode)
+        public unsafe void Cull(UniversalCameraData cameraData, UniversalLightData lightData, int maxCount, float shadowLengthOffset, bool debugMode)
         {
             m_RendererIndexList.Clear();
             m_CullResults.Reset(maxCount);
 
-            if (s_Casters.Count <= 0 || !TryGetMainLight(in renderingData, out VisibleLight mainLight))
+            if (s_Casters.Count <= 0 || !TryGetMainLight(lightData, out VisibleLight mainLight))
             {
                 return;
             }
@@ -105,12 +105,11 @@ namespace Illusion.Rendering.Shadows
 
             if (debugMode)
             {
-                // 方便在 SceneView 里看清楚 Gizmos
                 camera = Camera.main ?? throw new NullReferenceException("Main camera not found");
             }
             else
             {
-                camera = renderingData.cameraData.camera;
+                camera = cameraData.camera;
             }
 
             Transform cameraTransform = camera.transform;
@@ -170,9 +169,9 @@ namespace Illusion.Rendering.Shadows
             });
         }
 
-        private static bool TryGetMainLight(in RenderingData renderingData, out VisibleLight mainLight)
+        private static bool TryGetMainLight(in UniversalLightData lightData, out VisibleLight mainLight)
         {
-            int mainLightIndex = renderingData.lightData.mainLightIndex;
+            int mainLightIndex = lightData.mainLightIndex;
 
             if (mainLightIndex < 0)
             {
@@ -180,7 +179,7 @@ namespace Illusion.Rendering.Shadows
                 return false;
             }
 
-            mainLight = renderingData.lightData.visibleLights[mainLightIndex];
+            mainLight = lightData.visibleLights[mainLightIndex];
             return mainLight.lightType == LightType.Directional;
         }
     }

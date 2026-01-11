@@ -546,24 +546,24 @@ namespace Illusion.Rendering
         }
         
         // Ref: MainLightShadowCasterPass.Setup
-        private static bool CanRenderMainLightShadow(ref RenderingData renderingData)
+        private static bool CanRenderMainLightShadow(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData, UniversalRenderingData renderingData)
         {
-            if (!renderingData.shadowData.mainLightShadowsEnabled)
+            if (!shadowData.mainLightShadowsEnabled)
                 return false;
 
 #if UNITY_EDITOR
-            if (CoreUtils.IsSceneLightingDisabled(renderingData.cameraData.camera))
+            if (CoreUtils.IsSceneLightingDisabled(cameraData.camera))
                 return false;
 #endif
 
-            if (!renderingData.shadowData.supportsMainLightShadows)
+            if (!shadowData.supportsMainLightShadows)
                 return false;
 
-            int shadowLightIndex = renderingData.lightData.mainLightIndex;
+            int shadowLightIndex = lightData.mainLightIndex;
             if (shadowLightIndex == -1)
                 return false;
 
-            VisibleLight shadowLight = renderingData.lightData.visibleLights[shadowLightIndex];
+            VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
             Light light = shadowLight.light;
             if (light.shadows == LightShadows.None)
                 return false;
@@ -574,17 +574,21 @@ namespace Illusion.Rendering
             return true;
         }
 
-        private static bool CanRenderAdditionalLightShadow(in RenderingData renderingData)
+        private static bool CanRenderAdditionalLightShadow(UniversalShadowData shadowData)
         {
-            return renderingData.shadowData.supportsAdditionalLightShadows;
+            return shadowData.supportsAdditionalLightShadows;
         }
 
-        private void PerformSetup(ScriptableRenderer renderer, ref RenderingData renderingData, IllusionRendererData rendererData)
+        private void PerformSetup(ContextContainer frameData, IllusionRendererData rendererData)
         {
             UpdateRenderDataSettings();
-            rendererData.Update(renderer, in renderingData);
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var lightData = frameData.Get<UniversalLightData>();
+            var shadowData = frameData.Get<UniversalShadowData>();
+            var renderingData = frameData.Get<UniversalRenderingData>();
+            rendererData.Update(cameraData, lightData, shadowData);
             var config = IllusionRuntimeRenderingConfig.Get();
-            bool isPreviewOrReflectCamera = renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
+            bool isPreviewOrReflectCamera = cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
 
             var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
             rendererData.ContactShadowsSampling = contactShadows
@@ -617,8 +621,8 @@ namespace Illusion.Rendering
 
             // Shadow Caster has bug in URP14.0.12 when there is no main/additional light in scene which will clear pre-z.
             // So skip re-order when shadow is not rendered.
-            bool reorderMainLightShadowPass = enableAsyncCompute && CanRenderMainLightShadow(ref renderingData);
-            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(renderer);
+            bool reorderMainLightShadowPass = enableAsyncCompute && CanRenderMainLightShadow(cameraData, lightData, shadowData, renderingData);
+            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(cameraData.renderer);
             if (mainLightShadowCasterPass != null)
             {
                 mainLightShadowCasterPass.renderPassEvent = reorderMainLightShadowPass
@@ -627,9 +631,9 @@ namespace Illusion.Rendering
             }
 
             bool reorderAdditionalLightShadowPass =
-                enableAsyncCompute && CanRenderAdditionalLightShadow(renderingData);
+                enableAsyncCompute && CanRenderAdditionalLightShadow(shadowData);
             var additionalLightsShadowCasterPass =
-                UniversalRenderingUtility.GetAdditionalLightsShadowCasterPass(renderer);
+                UniversalRenderingUtility.GetAdditionalLightsShadowCasterPass(cameraData.renderer);
             if (additionalLightsShadowCasterPass != null)
             {
                 additionalLightsShadowCasterPass.renderPassEvent = reorderAdditionalLightShadowPass
@@ -638,7 +642,7 @@ namespace Illusion.Rendering
             }
 
             var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
-            _sceneShadowCasterManager.Cull(in renderingData,
+            _sceneShadowCasterManager.Cull(cameraData, lightData,
                 PerObjectShadowCasterPass.MaxShadowCount,
                 shadow.perObjectShadowLengthOffset.value,
                 IllusionRuntimeRenderingConfig.Get().EnablePerObjectShadowDebug);

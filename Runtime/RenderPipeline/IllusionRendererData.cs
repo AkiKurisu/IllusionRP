@@ -258,6 +258,7 @@ namespace Illusion.Rendering
         {
             public Matrix4x4 ViewMatrix;
             public Matrix4x4 ViewProjMatrix;
+            public Matrix4x4 InvProjMatrix;
             public Matrix4x4 InvViewProjMatrix;
             public Matrix4x4 PrevInvViewProjMatrix;
 
@@ -299,7 +300,7 @@ namespace Illusion.Rendering
                 enableRandomWrite: true, name: "Debug Exposure Info");
         }
 
-        public void Update(ScriptableRenderer renderer, in RenderingData renderingData)
+        public void Update(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
         {
             Active = this;
             // Cleanup previous graphics fence
@@ -307,11 +308,11 @@ namespace Illusion.Rendering
             // Advance render frame
             FrameCount++;
             IsFirstFrame = false;
-            UpdateCameraData(renderingData);
-            UpdateLightData(renderingData);
-            UpdateShadowData(renderingData);
-            UpdateRenderTextures(renderingData);
-            UpdateDebugSettings(renderingData);
+            UpdateCameraData(cameraData);
+            UpdateLightData(lightData);
+            UpdateShadowData(cameraData, lightData, shadowData);
+            UpdateRenderTextures(cameraData);
+            UpdateDebugSettings(cameraData);
             UpdateVolumeParameters();
         }
 
@@ -351,20 +352,21 @@ namespace Illusion.Rendering
             _grayTextureRTHandle = null;
         }
 
-        internal void PushGlobalBuffers(ComputeCommandBuffer cmd, TextureHandle colorTarget, UniversalCameraData cameraData, UniversalLightData lightData)
+        internal void PushGlobalBuffers(RasterCommandBuffer cmd, UniversalCameraData cameraData, UniversalLightData lightData, bool yFlip)
         {
-            PushShadowData(cmd.GetNativeCommandBuffer());
-            PrepareGlobalVariables(colorTarget, cameraData, lightData);
-            ComputeConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
+            PushShadowData(cmd);
+            PrepareGlobalVariables(cameraData, lightData, yFlip);
+            ConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
         }
 
-        private void PrepareGlobalVariables(TextureHandle colorTarget, UniversalCameraData cameraData, UniversalLightData lightData)
+        private void PrepareGlobalVariables(UniversalCameraData cameraData, UniversalLightData lightData,  bool yFlip)
         {
             bool useTAA = cameraData.IsTemporalAAEnabled(); // Disable in scene view
             
             // Match HDRP View Projection Matrix, pre-handle reverse z.
             _shaderVariablesGlobal.ViewMatrix = cameraData.camera.worldToCameraMatrix;
-            _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(cameraData, colorTarget);
+            _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(cameraData, yFlip);
+            _shaderVariablesGlobal.InvProjMatrix = IllusionRenderingUtils.GetGPUProjectionMatrix(cameraData, yFlip).inverse;
             var lastInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
             _shaderVariablesGlobal.InvViewProjMatrix = _shaderVariablesGlobal.ViewProjMatrix.inverse;
             _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount > 1 ? _shaderVariablesGlobal.InvViewProjMatrix : lastInvViewProjMatrix;
@@ -398,7 +400,7 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.IndirectDiffuseLightingLayers = layers;
         }
 
-        private void PushShadowData(CommandBuffer cmd)
+        private void PushShadowData(RasterCommandBuffer cmd)
         {
             cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
         }
@@ -415,10 +417,10 @@ namespace Illusion.Rendering
             renderingLayers = _mainLightData?.renderingLayers ?? 0;
         }
 
-        private void UpdateDebugSettings(in RenderingData renderingData)
+        private void UpdateDebugSettings(UniversalCameraData cameraData)
         {
-            var renderer = renderingData.cameraData.renderer;
-            if (renderer.DebugHandler != null && !renderingData.cameraData.isPreviewCamera)
+            var renderer = cameraData.renderer;
+            if (renderer.DebugHandler != null && !cameraData.isPreviewCamera)
             {
                 IsLightingActive = renderer.DebugHandler.IsLightingActive;
             }
@@ -428,9 +430,9 @@ namespace Illusion.Rendering
             }
         }
 
-        private void UpdateShadowData(RenderingData renderingData)
+        private void UpdateShadowData(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
         {
-            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(renderingData.cameraData.renderer);
+            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(cameraData.renderer);
             MainLightShadowSliceData = UniversalRenderingUtility.GetMainLightShadowSliceData(mainLightShadowCasterPass);
             
             // deviceProjection will potentially inverse-Z
@@ -441,21 +443,20 @@ namespace Illusion.Rendering
                     MainLightShadowDeviceProjectionMatrixs[i].m22, MainLightShadowDeviceProjectionMatrixs[i].m23);
             }
             
-            int shadowLightIndex = renderingData.lightData.mainLightIndex;
+            int shadowLightIndex = lightData.mainLightIndex;
             if (shadowLightIndex == -1)
                 return;
 
-            VisibleLight shadowLight = renderingData.lightData.visibleLights[shadowLightIndex];
+            VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
             for (int i = 0; i < MainLightShadowSliceData.Length && i < ShadowCascadeCount; ++i)
             {
-                MainLightShadowCascadeBiases[i] = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData,
-                    MainLightShadowSliceData[i].projectionMatrix, MainLightShadowSliceData[i].resolution);
+                MainLightShadowCascadeBiases[i] = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, shadowData, MainLightShadowSliceData[i].projectionMatrix, MainLightShadowSliceData[i].resolution);
             }
         }
 
-        private void UpdateRenderTextures(RenderingData renderingData)
+        private void UpdateRenderTextures(UniversalCameraData cameraData)
         {
-            var descriptor = renderingData.cameraData.cameraTargetDescriptor;
+            var descriptor = cameraData.cameraTargetDescriptor;
             var viewportSize = new Vector2Int(descriptor.width, descriptor.height);
             _historyRTSystem.SwapAndSetReferenceSize(descriptor.width, descriptor.height);
 
@@ -494,18 +495,18 @@ namespace Illusion.Rendering
             }
         }
 
-        private void UpdateCameraData(in RenderingData renderingData)
+        private void UpdateCameraData(UniversalCameraData cameraData)
         {
-            _camera = renderingData.cameraData.camera;
+            _camera = cameraData.camera;
             _camera.TryGetComponent(out _additionalCameraData);
         }
 
-        private void UpdateLightData(in RenderingData renderingData)
+        private void UpdateLightData(UniversalLightData lightData)
         {
-            int mainLightIndex = renderingData.lightData.mainLightIndex;
+            int mainLightIndex = lightData.mainLightIndex;
             if (mainLightIndex < 0) return; // No main light
 
-            VisibleLight mainLight = renderingData.lightData.visibleLights[mainLightIndex];
+            VisibleLight mainLight = lightData.visibleLights[mainLightIndex];
             if (_mainLightData == null || _mainLightData.gameObject != mainLight.light.gameObject)
             {
                 if (!mainLight.light) return;
@@ -523,7 +524,7 @@ namespace Illusion.Rendering
             }
         }
 
-        internal void BindAmbientProbe(ComputeCommandBuffer cmd)
+        internal void BindAmbientProbe(RasterCommandBuffer cmd)
         {
             SphericalHarmonicsL2 ambientProbe = RenderSettings.ambientProbe;
             _ambientProbeBuffer ??= new ComputeBuffer(7, 16);
