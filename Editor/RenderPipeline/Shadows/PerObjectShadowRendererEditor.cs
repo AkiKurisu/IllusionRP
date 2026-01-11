@@ -27,7 +27,7 @@ namespace Illusion.Rendering.Editor
 
             EditorGUILayout.PropertyField(_isCastingShadow, Styles.IsCastingShadowContent);
             EditorGUILayout.PropertyField(_clusterData, Styles.ClusterDataContent);
-            EditorUtils.DrawRenderingLayerMask(_renderingLayerMask, Styles.RenderingLayerMaskContent);
+            EditorGUILayout.PropertyField(_renderingLayerMask, Styles.RenderingLayerMaskContent);
 
             serializedObject.ApplyModifiedProperties();
         }

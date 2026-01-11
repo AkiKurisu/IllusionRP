@@ -1,9 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.Rendering.Universal.Internal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace UnityEngine.Rendering.Universal
 {
@@ -41,145 +38,41 @@ namespace UnityEngine.Rendering.Universal
         private static FieldInfo _shadowSliceDataFieldInfo;
 
         /// <summary>
-        /// Get UniversalRenderer active camera color attachment.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetActiveCameraColorAttachment(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            var colorAttachment = universalRenderer.m_ActiveCameraColorAttachment;
-            if (colorAttachment == null || !colorAttachment.rt)
-            {
-                colorAttachment = universalRenderer.m_ColorBufferSystem.PeekBackBuffer();
-            }
-            return colorAttachment;
-        }
-        
-        /// <summary>
-        /// Returns the front-buffer color target. Returns null if not implemented by the renderer.
-        /// It's only valid to call GetCameraColorFrontBuffer in the scope of <c>ScriptableRenderPass</c>.
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetCameraColorFrontBuffer(CommandBuffer cmd, ScriptableRenderer sr)
-        {
-            return sr.GetCameraColorFrontBuffer(cmd);
-        }
-
-        /// <summary>
-        /// Returns the back-buffer color target. Returns null if not implemented by the renderer.
-        /// It's only valid to call GetCameraColorBackBuffer in the scope of <c>ScriptableRenderPass</c>.
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetCameraColorBackBuffer(CommandBuffer cmd, ScriptableRenderer sr)
-        {
-            return sr.GetCameraColorBackBuffer(cmd);
-        }
-
-        /// <summary>
-        /// Get UniversalRenderer final target.
-        /// </summary>
-        /// <param name="renderingData"></param>
-        /// <returns></returns>
-        public static RTHandle GetCameraTargetTexture(ref RenderingData renderingData)
-        {
-            var cameraTarget = RenderingUtils.GetCameraTargetIdentifier(ref renderingData);
-            RTHandleStaticHelpers.SetRTHandleStaticWrapper(cameraTarget);
-            return RTHandleStaticHelpers.s_RTHandleWrapper;
-        }
-
-        /// <summary>
-        /// Get UniversalRenderer m_DepthTexture texture.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetDepthTexture(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            var depthBuffer = universalRenderer.m_DepthTexture;
-            return depthBuffer;
-        }
-        
-        /// <summary>
-        /// Get UniversalRenderer m_OpaqueColor texture.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetOpaqueTexture(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            if (_opaqueColorFieldInfo == null)
-            {
-                _opaqueColorFieldInfo = typeof(UniversalRenderer).GetField("m_OpaqueColor",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            }
-            return _opaqueColorFieldInfo!.GetValue(universalRenderer) as RTHandle;
-        }
-
-        /// <summary>
         /// Get UniversalRenderer depth texture that actually written to.
         /// </summary>
-        /// <param name="cameraData"></param>
+        /// <param name="frameData"></param>
         /// <returns></returns>
-        public static RTHandle GetDepthWriteTexture(ref CameraData cameraData)
+        public static RenderGraphModule.TextureHandle GetDepthWriteTextureHandle(this ContextContainer frameData)
         {
-            var depthTexture = GetDepthTexture(cameraData.renderer);
+            var res = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var depthTexture = res.cameraDepthTexture;
             // Reference: DepthNormalOnlyPass, PreZ will output depth to attachment directly.
             if (cameraData.renderer.useDepthPriming
                 && (cameraData.renderType == CameraRenderType.Base || cameraData.clearDepth))
             {
-                depthTexture = cameraData.renderer.cameraDepthTargetHandle;
+                depthTexture = res.cameraDepth;
             }
 
             return depthTexture;
         }
         
-#if UNITY_2023_1_OR_NEWER
-        /// <summary>
-        /// Get UniversalRenderer depth texture that actually written to.
-        /// </summary>
-        /// <param name="cameraData"></param>
-        /// <returns></returns>
-        public static TextureHandle GetDepthWriteTextureHandle(ref CameraData cameraData)
+        public static DrawingSettings CreateDrawingSettings(ShaderTagId shaderTagId, ContextContainer frameData, SortingCriteria sortingCriteria)
         {
-            UniversalRenderer renderer = (UniversalRenderer)cameraData.renderer;
-            var depthTexture = renderer.resources.GetTexture(UniversalResource.CameraDepthTexture);
-            // Reference: DepthNormalOnlyPass, PreZ will output depth to attachment directly.
-            if (cameraData.renderer.useDepthPriming
-                && (cameraData.renderType == CameraRenderType.Base || cameraData.clearDepth))
-            {
-                depthTexture = renderer.resources.GetTexture(UniversalResource.CameraDepth);
-            }
+            UniversalRenderingData universalRenderingData = frameData.Get<UniversalRenderingData>();
+            UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
+            UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
-            return depthTexture;
+            return RenderingUtils.CreateDrawingSettings(shaderTagId, universalRenderingData, cameraData, lightData, sortingCriteria);
         }
-#endif
-
-        /// <summary>
-        /// Set UniversalRenderer depth texture.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <param name="depthTexture"></param>
-        public static void SetDepthTexture(ScriptableRenderer sr, RTHandle depthTexture)
+              
+        public static DrawingSettings CreateDrawingSettings(List<ShaderTagId> shaderTagIdList, ContextContainer frameData, SortingCriteria sortingCriteria)
         {
-            if (sr is not UniversalRenderer universalRenderer) return;
-            universalRenderer.m_DepthTexture = depthTexture;
-        }
+            UniversalRenderingData universalRenderingData = frameData.Get<UniversalRenderingData>();
+            UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
+            UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
-        /// <summary>
-        /// Get UniversalRenderer camera depth attachment.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetCameraDepthAttachment(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            var depthBuffer = universalRenderer.m_CameraDepthAttachment;
-            return depthBuffer;
+            return RenderingUtils.CreateDrawingSettings(shaderTagIdList, universalRenderingData, cameraData, lightData, sortingCriteria);
         }
 
         /// <summary>
@@ -236,57 +129,6 @@ namespace UnityEngine.Rendering.Universal
         {
             return cameraData.targetTexture != null && cameraData.targetTexture.format == RenderTextureFormat.Depth;
         }
-
-        /// <summary>
-        /// Get UniversalRenderer normals texture.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetNormalTexture(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            if (_normalsTextureFieldInfo == null)
-            {
-                _normalsTextureFieldInfo = typeof(UniversalRenderer).GetField("m_NormalsTexture",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            }
-            if (_normalsTextureFieldInfo!.GetValue(universalRenderer) is not RTHandle normalBuffer) return null;
-            return normalBuffer;
-        }
-
-        /// <summary>
-        /// Get UniversalRenderer motion vector color.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetMotionVectorColor(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            if (_motionVectorColorFieldInfo == null)
-            {
-                _motionVectorColorFieldInfo = typeof(UniversalRenderer).GetField("m_MotionVectorColor",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            }
-            if (_motionVectorColorFieldInfo!.GetValue(universalRenderer) is not RTHandle motionVectorColor) return null;
-            return motionVectorColor;
-        }
-
-        /// <summary>
-        /// Get UniversalRenderer motion vector depth.
-        /// </summary>
-        /// <param name="sr"></param>
-        /// <returns></returns>
-        public static RTHandle GetMotionVectorDepth(ScriptableRenderer sr)
-        {
-            if (sr is not UniversalRenderer universalRenderer) return null;
-            if (_motionVectorDepthFieldInfo == null)
-            {
-                _motionVectorDepthFieldInfo = typeof(UniversalRenderer).GetField("m_MotionVectorDepth",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            }
-            if (_motionVectorDepthFieldInfo!.GetValue(universalRenderer) is not RTHandle motionVectorDepth) return null;
-            return motionVectorDepth;
-        }
         
         /// <summary>
         /// Get ScriptableRenderer active render pass queue.
@@ -341,17 +183,6 @@ namespace UnityEngine.Rendering.Universal
         public static void SetTemporalAAQuality(UniversalAdditionalCameraData additionalCameraData, int quality)
         {
             additionalCameraData.taaSettings.quality = (TemporalAAQuality)quality;
-        }
-
-        /// <summary>
-        /// Calculate UniversalAdditionalCameraData temporal AA jitter.
-        /// </summary>
-        /// <param name="cameraData"></param>
-        /// <returns></returns>
-        public static Vector2 CalculateTemporalAAJitter(CameraData cameraData)
-        {
-            int frameIndex = Time.frameCount + cameraData.taaSettings.jitterFrameCountOffset;
-            return TemporalAA.CalculateJitter(frameIndex);
         }
 
         /// <summary>

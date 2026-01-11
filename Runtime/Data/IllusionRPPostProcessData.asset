@@ -22,12 +22,14 @@ MonoBehaviour:
     lutBuilderLdrPS: {fileID: 4800000, guid: 65df88701913c224d95fc554db28381a, type: 3}
     lutBuilderHdrPS: {fileID: 4800000, guid: e75229d7fd876d0479421da91a4df442, type: 3}
     bloomPS: {fileID: 4800000, guid: 5f1864addb451f54bae8c86d230f736e, type: 3}
-    temporalAntialiasingPS: {fileID: 4800000, guid: 131f1b93a4ebd459ba87b6bad055fb33, type: 3}
+    temporalAntialiasingPS: {fileID: 4800000, guid: 9c70c1a35ff15f340b38ea84842358bf, type: 3}
     LensFlareDataDrivenPS: {fileID: 4800000, guid: 6cda457ac28612740adb23da5d39ea92, type: 3}
+    LensFlareScreenSpacePS: {fileID: 4800000, guid: 701880fecb344ea4c9cd0db3407ab287, type: 3}
     scalingSetupPS: {fileID: 4800000, guid: e8ee25143a34b8c4388709ea947055d1, type: 3}
     easuPS: {fileID: 4800000, guid: 562b7ae4f629f144aa97780546fce7c6, type: 3}
     uberPostPS: {fileID: 4800000, guid: e7857e9d0c934dc4f83f270f8447b006, type: 3}
     finalPostPassPS: {fileID: 4800000, guid: c49e63ed1bbcb334780a3bd19dfed403, type: 3}
+    m_ShaderResourcesVersion: 0
   textures:
     blueNoise16LTex:
     - {fileID: 2800000, guid: 81200413a40918d4d8702e94db29911c, type: 3}
@@ -75,3 +77,4 @@ MonoBehaviour:
     - {fileID: 2800000, guid: 5cdee82a77d13994f83b8fdabed7c301, type: 3}
     smaaAreaTex: {fileID: 2800000, guid: d1f1048909d55cd4fa1126ab998f617e, type: 3}
     smaaSearchTex: {fileID: 2800000, guid: 51eee22c2a633ef4aada830eed57c3fd, type: 3}
+    m_TexturesResourcesVersion: 0

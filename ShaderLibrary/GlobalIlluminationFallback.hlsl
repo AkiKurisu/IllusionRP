@@ -8,7 +8,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
 
 // Forward+ or Deferred+ Reflection Probe Atlas
-#if defined(_FORWARD_PLUS)
+#if defined(_CLUSTER_LIGHT_LOOP)
 
 // used by Forward+
 half3 SampleReflectionProbesAtlas(half3 reflectVector, float3 positionWS, float2 normalizedScreenSpaceUV,
@@ -51,7 +51,7 @@ half3 SampleReflectionProbesAtlas(half3 reflectVector, float3 positionWS, float2
     return irradiance;
 }
 
-#else // (_FORWARD_PLUS)
+#else // (_CLUSTER_LIGHT_LOOP)
 
 // used by Forward or Deferred
 half3 SampleReflectionProbesCubemap(half3 reflectVector, half mipLevel, inout float totalWeight)
@@ -68,7 +68,7 @@ half3 SampleReflectionProbes(half3 reflectVector, float3 positionWS, float2 norm
 {
     half3 color = half3(0.0, 0.0, 0.0);
 
-#if defined(_FORWARD_PLUS)
+#if defined(_CLUSTER_LIGHT_LOOP)
     color = ClampToFloat16Max(SampleReflectionProbesAtlas(reflectVector, positionWS, normalizedScreenSpaceUV, mipLevel, totalWeight));
 #else
     color = SampleReflectionProbesCubemap(reflectVector, mipLevel, totalWeight);

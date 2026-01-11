@@ -83,15 +83,6 @@ namespace Illusion.Rendering.PostProcessing
 
 		#endregion
 
-		#region Initialization Methods
-
-		public VolumetricFog()
-		{
-			displayName = "Volumetric Fog";
-		}
-
-		#endregion
-
 		#region Volume Component Methods
 
 		private void OnValidate()

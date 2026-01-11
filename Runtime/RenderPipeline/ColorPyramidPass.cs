@@ -2,11 +2,9 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.Universal.Internal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -22,15 +20,6 @@ namespace Illusion.Rendering
             renderPassEvent = IllusionRenderPassEvent.ColorPyramidPass;
             profilingSampler = new ProfilingSampler("Color Pyramid");
         }
-
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            if (_rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain) == null)
-            {
-                _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain,
-                    HistoryBufferAllocatorFunction, 1);
-            }
-        }
         
         // BufferedRTHandleSystem API expects an allocator function. We define it here.
         private static RTHandle HistoryBufferAllocatorFunction(string viewName, int frameIndex, RTHandleSystem rtHandleSystem)
@@ -45,7 +34,6 @@ namespace Illusion.Rendering
                 name: $"{viewName}_CameraColorBufferMipChain{frameIndex}");
         }
 
-#if UNITY_2023_1_OR_NEWER
         private class CopyMip0PassData
         {
             internal TextureHandle Source;
@@ -78,10 +66,11 @@ namespace Illusion.Rendering
             internal GPUCopy GPUCopy;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle cameraColor = renderer.activeColorTexture;
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            TextureHandle cameraColor = resource.activeColorTexture;
 
             // Ensure history buffer is allocated
             if (_rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain) == null)
@@ -93,7 +82,7 @@ namespace Illusion.Rendering
             var colorPyramidRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
             TextureHandle colorPyramidHandle = renderGraph.ImportTexture(colorPyramidRT);
 
-            Vector2Int pyramidSize = new Vector2Int(renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight);
+            Vector2Int pyramidSize = new Vector2Int(cameraData.camera.pixelWidth, cameraData.camera.pixelHeight);
 
             // Calculate scale and bias for DRS (Dynamic Resolution Scaling)
             bool isHardwareDrsOn = DynamicResolutionHandler.instance.HardwareDynamicResIsEnabled();
@@ -109,8 +98,12 @@ namespace Illusion.Rendering
             using (var builder = renderGraph.AddRasterRenderPass<CopyMip0PassData>("Copy Source to Color Pyramid Mip0", 
                 out var copyPassData, new ProfilingSampler("Copy to Mip0")))
             {
-                copyPassData.Source = builder.UseTexture(cameraColor);
-                copyPassData.Destination = builder.UseTextureFragment(colorPyramidHandle, 0);
+                builder.UseTexture(cameraColor);
+                copyPassData.Source = cameraColor;
+                
+                builder.SetRenderAttachment(colorPyramidHandle, 0);
+                copyPassData.Destination = colorPyramidHandle;
+                
                 copyPassData.MipGenerator = _rendererData.MipGenerator;
                 copyPassData.PyramidSize = pyramidSize;
                 copyPassData.BlitScaleBias = blitScaleBias;
@@ -129,12 +122,14 @@ namespace Illusion.Rendering
             using (var builder = renderGraph.AddComputePass<ColorPyramidPassData>("Color Pyramid Mip Generation", 
                 out var mipPassData, profilingSampler))
             {
-                mipPassData.ColorPyramid = builder.UseTexture(colorPyramidHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(colorPyramidHandle, AccessFlags.Write);
+                mipPassData.ColorPyramid = colorPyramidHandle;
                 
                 // Get or allocate temp downsample pyramid and import it
                 var tempPyramidRT = _rendererData.MipGenerator.GetOrAllocateTempDownsamplePyramid(colorPyramidRT.rt.graphicsFormat);
-                mipPassData.TempPyramid = builder.UseTexture(renderGraph.ImportTexture(tempPyramidRT), 
-                    IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
+                var tempPyramid = renderGraph.ImportTexture(tempPyramidRT);
+                builder.UseTexture(tempPyramid, AccessFlags.ReadWrite);
+                mipPassData.TempPyramid = tempPyramid;
                 
                 mipPassData.MipGenerator = _rendererData.MipGenerator;
                 mipPassData.PyramidSize = pyramidSize;
@@ -157,14 +152,13 @@ namespace Illusion.Rendering
             // Pass 3: Copy history depth and normal buffers if needed
             if (_rendererData.RequireHistoryDepthNormal)
             {
-                CopyHistoryGraphicsBuffersRenderGraph(renderGraph, ref renderingData);
+                CopyHistoryGraphicsBuffersRenderGraph(renderGraph, resource, cameraData);
             }
         }
 
-        private void CopyHistoryGraphicsBuffersRenderGraph(RenderGraph renderGraph, ref RenderingData renderingData)
+        private void CopyHistoryGraphicsBuffersRenderGraph(RenderGraph renderGraph, UniversalResourceData resource, UniversalCameraData cameraData)
         {
-            var descriptor = renderingData.cameraData.cameraTargetDescriptor;
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            var descriptor = cameraData.cameraTargetDescriptor;
 
             // Get current depth pyramid
             var currentDepth = _rendererData.DepthPyramidRT;
@@ -187,7 +181,7 @@ namespace Illusion.Rendering
             }
 
             // Check for normal texture
-            TextureHandle normalTexture = renderer.resources.GetTexture(UniversalResource.CameraNormalsTexture);
+            TextureHandle normalTexture = resource.cameraNormalsTexture;
             bool hasNormalTexture = normalTexture.IsValid();
             RTHandle normalHistoryRT = null;
 
@@ -213,16 +207,22 @@ namespace Illusion.Rendering
             using (var builder = renderGraph.AddComputePass<CopyHistoryPassData>("Copy History Graphics Buffers",
                 out var passData, _copyHistorySampler))
             {
-                passData.DepthSource = builder.UseTexture(renderGraph.ImportTexture(currentDepth));
-                passData.DepthDestination = builder.UseTexture(renderGraph.ImportTexture(depthHistoryRT),
-                    IBaseRenderGraphBuilder.AccessFlags.Write);
+                var depth = renderGraph.ImportTexture(currentDepth);
+                builder.UseTexture(depth);
+                passData.DepthSource = depth;
+                
+                var depthHistory = renderGraph.ImportTexture(depthHistoryRT);
+                builder.UseTexture(depthHistory, AccessFlags.Write);
+                passData.DepthDestination = depthHistory;
 
                 passData.HasNormalTexture = hasNormalTexture;
                 if (hasNormalTexture)
                 {
-                    passData.NormalSource = builder.UseTexture(normalTexture);
-                    passData.NormalDestination = builder.UseTexture(renderGraph.ImportTexture(normalHistoryRT),
-                        IBaseRenderGraphBuilder.AccessFlags.Write);
+                    builder.UseTexture(normalTexture);
+                    passData.NormalSource = normalTexture;
+                    var normalDestination = renderGraph.ImportTexture(normalHistoryRT);
+                    builder.UseTexture(normalDestination, AccessFlags.Write);
+                    passData.NormalDestination = normalDestination;
                 }
 
                 passData.Width = descriptor.width;
@@ -245,34 +245,6 @@ namespace Illusion.Rendering
                     }
                 });
             }
-        }
-#endif
-        
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var camera = renderingData.cameraData.camera;
-            var cameraColor = renderingData.cameraData.renderer.cameraColorTargetHandle;
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                // Color Pyramid
-                var colorPyramidRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
-                cmd.SetGlobalTexture(IllusionShaderProperties._ColorPyramidTexture, colorPyramidRT);
-                Vector2Int pyramidSize = new Vector2Int(camera.pixelWidth, camera.pixelHeight);
-                _rendererData.ColorPyramidHistoryMipCount =
-                    _rendererData.MipGenerator.RenderColorGaussianPyramid(cmd, pyramidSize, cameraColor, colorPyramidRT.rt);
-                
-                // Copy History if needed
-                if (_rendererData.RequireHistoryDepthNormal)
-                {
-                    using (new ProfilingScope(cmd, _copyHistorySampler))
-                    {
-                        _rendererData.CopyHistoryGraphicsBuffers(cmd, ref renderingData);
-                    }
-                }
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
         }
 
         public void Dispose()

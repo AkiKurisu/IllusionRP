@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -18,9 +16,9 @@ namespace Illusion.Rendering
 
         private readonly List<ShaderTagId> _shaderTagIdList = new();
 
-        private FilteringSettings _filteringSettings;
+        private readonly FilteringSettings _filteringSettings;
 
-        private RenderStateBlock _renderStateBlock;
+        private readonly RenderStateBlock _renderStateBlock;
 
         private readonly IllusionRendererData _rendererData;
 
@@ -38,33 +36,6 @@ namespace Illusion.Rendering
                 // ZTest Equal
                 depthState = new DepthState(false, CompareFunction.Equal)
             };
-#if UNITY_2023_1_OR_NEWER
-            ConfigureInput(ScriptableRenderPassInput.Normal);
-#endif
-        }
-
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            var desc = renderingData.cameraData.cameraTargetDescriptor;
-            desc.depthBufferBits = 0;
-            desc.msaaSamples = 1;
-#if UNITY_2023_1_OR_NEWER
-            desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
-                ? GraphicsFormat.R8_UNorm
-                : GraphicsFormat.B8G8R8A8_UNorm;
-#else
-            desc.graphicsFormat = RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
-                ? GraphicsFormat.R8_UNorm
-                : GraphicsFormat.B8G8R8A8_UNorm;
-#endif
-
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
-                name: "_ForwardGBuffer");
-            cmd.SetGlobalTexture(_rendererData.ForwardGBufferRT.name, _rendererData.ForwardGBufferRT.nameID);
-        }
-
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
             ConfigureInput(ScriptableRenderPassInput.Normal);
         }
 
@@ -72,40 +43,43 @@ namespace Illusion.Rendering
         {
             // pass
         }
-
-#if UNITY_2023_1_OR_NEWER
+        
         private class PassData
         {
             internal TextureHandle ForwardGBufferHandle;
             internal TextureHandle DepthHandle;
-            internal RenderingData RenderingData;
+            internal UniversalRenderingData RenderingData;
             internal RendererListHandle RendererListHdl;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            TextureHandle depthTexture = UniversalRenderingUtility.GetDepthWriteTextureHandle(ref renderingData.cameraData);
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var renderingData = frameData.Get<UniversalRenderingData>();
+            TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
 
             // Allocate Forward GBuffer RT
-            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            var desc = cameraData.cameraTargetDescriptor;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
             desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
                     ? GraphicsFormat.R8_UNorm
                     : GraphicsFormat.B8G8R8A8_UNorm;
 
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ForwardGBuffer");
 
             TextureHandle forwardGBufferHandle = renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
 
-            using (var builder = renderGraph.AddLowLevelPass<PassData>("Clear Forward GBuffer", out var passData, profilingSampler))
+            using (var builder = renderGraph.AddUnsafePass<PassData>("Clear Forward GBuffer", out var passData, profilingSampler))
             {
-                passData.ForwardGBufferHandle = builder.UseTexture(forwardGBufferHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(forwardGBufferHandle, AccessFlags.Write);
+                passData.ForwardGBufferHandle = forwardGBufferHandle;
 
                 builder.AllowPassCulling(false);
 
-                builder.SetRenderFunc(static (PassData data, LowLevelGraphContext context) =>
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
                 {
                     context.cmd.SetRenderTarget(data.ForwardGBufferHandle);
                     context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
@@ -115,14 +89,16 @@ namespace Illusion.Rendering
             // Render Forward GBuffer
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Forward GBuffer", out var passData, profilingSampler))
             {
-                passData.ForwardGBufferHandle = builder.UseTextureFragment(forwardGBufferHandle, 0);
-                passData.DepthHandle = builder.UseTextureFragmentDepth(depthTexture);
+                builder.SetRenderAttachment(forwardGBufferHandle, 0);
+                passData.ForwardGBufferHandle = forwardGBufferHandle;
+                builder.SetRenderAttachmentDepth(depthTexture);
+                passData.DepthHandle = depthTexture;
                 passData.RenderingData = renderingData;
 
                 // Create renderer list
-                SortingCriteria sortingCriteria = renderingData.cameraData.defaultOpaqueSortFlags;
-                DrawingSettings drawingSettings = RenderingUtils.CreateDrawingSettings(_shaderTagIdList, ref renderingData, sortingCriteria);
-                RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, renderingData, drawingSettings, _filteringSettings, _renderStateBlock, ref passData.RendererListHdl);
+                SortingCriteria sortingCriteria = cameraData.defaultOpaqueSortFlags;
+                DrawingSettings drawingSettings = UniversalRenderingUtility.CreateDrawingSettings(_shaderTagIdList, frameData, sortingCriteria);
+                RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, ref renderingData.cullResults, drawingSettings, _filteringSettings, _renderStateBlock, ref passData.RendererListHdl);
                 builder.UseRendererList(passData.RendererListHdl);
 
                 builder.AllowPassCulling(false);
@@ -136,48 +112,12 @@ namespace Illusion.Rendering
             }
 
             // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, "_ForwardGBuffer", forwardGBufferHandle);
+            RenderGraphUtils.SetGlobalTexture(renderGraph, Properties._ForwardGBuffer, forwardGBufferHandle);
         }
-#endif
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        
+        private static class Properties
         {
-            ref var cameraData = ref renderingData.cameraData;
-            if (cameraData.renderer.cameraColorTargetHandle == null)
-                return;
-            var depthTexture = UniversalRenderingUtility.GetDepthWriteTexture(ref cameraData);
-            if (!depthTexture.IsValid())
-            {
-                return;
-            }
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                ClearForwardGBuffer(context, cmd, depthTexture);
-                
-                context.ExecuteCommandBuffer(cmd);
-                cmd.Clear();
-                
-                var drawSettings = CreateDrawingSettings(_shaderTagIdList,
-                    ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
-#if UNITY_2023_1_OR_NEWER
-                var rendererList = default(RendererList);
-                RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, _filteringSettings, _renderStateBlock, ref rendererList);
-                cmd.DrawRendererList(rendererList);
-#else
-                context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
-#endif
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-        private void ClearForwardGBuffer(ScriptableRenderContext context, CommandBuffer cmd, RTHandle depthTexture)
-        {
-            cmd.SetRenderTarget(_rendererData.ForwardGBufferRT, depthTexture);
-            cmd.ClearRenderTarget(false, true, Color.clear);
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
+            public static readonly int _ForwardGBuffer = MemberNameHelpers.ShaderPropertyID();
         }
     }
 }

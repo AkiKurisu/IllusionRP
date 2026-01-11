@@ -7,8 +7,9 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Illusion.Rendering.PostProcessing;
 using Illusion.Rendering.Shadows;
+using UnityEngine.Rendering.RenderGraphModule;
 #if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
+
 #endif
 
 namespace Illusion.Rendering
@@ -162,11 +163,6 @@ namespace Illusion.Rendering
         /// Prefer using Compute Shader in render passes.
         /// </summary>
         public bool PreferComputeShader { get; internal set; }
-
-        /// <summary>
-        /// Enable native render pass if possible.
-        /// </summary>
-        public bool NativeRenderPass { get; internal set; } = true;
 
         /// <summary>
         /// Get whether the renderer can sample probe volumes (PRTGI).
@@ -355,53 +351,20 @@ namespace Illusion.Rendering
             _grayTextureRTHandle = null;
         }
 
-        /// <summary>
-        /// Push global constant buffers to gpu
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="renderingData"></param>
-        internal void PushGlobalBuffers(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            PushShadowData(cmd);
-            PushGlobalVariables(cmd, ref renderingData);
-        }
-
-        private void PushGlobalVariables(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            PrepareGlobalVariables(ref renderingData);
-            ConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
-        }
-        
-#if UNITY_2023_1_OR_NEWER
-        internal void PushGlobalBuffers(ComputeCommandBuffer cmd, TextureHandle colorTarget, ref RenderingData renderingData)
+        internal void PushGlobalBuffers(ComputeCommandBuffer cmd, TextureHandle colorTarget, UniversalCameraData cameraData, UniversalLightData lightData)
         {
             PushShadowData(cmd.GetNativeCommandBuffer());
-            PushGlobalVariables(cmd, colorTarget, ref renderingData);
-        }
-        
-        private void PushGlobalVariables(ComputeCommandBuffer cmd, RTHandle colorTarget, ref RenderingData renderingData)
-        {
-            PrepareGlobalVariables(ref renderingData, colorTarget);
+            PrepareGlobalVariables(colorTarget, cameraData, lightData);
             ComputeConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
         }
-#endif
 
-        private void PrepareGlobalVariables(ref RenderingData renderingData, RTHandle rtHandle = null)
+        private void PrepareGlobalVariables(TextureHandle colorTarget, UniversalCameraData cameraData, UniversalLightData lightData)
         {
-            bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
+            bool useTAA = cameraData.IsTemporalAAEnabled(); // Disable in scene view
             
             // Match HDRP View Projection Matrix, pre-handle reverse z.
-            _shaderVariablesGlobal.ViewMatrix = renderingData.cameraData.camera.worldToCameraMatrix;
-#if UNITY_2023_1_OR_NEWER
-            if (rtHandle != null)
-            {
-                _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(ref renderingData.cameraData, rtHandle);
-            }
-            else
-#endif
-            {
-                _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(ref renderingData.cameraData);
-            }
+            _shaderVariablesGlobal.ViewMatrix = cameraData.camera.worldToCameraMatrix;
+            _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(cameraData, colorTarget);
             var lastInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
             _shaderVariablesGlobal.InvViewProjMatrix = _shaderVariablesGlobal.ViewProjMatrix.inverse;
             _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount > 1 ? _shaderVariablesGlobal.InvViewProjMatrix : lastInvViewProjMatrix;
@@ -425,7 +388,7 @@ namespace Illusion.Rendering
             MicroShadows microShadowingSettings = VolumeManager.instance.stack.GetComponent<MicroShadows>();
             _shaderVariablesGlobal.MicroShadowOpacity = microShadowingSettings.enable.value ? microShadowingSettings.opacity.value : 0.0f;
             
-            GetMainLightIndirectIntensityAndRenderingLayers(ref renderingData, out float intensity, out uint layers);
+            GetMainLightIndirectIntensityAndRenderingLayers(lightData, out float intensity, out uint layers);
             if (!EnableIndirectDiffuseRenderingLayers)
             {
                 layers = ~(uint)0;
@@ -440,14 +403,14 @@ namespace Illusion.Rendering
             cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
         }
         
-        private void GetMainLightIndirectIntensityAndRenderingLayers(ref RenderingData renderingData,
+        private void GetMainLightIndirectIntensityAndRenderingLayers(UniversalLightData lightData,
             out float intensity, out uint renderingLayers)
         {
             intensity = 1.0f;
             renderingLayers = 0;
-            int mainLightIndex = renderingData.lightData.mainLightIndex;
+            int mainLightIndex = lightData.mainLightIndex;
             if (mainLightIndex < 0) return; // No main light
-            VisibleLight mainLight = renderingData.lightData.visibleLights[mainLightIndex];
+            VisibleLight mainLight = lightData.visibleLights[mainLightIndex];
             intensity = mainLight.light.bounceIntensity;
             renderingLayers = _mainLightData?.renderingLayers ?? 0;
         }
@@ -560,94 +523,6 @@ namespace Illusion.Rendering
             }
         }
 
-        /// <summary>
-        /// Copy history depth and normal buffers for next frame usage.
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="renderingData"></param>
-        public void CopyHistoryGraphicsBuffers(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            var descriptor = renderingData.cameraData.cameraTargetDescriptor;
-
-            // Get current depth pyramid and normal texture
-            var currentDepth = DepthPyramidRT;
-            var currentNormal = UniversalRenderingUtility.GetNormalTexture(renderingData.cameraData.renderer);
-
-            if (currentDepth == null || !currentDepth.IsValid())
-                return;
-
-            // Allocate and copy depth history buffer
-            var depthHistoryRT = GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
-            if (depthHistoryRT == null)
-            {
-                RTHandle Allocator(string id, int frameIndex, RTHandleSystem rtHandleSystem)
-                {
-                    return rtHandleSystem.Alloc(Vector2.one, filterMode: FilterMode.Point,
-                        colorFormat: currentDepth.rt.graphicsFormat,
-                        enableRandomWrite: currentDepth.rt.enableRandomWrite,
-                        name: $"{id}_Depth_History_Buffer_{frameIndex}");
-                }
-
-                depthHistoryRT = AllocHistoryFrameRT((int)IllusionFrameHistoryType.Depth, Allocator, 1);
-            }
-
-            // Copy current depth to history
-            if (depthHistoryRT != null && depthHistoryRT.IsValid())
-            {
-                for (int i = 0; i < MaxViewCount; i++)
-                {
-                    cmd.CopyTexture(currentDepth, i, 0, 0, 0, descriptor.width, descriptor.height,
-                        depthHistoryRT, i, 0, 0, 0);
-                }
-            }
-
-            // Allocate and copy normal history buffer
-            if (currentNormal.IsValid())
-            {
-                var normalHistoryRT = GetCurrentFrameRT((int)IllusionFrameHistoryType.Normal);
-                if (normalHistoryRT == null)
-                {
-                    RTHandle Allocator(string id, int frameIndex, RTHandleSystem rtHandleSystem)
-                    {
-                        return rtHandleSystem.Alloc(Vector2.one, filterMode: FilterMode.Point,
-                            colorFormat: currentNormal.rt.graphicsFormat,
-                            enableRandomWrite: currentNormal.rt.enableRandomWrite,
-                            name: $"{id}_Normal_History_Buffer_{frameIndex}");
-                    }
-
-                    normalHistoryRT = AllocHistoryFrameRT((int)IllusionFrameHistoryType.Normal, Allocator, 1);
-                }
-
-                // Copy current normal to history
-                if (normalHistoryRT != null && normalHistoryRT.IsValid())
-                {
-                    for (int i = 0; i < MaxViewCount; i++)
-                    {
-                        cmd.CopyTexture(currentNormal, i, 0, 0, 0, descriptor.width, descriptor.height,
-                            normalHistoryRT, i, 0, 0, 0);
-                    }
-                }
-            }
-        }
-
-        internal void BindAmbientProbe(CommandBuffer cmd)
-        {
-            SphericalHarmonicsL2 ambientProbe = RenderSettings.ambientProbe;
-            _ambientProbeBuffer ??= new ComputeBuffer(7, 16);
-            var array = new NativeArray<Vector4>(7, Allocator.Temp);
-            array[0] = new Vector4(ambientProbe[0, 3], ambientProbe[0, 1], ambientProbe[0, 2], ambientProbe[0, 0] - ambientProbe[0, 6]);
-            array[1] = new Vector4(ambientProbe[1, 3], ambientProbe[1, 1], ambientProbe[1, 2], ambientProbe[1, 0] - ambientProbe[1, 6]);
-            array[2] = new Vector4(ambientProbe[2, 3], ambientProbe[2, 1], ambientProbe[2, 2], ambientProbe[2, 0] - ambientProbe[2, 6]);
-            array[3] = new Vector4(ambientProbe[0, 4], ambientProbe[0, 5], ambientProbe[0, 6] * 3, ambientProbe[0, 7]);
-            array[4] = new Vector4(ambientProbe[1, 4], ambientProbe[1, 5], ambientProbe[1, 6] * 3, ambientProbe[1, 7]);
-            array[5] = new Vector4(ambientProbe[2, 4], ambientProbe[2, 5], ambientProbe[2, 6] * 3, ambientProbe[2, 7]);
-            array[6] = new Vector4(ambientProbe[0, 8], ambientProbe[1, 8], ambientProbe[2, 8], 1);
-            _ambientProbeBuffer.SetData(array);
-            array.Dispose();
-            cmd.SetGlobalBuffer(IllusionShaderProperties._AmbientProbeData, _ambientProbeBuffer);
-        }
-        
-#if UNITY_2023_1_OR_NEWER
         internal void BindAmbientProbe(ComputeCommandBuffer cmd)
         {
             SphericalHarmonicsL2 ambientProbe = RenderSettings.ambientProbe;
@@ -663,19 +538,6 @@ namespace Illusion.Rendering
             _ambientProbeBuffer.SetData(array);
             array.Dispose();
             cmd.SetGlobalBuffer(IllusionShaderProperties._AmbientProbeData, _ambientProbeBuffer);
-        }
-#endif
-
-        internal void BindHistoryColor(CommandBuffer cmd, in RenderingData renderingData)
-        {
-            var historyColorRT = GetPreviousFrameColorRT(renderingData.cameraData, out var isNewFrame);
-            if (historyColorRT.IsValid())
-            {
-                var motionVectorColorRT = UniversalRenderingUtility.GetMotionVectorColor(renderingData.cameraData.renderer);
-                isNewFrame &= motionVectorColorRT.IsValid();
-                cmd.SetGlobalTexture(IllusionShaderProperties._HistoryColorTexture, historyColorRT);
-                cmd.SetGlobalTexture(IllusionShaderProperties._MotionVectorTexture, isNewFrame ? motionVectorColorRT : Texture2D.blackTexture);
-            }
         }
 
         public void BindDitheredRNGData1SPP(CommandBuffer cmd)
@@ -773,11 +635,13 @@ namespace Illusion.Rendering
         /// <summary>
         /// Get previous frame color buffer if possible
         /// </summary>
-        /// <param name="cameraData"></param>
+        /// <param name="frameData"></param>
         /// <param name="isNewFrame"></param>
         /// <returns></returns>
-        public RTHandle GetPreviousFrameColorRT(CameraData cameraData, out bool isNewFrame)
+        public RTHandle GetPreviousFrameColorRT(ContextContainer frameData, out bool isNewFrame)
         {
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
             // Using color pyramid
             if (cameraData.cameraType is CameraType.Game or CameraType.SceneView)
             {
@@ -796,9 +660,9 @@ namespace Illusion.Rendering
 #if ENABLE_VR && ENABLE_XR_MODULE
                 multipassId = cameraData.xr.multipassId;
 #endif
-                var taaPersistentData = AdditionalCameraData.taaPersistentData;
-                isNewFrame = taaPersistentData.GetLastAccumFrameIndex(multipassId) != Time.frameCount;
-                return taaPersistentData.accumulationTexture(multipassId);
+                var taaPersistentData = cameraData.taaHistory;
+                isNewFrame = taaPersistentData.GetAccumulationVersion(multipassId) != Time.frameCount;
+                return taaPersistentData.GetAccumulationTexture(multipassId);
             }
 
             // Using history color
@@ -807,9 +671,9 @@ namespace Illusion.Rendering
             {
                 return CameraPreviousColorTextureRT;
             }
-
-            // Fallback to opaque texture if exist.
-            return UniversalRenderingUtility.GetOpaqueTexture(cameraData.renderer);
+            
+            // Fallback to opaque texture if exists.
+            return resource.cameraOpaqueTexture;
         }
 
         private IndirectDiffuseMode GetIndirectDiffuseMode()

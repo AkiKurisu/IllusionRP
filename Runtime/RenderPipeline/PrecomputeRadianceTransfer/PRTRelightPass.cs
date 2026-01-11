@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.PRTGI
 {
@@ -84,41 +82,6 @@ namespace Illusion.Rendering.PRTGI
             }
         }
 
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            if (renderingData.cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return;
-#if UNITY_EDITOR
-            if (PRTVolumeManager.IsBaking) return;
-#endif
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                DoReflectionNormalization(cmd, ref renderingData);
-
-                PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
-                bool enableRelight = _rendererData.SampleProbeVolumes;
-                enableRelight &= _rendererData.IsLightingActive;
-
-                if (enableRelight)
-                {
-                    if (_volume != volume)
-                    {
-                        ReleaseVolumeBuffer();
-                    }
-                    _volume = volume;
-                    DoRelight(cmd, volume);
-                }
-                else
-                {
-                    // Mark voxel invalid
-                    cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, 0);
-                }
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
         private class ReflectionNormalizationPassData
         {
             internal IllusionRendererData RendererData;
@@ -160,15 +123,18 @@ namespace Illusion.Rendering.PRTGI
 #endif
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            if (renderingData.cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return;
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var renderingData = frameData.Get<UniversalRenderingData>();
+            if (cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return;
 #if UNITY_EDITOR
             if (PRTVolumeManager.IsBaking) return;
 #endif
 
             // Reflection Normalization Pass
-            RecordReflectionNormalizationPass(renderGraph, ref renderingData);
+            RecordReflectionNormalizationPass(renderGraph, renderingData);
 
             PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
             bool enableRelight = _rendererData.SampleProbeVolumes;
@@ -190,7 +156,7 @@ namespace Illusion.Rendering.PRTGI
 
                     if (probesToUpdate.Count > 0)
                     {
-                        RecordPRTRelightPass(renderGraph, volume, probesToUpdate, ref renderingData);
+                        RecordPRTRelightPass(renderGraph, volume, probesToUpdate);
                     }
                 }
 
@@ -199,13 +165,13 @@ namespace Illusion.Rendering.PRTGI
             else
             {
                 // Mark voxel invalid using a low-level pass
-                using (var builder = renderGraph.AddLowLevelPass<EmptyPassData>("PRT Mark Voxel Invalid", 
+                using (var builder = renderGraph.AddUnsafePass<EmptyPassData>("PRT Mark Voxel Invalid", 
                     out var passData, new ProfilingSampler("PRT Mark Voxel Invalid")))
                 {
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
 
-                    builder.SetRenderFunc(static (EmptyPassData data, LowLevelGraphContext context) =>
+                    builder.SetRenderFunc(static (EmptyPassData data, UnsafeGraphContext context) =>
                     {
                         context.cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, 0);
                     });
@@ -215,9 +181,9 @@ namespace Illusion.Rendering.PRTGI
 
         private class EmptyPassData { }
 
-        private void RecordReflectionNormalizationPass(RenderGraph renderGraph, ref RenderingData renderingData)
+        private void RecordReflectionNormalizationPass(RenderGraph renderGraph, UniversalRenderingData renderingData)
         {
-            using (var builder = renderGraph.AddLowLevelPass<ReflectionNormalizationPassData>("PRT Reflection Normalization", 
+            using (var builder = renderGraph.AddUnsafePass<ReflectionNormalizationPassData>("PRT Reflection Normalization", 
                 out var passData, new ProfilingSampler("PRT Reflection Normalization")))
             {
                 passData.RendererData = _rendererData;
@@ -243,7 +209,7 @@ namespace Illusion.Rendering.PRTGI
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
-                builder.SetRenderFunc(static (ReflectionNormalizationPassData data, LowLevelGraphContext context) =>
+                builder.SetRenderFunc(static (ReflectionNormalizationPassData data, UnsafeGraphContext context) =>
                 {
                     var probes = data.VisibleReflectionProbes;
                     for (int i = 0; i < probes.Length; i++)
@@ -273,7 +239,7 @@ namespace Illusion.Rendering.PRTGI
             }
         }
 
-        private void RecordPRTRelightPass(RenderGraph renderGraph, PRTProbeVolume volume, List<PRTProbe> probesToUpdate, ref RenderingData renderingData)
+        private void RecordPRTRelightPass(RenderGraph renderGraph, PRTProbeVolume volume, List<PRTProbe> probesToUpdate)
         {
             // Prepare pass data
             Vector3 corner = volume.GetVoxelMinCorner();
@@ -304,8 +270,10 @@ namespace Illusion.Rendering.PRTGI
                     SetupBrickRelightPassData(passData, volume, brickIndicesToUpdate, coefficientVoxel3D, validityVoxel3D,
                         voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
 
-                    passData.CoefficientVoxel3D = builder.UseTexture(coefficientVoxel3D);
-                    passData.ValidityVoxel3D = builder.UseTexture(validityVoxel3D);
+                    builder.UseTexture(coefficientVoxel3D);
+                    passData.CoefficientVoxel3D = coefficientVoxel3D;
+                    builder.UseTexture(validityVoxel3D);
+                    passData.ValidityVoxel3D = validityVoxel3D;
 
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
@@ -361,8 +329,10 @@ namespace Illusion.Rendering.PRTGI
                     SetupProbeRelightPassData(probePassData, volume, probesToUpdate, brickIndicesToUpdate, 
                         coefficientVoxel3D, validityVoxel3D, voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
 
-                    probePassData.CoefficientVoxel3D = builder.UseTexture(coefficientVoxel3D);
-                    probePassData.ValidityVoxel3D = builder.UseTexture(validityVoxel3D);
+                    builder.UseTexture(coefficientVoxel3D);
+                    probePassData.CoefficientVoxel3D = coefficientVoxel3D;
+                    builder.UseTexture(validityVoxel3D);
+                    probePassData.ValidityVoxel3D = validityVoxel3D;
 
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
@@ -468,121 +438,7 @@ namespace Illusion.Rendering.PRTGI
             passData.CoefficientClearValue = _coefficientClearValue;
 #endif
         }
-#endif
-
-        private void DoReflectionNormalization(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            var probes = renderingData.cullResults.visibleReflectionProbes;
-            for (int i = 0; i < probes.Length; i++)
-            {
-                if (!PRTVolumeManager.TryGetReflectionProbeAdditionalData(probes[i].reflectionProbe, out var additionalData))
-                {
-                    _reflectionProbeData[i].normalizeWithProbeVolume = 0;
-                    continue;
-                }
-
-                if (!additionalData.TryGetSHForNormalization(out var outL0L1, out var outL21, out var outL22))
-                {
-                    _reflectionProbeData[i].normalizeWithProbeVolume = 0;
-                    continue;
-                }
-
-                _reflectionProbeData[i].L0L1 = outL0L1;
-                _reflectionProbeData[i].L2_1 = outL21;
-                _reflectionProbeData[i].L2_2 = outL22;
-                _reflectionProbeData[i].normalizeWithProbeVolume = 1;
-            }
-            _reflectionProbeComputeBuffer.SetData(_reflectionProbeData);
-            cmd.SetGlobalBuffer(ShaderProperties._reflectionProbeNormalizationData, _reflectionProbeComputeBuffer);
-
-            // Set reflection normalization parameters
-            var reflectionNormalization = VolumeManager.instance.stack.GetComponent<ReflectionNormalization>();
-            if (reflectionNormalization != null && reflectionNormalization.IsActive())
-            {
-                Vector4 factor = new Vector4(reflectionNormalization.minNormalizationFactor.value,
-                    reflectionNormalization.minNormalizationFactor.value,
-                    0, reflectionNormalization.probeVolumeWeight.value);
-                cmd.SetGlobalVector(ShaderProperties._reflectionProbeNormalizationFactor, factor);
-            }
-            else
-            {
-                cmd.SetGlobalVector(ShaderProperties._reflectionProbeNormalizationFactor, Vector4.zero);
-            }
-        }
-
-        private void DoRelight(CommandBuffer cmd, PRTProbeVolume volume)
-        {
-            // Get probes that need to be updated
-            using (ListPool<PRTProbe>.Get(out var probesToUpdate))
-            {
-                // Ensure bounding box update before upload gpu
-                volume.GetProbesToUpdate(probesToUpdate);
-
-                if (probesToUpdate.Count > 0)
-                {
-                    ExecuteRelightProbes(cmd, volume, probesToUpdate);
-                }
-            }
-
-            volume.AdvanceRenderFrame();
-        }
-
-        private void ExecuteRelightProbes(CommandBuffer cmd, PRTProbeVolume volume, List<PRTProbe> probesToUpdate)
-        {
-            Vector3 corner = volume.GetVoxelMinCorner();
-            Vector4 voxelCorner = new Vector4(corner.x, corner.y, corner.z, 0);
-            Vector4 voxelSize = new Vector4(volume.probeSizeX, volume.probeSizeY, volume.probeSizeZ, 0);
-
-            // Bounding box parameters
-            Vector4 boundingBoxMin = new Vector4(volume.BoundingBoxMin.x, volume.BoundingBoxMin.y, volume.BoundingBoxMin.z, 0);
-            Vector4 boundingBoxSize = new Vector4(volume.CurrentVoxelGrid.X, volume.CurrentVoxelGrid.Y, volume.CurrentVoxelGrid.Z, 0);
-            Vector4 originalBoundingBoxMin = new Vector4(volume.OriginalBoxMin.x, volume.OriginalBoxMin.y, volume.OriginalBoxMin.z, 0);
-
-            // Initialize Factor buffer
-            InitializeFactorBuffer(volume);
-
-            // Initialize Validity Mask buffer
-            InitializeValidityMaskBuffer(volume);
-
-            cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, volume.probeGridSize);
-            cmd.SetGlobalVector(ShaderProperties._coefficientVoxelSize, voxelSize);
-            cmd.SetGlobalVector(ShaderProperties._coefficientVoxelCorner, voxelCorner);
-            cmd.SetGlobalVector(ShaderProperties._boundingBoxMin, boundingBoxMin);
-            cmd.SetGlobalVector(ShaderProperties._boundingBoxSize, boundingBoxSize);
-            cmd.SetGlobalVector(ShaderProperties._originalBoundingBoxMin, originalBoundingBoxMin);
-            cmd.SetGlobalTexture(ShaderProperties._coefficientVoxel3D, volume.CoefficientVoxel3D);
-            cmd.SetGlobalTexture(ShaderProperties._validityVoxel3D, volume.ValidityVoxel3D);
-
-#if UNITY_EDITOR
-            if (volume.debugMode == ProbeVolumeDebugMode.ProbeRadiance)
-            {
-                CoreUtils.SetKeyword(cmd, ShaderKeywords._RELIGHT_DEBUG_RADIANCE, true);
-            }
-            else
-#endif
-            {
-                CoreUtils.SetKeyword(cmd, ShaderKeywords._RELIGHT_DEBUG_RADIANCE, false);
-            }
-
-            // Set shadow keyword
-            CoreUtils.SetKeyword(cmd, ShaderKeywords._PRT_RELIGHT_SHADOW, volume.enableRelightShadow);
-
-            // Relight Bricks
-            using (new ProfilingScope(cmd, _relightBrickSampler))
-            {
-                RelightBricks(cmd, volume, probesToUpdate);
-            }
-
-            // Relight Probes
-            using (new ProfilingScope(cmd, _relightProbeSampler))
-            {
-                foreach (var probe in probesToUpdate)
-                {
-                    RelightProbe(cmd, volume, probe);
-                }
-            }
-        }
-
+        
         private void InitializeFactorBuffer(PRTProbeVolume volume)
         {
             var factors = volume.GetAllFactors();
@@ -673,66 +529,6 @@ namespace Illusion.Rendering.PRTGI
 
             bricksToUpdate.Dispose();
             brickIndexMapping.Dispose();
-        }
-
-        private void RelightBricks(CommandBuffer cmd, PRTProbeVolume volume, List<PRTProbe> probesToUpdate)
-        {
-            // Get bricks that need to be updated based on the probes being updated
-            using (ListPool<int>.Get(out var brickIndicesToUpdate))
-            {
-                volume.GetBricksToUpdate(probesToUpdate, brickIndicesToUpdate);
-
-                // Initialize buffer with only the bricks that need updating
-                InitializeBrickBuffer(volume, brickIndicesToUpdate);
-
-                cmd.SetComputeBufferParam(_brickRelightCS, _brickRelightKernel,
-                    ShaderProperties._surfels, volume.GlobalSurfelBuffer);
-                cmd.SetComputeBufferParam(_brickRelightCS, _brickRelightKernel,
-                    ShaderProperties._brickRadiance, _brickRadianceBuffer);
-                cmd.SetComputeBufferParam(_brickRelightCS, _brickRelightKernel,
-                    ShaderProperties._brickInfo, _surfelIndicesBuffer);
-                cmd.SetComputeBufferParam(_brickRelightCS, _brickRelightKernel,
-                    ShaderProperties._brickIndexMapping, _brickIndexMappingBuffer);
-                cmd.SetComputeBufferParam(_brickRelightCS, _brickRelightKernel,
-                    ShaderProperties._shadowCache, _shadowCacheBuffer);
-                cmd.SetComputeIntParam(_brickRelightCS, ShaderProperties._brickCount, brickIndicesToUpdate.Count);
-
-                int threadGroups = (brickIndicesToUpdate.Count + 63) / 64;
-                cmd.DispatchCompute(_brickRelightCS, _brickRelightKernel, threadGroups, 1, 1);
-            }
-        }
-
-        private void RelightProbe(CommandBuffer cmd, PRTProbeVolume volume, PRTProbe probe)
-        {
-            var factorIndices = volume.GetAllProbes()[probe.Index];
-            cmd.SetComputeVectorParam(_probeRelightCS, ShaderProperties._probePos,
-                new Vector4(probe.Position.x, probe.Position.y, probe.Position.z, 1));
-            cmd.SetComputeIntParam(_probeRelightCS, ShaderProperties._factorStart, factorIndices.start);
-            cmd.SetComputeIntParam(_probeRelightCS, ShaderProperties._factorCount,
-                factorIndices.end - factorIndices.start + 1);
-            cmd.SetComputeIntParam(_probeRelightCS, ShaderProperties._indexInProbeVolume, probe.Index);
-
-            cmd.SetComputeBufferParam(_probeRelightCS, _probeRelightKernel,
-                ShaderProperties._brickRadiance, _brickRadianceBuffer);
-            cmd.SetComputeBufferParam(_probeRelightCS, _probeRelightKernel,
-                ShaderProperties._factors, _factorBuffer);
-            cmd.SetComputeTextureParam(_probeRelightCS, _probeRelightKernel,
-                ShaderProperties._coefficientVoxel3D, volume.CoefficientVoxel3D);
-            cmd.SetComputeTextureParam(_probeRelightCS, _probeRelightKernel,
-                ShaderProperties._validityVoxel3D, volume.ValidityVoxel3D);
-            cmd.SetComputeBufferParam(_probeRelightCS, _probeRelightKernel,
-                ShaderProperties._validityMasks, _validityMaskBuffer);
-
-#if UNITY_EDITOR
-            // Debug data
-            if (volume.debugMode == ProbeVolumeDebugMode.ProbeRadiance)
-            {
-                var debugData = volume.GetProbeDebugData(probe.Index);
-                cmd.SetBufferData(debugData.CoefficientSH9, _coefficientClearValue);
-                cmd.SetComputeBufferParam(_probeRelightCS, _probeRelightKernel, ShaderProperties._coefficientSH9, debugData.CoefficientSH9);
-            }
-#endif
-            cmd.DispatchCompute(_probeRelightCS, _probeRelightKernel, 1, 1, 1);
         }
 
         private void ReleaseVolumeBuffer()

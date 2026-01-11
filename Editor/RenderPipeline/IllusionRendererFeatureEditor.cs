@@ -11,7 +11,6 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _requireHistoryColor;
         private SerializedProperty _requireEarlyMotionVector;
         private SerializedProperty _preferComputeShader;
-        private SerializedProperty _nativeRenderPass;
 
         // Transparency Settings
         private SerializedProperty _orderIndependentTransparency;
@@ -51,7 +50,6 @@ namespace Illusion.Rendering.Editor
             _requireHistoryColor = Properties.Find(feature => feature.requireHistoryColor);
             _requireEarlyMotionVector = Properties.Find(feature => feature.requireEarlyMotionVector);
             _preferComputeShader = Properties.Find(feature => feature.preferComputeShader);
-            _nativeRenderPass = Properties.Find(feature => feature.nativeRenderPass);
 
             // Transparency Settings
             _orderIndependentTransparency = Properties.Find(feature => feature.orderIndependentTransparency);
@@ -121,7 +119,6 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.PropertyField(_requireHistoryColor, Styles.RequireHistoryColorLabel);
                 EditorGUILayout.PropertyField(_requireEarlyMotionVector, Styles.RequireEarlyMotionVectorLabel);
                 EditorGUILayout.PropertyField(_preferComputeShader, Styles.PreferComputeShaderLabel);
-                EditorGUILayout.PropertyField(_nativeRenderPass, Styles.NativeRenderPassLabel);
             }
 
             EditorGUILayout.Space();
@@ -158,7 +155,7 @@ namespace Illusion.Rendering.Editor
         {
             if (Foldout("Shadows", true))
             {
-                EditorUtils.DrawRenderingLayerMask(_perObjectShadowRenderingLayer, Styles.PerObjectShadowRenderingLayerLabel);
+                EditorGUILayout.PropertyField(_perObjectShadowRenderingLayer, Styles.PerObjectShadowRenderingLayerLabel);
                 EditorGUILayout.PropertyField(_transparentReceivePerObjectShadows, Styles.TransparentReceivePerObjectShadowsLabel);
                 EditorGUILayout.PropertyField(_pcssShadows, Styles.PcssShadowsLabel);
                 EditorGUILayout.PropertyField(_contactShadows, Styles.ContactShadowsLabel);
@@ -210,8 +207,6 @@ namespace Illusion.Rendering.Editor
                 "Enable to draw motion vector before rendering objects. Please note that motion vector will be drawn twice when using RenderGraph.");
             public static readonly GUIContent PreferComputeShaderLabel = new("Prefer Compute Shader",
                 "Whether prefer to calculating effects in compute shader if possible.");
-            public static readonly GUIContent NativeRenderPassLabel = new("Native Render Pass",
-                "Enables IllusionRP to use native render pass API. No need when using RenderGraph.");
 
             // Transparency Settings
             public static readonly GUIContent OrderIndependentTransparencyLabel = new("Order Independent Transparency",

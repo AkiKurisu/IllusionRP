@@ -33,15 +33,6 @@ namespace Illusion.Rendering.PRTGI
 
         #endregion
 
-        #region Initialization Methods
-
-        public ReflectionNormalization()
-        {
-            displayName = "Reflection Normalization";
-        }
-
-        #endregion
-
         #region Volume Component Methods
 
         private void OnValidate()

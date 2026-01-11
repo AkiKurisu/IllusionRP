@@ -1,9 +1,6 @@
 ﻿using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Assertions;
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -20,26 +17,14 @@ namespace Illusion.Rendering
             renderPassEvent = IllusionRenderPassEvent.SetGlobalVariablesPass;
             profilingSampler = new ProfilingSampler("Set Global Variables");
         }
-        
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                _rendererData.PushGlobalBuffers(cmd, ref renderingData);
-                _rendererData.BindHistoryColor(cmd, renderingData);
-                _rendererData.BindAmbientProbe(cmd);
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-               
-#if UNITY_2023_1_OR_NEWER
+
         private class SetGlobalVariablesPassData
         {
             internal IllusionRendererData RendererData;
             
-            internal RenderingData RenderingData;
+            internal UniversalCameraData CameraData;
+
+            internal UniversalLightData LightData;
 
             internal TextureHandle ActiveColor;
             
@@ -48,26 +33,28 @@ namespace Illusion.Rendering
             internal TextureHandle MotionVectorColor;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph,  ContextContainer frameData)
         {
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var lightData = frameData.Get<UniversalLightData>();
             using (var builder = renderGraph.AddComputePass<SetGlobalVariablesPassData>("Set Global Variables", out var passData, profilingSampler))
             {
-                UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-                TextureHandle cameraColor = renderer.activeColorTexture;
+                var resource = frameData.Get<UniversalResourceData>();
+                TextureHandle cameraColor = resource.activeColorTexture;
                 builder.UseTexture(cameraColor);
                 passData.ActiveColor = cameraColor;
                 
                 passData.RendererData = _rendererData;
-                passData.RenderingData = renderingData;
+                passData.CameraData = cameraData;
+                passData.LightData = lightData;
                 
-                var previousFrameRT = _rendererData.GetPreviousFrameColorRT(renderingData.cameraData, out _);
+                var previousFrameRT = _rendererData.GetPreviousFrameColorRT(frameData, out _);
                 if (!previousFrameRT.IsValid()) previousFrameRT = _rendererData.GetBlackTextureRT();
                 
                 passData.PreviousFrameColor = renderGraph.ImportTexture(previousFrameRT);
-                frameResources.SetTexture(IllusionFrameResource.PreviousFrameColor, passData.PreviousFrameColor);
                 builder.UseTexture(passData.PreviousFrameColor);
                 
-                var motionVectorColorRT = renderer.resources.GetTexture(UniversalResource.MotionVectorColor);
+                var motionVectorColorRT = resource.motionVectorColor;
                 passData.MotionVectorColor = motionVectorColorRT;
                 builder.UseTexture(motionVectorColorRT);
                 
@@ -76,13 +63,12 @@ namespace Illusion.Rendering
 
                 builder.SetRenderFunc(static (SetGlobalVariablesPassData data, ComputeGraphContext context) =>
                 {
-                    data.RendererData.PushGlobalBuffers(context.cmd, data.ActiveColor, ref data.RenderingData);
+                    data.RendererData.PushGlobalBuffers(context.cmd, data.ActiveColor, data.CameraData, data.LightData);
                     context.cmd.SetGlobalTexture(IllusionShaderProperties._HistoryColorTexture, data.PreviousFrameColor);
                     context.cmd.SetGlobalTexture(IllusionShaderProperties._MotionVectorTexture, data.MotionVectorColor);
                     data.RendererData.BindAmbientProbe(context.cmd);
                 });
             }
         }
-#endif
     }
 }

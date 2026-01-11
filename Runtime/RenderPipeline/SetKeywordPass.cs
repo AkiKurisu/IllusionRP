@@ -20,10 +20,8 @@
  */
 
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -42,40 +40,26 @@ namespace Illusion.Rendering
             _state = state;
             profilingSampler = new ProfilingSampler(_name = $"Set Keyword {keyword} to {state}");
         }
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                CoreUtils.SetKeyword(cmd, _keyword, _state);
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
         
-#if UNITY_2023_1_OR_NEWER
         private class SetKeywordPassData
         {
             internal string Keyword;
             internal bool State;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
-            ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            using (var builder = renderGraph.AddLowLevelPass<SetKeywordPassData>(_name, out var passData, profilingSampler))
+            using (var builder = renderGraph.AddUnsafePass<SetKeywordPassData>(_name, out var passData, profilingSampler))
             {
                 passData.Keyword = _keyword;
                 passData.State = _state;
                 builder.AllowPassCulling(false);
 
-                builder.SetRenderFunc(static (SetKeywordPassData data, LowLevelGraphContext context) =>
+                builder.SetRenderFunc(static (SetKeywordPassData data, UnsafeGraphContext context) =>
                 {
                     CoreUtils.SetKeyword(context.cmd, data.Keyword, data.State);
                 });
             }
         }
-#endif
     }
 }

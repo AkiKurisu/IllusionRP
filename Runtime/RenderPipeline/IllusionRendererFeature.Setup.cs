@@ -1,9 +1,7 @@
 using System;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -28,21 +26,15 @@ namespace Illusion.Rendering
                 profilingSampler = new ProfilingSampler("Global Setup");
             }
 
-#if UNITY_2023_1_OR_NEWER
-            public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
-                ref RenderingData renderingData)
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
             {
                 using (new ProfilingScope((CommandBuffer)null, profilingSampler))
                 {
+                    var renderingData = new RenderingData(frameData);
                     _rendererFeature.PerformSetup(renderingData.cameraData.renderer, ref renderingData, _rendererData);
                 }
             }
-#endif
-            public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-            {
-                // pass
-            } 
-
+            
             public void Dispose()
             {
                 // pass

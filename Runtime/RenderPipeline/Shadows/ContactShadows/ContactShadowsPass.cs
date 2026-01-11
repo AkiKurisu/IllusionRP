@@ -3,9 +3,7 @@ using UnityEngine.Rendering;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using System;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Illusion.Rendering.Shadows
 {
@@ -28,33 +26,21 @@ namespace Illusion.Rendering.Shadows
             _deferredContactShadowKernel = _contactShadowComputeShader.FindKernel("ContactShadowMap");
         }
 
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        private void PrepareTexture(UniversalCameraData cameraData)
         {
-            PrepareTexture(ref renderingData);
-        }
-
-        private void PrepareTexture(ref RenderingData renderingData)
-        {
-            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            var desc = cameraData.cameraTargetDescriptor;
             desc.enableRandomWrite = true;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
-#if UNITY_2023_1_OR_NEWER
             desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
                 ? GraphicsFormat.R8_UNorm
                 : GraphicsFormat.B8G8R8A8_UNorm;
-#else
-            desc.graphicsFormat = RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R8_UNorm, FormatUsage.Linear | FormatUsage.Render)
-                ? GraphicsFormat.R8_UNorm
-                : GraphicsFormat.B8G8R8A8_UNorm;
-#endif
 
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ContactShadowsRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ContactShadowsRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ContactShadowMap");
         }
 
-        private void PrepareContactShadowParameters(ref RenderingData renderingData, 
-            out Vector4 params1, out Vector4 params2, out Vector4 params3)
+        private void PrepareContactShadowParameters(out Vector4 params1, out Vector4 params2, out Vector4 params3)
         {
             var contactShadows = VolumeManager.instance.stack.GetComponent<ContactShadows>();
 
@@ -69,37 +55,16 @@ namespace Illusion.Rendering.Shadows
             params2 = new Vector4(0, contactShadowMinDist, contactShadowFadeIn, contactShadows.rayBias.value * 0.01f);
             params3 = new Vector4(contactShadows.sampleCount.value, contactShadows.thicknessScale.value * 10.0f, Time.renderedFrameCount % 8, 0);
         }
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            var cameraData = renderingData.cameraData;
+            var cameraData = frameData.Get<UniversalCameraData>();
             var camera = cameraData.camera;
 
-            PrepareContactShadowParameters(ref renderingData, out var params1, out var params2, out var params3);
-
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, _contactShadowMapProfile))
-            {
-                cmd.SetComputeVectorParam(_contactShadowComputeShader, ShaderIDs._ContactShadowParamsParameters, params1);
-                cmd.SetComputeVectorParam(_contactShadowComputeShader, ShaderIDs._ContactShadowParamsParameters2, params2);
-                cmd.SetComputeVectorParam(_contactShadowComputeShader, ShaderIDs._ContactShadowParamsParameters3, params3);
-                cmd.SetComputeTextureParam(_contactShadowComputeShader, _deferredContactShadowKernel, ShaderIDs._ContactShadowTextureUAV, _rendererData.ContactShadowsRT);
-                cmd.DispatchCompute(_contactShadowComputeShader, _deferredContactShadowKernel, Mathf.CeilToInt(camera.pixelWidth / 8.0f), Mathf.CeilToInt(camera.pixelHeight / 8.0f), 1);
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
-        {
-            var cameraData = renderingData.cameraData;
-            var camera = cameraData.camera;
-
-            PrepareTexture(ref renderingData);
+            PrepareTexture(cameraData);
                 
             // Prepare parameters
-            PrepareContactShadowParameters(ref renderingData, out var params1, out var params2, out var params3);
+            PrepareContactShadowParameters(out var params1, out var params2, out var params3);
 
             // Import contact shadow RT
             TextureHandle contactShadowHandle = renderGraph.ImportTexture(_rendererData.ContactShadowsRT);
@@ -111,7 +76,8 @@ namespace Illusion.Rendering.Shadows
                 passData.Params1 = params1;
                 passData.Params2 = params2;
                 passData.Params3 = params3;
-                passData.ContactShadowRT = builder.UseTexture(contactShadowHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(contactShadowHandle, AccessFlags.Write);
+                passData.ContactShadowRT = contactShadowHandle;
                 passData.DispatchX = Mathf.CeilToInt(camera.pixelWidth / 8.0f);
                 passData.DispatchY = Mathf.CeilToInt(camera.pixelHeight / 8.0f);
 
@@ -139,7 +105,6 @@ namespace Illusion.Rendering.Shadows
             public int DispatchX;
             public int DispatchY;
         }
-#endif
 
         public void Dispose()
         {

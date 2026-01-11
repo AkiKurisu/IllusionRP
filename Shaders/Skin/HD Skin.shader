@@ -212,7 +212,7 @@ Shader "Universal Render Pipeline/HD Skin"
 			#pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
 			
 			// #pragma multi_compile_fragment _ _LIGHT_COOKIES
-			#pragma multi_compile _ _FORWARD_PLUS
+			#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 			#define _SCREEN_SPACE_SSS 1
 
 			#pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
@@ -699,7 +699,7 @@ Shader "Universal Render Pipeline/HD Skin"
 			#pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
 			
 			// #pragma multi_compile_fragment _ _LIGHT_COOKIES
-			#pragma multi_compile _ _FORWARD_PLUS
+			#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 
 			#pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
 			#pragma multi_compile _ SHADOWS_SHADOWMASK

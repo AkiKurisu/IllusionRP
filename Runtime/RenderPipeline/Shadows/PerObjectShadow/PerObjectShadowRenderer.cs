@@ -98,7 +98,7 @@ namespace Illusion.Rendering.Shadows
 
         public ShadowCasterClusterData[] clusterData;
 
-        public uint renderingLayerMask;
+        public RenderingLayerMask renderingLayerMask;
 
         private readonly Lazy<MaterialPropertyBlock> _propertyBlock = new();
         

@@ -1,10 +1,8 @@
 ﻿using System;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -15,9 +13,7 @@ namespace Illusion.Rendering
     {
         private const string DepthProfilerTag = "Transparent Post Depth";
 
-        private FilteringSettings _filteringSettings;
-
-        private RenderStateBlock _renderStateBlock;
+        private readonly FilteringSettings _filteringSettings;
 
         private static readonly ShaderTagId PostDepthNormalsTagId = new("PostDepthOnly");
 
@@ -25,79 +21,37 @@ namespace Illusion.Rendering
         {
             renderPassEvent = IllusionRenderPassEvent.TransparentDepthOnlyPostPass;
             _filteringSettings = new FilteringSettings(RenderQueueRange.all);
-            _renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
             profilingSampler = new ProfilingSampler("Transparent Post Depth");
-#if UNITY_2023_1_OR_NEWER
-            ConfigureInput(ScriptableRenderPassInput.Depth);
-#endif
-        }
-
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
             ConfigureInput(ScriptableRenderPassInput.Depth);
         }
 
-        private void DoDepthOnly(CommandBuffer cmd, ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderingData.cameraData.renderer);
-            if (!depthTexture.IsValid()) return;
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
-            cmd.SetRenderTarget(depthTexture);
-            context.ExecuteCommandBuffer(cmd);
-            var drawSettings = RenderingUtils.CreateDrawingSettings(PostDepthNormalsTagId,
-                ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
-#if UNITY_2023_1_OR_NEWER
-            var rendererList = default(RendererList);
-            RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, _filteringSettings, _renderStateBlock, ref rendererList);
-            cmd.DrawRendererList(rendererList);
-#else
-            context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref _filteringSettings, ref _renderStateBlock);
-#endif
-        }
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-#if UNITY_EDITOR
-            if (renderingData.cameraData.cameraType == CameraType.Preview)
-                return;
-#endif
-
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, new ProfilingSampler(DepthProfilerTag)))
-            {
-                DoDepthOnly(cmd, context, ref renderingData);
-            }
-
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
         private class PassData
         {
             internal RendererListHandle RendererList;
             internal TextureHandle DepthTexture;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var renderingData = frameData.Get<UniversalRenderingData>();
 #if UNITY_EDITOR
-            if (renderingData.cameraData.cameraType == CameraType.Preview)
+            if (cameraData.cameraType == CameraType.Preview)
                 return;
 #endif
 
-            TextureHandle depthTexture = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+            TextureHandle depthTexture = resource.cameraDepthTexture;
             if (!depthTexture.IsValid()) return;
 
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))
             {
                 // Setup depth texture
-                passData.DepthTexture = builder.UseTextureFragmentDepth(depthTexture);
+                builder.SetRenderAttachmentDepth(depthTexture);
+                passData.DepthTexture = depthTexture;
 
                 // Setup renderer list
-                var drawSettings = RenderingUtils.CreateDrawingSettings(PostDepthNormalsTagId,
-                    ref renderingData, renderingData.cameraData.defaultOpaqueSortFlags);
+                var drawSettings = UniversalRenderingUtility.CreateDrawingSettings(PostDepthNormalsTagId, frameData, cameraData.defaultOpaqueSortFlags);
                 var rendererListParams = new RendererListParams(renderingData.cullResults, drawSettings, _filteringSettings);
                 passData.RendererList = renderGraph.CreateRendererList(rendererListParams);
                 builder.UseRendererList(passData.RendererList);
@@ -111,7 +65,6 @@ namespace Illusion.Rendering
                 });
             }
         }
-#endif
 
         public void Dispose()
         {

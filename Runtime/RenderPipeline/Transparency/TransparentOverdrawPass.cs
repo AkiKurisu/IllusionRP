@@ -1,11 +1,8 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -40,14 +37,11 @@ namespace Illusion.Rendering
 
         private readonly List<ShaderTagId> _shaderTagIdList = new();
 
-        private PassData _passData;
-
         private static readonly int DrawObjectPassDataPropID = Shader.PropertyToID("_DrawObjectPassData");
 
         private TransparentOverdrawPass(ShaderTagId[] shaderTagIds, RenderPassEvent evt, RenderQueueRange renderQueueRange, 
             LayerMask layerMask, StencilState stencilState, int stencilReference)
         {
-            _passData = new PassData();
             profilingSampler = new ProfilingSampler("Transparent Overdraw");
             foreach (var sid in shaderTagIds)
             {
@@ -73,65 +67,44 @@ namespace Illusion.Rendering
             : this(new ShaderTagId[] { new("SRPDefaultUnlit"), new("UniversalForward"), new("UniversalForwardOnly") },
                 evt, renderQueueRange, layerMask, stencilState, stencilReference)
         { }
-
-#if UNITY_2023_1_OR_NEWER
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
-        {
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle colorTarget = renderer.activeColorTexture;
-            TextureHandle depthTarget = frameResources.GetTexture(UniversalResource.CameraDepth); // Restore to offscreen depth
-
-            Render(renderGraph, colorTarget, depthTarget, ref renderingData);
-        }
-#endif
         
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            _passData.RenderStateBlock = _renderStateBlock;
-            _passData.FilteringSettings = _filteringSettings;
-            _passData.ShaderTagIdList = _shaderTagIdList;
+            var resource = frameData.Get<UniversalResourceData>();
+            TextureHandle colorTarget = resource.activeColorTexture;
+            TextureHandle depthTarget = resource.cameraDepth; // Restore to offscreen depth
 
-#if !UNITY_2023_1_OR_NEWER
-            ExecutePass(context, _passData, ref renderingData, renderingData.cameraData.IsCameraProjectionMatrixFlipped());
-#else
-            InitRendererLists(ref renderingData, ref _passData, context, null, false);
-
-            using (new ProfilingScope(renderingData.commandBuffer, profilingSampler))
-            {
-                ExecutePass(CommandBufferHelpers.GetRasterCommandBuffer(renderingData.commandBuffer), _passData, 
-                    _passData.RendererList, _passData.ObjectsWithErrorRendererList,
-                    ref renderingData, renderingData.cameraData.IsCameraProjectionMatrixFlipped());
-            }
-#endif
+            Render(renderGraph, colorTarget, depthTarget, frameData);
         }
 
-#if UNITY_2023_1_OR_NEWER
-        private static void InitRendererLists(ref RenderingData renderingData, ref PassData passData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
+        private static void InitRendererLists(ContextContainer frameData, ref PassData passData, ScriptableRenderContext context, RenderGraph renderGraph, bool useRenderGraph)
         {
-            Camera camera = renderingData.cameraData.camera;
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var renderingData = frameData.Get<UniversalRenderingData>();
+            Camera camera = cameraData.camera;
             var sortFlags = SortingCriteria.CommonTransparent;
             var filterSettings = passData.FilteringSettings;
 
 #if UNITY_EDITOR
             // When rendering the preview camera, we want the layer mask to be forced to Everything
-            if (renderingData.cameraData.isPreviewCamera)
+            if (cameraData.isPreviewCamera)
             {
                 filterSettings.layerMask = -1;
             }
 #endif
 
-            DrawingSettings drawSettings = RenderingUtils.CreateDrawingSettings(passData.ShaderTagIdList, ref renderingData, sortFlags);
+            DrawingSettings drawSettings = UniversalRenderingUtility.CreateDrawingSettings(passData.ShaderTagIdList, frameData, sortFlags);
             
-            var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
+            var activeDebugHandler = GetActiveDebugHandler(cameraData);
             if (useRenderGraph)
             {
                 if (activeDebugHandler != null)
                 {
-                    passData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(renderGraph, ref renderingData, ref drawSettings, ref filterSettings, ref passData.RenderStateBlock);
+                    passData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(renderGraph, ref renderingData.cullResults, ref drawSettings, ref filterSettings, ref passData.RenderStateBlock);
                 }
                 else
                 {
-                    RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, renderingData, drawSettings, filterSettings, passData.RenderStateBlock, ref passData.RendererListHdl);
+                    RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, ref renderingData.cullResults, drawSettings, filterSettings, passData.RenderStateBlock, ref passData.RendererListHdl);
                     RenderingUtils.CreateRendererListObjectsWithError(renderGraph, ref renderingData.cullResults, camera, filterSettings, sortFlags, ref passData.ObjectsWithErrorRendererListHdl);
                 }
             }
@@ -139,87 +112,17 @@ namespace Illusion.Rendering
             {
                 if (activeDebugHandler != null)
                 {
-                    passData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(context, ref renderingData, ref drawSettings, ref filterSettings, ref passData.RenderStateBlock);
+                    passData.DebugRendererLists = activeDebugHandler.CreateRendererListsWithDebugRenderState(context, ref renderingData.cullResults, ref drawSettings, ref filterSettings, ref passData.RenderStateBlock);
                 }
                 else
                 {
-                    RenderingUtils.CreateRendererListWithRenderStateBlock(context, renderingData, drawSettings, filterSettings, passData.RenderStateBlock, ref passData.RendererList);
+                    RenderingUtils.CreateRendererListWithRenderStateBlock(context, ref renderingData.cullResults, drawSettings, filterSettings, passData.RenderStateBlock, ref passData.RendererList);
                     RenderingUtils.CreateRendererListObjectsWithError(context, ref renderingData.cullResults, camera, filterSettings, sortFlags, ref passData.ObjectsWithErrorRendererList);
                 }
             }
         }
-#endif
 
-#if !UNITY_2023_1_OR_NEWER
-        private void ExecutePass(ScriptableRenderContext context, PassData data, ref RenderingData renderingData, bool yFlip)
-        {
-            var cmd = renderingData.commandBuffer;
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                // Global render pass data containing various settings.
-                // x,y,z are currently unused
-                // w is used for knowing whether the object is opaque(1) or alpha blended(0)
-                Vector4 drawObjectPassData = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-                cmd.SetGlobalVector(DrawObjectPassDataPropID, drawObjectPassData);
-
-                // scaleBias.x = flipSign
-                // scaleBias.y = scale
-                // scaleBias.z = bias
-                // scaleBias.w = unused
-                float flipSign = yFlip ? -1.0f : 1.0f;
-                Vector4 scaleBias = (flipSign < 0.0f)
-                    ? new Vector4(flipSign, 1.0f, -1.0f, 1.0f)
-                    : new Vector4(flipSign, 0.0f, 1.0f, 1.0f);
-                cmd.SetGlobalVector(ShaderPropertyId.scaleBiasRt, scaleBias);
-
-                // Set a value that can be used by shaders to identify when AlphaToMask functionality may be active
-                // The material shader alpha clipping logic requires this value in order to function correctly in all cases.
-                float alphaToMaskAvailable = 0.0f;
-                cmd.SetGlobalFloat(ShaderPropertyId.alphaToMaskAvailable, alphaToMaskAvailable);
-
-                context.ExecuteCommandBuffer(cmd);
-                cmd.Clear();
-
-                Camera camera = renderingData.cameraData.camera;
-                var sortFlags = SortingCriteria.CommonTransparent;
-
-                var filterSettings = data.FilteringSettings;
-
-#if UNITY_EDITOR
-                // When rendering the preview camera, we want the layer mask to be forced to Everything
-                if (renderingData.cameraData.isPreviewCamera)
-                {
-                    filterSettings.layerMask = -1;
-                }
-#endif
-
-                DrawingSettings drawSettings = RenderingUtils.CreateDrawingSettings(data.ShaderTagIdList, ref renderingData, sortFlags);
-
-                var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
-                if (activeDebugHandler != null)
-                {
-                    activeDebugHandler.DrawWithDebugRenderState(context, cmd, ref renderingData, ref drawSettings, ref filterSettings, ref data.RenderStateBlock,
-                        (ScriptableRenderContext ctx, ref RenderingData rd, ref DrawingSettings ds, ref FilteringSettings fs, ref RenderStateBlock rsb) =>
-                        {
-                            ctx.DrawRenderers(rd.cullResults, ref ds, ref fs, ref rsb);
-                        });
-                }
-                else
-                {
-                    context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref filterSettings, ref data.RenderStateBlock);
-
-                    // Render objects that did not match any shader pass with error shader
-                    RenderingUtils.RenderObjectsWithError(context, ref renderingData.cullResults, camera, filterSettings, SortingCriteria.None);
-                }
-
-                // Clean up
-                CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.WriteRenderingLayers, false);
-                context.ExecuteCommandBuffer(cmd);
-                cmd.Clear();
-            }
-        }
-#else
-        private static void ExecutePass(RasterCommandBuffer cmd, PassData data, RendererList rendererList, RendererList objectsWithErrorRendererList, ref RenderingData renderingData, bool yFlip)
+        private static void ExecutePass(RasterCommandBuffer cmd, PassData data, RendererList rendererList, RendererList objectsWithErrorRendererList, UniversalCameraData cameraData, bool yFlip)
         {
             // Global render pass data containing various settings.
             // x,y,z are currently unused
@@ -242,7 +145,7 @@ namespace Illusion.Rendering
             float alphaToMaskAvailable = 0.0f;
             cmd.SetGlobalFloat(ShaderPropertyId.alphaToMaskAvailable, alphaToMaskAvailable);
 
-            var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
+            var activeDebugHandler = GetActiveDebugHandler(cameraData);
             if (activeDebugHandler != null)
             {
                 data.DebugRendererLists.DrawWithRendererList(cmd);
@@ -254,26 +157,30 @@ namespace Illusion.Rendering
                 RenderingUtils.DrawRendererListObjectsWithError(cmd, ref objectsWithErrorRendererList);
             }
         }
-#endif
 
-#if UNITY_2023_1_OR_NEWER
-        private void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ref RenderingData renderingData)
+        private void Render(RenderGraph renderGraph, TextureHandle colorTarget, TextureHandle depthTarget, ContextContainer frameData)
         {
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Transparent Overdraw", out var passData, profilingSampler))
             {
                 passData.RenderStateBlock = _renderStateBlock;
                 passData.FilteringSettings = _filteringSettings;
                 passData.ShaderTagIdList = _shaderTagIdList;
-                passData.RenderingData = renderingData;
 
                 if (colorTarget.IsValid())
-                    passData.ColorHandle = builder.UseTextureFragment(colorTarget, 0);
+                {
+                    builder.SetRenderAttachment(colorTarget, 0);
+                    passData.ColorHandle = colorTarget;
+                }
 
                 if (depthTarget.IsValid())
-                    passData.DepthHandle = builder.UseTextureFragmentDepth(depthTarget);
+                {
+                    builder.SetRenderAttachmentDepth(depthTarget);
+                    passData.DepthHandle = depthTarget;
+                }
 
-                InitRendererLists(ref renderingData, ref passData, default, renderGraph, true);
-                var activeDebugHandler = GetActiveDebugHandler(ref renderingData);
+                InitRendererLists(frameData, ref passData, default, renderGraph, true);
+                var cameraData = frameData.Get<UniversalCameraData>();
+                var activeDebugHandler = GetActiveDebugHandler(cameraData);
                 if (activeDebugHandler != null)
                 {
                     passData.DebugRendererLists.PrepareRendererListForRasterPass(builder);
@@ -284,20 +191,20 @@ namespace Illusion.Rendering
                     builder.UseRendererList(passData.ObjectsWithErrorRendererListHdl);
                 }
 
+                passData.CameraData = cameraData;
+
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
                 builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {
-                    ref var renderingData = ref data.RenderingData;
-                    bool yFlip = renderingData.cameraData.IsRenderTargetProjectionMatrixFlipped(data.ColorHandle, data.DepthHandle);
+                    bool yFlip = data.CameraData.IsRenderTargetProjectionMatrixFlipped(data.ColorHandle, data.DepthHandle);
 
-                    ExecutePass(context.cmd, data, data.RendererListHdl, data.ObjectsWithErrorRendererListHdl, ref renderingData, yFlip);
+                    ExecutePass(context.cmd, data, data.RendererListHdl, data.ObjectsWithErrorRendererListHdl, data.CameraData, yFlip);
                 });
             }
         }
-#endif
-
+        
         private class PassData
         {
             internal RenderStateBlock RenderStateBlock;
@@ -311,7 +218,7 @@ namespace Illusion.Rendering
             
             internal TextureHandle DepthHandle;
             
-            internal RenderingData RenderingData;
+            internal UniversalCameraData CameraData;
             
             internal RendererListHandle RendererListHdl;
             

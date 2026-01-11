@@ -83,7 +83,7 @@ namespace Illusion.Rendering
         #region Shadows
 
         [SerializeField]
-        internal uint perObjectShadowRenderingLayer;
+        internal RenderingLayerMask perObjectShadowRenderingLayer;
 
         /// <summary>
         /// When enabled, transparent objects will sample per object shadow which will decrease performance."
@@ -291,12 +291,12 @@ namespace Illusion.Rendering
             _enablePRTGIPass = new SetKeywordPass(IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION, true, RenderPassEvent.BeforeRendering);
             _disablePRTGIPass = new SetKeywordPass(IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION, false, RenderPassEvent.BeforeRendering);
 
-            _weightedBlendedOitPass = new WeightedBlendedOITPass(oitFilterLayer, _rendererData);
+            _weightedBlendedOitPass = new WeightedBlendedOITPass(oitFilterLayer);
             _transparentOverdrawPass = TransparentOverdrawPass.Create(oitOverrideStencil);
             _transparentDepthNormalPostPass = new TransparentDepthNormalPostPass();
             _transparentDepthOnlyPass = new TransparentDepthOnlyPostPass();
-            _transparentCopyPreDepthPass = TransparentCopyPreDepthPass.Create(_rendererData);
-            _transparentCopyPostDepthPass = TransparentCopyPostDepthPass.Create();
+            _transparentCopyPreDepthPass = new TransparentCopyPreDepthPass(_rendererData);
+            _transparentCopyPostDepthPass = new TransparentCopyPostDepthPass();
 
             _screenSpaceReflectionPass = new ScreenSpaceReflectionPass(_rendererData);
             _screenSpaceReflectionSyncFencePass = new SyncGraphicsFencePass(RenderPassEvent.BeforeRenderingOpaques, IllusionGraphicsFenceEvent.ScreenSpaceReflection, _rendererData);
@@ -544,13 +544,6 @@ namespace Illusion.Rendering
             // AfterRenderingPostProcessing
             renderer.EnqueuePass(_processingPostPass);
         }
-
-        public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
-        {
-            RenderingData renderingDataCopy = renderingData;
-            PerformSetup(renderingData.cameraData.renderer, 
-                ref renderingDataCopy, _rendererData);
-        }
         
         // Ref: MainLightShadowCasterPass.Setup
         private static bool CanRenderMainLightShadow(ref RenderingData renderingData)
@@ -591,8 +584,7 @@ namespace Illusion.Rendering
             UpdateRenderDataSettings();
             rendererData.Update(renderer, in renderingData);
             var config = IllusionRuntimeRenderingConfig.Get();
-            bool isPreviewOrReflectCamera =
-                renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
+            bool isPreviewOrReflectCamera = renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
 
             var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
             rendererData.ContactShadowsSampling = contactShadows
@@ -665,11 +657,6 @@ namespace Illusion.Rendering
                                                 && SystemInfo.supportsComputeShaders
                                                 && config.EnableComputeShader;
             _rendererData.RequireHistoryColor = requireHistoryColor;
-            _rendererData.NativeRenderPass = nativeRenderPass
-#if !UNITY_2023_1_OR_NEWER
-                                             && SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2
-#endif
-                                             && config.EnableNativeRenderPass;
             _rendererData.EnableIndirectDiffuseRenderingLayers = enableIndirectDiffuseRenderingLayers;
         }
 

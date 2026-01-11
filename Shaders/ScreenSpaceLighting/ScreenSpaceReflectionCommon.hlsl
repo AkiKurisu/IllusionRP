@@ -4,7 +4,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
-#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityGBuffer.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutput.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Raytracing/RaytracingSampling.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/ScreenSpaceLighting/ShaderVariablesScreenSpaceReflection.hlsl"

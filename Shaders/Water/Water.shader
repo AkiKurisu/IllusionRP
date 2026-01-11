@@ -237,7 +237,7 @@ Shader "Universal Render Pipeline/Water"
 			
 			// Remove cookies variant
 			// #pragma multi_compile_fragment _ _LIGHT_COOKIES
-			#pragma multi_compile _ _FORWARD_PLUS
+			#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 
 			#pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
 			#pragma multi_compile _ SHADOWS_SHADOWMASK
@@ -359,7 +359,6 @@ Shader "Universal Render Pipeline/Water"
 			SAMPLER(sampler_Normal_Map);
 			TEXTURE2D(_Blend_Map);
 			SAMPLER(sampler_Blend_Map);
-			uniform float4 _CameraDepthTexture_TexelSize;
 
 
 			//#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/Varyings.hlsl"

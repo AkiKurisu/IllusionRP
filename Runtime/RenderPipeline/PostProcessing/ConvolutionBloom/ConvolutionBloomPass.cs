@@ -3,11 +3,8 @@ using System;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-using UObject = UnityEngine.Object;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.PostProcessing
 {
@@ -82,13 +79,6 @@ namespace Illusion.Rendering.PostProcessing
             _bloomBlendMaterial = new LazyMaterial(IllusionShaders.ConvolutionBloomBlend);
             _psfRemapMaterial = new LazyMaterial(IllusionShaders.ConvolutionBloomPsfRemap);
             _psfGeneratorMaterial = new LazyMaterial(IllusionShaders.ConvolutionBloomPsfGenerator);
-#if UNITY_2023_1_OR_NEWER
-            ConfigureInput(ScriptableRenderPassInput.Color);
-#endif
-        }
-
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
             ConfigureInput(ScriptableRenderPassInput.Color);
         }
 
@@ -123,7 +113,7 @@ namespace Illusion.Rendering.PostProcessing
                 enableRandomWrite = true,
                 useMipMap = false
             };
-            RenderingUtils.ReAllocateIfNeeded(ref _otf, otfDesc, name: "ConvolutionBloom_OTF");
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _otf, otfDesc, name: "ConvolutionBloom_OTF");
 
             // Allocate FFT target texture
             var fftTargetDesc = new RenderTextureDescriptor(width, targetTexHeight, format, 0)
@@ -131,7 +121,7 @@ namespace Illusion.Rendering.PostProcessing
                 enableRandomWrite = true,
                 useMipMap = false
             };
-            RenderingUtils.ReAllocateIfNeeded(ref _fftTarget, fftTargetDesc, wrapMode: TextureWrapMode.Clamp, name: "ConvolutionBloom_FFTTarget");
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _fftTarget, fftTargetDesc, wrapMode: TextureWrapMode.Clamp, name: "ConvolutionBloom_FFTTarget");
 
             // Allocate PSF texture
             var psfDesc = new RenderTextureDescriptor(width, height, format, 0)
@@ -139,7 +129,7 @@ namespace Illusion.Rendering.PostProcessing
                 enableRandomWrite = true,
                 useMipMap = false
             };
-            RenderingUtils.ReAllocateIfNeeded(ref _psf, psfDesc, name: "ConvolutionBloom_PSF");
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _psf, psfDesc, name: "ConvolutionBloom_PSF");
         }
 
         public void Dispose()
@@ -158,127 +148,7 @@ namespace Illusion.Rendering.PostProcessing
             _psfRemapMaterial.DestroyCache();
             _psfGeneratorMaterial.DestroyCache();
         }
-        
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var bloomParams = VolumeManager.instance.stack.GetComponent<ConvolutionBloom>();
-            if (bloomParams == null) return;
-            if (!bloomParams.IsActive()) return;
-            float threshold = bloomParams.threshold.value;
-            float thresholdKnee = bloomParams.scatter.value;
-            float clampMax = bloomParams.clamp.value;
-            float intensity = bloomParams.intensity.value;
-            var fftExtend = bloomParams.fftExtend.value;
-            bool highQuality = bloomParams.quality.value == ConvolutionBloomQuality.High;
 
-            UpdateRenderTextureSize(bloomParams);
-
-            var cmd = CommandBufferPool.Get();
-
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                var targetX = renderingData.cameraData.camera.pixelWidth;
-                var targetY = renderingData.cameraData.camera.pixelHeight;
-                if (bloomParams.IsParamUpdated())
-                {
-                    OpticalTransferFunctionUpdate(cmd, bloomParams, new Vector2Int(targetX, targetY), highQuality);
-                }
-
-                var colorTargetHandle = renderingData.cameraData.renderer.cameraColorTargetHandle;
-
-                // Bright mask extraction
-                using (new ProfilingScope(cmd, _brightMaskSampler))
-                {
-                    if (!bloomParams.disableReadWriteOptimization.value) fftExtend.y = 0;
-                    _brightMaskMaterial.Value.SetVector(ShaderProperties.FFTExtend, fftExtend);
-                    _brightMaskMaterial.Value.SetFloat(ShaderProperties.Threshold, threshold);
-                    _brightMaskMaterial.Value.SetFloat(ShaderProperties.ThresholdKnee, thresholdKnee);
-                    _brightMaskMaterial.Value.SetFloat(ShaderProperties.MaxClamp, clampMax);
-                    _brightMaskMaterial.Value.SetVector(ShaderProperties.TexelSize, new Vector4(1f / targetX, 1f / targetY, 0, 0));
-                    CoreUtils.SetRenderTarget(cmd, _fftTarget);
-                    Blitter.BlitTexture(cmd, colorTargetHandle, Vector2.one, _brightMaskMaterial.Value, 0);
-                }
-
-                // FFT Convolution
-                using (new ProfilingScope(cmd, _fftConvolutionSampler))
-                {
-                    Vector2Int size = new Vector2Int((int)_convolutionSizeX, (int)_convolutionSizeY);
-                    Vector2Int horizontalRange = Vector2Int.zero;
-                    Vector2Int verticalRange = Vector2Int.zero;
-                    Vector2Int offset = Vector2Int.zero;
-
-                    if (!bloomParams.disableReadWriteOptimization.value)
-                    {
-                        int paddingY = (size.y - _fftTarget.rt.height) / 2;
-                        verticalRange = new Vector2Int(0, _fftTarget.rt.height);
-                        offset = new Vector2Int(0, -paddingY);
-                    }
-
-                    if (bloomParams.disableDispatchMergeOptimization.value)
-                    {
-                        _fftKernel.Convolve(cmd, _fftTarget, _otf, highQuality);
-                    }
-                    else
-                    {
-                        _fftKernel.ConvolveOpt(cmd, _fftTarget, _otf,
-                            size,
-                            horizontalRange,
-                            verticalRange,
-                            offset);
-                    }
-                }
-
-                // Bloom blend
-                using (new ProfilingScope(cmd, _bloomBlendSampler))
-                {
-                    _bloomBlendMaterial.Value.SetVector(ShaderProperties.FFTExtend, fftExtend);
-                    _bloomBlendMaterial.Value.SetFloat(ShaderProperties.Intensity, intensity);
-                    CoreUtils.SetRenderTarget(cmd, colorTargetHandle);
-                    Blitter.BlitTexture(cmd, _fftTarget, Vector2.one, _bloomBlendMaterial.Value, 0);
-                }
-            }
-
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-        private void OpticalTransferFunctionUpdate(CommandBuffer cmd, ConvolutionBloom param, Vector2Int size, bool highQuality)
-        {
-            // PSF Remap/Generation
-            using (new ProfilingScope(cmd, _otfPsfSampler))
-            {
-                _psfRemapMaterial.Value.SetFloat(ShaderProperties.MaxClamp, param.imagePSFMaxClamp.value);
-                _psfRemapMaterial.Value.SetFloat(ShaderProperties.MinClamp, param.imagePSFMinClamp.value);
-                _psfRemapMaterial.Value.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
-                _psfRemapMaterial.Value.SetFloat(ShaderProperties.KernelPow, param.imagePSFPow.value);
-                _psfRemapMaterial.Value.SetFloat(ShaderProperties.KernelScaler, param.imagePSFScale.value);
-                _psfRemapMaterial.Value.SetInt(ShaderProperties.ScreenX, size.x);
-                _psfRemapMaterial.Value.SetInt(ShaderProperties.ScreenY, size.y);
-                if (param.generatePSF.value)
-                {
-                    _psfGeneratorMaterial.Value.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
-                    _psfGeneratorMaterial.Value.SetInt(ShaderProperties.ScreenX, size.x);
-                    _psfGeneratorMaterial.Value.SetInt(ShaderProperties.ScreenY, size.y);
-                    _psfGeneratorMaterial.Value.SetInt(ShaderProperties.EnableRemap, 1);
-                    CoreUtils.SetRenderTarget(cmd, _otf.rt);
-                    Blitter.BlitTexture(cmd, Vector2.one, _psfGeneratorMaterial.Value, 0);
-                }
-                else
-                {
-                    _psfRemapMaterial.Value.SetInt(ShaderProperties.EnableRemap, 1);
-                    CoreUtils.SetRenderTarget(cmd, _otf);
-                    Blitter.BlitTexture(cmd, param.imagePSF.value, Vector2.one, _psfRemapMaterial.Value, 0);
-                }
-            }
-
-            // FFT
-            using (new ProfilingScope(cmd, _otfFftSampler))
-            {
-                _fftKernel.FFT(cmd, _otf, highQuality);
-            }
-        }
-
-#if UNITY_2023_1_OR_NEWER
         // RenderGraph PassData classes
         private class BrightMaskPassData
         {
@@ -320,7 +190,7 @@ namespace Illusion.Rendering.PostProcessing
             internal TextureHandle ImagePsfTexture;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             var bloomParams = VolumeManager.instance.stack.GetComponent<ConvolutionBloom>();
             if (bloomParams == null || !bloomParams.IsActive()) return;
@@ -335,10 +205,11 @@ namespace Illusion.Rendering.PostProcessing
             
             UpdateRenderTextureSize(bloomParams);
 
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle colorTexture = renderer.activeColorTexture;
-            var targetX = renderingData.cameraData.camera.pixelWidth;
-            var targetY = renderingData.cameraData.camera.pixelHeight;
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            TextureHandle colorTexture = resource.activeColorTexture;
+            var targetX = cameraData.camera.pixelWidth;
+            var targetY = cameraData.camera.pixelHeight;
             
             // Update OTF if parameters changed
             if (bloomParams.IsParamUpdated())
@@ -375,8 +246,9 @@ namespace Illusion.Rendering.PostProcessing
                 passData.MaxClamp = maxClamp;
                 passData.TexelSize = new Vector4(1f / screenSize.x, 1f / screenSize.y, 0, 0);
                 
-                passData.Source = builder.UseTexture(source);
-                builder.UseTextureFragment(destination, 0);
+                builder.UseTexture(source);
+                passData.Source = source;
+                builder.SetRenderAttachment(destination, 0);
 
                 builder.AllowPassCulling(false);
 
@@ -409,8 +281,8 @@ namespace Illusion.Rendering.PostProcessing
                 passData.Size = new Vector2Int((int)_convolutionSizeX, (int)_convolutionSizeY);
 
                 // Mark textures as used in the pass
-                builder.UseTexture(fftTarget, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
-                builder.UseTexture(ortFilter, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
+                builder.UseTexture(fftTarget, AccessFlags.ReadWrite);
+                builder.UseTexture(ortFilter, AccessFlags.ReadWrite);
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -448,8 +320,9 @@ namespace Illusion.Rendering.PostProcessing
                 passData.FFTExtend = fftExtend;
                 passData.Intensity = intensity;
                 
-                passData.Source = builder.UseTexture(source);
-                builder.UseTextureFragment(destination, 0);
+                builder.UseTexture(source);
+                passData.Source = source;
+                builder.SetRenderAttachment(destination, 0);
 
                 builder.AllowPassCulling(false);
 
@@ -472,7 +345,8 @@ namespace Illusion.Rendering.PostProcessing
             {
                 passData.PsfRemapMaterial = _psfRemapMaterial.Value;
                 passData.PsfGeneratorMaterial = _psfGeneratorMaterial.Value;
-                passData.OtfTextureHandle = builder.UseTextureFragment(otfHandle, 0);
+                builder.SetRenderAttachment(otfHandle, 0);
+                passData.OtfTextureHandle = otfHandle;
                 
                 builder.AllowPassCulling(false);
                 
@@ -484,7 +358,10 @@ namespace Illusion.Rendering.PostProcessing
                         _imagePsfRTHandle?.Release();
                         _imagePsfRTHandle = RTHandles.Alloc(param.imagePSF.value);
                     }
-                    passData.ImagePsfTexture = builder.UseTexture(renderGraph.ImportTexture(_imagePsfRTHandle));
+
+                    var psf = renderGraph.ImportTexture(_imagePsfRTHandle);
+                    builder.UseTexture(psf);
+                    passData.ImagePsfTexture = psf;
                     passData.PsfRemapMaterial.SetFloat(ShaderProperties.MaxClamp, param.imagePSFMaxClamp.value);
                     passData.PsfRemapMaterial.SetFloat(ShaderProperties.MinClamp, param.imagePSFMinClamp.value);
                     passData.PsfRemapMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
@@ -516,7 +393,8 @@ namespace Illusion.Rendering.PostProcessing
             {
                 passData.FFTKernel = _fftKernel;
                 passData.HighQuality = highQuality;
-                passData.OtfTextureHandle = builder.UseTexture(otfHandle, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
+                builder.UseTexture(otfHandle, AccessFlags.ReadWrite);
+                passData.OtfTextureHandle = otfHandle;
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -527,6 +405,5 @@ namespace Illusion.Rendering.PostProcessing
                 });
             }
         }
-#endif
     }
 }

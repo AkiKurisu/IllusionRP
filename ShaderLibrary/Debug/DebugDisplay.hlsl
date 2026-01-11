@@ -11,8 +11,6 @@
 // The sun is between 100 000 and 150 000, so we use 4 to be able to cover such a range (4 * 65504)
 #define LUXMETER_COMPRESSION_RATIO  4
 
-TEXTURE2D(_DebugFont); // Debug font to write string in shader
-
 // DebugFont code assume black and white font with texture size 256x128 with bloc of 16x16
 #define DEBUG_FONT_TEXT_WIDTH   16
 #define DEBUG_FONT_TEXT_HEIGHT  16
@@ -25,50 +23,6 @@ TEXTURE2D(_DebugFont); // Debug font to write string in shader
 #define TONEMAPPINGMODE_NONE (0)
 #define TONEMAPPINGMODE_NEUTRAL (1)
 #define TONEMAPPINGMODE_ACES (2)
-
-// Only support ASCII symbol from DEBUG_FONT_TEXT_ASCII_START to 126
-// return black or white depends if we hit font character or not
-// currentUnormCoord is current unormalized screen position
-// fixedUnormCoord is the position where we want to draw something, this will be incremented by block font size in provided direction
-// color is current screen color
-// color of the font to use
-// direction is 1 or -1 and indicate fixedUnormCoord block shift
-void DrawCharacter(uint asciiValue, float3 fontColor, uint2 currentUnormCoord, inout uint2 fixedUnormCoord, inout float3 color, int direction, int fontTextScaleWidth)
-{
-    // Are we inside a font display block on the screen ?
-    uint2 localCharCoord = currentUnormCoord - fixedUnormCoord;
-    if (localCharCoord.x >= 0 && localCharCoord.x < DEBUG_FONT_TEXT_WIDTH && localCharCoord.y >= 0 && localCharCoord.y < DEBUG_FONT_TEXT_HEIGHT)
-    {
-        localCharCoord.y = DEBUG_FONT_TEXT_HEIGHT - localCharCoord.y;
-
-        asciiValue -= DEBUG_FONT_TEXT_ASCII_START; // Our font start at ASCII table 32;
-        uint2 asciiCoord = uint2(asciiValue % DEBUG_FONT_TEXT_COUNT_X, asciiValue / DEBUG_FONT_TEXT_COUNT_X);
-        // Unorm coordinate inside the font texture
-        uint2 unormTexCoord = asciiCoord * uint2(DEBUG_FONT_TEXT_WIDTH, DEBUG_FONT_TEXT_HEIGHT) + localCharCoord;
-        // normalized coordinate
-        float2 normTexCoord = float2(unormTexCoord) / float2(DEBUG_FONT_TEXT_WIDTH * DEBUG_FONT_TEXT_COUNT_X, DEBUG_FONT_TEXT_HEIGHT * DEBUG_FONT_TEXT_COUNT_Y);
-
-#if UNITY_UV_STARTS_AT_TOP
-        normTexCoord.y = 1.0 - normTexCoord.y;
-#endif
-
-        float charColor = SAMPLE_TEXTURE2D_LOD(_DebugFont, sampler_PointClamp, normTexCoord, 0).r;
-        color = color * (1.0 - charColor) + charColor * fontColor;
-    }
-
-    fixedUnormCoord.x += fontTextScaleWidth * direction;
-}
-
-void DrawCharacter(uint asciiValue, float3 fontColor, uint2 currentUnormCoord, inout uint2 fixedUnormCoord, inout float3 color, int direction)
-{
-    DrawCharacter(asciiValue, fontColor, currentUnormCoord, fixedUnormCoord, color, direction, DEBUG_FONT_TEXT_SCALE_WIDTH);
-}
-
-// Shortcut to not have to file direction
-void DrawCharacter(uint asciiValue, float3 fontColor, uint2 currentUnormCoord, inout uint2 fixedUnormCoord, inout float3 color)
-{
-    DrawCharacter(asciiValue, fontColor, currentUnormCoord, fixedUnormCoord, color, 1);
-}
 
 // Draw a signed integer
 // Can't display more than 16 digit

@@ -132,34 +132,27 @@ namespace Illusion.Rendering
             return rtHandle != null && rtHandle.rt;
         }
 
-        public static float4x4 CalculateNonJitterViewProjMatrix(ref CameraData cameraData)
+        public static float4x4 CalculateViewProjMatrix(UniversalCameraData cameraData, RTHandle color)
         {
             float4x4 viewMat = cameraData.GetViewMatrix();
-            float4x4 projMat = cameraData.GetGPUProjectionMatrixNoJitter();
-            return math.mul(projMat, viewMat);
-        }
-        
-#if UNITY_2023_1_OR_NEWER
-        public static float4x4 CalculateViewProjMatrix(ref CameraData cameraData, RTHandle color)
-        {
-            float4x4 viewMat = cameraData.GetViewMatrix();
-            float4x4 projMat = GetGPUProjectionMatrix(ref cameraData, color);
+            float4x4 projMat = GetGPUProjectionMatrix(cameraData, color);
             return math.mul(projMat, viewMat);
         }
 
-        public static Matrix4x4 GetGPUProjectionMatrix(ref CameraData cameraData, RTHandle color, int viewIndex = 0)
+        public static Matrix4x4 GetGPUProjectionMatrix(UniversalCameraData cameraData, RTHandle color, int viewIndex = 0)
         {
-            Matrix4x4 jitterMat = TemporalAA.CalculateJitterMatrix(ref cameraData);
+            TemporalAA.JitterFunc jitterFunc;
+            if (cameraData.IsSTPEnabled())
+            {
+                jitterFunc = StpUtils.s_JitterFunc;
+            }
+            else
+            {
+                jitterFunc = TemporalAA.s_JitterFunc;
+            }
+            Matrix4x4 jitterMat = TemporalAA.CalculateJitterMatrix(cameraData, jitterFunc);
             // GetGPUProjectionMatrix takes a projection matrix and returns a GfxAPI adjusted version, does not set or get any state.
             return jitterMat * GL.GetGPUProjectionMatrix(cameraData.GetProjectionMatrixNoJitter(viewIndex), cameraData.IsRenderTargetProjectionMatrixFlipped(color));
-        }
-#endif
-                
-        public static float4x4 CalculateViewProjMatrix(ref CameraData cameraData)
-        {
-            float4x4 viewMat = cameraData.GetViewMatrix();
-            float4x4 projMat = cameraData.GetGPUProjectionMatrix();
-            return math.mul(projMat, viewMat);
         }
 
         public static float ComputeViewportScale(int viewportSize, int bufferSize)
@@ -197,7 +190,7 @@ namespace Illusion.Rendering
         }
         
         // Returns mouse coordinates: (x,y) in pixels and (z,w) normalized inside the render target (not the viewport)
-        public static Vector4 GetMouseCoordinates(ref CameraData cameraData)
+        public static Vector4 GetMouseCoordinates(UniversalCameraData cameraData)
         {
             var width = cameraData.cameraTargetDescriptor.width;
             var height = cameraData.cameraTargetDescriptor.height;

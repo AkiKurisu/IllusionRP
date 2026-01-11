@@ -2,10 +2,8 @@
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -17,35 +15,9 @@ namespace Illusion.Rendering
         {
             profilingSampler = new ProfilingSampler("Motion Vectors Debug");
             renderPassEvent = IllusionRenderPassEvent.MotionVectorDebugPass;
-#if UNITY_2023_1_OR_NEWER
-            ConfigureInput(ScriptableRenderPassInput.Motion);
-#endif
-        }
-
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
             ConfigureInput(ScriptableRenderPassInput.Motion);
         }
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            ref var cameraData = ref renderingData.cameraData;
-            var motionVectorColorRT = UniversalRenderingUtility.GetMotionVectorColor(cameraData.renderer);
-            if (!motionVectorColorRT.IsValid()) return;
-            var colorRT = cameraData.renderer.cameraColorTargetHandle;
-            var material = _motionVectorDebugMaterial.Value;
-            CommandBuffer cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                cmd.SetRenderTarget(colorRT);
-                material.SetTexture(IllusionShaderProperties._MotionVectorTexture, motionVectorColorRT);
-                cmd.Blit( colorRT, colorRT, material);
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
+        
         private class MotionVectorsDebugPassData
         {
             internal Material MotionVectorDebugMaterial;
@@ -53,25 +25,24 @@ namespace Illusion.Rendering
             internal TextureHandle ColorDestination;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
-            ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            ref var cameraData = ref renderingData.cameraData;
-            UniversalRenderer renderer = (UniversalRenderer)cameraData.renderer;
-
-
-            var motionVectorFromResources = renderer.resources.GetTexture(UniversalResource.MotionVectorColor);
+            var resources = frameData.Get<UniversalResourceData>();
+            var motionVectorFromResources = resources.motionVectorColor;
             if (!motionVectorFromResources.IsValid()) return;
 
             
-            TextureHandle colorTargetHandle = renderer.activeColorTexture;
+            TextureHandle colorTargetHandle = resources.activeColorTexture;
             
             using (var builder = renderGraph.AddRasterRenderPass<MotionVectorsDebugPassData>("Motion Vectors Debug", 
                 out var passData, profilingSampler))
             {
                 passData.MotionVectorDebugMaterial = _motionVectorDebugMaterial.Value;
-                passData.MotionVectorColor = builder.UseTexture(motionVectorFromResources);
-                passData.ColorDestination = builder.UseTextureFragment(colorTargetHandle, 0);
+                builder.UseTexture(motionVectorFromResources);
+                passData.MotionVectorColor = motionVectorFromResources;
+                
+                builder.SetRenderAttachment(colorTargetHandle, 0);
+                passData.ColorDestination = colorTargetHandle;
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -83,7 +54,6 @@ namespace Illusion.Rendering
                 });
             }
         }
-#endif
 
         public void Dispose()
         {
