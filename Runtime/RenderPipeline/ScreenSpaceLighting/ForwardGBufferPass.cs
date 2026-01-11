@@ -99,28 +99,37 @@ namespace Illusion.Rendering
 
             TextureHandle forwardGBufferHandle = renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
 
+            using (var builder = renderGraph.AddLowLevelPass<PassData>("Clear Forward GBuffer", out var passData, profilingSampler))
+            {
+                passData.ForwardGBufferHandle = builder.UseTexture(forwardGBufferHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+
+                builder.AllowPassCulling(false);
+
+                builder.SetRenderFunc(static (PassData data, LowLevelGraphContext context) =>
+                {
+                    context.cmd.SetRenderTarget(data.ForwardGBufferHandle);
+                    context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
+                });
+            }
+            
             // Render Forward GBuffer
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Forward GBuffer", out var passData, profilingSampler))
             {
-                passData.ForwardGBufferHandle = builder.UseTextureFragment(forwardGBufferHandle, 0, IBaseRenderGraphBuilder.AccessFlags.Write);
-                passData.DepthHandle = builder.UseTextureFragmentDepth(depthTexture, IBaseRenderGraphBuilder.AccessFlags.Read);
+                passData.ForwardGBufferHandle = builder.UseTextureFragment(forwardGBufferHandle, 0);
+                passData.DepthHandle = builder.UseTextureFragmentDepth(depthTexture);
                 passData.RenderingData = renderingData;
 
                 // Create renderer list
                 SortingCriteria sortingCriteria = renderingData.cameraData.defaultOpaqueSortFlags;
                 DrawingSettings drawingSettings = RenderingUtils.CreateDrawingSettings(_shaderTagIdList, ref renderingData, sortingCriteria);
-                var param = new RendererListParams(renderingData.cullResults, drawingSettings, _filteringSettings);
-                passData.RendererListHdl = renderGraph.CreateRendererList(param);
+                RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, renderingData, drawingSettings, _filteringSettings, _renderStateBlock, ref passData.RendererListHdl);
                 builder.UseRendererList(passData.RendererListHdl);
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
-                builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {
-                    // Clear forward GBuffer
-                    context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
-
                     // Draw renderers with ForwardGBuffer shader tag
                     context.cmd.DrawRendererList(data.RendererListHdl);
                 });
