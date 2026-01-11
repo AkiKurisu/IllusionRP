@@ -5,6 +5,27 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2026-1-11
+
+This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.
+
+### Compatibility
+
+Following features are now compatible with RenderGraph.
+
+- `ScreenSpaceGlobalIlluminationPass`
+- `VolumetricFogPass`
+
+All features are now compatible with Unity 2023's RenderGraph, but there are still many issues with the RenderGraph in the 2023 URP version, so its use is not recommended at this time.
+
+### Fixed
+
+- Fix ForwardGBuffer Pass crash when using RenderGraph in Unity 2023.
+- Fix PRTProbeVolume null exception bug.
+- Fix ConvolutionBloom null exception bug when using RenderGraph in Unity 2023.
+- Fix ScreenSpaceShadowsPass not use predepth texture when using RenderGraph in Unity 2023.
+- Fix SubsurfaceScatteringPass exception when volume is disabled when using RenderGraph in Unity 2023.
+
 ## [1.1.5] - 2026-1-10
 
 This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.
