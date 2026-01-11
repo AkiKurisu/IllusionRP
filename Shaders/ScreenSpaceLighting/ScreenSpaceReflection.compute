@@ -43,7 +43,7 @@
     RW_TEXTURE2D_X(float4, _SsrAccumTexture);
 #elif defined(SSR_ACCUMULATE)
     RW_TEXTURE2D_X(float4, _SsrAccumPrev);
-    RW_TEXTURE2D_X(float4, _SsrLightingTextureRW);
+    // RW_TEXTURE2D_X(float4, _SsrLightingTextureRW);
     RW_TEXTURE2D_X(float4, _SsrAccumTexture);
 #endif
 
@@ -177,7 +177,7 @@ void MAIN_ACC(uint3 dispatchThreadId : SV_DispatchThreadID)
     result.rgb = isPosFin ? result.rgb : 0;
     result.w = isPosFin ? result.w : 0;
 
-    _SsrLightingTextureRW[COORD_TEXTURE2D_X(positionSS)] = result;
+    // _SsrLightingTextureRW[COORD_TEXTURE2D_X(positionSS)] = result;
     _SsrAccumTexture[COORD_TEXTURE2D_X(positionSS)] = result;
 }
 #endif

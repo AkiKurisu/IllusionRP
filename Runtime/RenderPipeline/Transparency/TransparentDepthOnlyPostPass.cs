@@ -27,6 +27,9 @@ namespace Illusion.Rendering
             _filteringSettings = new FilteringSettings(RenderQueueRange.all);
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
             profilingSampler = new ProfilingSampler("Transparent Post Depth");
+#if UNITY_2023_1_OR_NEWER
+            ConfigureInput(ScriptableRenderPassInput.Depth);
+#endif
         }
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
@@ -83,16 +86,8 @@ namespace Illusion.Rendering
             if (renderingData.cameraData.cameraType == CameraType.Preview)
                 return;
 #endif
-            
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle depthTexture = renderer.activeDepthTexture;
-            
-            // If texture is not available in frameResources, fall back to activeDepthTexture
-            if (!depthTexture.IsValid())
-            {
-                depthTexture = renderer.activeDepthTexture;
-            }
-            
+
+            TextureHandle depthTexture = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
             if (!depthTexture.IsValid()) return;
 
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))

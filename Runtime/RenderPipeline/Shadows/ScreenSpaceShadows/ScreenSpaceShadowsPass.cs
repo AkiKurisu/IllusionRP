@@ -120,7 +120,12 @@ namespace Illusion.Rendering.Shadows
             TextureHandle screenSpaceShadowsTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, descriptor, "_ScreenSpaceShadowmapTexture", true);
             
             UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            TextureHandle depthTexture = renderer.activeDepthTexture;
+            TextureHandle preDepthTexture = renderer.activeDepthTexture;
+            var preDepthRT = _rendererData.CameraPreDepthTextureRT;
+            if (preDepthRT.IsValid())
+            {
+                preDepthTexture = renderGraph.ImportTexture(preDepthRT);
+            }
             
             // Set global texture for screen space shadows
             RenderGraphUtils.SetGlobalTexture(renderGraph, "_ScreenSpaceShadowmapTexture", screenSpaceShadowsTexture);
@@ -135,7 +140,7 @@ namespace Illusion.Rendering.Shadows
                 {
                     passData.PenumbraMaskTexture = builder.UseTexture(penumbraMaskTexture, IBaseRenderGraphBuilder.AccessFlags.Write);
                     passData.PenumbraMaskBlurTempTexture = builder.UseTexture(penumbraMaskBlurTempTexture, IBaseRenderGraphBuilder.AccessFlags.Write);
-                    passData.DepthTexture = builder.UseTexture(depthTexture);
+                    passData.DepthTexture = builder.UseTexture(preDepthTexture);
                     passData.RenderingData = renderingData;
                     passData.RendererData = _rendererData;
                     passData.PenumbraMaskMaterial = _penumbraMaskMat.Value;
@@ -226,7 +231,7 @@ namespace Illusion.Rendering.Shadows
         {
             var material = data.PenumbraMaskMaterial;
             var penumbraMaskDesc = data.PenumbraMaskDesc;
-
+            material.SetTexture(IllusionShaderProperties._CameraDepthTexture, (RTHandle)data.DepthTexture);
             cmd.SetRenderTarget(data.PenumbraMaskTexture);
             cmd.SetGlobalVector(ShaderProperties.ColorAttachmentTexelSize,
                 new Vector4(1f / data.ColorAttachmentWidth, 1f / data.ColorAttachmentHeight, data.ColorAttachmentWidth,

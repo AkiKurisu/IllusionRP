@@ -314,8 +314,6 @@ namespace Illusion.Rendering.PostProcessing
         {
             internal Material PsfRemapMaterial;
             internal Material PsfGeneratorMaterial;
-            internal ConvolutionBloom Param;
-            internal Vector2Int Size;
             internal bool HighQuality;
             internal FFTKernel FFTKernel;
             internal TextureHandle OtfTextureHandle;
@@ -474,11 +472,11 @@ namespace Illusion.Rendering.PostProcessing
             {
                 passData.PsfRemapMaterial = _psfRemapMaterial.Value;
                 passData.PsfGeneratorMaterial = _psfGeneratorMaterial.Value;
-                passData.Param = param;
-                passData.Size = size;
                 passData.OtfTextureHandle = builder.UseTextureFragment(otfHandle, 0);
                 
-                if (!param.generatePSF.value && param.imagePSF.value != null)
+                builder.AllowPassCulling(false);
+                
+                if (!param.generatePSF.value && param.imagePSF.value)
                 {
                     // Cache RTHandle for imagePSF texture
                     if (_imagePsfRTHandle == null || _imagePsfRTHandle.rt != param.imagePSF.value)
@@ -487,35 +485,30 @@ namespace Illusion.Rendering.PostProcessing
                         _imagePsfRTHandle = RTHandles.Alloc(param.imagePSF.value);
                     }
                     passData.ImagePsfTexture = builder.UseTexture(renderGraph.ImportTexture(_imagePsfRTHandle));
-                }
-
-                builder.AllowPassCulling(false);
-
-                builder.SetRenderFunc((OTFUpdatePassData data, RasterGraphContext context) =>
-                {
-                    data.PsfRemapMaterial.SetFloat(ShaderProperties.MaxClamp, data.Param.imagePSFMaxClamp.value);
-                    data.PsfRemapMaterial.SetFloat(ShaderProperties.MinClamp, data.Param.imagePSFMinClamp.value);
-                    data.PsfRemapMaterial.SetVector(ShaderProperties.FFTExtend, data.Param.fftExtend.value);
-                    data.PsfRemapMaterial.SetFloat(ShaderProperties.KernelPow, data.Param.imagePSFPow.value);
-                    data.PsfRemapMaterial.SetFloat(ShaderProperties.KernelScaler, data.Param.imagePSFScale.value);
-                    data.PsfRemapMaterial.SetInt(ShaderProperties.ScreenX, data.Size.x);
-                    data.PsfRemapMaterial.SetInt(ShaderProperties.ScreenY, data.Size.y);
-                    
-                    if (data.Param.generatePSF.value)
+                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.MaxClamp, param.imagePSFMaxClamp.value);
+                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.MinClamp, param.imagePSFMinClamp.value);
+                    passData.PsfRemapMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
+                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.KernelPow, param.imagePSFPow.value);
+                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.KernelScaler, param.imagePSFScale.value);
+                    passData.PsfRemapMaterial.SetInt(ShaderProperties.ScreenX, size.x);
+                    passData.PsfRemapMaterial.SetInt(ShaderProperties.ScreenY, size.y);
+                    passData.PsfRemapMaterial.SetInt(ShaderProperties.EnableRemap, 1);
+                    builder.SetRenderFunc(static (OTFUpdatePassData data, RasterGraphContext context) =>
                     {
-                        data.PsfGeneratorMaterial.SetVector(ShaderProperties.FFTExtend, data.Param.fftExtend.value);
-                        data.PsfGeneratorMaterial.SetInt(ShaderProperties.ScreenX, data.Size.x);
-                        data.PsfGeneratorMaterial.SetInt(ShaderProperties.ScreenY, data.Size.y);
-                        data.PsfGeneratorMaterial.SetInt(ShaderProperties.EnableRemap, 1);
-                        
-                        Blitter.BlitTexture(context.cmd, Vector2.one, data.PsfGeneratorMaterial, 0);
-                    }
-                    else
-                    {
-                        data.PsfRemapMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                         Blitter.BlitTexture(context.cmd, data.ImagePsfTexture, Vector2.one, data.PsfRemapMaterial, 0);
-                    }
-                });
+                    });
+                }
+                else
+                {
+                    passData.PsfGeneratorMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
+                    passData.PsfGeneratorMaterial.SetInt(ShaderProperties.ScreenX, size.x);
+                    passData.PsfGeneratorMaterial.SetInt(ShaderProperties.ScreenY, size.y);
+                    passData.PsfGeneratorMaterial.SetInt(ShaderProperties.EnableRemap, 1);
+                    builder.SetRenderFunc(static (OTFUpdatePassData data, RasterGraphContext context) =>
+                    {
+                        Blitter.BlitTexture(context.cmd, Vector2.one, data.PsfGeneratorMaterial, 0);
+                    });
+                }
             }
 
             // FFT Pass (Compute)
