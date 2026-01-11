@@ -448,7 +448,7 @@ namespace Illusion.Rendering
                 // Setup MRT: diffuse (attachment 0) + albedo (attachment 1)
                 passData.DiffuseTexture = builder.UseTextureFragment(diffuseHandle, 0);
                 passData.AlbedoTexture = builder.UseTextureFragment(albedoHandle, 1);
-                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle, IBaseRenderGraphBuilder.AccessFlags.Read);
+                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle);
                 passData.RenderingData = renderingData;
 
                 // Create renderer list with SubsurfaceDiffuse shader tag
@@ -570,12 +570,16 @@ namespace Illusion.Rendering
             TextureHandle lightingHandle = renderGraph.ImportTexture(_diffuseRT[2]);
 
             // Get depth texture
+            TextureHandle depthHandle;
             var preDepthTexture = _rendererData.CameraPreDepthTextureRT;
             if (!preDepthTexture.IsValid() || renderingData.cameraData.cameraType == CameraType.Preview)
             {
-                preDepthTexture = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+                depthHandle = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
             }
-            TextureHandle depthHandle = renderGraph.ImportTexture(preDepthTexture);
+            else
+            {
+                depthHandle = renderGraph.ImportTexture(preDepthTexture);
+            }
             var invProjectMatrix = IllusionRenderingUtils.GetGPUProjectionMatrix(ref renderingData.cameraData, _diffuseRT[2]).inverse;
 
             // Check if SSS is enabled
