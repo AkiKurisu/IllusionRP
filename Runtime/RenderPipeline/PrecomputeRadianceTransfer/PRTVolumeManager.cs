@@ -5,10 +5,20 @@ namespace Illusion.Rendering.PRTGI
 {
     public class PRTVolumeManager
     {
+        private static PRTProbeVolume _instance;
+
         /// <summary>
         /// Current probe volume in the scene.
         /// </summary>
-        public static PRTProbeVolume ProbeVolume { get; private set; }
+        public static PRTProbeVolume ProbeVolume
+        {
+            get
+            {
+                if (!_instance) return null;
+                return _instance;
+            }
+            private set => _instance = value;
+        }
 
         /// <summary>
         /// Is any probe volume in baking.
