@@ -47,7 +47,11 @@ Designed for <b>Forward</b> and <b>Forward+</b> rendering path, <b>Deferred</b> 
 
 # Version
 
+[IllusionRP for Unity 6](https://github.com/AkiKurisu/IllusionRP/tree/master)
+
 - Unity 6.3 (URP 17.3.0)
+
+[IllusionRP for Unity 2022 ~ 2023](https://github.com/AkiKurisu/IllusionRP/tree/urp14)
 
 - Unity 2022.3.62f1 (URP 14.0.12)
 
