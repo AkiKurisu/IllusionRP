@@ -3,8 +3,6 @@ IllusionRP welcomes contributions from the community!
 Here are some areas where we'd love to see pull requests:
 
 - Performance Optimization
-- Unity 6 RenderGraph Compatibility
-- URP 17 Compatibility
 - IOS (Metal) Platform Compatibility
 
 Feel free to open an issue first to discuss your proposed changes!
