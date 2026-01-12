@@ -227,7 +227,7 @@ namespace Illusion.Rendering
     /// <remarks>Passes with same event should not require each other.</remarks>
     public static class IllusionRenderPassEvent
     {
-        public const RenderPassEvent SetGlobalVariablesPass = RenderPassEvent.AfterRenderingPrePasses + 0;
+        public const RenderPassEvent SetGlobalVariablesPass = RenderPassEvent.BeforeRendering;
 
         // ================================= Depth Prepass ================================================ //
         public const RenderPassEvent TransparentDepthNormalPostPass = RenderPassEvent.AfterRenderingPrePasses + 0;

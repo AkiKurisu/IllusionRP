@@ -7,10 +7,6 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Illusion.Rendering.PostProcessing;
 using Illusion.Rendering.Shadows;
-using UnityEngine.Rendering.RenderGraphModule;
-#if UNITY_2023_1_OR_NEWER
-
-#endif
 
 namespace Illusion.Rendering
 {
