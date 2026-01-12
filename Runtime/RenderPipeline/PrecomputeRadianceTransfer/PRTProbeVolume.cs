@@ -296,10 +296,18 @@ namespace Illusion.Rendering.PRTGI
             if (!gameObject.scene.IsValid()) return;
 #endif
             ReleaseProbes();
-            _coefficientVoxelRT?.Release();
-            _coefficientVoxelRT = null;
-            _validityVoxelRT?.Release();
-            _validityVoxelRT = null;
+            if (_coefficientVoxelRT)
+            {
+                _coefficientVoxelRT.Release();
+                _coefficientVoxelRT = null;
+            }
+
+            if (_validityVoxelRT)
+            {
+                _validityVoxelRT?.Release();
+                _validityVoxelRT = null;
+            }
+
             _globalSurfelBuffer?.Release();
             _globalSurfelBuffer = null;
         }
@@ -473,7 +481,10 @@ namespace Illusion.Rendering.PRTGI
 
         private void InitializeVoxelTexture(int width, int height, int depth)
         {
-            _coefficientVoxelRT?.Release();
+            if (_coefficientVoxelRT)
+            {
+                _coefficientVoxelRT.Release();
+            }
             // Layout: float3[_grid.X, _grid.Z, _grid.Y * 9]
             // Each depth slice corresponds to one RGB component of SH coefficient
             _coefficientVoxelRT = new RenderTexture(width, height, 0, Texture3DFormat)
