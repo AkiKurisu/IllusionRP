@@ -356,7 +356,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc(static (SetupPassData data, UnsafeGraphContext context) =>
                 {
-                    data.RendererData.BindDitheredRNGData1SPP(context.cmd.GetNativeCommandBuffer());
+                    data.RendererData.BindDitheredRNGData1SPP(CommandBufferHelpers.GetNativeCommandBuffer(context.cmd));
                 });
             }
         }
@@ -392,7 +392,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc(static (TracingPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesScreenSpaceReflection);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesScreenSpaceReflection);
                     
                     context.cmd.SetComputeBufferParam(data.ComputeShader, data.TracingKernel, IllusionShaderProperties._DepthPyramidMipLevelOffsets, data.OffsetBuffer);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.TracingKernel, IllusionShaderProperties._StencilTexture, 
@@ -482,7 +482,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc(static (ReprojectionPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesScreenSpaceReflection);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesScreenSpaceReflection);
                     
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.ReprojectionKernel, IllusionShaderProperties._MotionVectorTexture, data.MotionVectorTexture);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.ReprojectionKernel, IllusionShaderProperties._ColorPyramidTexture, data.ColorPyramidTexture);
@@ -601,7 +601,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc(static (AccumulationPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesScreenSpaceReflection);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesScreenSpaceReflection);
                     
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel, IllusionShaderProperties._MotionVectorTexture, data.MotionVectorTexture);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.AccumulationKernel, IllusionShaderProperties._ColorPyramidTexture, data.ColorPyramidTexture);
@@ -660,7 +660,7 @@ namespace Illusion.Rendering
                     
                     builder.SetRenderFunc(static (ClearPassData data, UnsafeGraphContext context) =>
                     {
-                        CoreUtils.SetRenderTarget(context.cmd.GetNativeCommandBuffer(), data.TargetTexture, ClearFlag.Color, data.ClearColor);
+                        CoreUtils.SetRenderTarget(CommandBufferHelpers.GetNativeCommandBuffer(context.cmd), data.TargetTexture, ClearFlag.Color, data.ClearColor);
                     });
                 }
             }

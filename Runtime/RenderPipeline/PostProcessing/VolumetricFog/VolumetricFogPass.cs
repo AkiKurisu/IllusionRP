@@ -281,7 +281,7 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="mainLightIndex"></param>
 		/// <param name="additionalLightsCount"></param>
 		/// <param name="visibleLights"></param>
-		private void UpdateVolumetricFogComputeShaderParameters(CommandBuffer cmd,
+		private void UpdateVolumetricFogComputeShaderParameters(ComputeCommandBuffer cmd,
 			ComputeShader volumetricFogCS,
 			int mainLightIndex, int additionalLightsCount,
 			NativeArray<VisibleLight> visibleLights)
@@ -400,7 +400,7 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="enableAdditionalLightsContribution"></param>
 		/// <param name="mainLightIndex"></param>
 		/// <param name="visibleLights"></param>
-		private static void UpdateLightsParametersCS(CommandBuffer cmd, ComputeShader volumetricFogCS, VolumetricFog fogVolume, 
+		private static void UpdateLightsParametersCS(ComputeCommandBuffer cmd, ComputeShader volumetricFogCS, VolumetricFog fogVolume, 
 			bool enableMainLightContribution,
 			bool enableAdditionalLightsContribution,
 			int mainLightIndex, NativeArray<VisibleLight> visibleLights)
@@ -598,7 +598,7 @@ namespace Illusion.Rendering.PostProcessing
 
 				builder.SetRenderFunc((RaymarchPassData data, ComputeGraphContext context) =>
 				{
-					UpdateVolumetricFogComputeShaderParameters(context.cmd.GetNativeCommandBuffer(),
+					UpdateVolumetricFogComputeShaderParameters(context.cmd,
 						data.RaymarchCS, data.LightData.mainLightIndex, data.LightData.additionalLightsCount,
 						data.LightData.visibleLights);
 
@@ -877,7 +877,7 @@ namespace Illusion.Rendering.PostProcessing
 
 				builder.SetRenderFunc((UpsamplePassData data, ComputeGraphContext context) =>
 				{
-					ComputeConstantBuffer.Push(context.cmd, data.UpsampleVariables, data.UpsampleCS, ShaderIDs.ShaderVariablesBilateralUpsample);
+					ConstantBuffer.Push(context.cmd, data.UpsampleVariables, data.UpsampleCS, ShaderIDs.ShaderVariablesBilateralUpsample);
 
 					// Inject all the input buffers
 					context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, ShaderIDs._LowResolutionTexture, data.VolumetricFogTexture);

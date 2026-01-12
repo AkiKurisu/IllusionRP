@@ -355,7 +355,7 @@ namespace Illusion.Rendering
                 {
                     _rendererData.BindDitheredRNGData8SPP(context.cmd.GetNativeCommandBuffer());
                     
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
                     
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.TraceKernel,
                         IllusionShaderProperties._DepthPyramid, data.DepthPyramidTexture);
@@ -427,7 +427,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc((ReprojectPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
                     
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.ReprojectKernel,
                         IllusionShaderProperties._DepthPyramid, data.DepthPyramidTexture);
@@ -795,7 +795,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc((UpsamplePassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.BilateralUpsampleCS, Properties.ShaderVariablesBilateralUpsample);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.BilateralUpsampleCS, Properties.ShaderVariablesBilateralUpsample);
                     
                     context.cmd.SetComputeTextureParam(data.BilateralUpsampleCS, data.UpsampleKernel,
                         Properties.LowResolutionTexture, data.LowResolutionTexture);

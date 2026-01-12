@@ -532,7 +532,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc((RenderAOPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.TracingCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.TracingCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, ShaderConstants._AOPackedData, data.AOPackedData);
                     context.cmd.SetComputeTextureParam(_tracingCS, _tracingKernel, IllusionShaderProperties._StencilTexture, 
                         depthStencilTexture, 0, RenderTextureSubElement.Stencil);
@@ -604,7 +604,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc((SpatialDenoiseAOPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.SpatialDenoiseCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.SpatialDenoiseCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.SpatialDenoiseCS, data.DenoiseKernel, ShaderConstants._AOPackedData, data.PackedData);
                     context.cmd.SetComputeTextureParam(data.SpatialDenoiseCS, data.DenoiseKernel, ShaderConstants._OcclusionTexture, data.DenoiseOutput);
                     
@@ -641,7 +641,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc((UpsampleAOPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.UpsampleCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.UpsampleCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, ShaderConstants._AOPackedData, data.Input);
                     context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, ShaderConstants._OcclusionTexture, data.Output);
                     

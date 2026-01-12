@@ -28,7 +28,6 @@ namespace Illusion.Rendering
         private class PassData
         {
             internal RendererListHandle RendererList;
-            internal TextureHandle DepthTexture;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -48,7 +47,6 @@ namespace Illusion.Rendering
             {
                 // Setup depth texture
                 builder.SetRenderAttachmentDepth(depthTexture);
-                passData.DepthTexture = depthTexture;
 
                 // Setup renderer list
                 var drawSettings = UniversalRenderingUtility.CreateDrawingSettings(PostDepthNormalsTagId, frameData, cameraData.defaultOpaqueSortFlags);

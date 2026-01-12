@@ -4,7 +4,7 @@ using UnityEngine.Rendering;
 
 namespace UnityEngine.Experimental.Rendering
 {
-    public static class NativeCommandBufferExtensions
+    internal static class NativeCommandBufferExtensions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static CommandBuffer GetNativeCommandBuffer(this BaseCommandBuffer baseBuffer)

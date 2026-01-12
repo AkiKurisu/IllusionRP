@@ -36,7 +36,7 @@ namespace Illusion.Rendering
                 // ZTest Equal
                 depthState = new DepthState(false, CompareFunction.Equal)
             };
-            ConfigureInput(ScriptableRenderPassInput.Normal);
+            ConfigureInput(ScriptableRenderPassInput.Normal | ScriptableRenderPassInput.Depth);
         }
 
         public void Dispose()
@@ -54,10 +54,8 @@ namespace Illusion.Rendering
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             var renderingData = frameData.Get<UniversalRenderingData>();
-            TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
 
             // Allocate Forward GBuffer RT
             var desc = cameraData.cameraTargetDescriptor;
@@ -69,7 +67,10 @@ namespace Illusion.Rendering
 
             RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ForwardGBuffer");
-
+            
+            TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
+            if (!depthTexture.IsValid()) return;
+            
             TextureHandle forwardGBufferHandle = renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
 
             using (var builder = renderGraph.AddUnsafePass<PassData>("Clear Forward GBuffer", out var passData, profilingSampler))
