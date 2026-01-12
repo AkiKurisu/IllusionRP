@@ -78,6 +78,8 @@ namespace Illusion.Rendering
         private int _sssActiveDiffusionProfileCount;
         
         private int _sampleBudget;
+
+        private readonly Color[] _backGroundColors = { Color.clear, Color.clear };
         
         private unsafe struct ShaderVariablesSubsurface
         {
@@ -154,11 +156,8 @@ namespace Illusion.Rendering
         
         private class SplitLightingPassData
         {
-            internal TextureHandle DiffuseTexture;
-            internal TextureHandle AlbedoTexture;
-            internal TextureHandle DepthTexture;
             internal RendererListHandle RendererListHdl;
-            internal UniversalRenderingData RenderingData;
+            internal Color[] BackGroundColors;
         }
 
         private class ScatteringComputePassData
@@ -183,7 +182,6 @@ namespace Illusion.Rendering
 
         private class SetGlobalPassData
         {
-            internal IllusionRendererData RendererData;
             internal TextureHandle SubsurfaceLightingTexture;
             internal ShaderVariablesSubsurface ShaderVariablesSubsurface;
             internal Matrix4x4 ViewMatrix;
@@ -203,12 +201,10 @@ namespace Illusion.Rendering
             {
                 // Setup MRT: diffuse (attachment 0) + albedo (attachment 1)
                 builder.SetRenderAttachment(diffuseHandle, 0);
-                passData.DiffuseTexture = diffuseHandle;
                 builder.SetRenderAttachment(albedoHandle, 1);
-                passData.AlbedoTexture = albedoHandle;
                 builder.SetRenderAttachmentDepth(depthHandle);
-                passData.DepthTexture = depthHandle;
-                passData.RenderingData = renderingData;
+
+                passData.BackGroundColors = _backGroundColors;
 
                 // Create renderer list with SubsurfaceDiffuse shader tag
                 var drawingSettings = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, renderingData, cameraData, lightData, SortingCriteria.None);
@@ -221,7 +217,7 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc(static (SplitLightingPassData data, RasterGraphContext context) =>
                 {
                     // Clear render targets
-                    context.cmd.ClearRenderTarget(false, true, Color.clear);
+                    context.cmd.ClearRenderTarget(RTClearFlags.Color | RTClearFlags.Color1, data.BackGroundColors, 1, 0);
                     
                     // Draw renderers with SubsurfaceDiffuse shader tag
                     context.cmd.DrawRendererList(data.RendererListHdl);
@@ -364,7 +360,6 @@ namespace Illusion.Rendering
             using (var builder = renderGraph.AddComputePass<SetGlobalPassData>(
                 "SSS Setup Global Variables", out var setupPassData, new ProfilingSampler("SSS Setup")))
             {
-                setupPassData.RendererData = _rendererData;
                 builder.UseTexture(lightingHandle);
                 setupPassData.SubsurfaceLightingTexture = lightingHandle;
                 setupPassData.ShaderVariablesSubsurface = _shaderVariablesSubsurface;
@@ -379,7 +374,7 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc((SetGlobalPassData data, ComputeGraphContext context) =>
                 {
                     // Set global buffer
-                    ComputeConstantBuffer.PushGlobal(context.cmd, data.ShaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
+                    ConstantBuffer.PushGlobal(context.cmd, data.ShaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
 
                     // Set global matrices
                     context.cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
