@@ -152,7 +152,7 @@ namespace Illusion.Rendering.Shadows
                 
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
-                    RenderShadowMapRG(context.cmd, data);
+                    RenderShadowMap(context.cmd, data);
                 });
                 
                 shadowTexture = passData.ShadowmapTexture;
@@ -172,7 +172,7 @@ namespace Illusion.Rendering.Shadows
                 
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
-                    SetupShadowGlobalsRG(context.cmd, data);
+                    SetupShadowGlobalVariables(context.cmd, data);
                 });
             }
             
@@ -199,7 +199,7 @@ namespace Illusion.Rendering.Shadows
             passData.RendererData = _rendererData;
         }
 
-        private static void RenderShadowMapRG(RasterCommandBuffer cmd, PassData data)
+        private static void RenderShadowMap(RasterCommandBuffer cmd, PassData data)
         {
             cmd.SetGlobalDepthBias(1.0f, 2.5f);
             CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
@@ -215,7 +215,7 @@ namespace Illusion.Rendering.Shadows
                 ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref mainLight, shadowBias);
 
                 Vector2Int tilePos = new(i % data.ShadowMapSizeInTile, i / data.ShadowMapSizeInTile);
-                DrawShadowRG(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
+                DrawShadow(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
                 data.ShadowMatrixArray[i] = data.Pass.GetShadowMatrix(tilePos, in viewMatrix, projectionMatrix);
                 data.ShadowMapRectArray[i] = data.Pass.GetShadowMapRect(tilePos);
                 data.ShadowCasterIdArray[i] = data.CasterManager.GetId(i);
@@ -225,7 +225,7 @@ namespace Illusion.Rendering.Shadows
             CoreUtils.SetKeyword(cmd, KeywordNames._CASTING_SELF_SHADOW, false);
         }
 
-        private static void DrawShadowRG(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
+        private static void DrawShadow(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
         {
             cmd.SetViewProjectionMatrices(view, proj);
 
@@ -237,7 +237,7 @@ namespace Illusion.Rendering.Shadows
             cmd.DisableScissorRect();
         }
 
-        private static void SetupShadowGlobalsRG(RasterCommandBuffer cmd, PassData data)
+        private static void SetupShadowGlobalVariables(RasterCommandBuffer cmd, PassData data)
         {
             // Set shadow map texture
             cmd.SetGlobalTexture(PropertyIds.ShadowMap(), data.ShadowmapTexture);

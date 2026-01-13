@@ -85,6 +85,7 @@ namespace Illusion.Rendering.Shadows
             internal TextureHandle ScreenSpaceShadowsTexture;
             internal IllusionRendererData RendererData;
             internal Material ShadowMaterial;
+            internal TextureHandle DepthTexture;
         }
 
         private void SetupPenumbraMask(RenderTextureDescriptor cameraTargetDesc)
@@ -128,7 +129,7 @@ namespace Illusion.Rendering.Shadows
             // Create screen space shadows texture
             TextureHandle screenSpaceShadowsTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, descriptor, "_ScreenSpaceShadowmapTexture", true);
             
-            TextureHandle preDepthTexture = resource.activeDepthTexture;
+            TextureHandle preDepthTexture = resource.cameraDepthTexture;
             var preDepthRT = _rendererData.CameraPreDepthTextureRT;
             if (preDepthRT.IsValid())
             {
@@ -179,7 +180,9 @@ namespace Illusion.Rendering.Shadows
                 passData.ScreenSpaceShadowsTexture = screenSpaceShadowsTexture;
                 passData.RendererData = _rendererData;
                 passData.ShadowMaterial = _shadowMaterial.Value;
-
+                builder.UseTexture(preDepthTexture);
+                passData.DepthTexture = preDepthTexture;
+                
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
@@ -231,7 +234,7 @@ namespace Illusion.Rendering.Shadows
             {
                 cmd.DisableShaderKeyword(IllusionShaderKeywords._PCSS_SHADOWS);
             }
-            
+            material.SetTexture(IllusionShaderProperties._CameraDepthTexture, data.DepthTexture);
             Blitter.BlitTexture(cmd, data.ScreenSpaceShadowsTexture, Vector2.one, material, 0);
             CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadows, false);
             CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.MainLightShadowCascades, false);

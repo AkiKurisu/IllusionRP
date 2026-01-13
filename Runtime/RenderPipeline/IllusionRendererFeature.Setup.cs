@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
@@ -29,9 +28,6 @@ namespace Illusion.Rendering
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
             {
-                var cameraData = frameData.Get<UniversalCameraData>();
-                if (cameraData.cameraType is CameraType.Preview or CameraType.Reflection) return;
-                
                 using (new ProfilingScope((CommandBuffer)null, profilingSampler))
                 {
                     _rendererFeature.PerformSetup(frameData, _rendererData);

@@ -48,6 +48,8 @@ namespace Illusion.Rendering
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             
+            if (cameraData.cameraType is CameraType.Preview or CameraType.Reflection) return;
+            
             // Get or allocate depth pyramid RT
             var cameraTargetDescriptor = cameraData.cameraTargetDescriptor;
             _mipChainInfo = _rendererData.DepthMipChainInfo;
@@ -61,7 +63,7 @@ namespace Illusion.Rendering
             RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.DepthPyramidRT, depthDescriptor, name: "CameraDepthBufferMipChain");
 
             TextureHandle depthPyramidHandle = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
-            TextureHandle cameraDepth = resource.activeDepthTexture;
+            TextureHandle cameraDepth = resource.cameraDepthTexture;
 
             // Copy depth to pyramid mip 0
             using (var builder = renderGraph.AddComputePass<CopyDepthPassData>("Copy Depth Buffer", out var passData, CopyDepthSampler))

@@ -37,7 +37,7 @@ namespace Illusion.Rendering
                 return;
 #endif
             
-            TextureHandle depthTexture = resource.cameraDepthTexture;
+            TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
             TextureHandle normalTexture = resource.cameraNormalsTexture;
             
             if (!depthTexture.IsValid() || !normalTexture.IsValid()) return;

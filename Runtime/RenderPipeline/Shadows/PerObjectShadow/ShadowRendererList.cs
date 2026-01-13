@@ -22,9 +22,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering;
-#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -160,17 +157,6 @@ namespace Illusion.Rendering.Shadows
                    entry.Renderer.shadowCastingMode != ShadowCastingMode.Off;
         }
 
-        public void Draw(CommandBuffer cmd, int rendererIndex)
-        {
-            RendererEntry entry = m_Renderers[rendererIndex];
-            for (int i = entry.DrawCallIndexStartInclusive; i < entry.DrawCallIndexEndExclusive; i++)
-            {
-                DrawCallData dc = m_DrawCalls[i];
-                cmd.DrawRenderer(entry.Renderer, dc.Material, dc.SubmeshIndex, dc.ShaderPass);
-            }
-        }
-        
-#if UNITY_2023_1_OR_NEWER
         public void Draw(RasterCommandBuffer cmd, int rendererIndex)
         {
             RendererEntry entry = m_Renderers[rendererIndex];
@@ -180,7 +166,6 @@ namespace Illusion.Rendering.Shadows
                 cmd.DrawRenderer(entry.Renderer, dc.Material, dc.SubmeshIndex, dc.ShaderPass);
             }
         }
-#endif
 
         public void Clear()
         {
@@ -259,17 +244,10 @@ namespace Illusion.Rendering.Shadows
                 return m_List.TryGetWorldBounds(out worldBounds, outAppendRendererIndices);
             }
 
-            public void Draw(CommandBuffer cmd, int rendererIndex)
-            {
-                m_List.Draw(cmd, rendererIndex);
-            }
-            
-#if UNITY_2023_1_OR_NEWER
             public void Draw(RasterCommandBuffer cmd, int rendererIndex)
             {
                 m_List.Draw(cmd, rendererIndex);
             }
-#endif
         }
 
         private static class ShaderTagIds

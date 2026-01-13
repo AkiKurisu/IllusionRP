@@ -230,43 +230,45 @@ namespace Illusion.Rendering
         public const RenderPassEvent SetGlobalVariablesPass = RenderPassEvent.BeforeRendering;
 
         // ================================= Depth Prepass ================================================ //
-        public const RenderPassEvent TransparentDepthNormalPostPass = RenderPassEvent.AfterRenderingPrePasses + 0;
+        // @IllusionRP:
+        // URP 17, CameraDepth will be copied to CameraDepthTexture AfterRenderingPrePasses.
+        public const RenderPassEvent TransparentDepthNormalPostPass = RenderPassEvent.BeforeRenderingPrePasses;
 
         // Copy pre-depth should before depth only post pass.
-        public const RenderPassEvent TransparentCopyPreDepthPass = RenderPassEvent.AfterRenderingPrePasses + 1;
+        public const RenderPassEvent TransparentCopyPreDepthPass = RenderPassEvent.AfterRenderingPrePasses;
 
         // Screen space effect need ignore transparent post depth since normal is not matched with depth.
-        public const RenderPassEvent DepthPyramidPass = RenderPassEvent.AfterRenderingPrePasses + 1;
+        public const RenderPassEvent DepthPyramidPass = RenderPassEvent.AfterRenderingPrePasses;
 
-        public const RenderPassEvent TransparentDepthOnlyPostPass = RenderPassEvent.AfterRenderingPrePasses + 2;
+        public const RenderPassEvent TransparentDepthOnlyPostPass = RenderPassEvent.AfterRenderingPrePasses + 1;
         // ================================= Depth Prepass ================================================ //
 
-        public const RenderPassEvent ForwardGBufferPass = RenderPassEvent.AfterRenderingPrePasses + 3;
+        public const RenderPassEvent ForwardGBufferPass = RenderPassEvent.AfterRenderingPrePasses + 2;
 
-        public const RenderPassEvent MotionVectorPrepass = RenderPassEvent.AfterRenderingPrePasses + 3;
+        public const RenderPassEvent MotionVectorPrepass = RenderPassEvent.AfterRenderingPrePasses + 2;
 
         // ============================== Screen Space Lighting ============================================ //
         // Async Compute
-        public const RenderPassEvent AmbientOcclusionPass = RenderPassEvent.AfterRenderingPrePasses + 4;
+        public const RenderPassEvent AmbientOcclusionPass = RenderPassEvent.AfterRenderingPrePasses + 3;
 
         // Async Compute
-        public const RenderPassEvent ScreenSpaceReflectionPass = RenderPassEvent.AfterRenderingPrePasses + 5;
+        public const RenderPassEvent ScreenSpaceReflectionPass = RenderPassEvent.AfterRenderingPrePasses + 4;
         // ============================== Screen Space Lighting ============================================ //
 
         // ====================================== Shadows ================================================== //
-        public const RenderPassEvent LightsShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 6;
+        public const RenderPassEvent LightsShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 5;
 
-        public const RenderPassEvent PerObjectShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 6;
+        public const RenderPassEvent PerObjectShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 5;
 
-        public const RenderPassEvent ContactShadowsPass = RenderPassEvent.AfterRenderingPrePasses + 6;
+        public const RenderPassEvent ContactShadowsPass = RenderPassEvent.AfterRenderingPrePasses + 5;
         // ====================================== Shadows ================================================== //
 
         // Require main shadow pass
-        public const RenderPassEvent PrecomputedRadianceTransferRelightPass = RenderPassEvent.AfterRenderingPrePasses + 7;
+        public const RenderPassEvent PrecomputedRadianceTransferRelightPass = RenderPassEvent.AfterRenderingPrePasses + 6;
 
-        public const RenderPassEvent DiffuseShadowDenoisePass = RenderPassEvent.AfterRenderingPrePasses + 7;
+        public const RenderPassEvent DiffuseShadowDenoisePass = RenderPassEvent.AfterRenderingPrePasses + 6;
 
-        public const RenderPassEvent ScreenSpaceGlobalIlluminationPass = RenderPassEvent.AfterRenderingPrePasses + 8;
+        public const RenderPassEvent ScreenSpaceGlobalIlluminationPass = RenderPassEvent.AfterRenderingPrePasses + 7;
 
         // Composite shadows to Screen Space Shadows
         public const RenderPassEvent ScreenSpaceShadowsPass = RenderPassEvent.BeforeRenderingOpaques;

@@ -362,7 +362,7 @@ namespace Illusion.Rendering
             // Match HDRP View Projection Matrix, pre-handle reverse z.
             _shaderVariablesGlobal.ViewMatrix = cameraData.camera.worldToCameraMatrix;
             _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(cameraData, yFlip);
-            _shaderVariablesGlobal.InvProjMatrix = IllusionRenderingUtils.GetGPUProjectionMatrix(cameraData, yFlip).inverse;
+            _shaderVariablesGlobal.InvProjMatrix = cameraData.GetGPUProjectionMatrix(false).inverse;
             var lastInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
             _shaderVariablesGlobal.InvViewProjMatrix = _shaderVariablesGlobal.ViewProjMatrix.inverse;
             _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount > 1 ? _shaderVariablesGlobal.InvViewProjMatrix : lastInvViewProjMatrix;
@@ -446,6 +446,11 @@ namespace Illusion.Rendering
             VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
             for (int i = 0; i < MainLightShadowSliceData.Length && i < ShadowCascadeCount; ++i)
             {
+                if (i >= shadowData.bias.Count)
+                {
+                    MainLightShadowCascadeBiases[i] = Vector4.zero;
+                    continue;
+                }
                 MainLightShadowCascadeBiases[i] = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, shadowData, MainLightShadowSliceData[i].projectionMatrix, MainLightShadowSliceData[i].resolution);
             }
         }
