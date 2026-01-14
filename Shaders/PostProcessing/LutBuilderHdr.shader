@@ -33,7 +33,7 @@ Shader "Hidden/LutBuilderHdr"
         float4 _ShaHiLimits;        // xy: shadows min/max, zw: highlight min/max
         float4 _SplitShadows;       // xyz: color, w: balance
         float4 _SplitHighlights;    // xyz: color, w: unused
-        float4 _HDROutputLuminanceParams; // xy: brightness min/max, z: paper white brightness, w: 1.0 / paper white
+        float4 _HDROutputLuminanceParams; // xy: brightness min/max, z: paper white brightness, w: 1.0 / brightness max
         float4 _HDROutputGradingParams; // x: eetf/range reduction mode, y: hue shift, zw: unused
 
         float _FilmSlope;            // = 0.91;
@@ -356,11 +356,11 @@ Shader "Hidden/LutBuilderHdr"
             // Color grade & tonemap
             float3 gradedColor = ColorGrade(colorLutSpace);
 
-#ifdef HDR_COLORSPACE_CONVERSION
+            #ifdef HDR_COLORSPACE_CONVERSION
             gradedColor = ProcessColorForHDR(gradedColor);
-#else
+            #else
             gradedColor = Tonemap(gradedColor);
-#endif
+            #endif
 
             return float4(gradedColor, 1.0);
         }

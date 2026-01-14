@@ -540,6 +540,6 @@ inline void ClipHair(in float4 screenPos, in float alpha, in float threshold)
     float dither = Dither8x8Bayer(fmod(screenUV.x, 8), fmod(screenUV.y, 8));
     threshold = lerp(threshold, dither, 0.5);
 #endif
-    clip(alpha - threshold);
+    AlphaDiscard( alpha, threshold );
 }
 #endif
