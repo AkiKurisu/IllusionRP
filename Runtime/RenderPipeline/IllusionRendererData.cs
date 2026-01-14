@@ -446,7 +446,7 @@ namespace Illusion.Rendering
             VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
             for (int i = 0; i < MainLightShadowSliceData.Length && i < ShadowCascadeCount; ++i)
             {
-                if (i >= shadowData.bias.Count)
+                if (i >= (shadowData.bias?.Count ?? 0))
                 {
                     MainLightShadowCascadeBiases[i] = Vector4.zero;
                     continue;
