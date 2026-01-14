@@ -2018,7 +2018,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				return VertexFunction( v );
 			}
 
-			FragmentOutput frag ( VertexOutput IN
+			GBufferFragOutput frag ( VertexOutput IN
 								#ifdef ASE_DEPTH_WRITE_ON
 								,out float outputDepth : ASE_SV_DEPTH
 								#endif
@@ -2403,7 +2403,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 		/*ase_pass_end*/
 	}
 	/*ase_lod*/
-	CustomEditor "ASEMaterialInspector"
+	CustomEditor "AmplifyShaderEditor.MaterialInspector"
 	FallBack ""
 	Fallback Off
 }

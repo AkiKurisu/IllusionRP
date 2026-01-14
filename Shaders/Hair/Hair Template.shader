@@ -2552,6 +2552,6 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 		}
 	}
 	/*ase_lod*/
-	CustomEditor "ASEMaterialInspector"
+	CustomEditor "AmplifyShaderEditor.MaterialInspector"
 	FallBack ""
 }
