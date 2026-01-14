@@ -22,12 +22,6 @@ namespace Illusion.Rendering
         internal bool requireHistoryColor = true;
 
         /// <summary>
-        /// Enable to draw motion vector earlier than drawing objects.
-        /// </summary>
-        [SerializeField]
-        internal bool requireEarlyMotionVector = true;
-
-        /// <summary>
         /// Whether prefer to calculating effects in compute shader if possible.
         /// </summary>
         [SerializeField]
@@ -388,7 +382,6 @@ namespace Illusion.Rendering
             bool useForwardGBuffer = useScreenSpaceReflection && !isDeferred;
             bool useDepthPyramid = useAmbientOcclusion || useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
             bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
-            bool useMotionVectorPrepass = requireEarlyMotionVector;
             bool needHistoryColor = requireHistoryColor && !useTAA;
             bool useColorPyramid = useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
 
@@ -433,13 +426,6 @@ namespace Illusion.Rendering
             if (useForwardGBuffer)
             {
                 renderer.EnqueuePass(_forwardGBufferPass);
-            }
-
-            // Re-order motion vector pass renderPassEvent.
-            var motionVectorPass = UniversalRenderingUtility.GetMotionVectorRenderPass(renderer);
-            if (motionVectorPass != null)
-            {
-                motionVectorPass.renderPassEvent = useMotionVectorPrepass ? IllusionRenderPassEvent.MotionVectorPrepass : RenderPassEvent.BeforeRenderingPostProcessing;
             }
 
             if (useAmbientOcclusion && !isOffscreenDepth)

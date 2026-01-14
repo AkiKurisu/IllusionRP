@@ -9,7 +9,6 @@ namespace Illusion.Rendering.Editor
     {
         // General Settings
         private SerializedProperty _requireHistoryColor;
-        private SerializedProperty _requireEarlyMotionVector;
         private SerializedProperty _preferComputeShader;
 
         // Transparency Settings
@@ -48,7 +47,6 @@ namespace Illusion.Rendering.Editor
 
             // General Settings
             _requireHistoryColor = Properties.Find(feature => feature.requireHistoryColor);
-            _requireEarlyMotionVector = Properties.Find(feature => feature.requireEarlyMotionVector);
             _preferComputeShader = Properties.Find(feature => feature.preferComputeShader);
 
             // Transparency Settings
@@ -117,7 +115,6 @@ namespace Illusion.Rendering.Editor
             if (Foldout("General", true))
             {
                 EditorGUILayout.PropertyField(_requireHistoryColor, Styles.RequireHistoryColorLabel);
-                EditorGUILayout.PropertyField(_requireEarlyMotionVector, Styles.RequireEarlyMotionVectorLabel);
                 EditorGUILayout.PropertyField(_preferComputeShader, Styles.PreferComputeShaderLabel);
             }
 
@@ -203,8 +200,6 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent RequireHistoryColorLabel = new("Require History Color",
                 "If this is enabled, the camera copies the last rendered view so it can be accessed at next frame in the pipeline." +
                 "When temporal anti-aliasing is on, history color will fetch accumulation buffer directly.");
-            public static readonly GUIContent RequireEarlyMotionVectorLabel = new("Require Early Motion Vector",
-                "Enable to draw motion vector before rendering objects. Please note that motion vector will be drawn twice when using RenderGraph.");
             public static readonly GUIContent PreferComputeShaderLabel = new("Prefer Compute Shader",
                 "Whether prefer to calculating effects in compute shader if possible.");
 
