@@ -695,5 +695,5 @@ Shader "Universal Render Pipeline/Hybrid Complex Lit"
 
 //    FallBack "Hidden/Universal Render Pipeline/Lit"
 //    FallBack "Hidden/Universal Render Pipeline/FallbackError"
-    CustomEditor "UnityEditor.Rendering.Universal.ShaderGUI.LitShader"
+    CustomEditor "Illusion.Rendering.Editor.HybridLitShader"
 }
