@@ -484,9 +484,7 @@ namespace Illusion.Rendering.PostProcessing
 			var upsampledTexture = RenderUpsamplePass(renderGraph, volumetricFogTexture, downsampledDepth,
 				cameraColorTexture, cameraDepthTexture);
 
-			// TODO: Optimize one blit in Unity 6
-			// Composite the result to camera color
-			RenderCompositePass(renderGraph, upsampledTexture, cameraColorTexture);
+			resource.cameraColor = upsampledTexture;
 		}
 
 		/// <summary>
@@ -945,30 +943,6 @@ namespace Illusion.Rendering.PostProcessing
 				});
 
 				return outputTexture;
-			}
-		}
-
-		/// <summary>
-		/// Renders the composite pass to blit the result to camera color.
-		/// </summary>
-		/// <param name="renderGraph"></param>
-		/// <param name="sourceTexture"></param>
-		/// <param name="cameraColorTexture"></param>
-		private void RenderCompositePass(RenderGraph renderGraph, TextureHandle sourceTexture, TextureHandle cameraColorTexture)
-		{
-			using (var builder = renderGraph.AddRasterRenderPass<CompositePassData>(
-				"Volumetric Fog Composite", out var passData, _compositeSampler))
-			{
-				builder.UseTexture(sourceTexture);
-				passData.SourceTexture = sourceTexture;
-
-				builder.SetRenderAttachment(cameraColorTexture, 0);
-				builder.AllowPassCulling(false);
-
-				builder.SetRenderFunc((CompositePassData data, RasterGraphContext context) =>
-				{
-					Blitter.BlitTexture(context.cmd, data.SourceTexture, Vector2.one, Blitter.GetBlitMaterial(TextureDimension.Tex2D), 0);
-				});
 			}
 		}
 
