@@ -50,12 +50,8 @@ namespace Illusion.Rendering
     }
 
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Ground Truth Ambient Occlusion")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Ground Truth Ambient Occlusion", typeof(UniversalRenderPipeline))]
-#endif
     public class GroundTruthAmbientOcclusion : VolumeComponent
     {
         public BoolParameter enable = new(false, BoolParameter.DisplayType.EnumPopup);

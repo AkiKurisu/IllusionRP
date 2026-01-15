@@ -201,8 +201,6 @@ namespace Illusion.Rendering
 
         private CopyHistoryColorPass _copyHistoryColorPass;
 
-        private SetGlobalVariablesPass _setGlobalVariablesPass;
-
         private DepthPyramidPass _depthPyramidPass;
 
         private SetKeywordPass _enableDeferredPass;
@@ -307,7 +305,6 @@ namespace Illusion.Rendering
             _depthPyramidPass = new DepthPyramidPass(_rendererData);
             _colorPyramidPass = new ColorPyramidPass(_rendererData);
             _copyHistoryColorPass = CopyHistoryColorPass.Create(_rendererData);
-            _setGlobalVariablesPass = new SetGlobalVariablesPass(_rendererData);
 
             _enableScreenSpaceSubsurfaceScatteringPass = new SetKeywordPass(IllusionShaderKeywords._SCREEN_SPACE_SSS, true, RenderPassEvent.BeforeRendering);
             _disableScreenSpaceSubsurfaceScatteringPass = new SetKeywordPass(IllusionShaderKeywords._SCREEN_SPACE_SSS, false, RenderPassEvent.BeforeRendering);
@@ -390,7 +387,7 @@ namespace Illusion.Rendering
 
             bool isOffscreenDepth = UniversalRenderingUtility.IsOffscreenDepthTexture(in renderingData.cameraData);
 
-            // Setup pass must run first (handles configuration for both Unity 2022 and 2023)
+            // Setup pass must run first
             renderer.EnqueuePass(_setupPass);
 
             // BeforeRendering
@@ -407,9 +404,6 @@ namespace Illusion.Rendering
 
             // BeforeRenderingPrePasses
             renderer.EnqueuePass(_advancedTonemappingPass);
-
-            // AfterRenderingPrePasses
-            renderer.EnqueuePass(_setGlobalVariablesPass);
 
             if (useDepthPostPass)
             {

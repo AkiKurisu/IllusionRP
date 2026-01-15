@@ -1,4 +1,5 @@
 // Modified from https://github.com/CristianQiu/Unity-URP-Volumetric-Light
+using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -8,12 +9,9 @@ namespace Illusion.Rendering.PostProcessing
 	/// <summary>
 	/// Volume component for the volumetric fog.
 	/// </summary>
-#if UNITY_2023_1_OR_NEWER
+	[Serializable]
 	[SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
 	[VolumeComponentMenu("Illusion/Volumetric Fog")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Volumetric Fog", typeof(UniversalRenderPipeline))]
-#endif
 	public sealed class VolumetricFog : VolumeComponent, IPostProcessComponent
 	{
 		#region Public Attributes

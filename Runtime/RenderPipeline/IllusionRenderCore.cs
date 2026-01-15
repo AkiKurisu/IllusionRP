@@ -130,7 +130,11 @@ namespace Illusion.Rendering
 
         public static readonly int CastPerObjectShadow = Shader.PropertyToID("_CastPerObjectShadow");
 
+        public static readonly int SsrLightingTexture = Shader.PropertyToID("_SsrLightingTexture");
+        
         public static readonly int ScreenSpaceReflections = Shader.PropertyToID("_ScreenSpaceReflections");
+        
+        public static readonly int ScreenSpaceOcclusionTexture = Shader.PropertyToID("_ScreenSpaceOcclusionTexture");
 
         public static readonly int ScreenSpaceAmbientOcclusion = Shader.PropertyToID("_ScreenSpaceAmbientOcclusion");
 

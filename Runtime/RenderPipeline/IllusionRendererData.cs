@@ -7,6 +7,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Illusion.Rendering.PostProcessing;
 using Illusion.Rendering.Shadows;
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Illusion.Rendering
 {
@@ -62,6 +63,17 @@ namespace Illusion.Rendering
         ScreenSpace,
         RayTraced,
         Mixed
+    }
+            
+    public struct DitheredTextureHandleSet
+    {
+        public TextureHandle owenScrambled256Tex;
+        
+        public TextureHandle scramblingTile;
+        
+        public TextureHandle rankingTile;
+        
+        public TextureHandle scramblingTex;
     }
     
     /// <summary>
@@ -144,6 +156,8 @@ namespace Illusion.Rendering
         /// Get renderer camera <see cref="UniversalAdditionalCameraData"/>.
         /// </summary>
         public UniversalAdditionalCameraData AdditionalCameraData => _additionalCameraData;
+
+        public TextureHandle ScreenSpaceReflectionTexture;
 
         /// <summary>
         /// Get per-renderer frame count.
@@ -294,6 +308,14 @@ namespace Illusion.Rendering
 
             _debugExposureData = RTHandles.Alloc(1, 1, colorFormat: ExposureFormat,
                 enableRandomWrite: true, name: "Debug Exposure Info");
+
+            _ditheredTextureSet1SPP = new DitheredTextureSet
+            {
+                owenScrambled256Tex = RTHandles.Alloc(renderPipelineResources.owenScrambled256Tex),
+                scramblingTile      = RTHandles.Alloc(renderPipelineResources.scramblingTile1SPP),
+                rankingTile         = RTHandles.Alloc(renderPipelineResources.rankingTile1SPP),
+                scramblingTex       = RTHandles.Alloc(renderPipelineResources.scramblingTex)
+            };
         }
 
         public void Update(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
@@ -541,13 +563,53 @@ namespace Illusion.Rendering
             array.Dispose();
             cmd.SetGlobalBuffer(IllusionShaderProperties._AmbientProbeData, _ambientProbeBuffer);
         }
+        
+        private struct DitheredTextureSet
+        {
+            public RTHandle owenScrambled256Tex;
+            public RTHandle scramblingTile;
+            public RTHandle rankingTile;
+            public RTHandle scramblingTex;
+        }
 
+        private readonly DitheredTextureSet _ditheredTextureSet1SPP;
+        
+        public DitheredTextureHandleSet DitheredTextureHandleSet1SPP { get; private set; }
+        
         public void BindDitheredRNGData1SPP(CommandBuffer cmd)
         {
             cmd.SetGlobalTexture(IllusionShaderProperties._OwenScrambledTexture, RuntimeResources.owenScrambled256Tex);
             cmd.SetGlobalTexture(IllusionShaderProperties._ScramblingTileXSPP, RuntimeResources.scramblingTile1SPP);
             cmd.SetGlobalTexture(IllusionShaderProperties._RankingTileXSPP, RuntimeResources.rankingTile1SPP);
             cmd.SetGlobalTexture(IllusionShaderProperties._ScramblingTexture, RuntimeResources.scramblingTex);
+        }
+        
+        internal static void BindDitheredTextureSet(ComputeCommandBuffer cmd, DitheredTextureHandleSet ditheredTextureSet)
+        {
+            cmd.SetGlobalTexture(IllusionShaderProperties._OwenScrambledTexture, ditheredTextureSet.owenScrambled256Tex);
+            cmd.SetGlobalTexture(IllusionShaderProperties._ScramblingTileXSPP, ditheredTextureSet.scramblingTile);
+            cmd.SetGlobalTexture(IllusionShaderProperties._RankingTileXSPP, ditheredTextureSet.rankingTile);
+            cmd.SetGlobalTexture(IllusionShaderProperties._ScramblingTexture, ditheredTextureSet.scramblingTex);
+        }
+        
+        internal static void BindDitheredTextureSet(RasterCommandBuffer cmd, DitheredTextureHandleSet ditheredTextureSet)
+        {
+            cmd.SetGlobalTexture(IllusionShaderProperties._OwenScrambledTexture, ditheredTextureSet.owenScrambled256Tex);
+            cmd.SetGlobalTexture(IllusionShaderProperties._ScramblingTileXSPP, ditheredTextureSet.scramblingTile);
+            cmd.SetGlobalTexture(IllusionShaderProperties._RankingTileXSPP, ditheredTextureSet.rankingTile);
+            cmd.SetGlobalTexture(IllusionShaderProperties._ScramblingTexture, ditheredTextureSet.scramblingTex);
+        }
+        
+        public void BindDitheredRNGData1SPP(RenderGraph renderGraph)
+        {
+            var set = new DitheredTextureHandleSet
+            {
+                owenScrambled256Tex = renderGraph.ImportTexture(_ditheredTextureSet1SPP.owenScrambled256Tex),
+                scramblingTile = renderGraph.ImportTexture(_ditheredTextureSet1SPP.scramblingTile),
+                rankingTile = renderGraph.ImportTexture(_ditheredTextureSet1SPP.rankingTile),
+                scramblingTex = renderGraph.ImportTexture(_ditheredTextureSet1SPP.scramblingTex)
+            };
+            DitheredTextureHandleSet1SPP = set;
         }
         
         public void BindDitheredRNGData8SPP(CommandBuffer cmd)

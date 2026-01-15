@@ -66,12 +66,7 @@ namespace Illusion.Rendering
         /// Whether enable Async Compute.
         /// </summary>
         [ConfigVariable("r.asynccompute")]
-#if UNITY_2023_1_OR_NEWER
-        // TODO: Has wrong graphics fence dependency due to NativePassCompiler bug.
         public bool EnableAsyncCompute { get; set; } = false;
-#else
-        public bool EnableAsyncCompute { get; set; } = true;
-#endif
         
         /// <summary>
         /// Whether enable Native Render Pass.

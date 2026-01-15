@@ -34,12 +34,8 @@ namespace Illusion.Rendering.Shadows
     }
 
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Per Object Shadows")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Per Object Shadows", typeof(UniversalRenderPipeline))]
-#endif
     public class PerObjectShadows : VolumeComponent
     {
         /// <summary>

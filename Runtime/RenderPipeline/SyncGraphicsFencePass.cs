@@ -20,9 +20,11 @@ namespace Illusion.Rendering
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            if (!IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute) return;
-            
             // pass
+            if (_syncFenceEvent == IllusionGraphicsFenceEvent.ScreenSpaceReflection)
+            {
+                RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties.SsrLightingTexture, _rendererData.ScreenSpaceReflectionTexture);
+            }
         }
     }
 }

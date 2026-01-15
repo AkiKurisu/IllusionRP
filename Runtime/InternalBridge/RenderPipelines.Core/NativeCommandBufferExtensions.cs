@@ -1,5 +1,4 @@
-﻿#if UNITY_2023_1_OR_NEWER   
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using UnityEngine.Rendering;
 
 namespace UnityEngine.Experimental.Rendering
@@ -13,4 +12,3 @@ namespace UnityEngine.Experimental.Rendering
         }
     }
 }
-#endif

@@ -745,7 +745,7 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderFunc((SetGlobalAOPassData data, UnsafeGraphContext context) =>
                 {
-                    context.cmd.SetGlobalTexture(ShaderConstants._ScreenSpaceOcclusionTexture, data.AOTexture);
+                    context.cmd.SetGlobalTexture(IllusionShaderProperties.ScreenSpaceOcclusionTexture, data.AOTexture);
                 });
             }
         }
@@ -829,8 +829,6 @@ namespace Illusion.Rendering
 
         private static class ShaderConstants
         {
-            public static readonly int _ScreenSpaceOcclusionTexture = MemberNameHelpers.ShaderPropertyID();
-            
             public static readonly int _AOBufferSize = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _AmbientOcclusionParam = MemberNameHelpers.ShaderPropertyID();

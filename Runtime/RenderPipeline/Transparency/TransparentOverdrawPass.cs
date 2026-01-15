@@ -213,7 +213,6 @@ namespace Illusion.Rendering
 
             internal List<ShaderTagId> ShaderTagIdList;
 
-#if UNITY_2023_1_OR_NEWER
             internal TextureHandle ColorHandle;
             
             internal TextureHandle DepthHandle;
@@ -230,7 +229,6 @@ namespace Illusion.Rendering
             internal RendererList RendererList;
             
             internal RendererList ObjectsWithErrorRendererList;
-#endif
         }
     }
 }

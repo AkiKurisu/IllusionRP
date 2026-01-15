@@ -9,12 +9,8 @@ namespace Illusion.Rendering.PRTGI
     /// Volume component for reflection normalization parameters.
     /// </summary>
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Reflection Normalization")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Reflection Normalization", typeof(UniversalRenderPipeline))]
-#endif
     public sealed class ReflectionNormalization : VolumeComponent, IPostProcessComponent
     {
         #region Public Attributes

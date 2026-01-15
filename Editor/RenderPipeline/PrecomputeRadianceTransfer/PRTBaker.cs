@@ -342,15 +342,9 @@ namespace Illusion.Rendering.Editor
                 return;
             }
 
-#if UNITY_2023_1_OR_NEWER
             Renderer[] renderers = UObject.FindObjectsByType(typeof(Renderer), FindObjectsSortMode.None)
                 .OfType<Renderer>().Where(r => ContributesGI(r.gameObject))
                 .ToArray();
-#else
-            Renderer[] renderers = UObject.FindObjectsOfType(typeof(Renderer))
-                .OfType<Renderer>().Where(r => ContributesGI(r.gameObject))
-                .ToArray();
-#endif
             var captureShader = Shader.Find(IllusionShaders.ProbeGBuffer);
             RecordAndSetShaders(renderers, captureShader);
             _cubemapCamera = CreateCubemapCamera();
