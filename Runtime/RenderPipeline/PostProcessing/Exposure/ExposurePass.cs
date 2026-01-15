@@ -404,24 +404,8 @@ namespace Illusion.Rendering.PostProcessing
                         Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, data.ApplyExposureMaterial, 0);
                     });
                 }
-                
-                // TODO: Optimize one blit in Unity 6
-                // Second pass: blit from intermediate texture back to activeColorTexture
-                using (var builder = renderGraph.AddRasterRenderPass<ApplyExposurePassData>("Apply Exposure From Intermediate", 
-                    out var applyPassData2, new ProfilingSampler("Apply Exposure From Intermediate")))
-                {
-                    builder.UseTexture(intermediateTexture);
-                    applyPassData2.Source = intermediateTexture;
-                    builder.SetRenderAttachment(resource.activeColorTexture, 0);
-                    applyPassData2.Destination = resource.activeColorTexture;
-                    
-                    builder.AllowPassCulling(false);
-                    
-                    builder.SetRenderFunc(static (ApplyExposurePassData data, RasterGraphContext context) =>
-                    {
-                        Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, Blitter.GetBlitMaterial(TextureDimension.Tex2D), 0);
-                    });
-                }
+
+                resource.cameraColor = intermediateTexture;
             }
         }
 
