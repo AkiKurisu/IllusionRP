@@ -69,12 +69,6 @@ namespace Illusion.Rendering
         public bool EnableAsyncCompute { get; set; } = false;
         
         /// <summary>
-        /// Whether enable Native Render Pass.
-        /// </summary>
-        [ConfigVariable("r.renderpass")]
-        public bool EnableNativeRenderPass { get; set; } = true;
-        
-        /// <summary>
         /// Whether enable Compute Shader.
         /// </summary>
         [ConfigVariable("r.computeshader")]

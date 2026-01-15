@@ -88,10 +88,6 @@ namespace Illusion.Rendering.Editor
                 new GUIContent("Async Compute", "Enable/Disable Async Compute"),
                 _config.EnableAsyncCompute);
 
-            _config.EnableNativeRenderPass = EditorGUILayout.ToggleLeft(
-                new GUIContent("Native Render Pass", "Enable/Disable Native Render Pass"),
-                _config.EnableNativeRenderPass);
-
             _config.EnableComputeShader = EditorGUILayout.ToggleLeft(
                 new GUIContent("Compute Shader", "Enable/Disable Compute Shader"),
                 _config.EnableComputeShader);
@@ -193,7 +189,6 @@ namespace Illusion.Rendering.Editor
             _config.EnableVolumetricFog = true;
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = true;
             _config.EnableAsyncCompute = true;
-            _config.EnableNativeRenderPass = true;
             _config.EnableComputeShader = true;
             Repaint();
         }
