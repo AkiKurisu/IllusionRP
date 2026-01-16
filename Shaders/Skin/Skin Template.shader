@@ -962,13 +962,16 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 				half Lobe2Smoothness;
 				DualLobeSmoothness(Smoothness, _Smoothness1, _Smoothness2, Lobe1Smoothness, Lobe2Smoothness);
 
-				half3 albedo =  PreModifySubsurfaceScatteringAlbedo(BaseColor, SubsurfaceAlbedo);
-				SurfaceData surfaceData;
+				half3 albedo =  BaseColor;
 #ifdef _SPECULAR_SETUP
-				surfaceData.albedo              = ComputeDiffuseColor(albedo, saturate(Metallic));
+				albedo = ComputeDiffuseColor(albedo, saturate(Metallic));
 #else
+				albedo = BaseColor;
+#endif		
+				albedo = PreModifySubsurfaceScatteringAlbedo(albedo, SubsurfaceAlbedo);
+				
+				SurfaceData surfaceData;
 				surfaceData.albedo              = albedo;
-#endif
 				surfaceData.metallic            = saturate(Metallic);
 #ifdef _SPECULAR_SETUP
 				surfaceData.specular            = lerp(Specular, albedo, saturate(Metallic));
