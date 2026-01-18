@@ -65,7 +65,8 @@ namespace Illusion.Rendering
         /// <summary>
         /// Whether enable Async Compute.
         /// </summary>
-        [ConfigVariable("r.asynccompute")]
+        // [ConfigVariable("r.asynccompute")]
+        // TODO: Fix Async Compute Crash
         public bool EnableAsyncCompute { get; set; } = false;
         
         /// <summary>

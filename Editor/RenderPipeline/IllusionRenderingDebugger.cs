@@ -188,7 +188,7 @@ namespace Illusion.Rendering.Editor
             _config.EnableScreenSpaceAmbientOcclusion = true;
             _config.EnableVolumetricFog = true;
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = true;
-            _config.EnableAsyncCompute = true;
+            _config.EnableAsyncCompute = false;
             _config.EnableComputeShader = true;
             Repaint();
         }

@@ -524,40 +524,6 @@ namespace Illusion.Rendering
             // AfterRenderingPostProcessing
             renderer.EnqueuePass(_processingPostPass);
         }
-        
-        // Ref: MainLightShadowCasterPass.Setup
-        private static bool CanRenderMainLightShadow(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData, UniversalRenderingData renderingData)
-        {
-            if (!shadowData.mainLightShadowsEnabled)
-                return false;
-
-#if UNITY_EDITOR
-            if (CoreUtils.IsSceneLightingDisabled(cameraData.camera))
-                return false;
-#endif
-
-            if (!shadowData.supportsMainLightShadows)
-                return false;
-
-            int shadowLightIndex = lightData.mainLightIndex;
-            if (shadowLightIndex == -1)
-                return false;
-
-            VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
-            Light light = shadowLight.light;
-            if (light.shadows == LightShadows.None)
-                return false;
-
-            if (!renderingData.cullResults.GetShadowCasterBounds(shadowLightIndex, out _))
-                return false;
-
-            return true;
-        }
-
-        private static bool CanRenderAdditionalLightShadow(UniversalShadowData shadowData)
-        {
-            return shadowData.supportsAdditionalLightShadows;
-        }
 
         private void PerformSetup(ContextContainer frameData, IllusionRendererData rendererData)
         {
@@ -565,7 +531,6 @@ namespace Illusion.Rendering
             var cameraData = frameData.Get<UniversalCameraData>();
             var lightData = frameData.Get<UniversalLightData>();
             var shadowData = frameData.Get<UniversalShadowData>();
-            var renderingData = frameData.Get<UniversalRenderingData>();
             rendererData.Update(cameraData, lightData, shadowData);
             var config = IllusionRuntimeRenderingConfig.Get();
             bool isPreviewOrReflectCamera = cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
@@ -593,33 +558,6 @@ namespace Illusion.Rendering
                                             && screenSpaceReflectionParam.enable.value;
             rendererData.SampleScreenSpaceReflection = useScreenSpaceReflection;
             rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination;
-
-            // Re-order light shadow caster pass renderPassEvent better for async compute.
-            // Ref: https://developer.nvidia.com/blog/advanced-api-performance-async-compute-and-overlap/
-            bool enableAsyncCompute = rendererData.PreferComputeShader
-                                      && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
-
-            // Shadow Caster has bug in URP14.0.12 when there is no main/additional light in scene which will clear pre-z.
-            // So skip re-order when shadow is not rendered.
-            bool reorderMainLightShadowPass = enableAsyncCompute && CanRenderMainLightShadow(cameraData, lightData, shadowData, renderingData);
-            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(cameraData.renderer);
-            if (mainLightShadowCasterPass != null)
-            {
-                mainLightShadowCasterPass.renderPassEvent = reorderMainLightShadowPass
-                    ? IllusionRenderPassEvent.LightsShadowCasterPass
-                    : RenderPassEvent.BeforeRenderingShadows;
-            }
-
-            bool reorderAdditionalLightShadowPass =
-                enableAsyncCompute && CanRenderAdditionalLightShadow(shadowData);
-            var additionalLightsShadowCasterPass =
-                UniversalRenderingUtility.GetAdditionalLightsShadowCasterPass(cameraData.renderer);
-            if (additionalLightsShadowCasterPass != null)
-            {
-                additionalLightsShadowCasterPass.renderPassEvent = reorderAdditionalLightShadowPass
-                    ? IllusionRenderPassEvent.LightsShadowCasterPass
-                    : RenderPassEvent.BeforeRenderingShadows;
-            }
 
             var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
             _sceneShadowCasterManager.Cull(cameraData, lightData,
