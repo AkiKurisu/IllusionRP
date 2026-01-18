@@ -963,6 +963,7 @@ Shader "Universal Render Pipeline/Water"
 			#define _NORMALMAP 1
 			#define ASE_VERSION 19905
 			#define ASE_SRP_VERSION 170300
+			#define REQUIRE_DEPTH_TEXTURE 1
 			#define ASE_USING_SAMPLING_MACROS 1
 
 
@@ -999,7 +1000,9 @@ Shader "Universal Render Pipeline/Water"
 
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/MotionVectorsCommon.hlsl"
 
-			
+			#define ASE_NEEDS_FRAG_SCREEN_POSITION_NORMALIZED
+			#define ASE_NEEDS_FRAG_WORLD_POSITION
+
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
 				#define ASE_SV_DEPTH SV_DepthLessEqual
@@ -1149,9 +1152,12 @@ Shader "Universal Render Pipeline/Water"
 				float4 ScreenPosNorm = float4( GetNormalizedScreenSpaceUV( input.positionCS ), input.positionCS.zw );
 				float4 ClipPos = ComputeClipSpacePosition( ScreenPosNorm.xy, input.positionCS.z ) * input.positionCS.w;
 
+				float depthLinearEye243 = LinearEyeDepth( SHADERGRAPH_SAMPLE_SCENE_DEPTH( ScreenPosNorm.xy ), _ZBufferParams );
+				float3 worldToView250 = mul( UNITY_MATRIX_V, float4( PositionWS, 1 ) ).xyz;
+				float AlphaFinal195 = saturate(  (0.0 + ( ( depthLinearEye243 - ( worldToView250.z * -1.0 ) ) - 0.0 ) * ( 1.0 - 0.0 ) / ( _EdgeFade - 0.0 ) ) );
 				
 
-				float Alpha = 1;
+				float Alpha = AlphaFinal195;
 				float AlphaClipThreshold = 0.5;
 
 				#if defined( ASE_DEPTH_WRITE_ON )
@@ -1864,4 +1870,4 @@ WireConnection;1;2;149;0
 WireConnection;1;6;196;0
 WireConnection;1;7;53;0
 ASEEND*/
-//CHKSM=9C21976447B04C10022162E00268622AA448BF0A
+//CHKSM=A8162E88C696FB34E817F2A52068E32FE5C33E7C

@@ -922,6 +922,7 @@ Shader "Universal Render Pipeline/HD Lit"
 
 
 			#pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
+			#pragma multi_compile_vertex _ _SHADOW_BIAS_FRAGMENT
 
 			#pragma vertex vert
 			#pragma fragment frag
@@ -2846,7 +2847,8 @@ Shader "Universal Render Pipeline/HD Lit"
 
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/MotionVectorsCommon.hlsl"
 
-			
+			#define ASE_NEEDS_TEXTURE_COORDINATES0
+
 
 			#if defined(ASE_EARLY_Z_DEPTH_OPTIMIZE) && (SHADER_TARGET >= 45)
 				#define ASE_SV_DEPTH SV_DepthLessEqual
@@ -2865,7 +2867,7 @@ Shader "Universal Render Pipeline/HD Lit"
 				#endif
 				half3 normalOS : NORMAL;
 				half4 tangentOS : TANGENT;
-				
+				float4 ase_texcoord : TEXCOORD0;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
@@ -2875,7 +2877,7 @@ Shader "Universal Render Pipeline/HD Lit"
 				float4 positionCSNoJitter : TEXCOORD0;
 				float4 previousPositionCSNoJitter : TEXCOORD1;
 				float3 positionWS : TEXCOORD2;
-				
+				float4 ase_texcoord3 : TEXCOORD3;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
 			};
@@ -2925,7 +2927,9 @@ Shader "Universal Render Pipeline/HD Lit"
 				int _PassValue;
 			#endif
 
-			
+			TEXTURE2D(_BaseColorMap);
+			SAMPLER(sampler_BaseColorMap);
+
 
 			
 			PackedVaryings VertexFunction( Attributes input  )
@@ -2935,7 +2939,10 @@ Shader "Universal Render Pipeline/HD Lit"
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 				UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
+				output.ase_texcoord3.xy = input.ase_texcoord.xy;
 				
+				//setting value to unused interpolator channels and avoid initialization warnings
+				output.ase_texcoord3.zw = 0;
 
 				#ifdef ASE_ABSOLUTE_VERTEX_POS
 					float3 defaultVertexValue = input.positionOS.xyz;
@@ -2995,10 +3002,15 @@ Shader "Universal Render Pipeline/HD Lit"
 				float4 ScreenPosNorm = float4( GetNormalizedScreenSpaceUV( input.positionCS ), input.positionCS.zw );
 				float4 ClipPos = ComputeClipSpacePosition( ScreenPosNorm.xy, input.positionCS.z ) * input.positionCS.w;
 
+				half2 uv_BaseColorMap = input.ase_texcoord3.xy * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;
+				half4 temp_output_18_0_g3 = ( _BaseColor * SAMPLE_TEXTURE2D( _BaseColorMap, sampler_BaseColorMap, uv_BaseColorMap ) );
+				half BaseAlpha40_g3 = (temp_output_18_0_g3).a;
+				half lerpResult45_g3 = lerp( _AlphaRemapMin , _AlphaRemapMax , BaseAlpha40_g3);
+				half FinalAlpha47_g3 = lerpResult45_g3;
 				
 
-				float Alpha = 1;
-				float AlphaClipThreshold = 0.5;
+				float Alpha = FinalAlpha47_g3;
+				float AlphaClipThreshold = _AlphaCutoff;
 
 				#if defined( ASE_DEPTH_WRITE_ON )
 					float DeviceDepth = input.positionCS.z;
@@ -3462,4 +3474,4 @@ WireConnection;1;5;67;51
 WireConnection;1;6;67;52
 WireConnection;1;7;61;0
 ASEEND*/
-//CHKSM=756C3CB767811C997E490877EBF1E701A1745DDD
+//CHKSM=4E8D0483E3548563F9089B4B8666B1264A7615A9
