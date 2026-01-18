@@ -138,6 +138,8 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
+                
+                builder.SetGlobalTextureAfterPass(colorPyramidHandle, IllusionShaderProperties._ColorPyramidTexture);
 
                 builder.SetRenderFunc((ColorPyramidPassData data, ComputeGraphContext context) =>
                 {
@@ -145,9 +147,6 @@ namespace Illusion.Rendering
                         context.cmd, data.ColorPyramid, data.TempPyramid, data.PyramidSize, data.DestinationUseDynamicScale);
                 });
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties._ColorPyramidTexture, colorPyramidHandle);
 
             // Pass 3: Copy history depth and normal buffers if needed
             if (_rendererData.RequireHistoryDepthNormal)

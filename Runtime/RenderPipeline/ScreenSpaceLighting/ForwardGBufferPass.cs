@@ -104,6 +104,8 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
+                
+                builder.SetGlobalTextureAfterPass(forwardGBufferHandle, Properties._ForwardGBuffer);
 
                 builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {
@@ -111,9 +113,6 @@ namespace Illusion.Rendering
                     context.cmd.DrawRendererList(data.RendererListHdl);
                 });
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, Properties._ForwardGBuffer, forwardGBufferHandle);
         }
         
         private static class Properties

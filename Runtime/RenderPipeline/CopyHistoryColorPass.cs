@@ -65,6 +65,8 @@ namespace Illusion.Rendering
                 passData.CopyColorMaterial = _blitMaterial;
 
                 builder.AllowPassCulling(false);
+                
+                builder.SetGlobalTextureAfterPass(destinationHandle, Properties._CameraPreviousColorTexture);
 
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
@@ -73,9 +75,6 @@ namespace Illusion.Rendering
                     Blitter.BlitTexture(context.cmd, data.Source, new Vector4(1, 1, 0, 0), data.CopyColorMaterial, 0);
                 });
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, Properties._CameraPreviousColorTexture, destinationHandle);
         }
 
         public void Dispose()

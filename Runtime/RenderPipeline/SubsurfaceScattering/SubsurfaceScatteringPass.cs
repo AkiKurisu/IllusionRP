@@ -245,6 +245,8 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
 
+                builder.SetGlobalTextureAfterPass(lightingHandle, ShaderIDs._SubsurfaceLighting);
+                
                 builder.SetRenderFunc(static (ScatteringComputePassData data, ComputeGraphContext context) =>
                 {
                     // Set compute shader parameters
@@ -283,6 +285,8 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
 
+                builder.SetGlobalTextureAfterPass(lightingHandle, ShaderIDs._SubsurfaceLighting);
+                
                 builder.SetRenderFunc(static (ScatteringRasterPassData data, RasterGraphContext context) =>
                 {
                     // Disable native render pass keyword
@@ -397,9 +401,6 @@ namespace Illusion.Rendering
             {
                 RenderScatteringRaster(renderGraph, diffuseHandle, albedoHandle, lightingHandle);
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, ShaderIDs._SubsurfaceLighting, lightingHandle);
         }
 
         public void Dispose()

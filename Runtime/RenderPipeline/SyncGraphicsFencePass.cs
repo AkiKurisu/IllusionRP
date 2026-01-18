@@ -23,7 +23,10 @@ namespace Illusion.Rendering
             // pass
             if (_syncFenceEvent == IllusionGraphicsFenceEvent.ScreenSpaceReflection)
             {
-                RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties.SsrLightingTexture, _rendererData.ScreenSpaceReflectionTexture);
+                if (_rendererData.ScreenSpaceReflectionTexture.IsValid())
+                {
+                    RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties.SsrLightingTexture, _rendererData.ScreenSpaceReflectionTexture);
+                }
             }
         }
     }

@@ -96,15 +96,14 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
+                
+                builder.SetGlobalTextureAfterPass(depthPyramidHandle, IllusionShaderProperties._DepthPyramid);
 
                 builder.SetRenderFunc((DepthPyramidPassData data, ComputeGraphContext context) =>
                 {
                     data.MipGenerator.RenderMinDepthPyramid(context.cmd, data.DepthPyramidTexture, data.MipChainInfo);
                 });
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties._DepthPyramid, depthPyramidHandle);
         }
         
         public void Dispose()

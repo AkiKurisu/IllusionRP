@@ -135,9 +135,6 @@ namespace Illusion.Rendering.Shadows
             {
                 preDepthTexture = renderGraph.ImportTexture(preDepthRT);
             }
-            
-            // Set global texture for screen space shadows
-            RenderGraphUtils.SetGlobalTexture(renderGraph, ShaderProperties._ScreenSpaceShadowmapTexture, screenSpaceShadowsTexture);
 
             // PCSS Penumbra Pass - Use UnsafePass for multiple render target switching
             if (_rendererData.PCSSShadowSampling)
@@ -185,6 +182,8 @@ namespace Illusion.Rendering.Shadows
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
+                
+                builder.SetGlobalTextureAfterPass(screenSpaceShadowsTexture, ShaderProperties._ScreenSpaceShadowmapTexture);
 
                 builder.SetRenderFunc((ShadowPassData data, RasterGraphContext rgContext) =>
                 {
