@@ -778,7 +778,7 @@ namespace Illusion.Rendering
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
                 
                 // Create full resolution output texture
-                var outputDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
+                var outputDesc = new TextureDesc(passData.Width, passData.Height)
                 {
                     colorFormat = GraphicsFormat.B10G11R11_UFloatPack32,
                     enableRandomWrite = true,
@@ -884,12 +884,12 @@ namespace Illusion.Rendering
                     depthPyramidTexture, normalTexture, historyDepthTexture,
                     motionVectorTexture, 1.0f);
                 
-                // First temporal denoise pass
+                // Allocate first history buffer
+                float scaleFactor = _halfResolution ? 0.5f : 1.0f;
                 var historyBuffer1 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
-                if (historyBuffer1 == null)
+                if (scaleFactor != _historyResolutionScale || historyBuffer1 == null)
                 {
-                    // Allocate history if not exists
-                    float scaleFactor = _halfResolution ? 0.5f : 1.0f;
+                    _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
                     var historyAllocator = new IllusionRendererData.CustomHistoryAllocator(
                         new Vector2(scaleFactor, scaleFactor),
                         GraphicsFormat.R16G16B16A16_SFloat,
@@ -916,9 +916,9 @@ namespace Illusion.Rendering
                 if (volume.secondDenoiserPass.value)
                 {
                     var historyBuffer2 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
-                    if (historyBuffer2 == null)
+                    if (scaleFactor != _historyResolutionScale || historyBuffer2 == null)
                     {
-                        float scaleFactor = _halfResolution ? 0.5f : 1.0f;
+                        _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
                         var historyAllocator2 = new IllusionRendererData.CustomHistoryAllocator(
                             new Vector2(scaleFactor, scaleFactor),
                             GraphicsFormat.R16G16B16A16_SFloat,
@@ -938,6 +938,7 @@ namespace Illusion.Rendering
                     
                     giTexture = spatialOutput;
                 }
+                _historyResolutionScale = scaleFactor;
             }
             
             // Upsample if half resolution
