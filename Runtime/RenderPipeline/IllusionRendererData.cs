@@ -242,8 +242,6 @@ namespace Illusion.Rendering
 
         private Camera _camera;
 
-        private readonly Dictionary<IllusionGraphicsFenceEvent, GraphicsFence> _graphicsFences = new();
-
         private Exposure _exposure;
 
         private readonly RTHandle _emptyExposureTexture; // RGHalf
@@ -321,8 +319,6 @@ namespace Illusion.Rendering
         public void Update(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
         {
             Active = this;
-            // Cleanup previous graphics fence
-            _graphicsFences.Clear();
             // Advance render frame
             FrameCount++;
             IsFirstFrame = false;
@@ -341,7 +337,6 @@ namespace Illusion.Rendering
                 Active = null;
             }
 
-            _graphicsFences.Clear();
             MipGenerator.Release();
             _historyRTSystem.Dispose();
             CameraPreDepthTextureRT?.Release();
@@ -384,7 +379,7 @@ namespace Illusion.Rendering
             // Match HDRP View Projection Matrix, pre-handle reverse z.
             _shaderVariablesGlobal.ViewMatrix = cameraData.camera.worldToCameraMatrix;
             _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(cameraData, yFlip);
-            _shaderVariablesGlobal.InvProjMatrix = cameraData.GetGPUProjectionMatrix(false).inverse;
+            _shaderVariablesGlobal.InvProjMatrix = cameraData.GetGPUProjectionMatrix(true).inverse;
             var lastInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
             _shaderVariablesGlobal.InvViewProjMatrix = _shaderVariablesGlobal.ViewProjMatrix.inverse;
             _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount > 1 ? _shaderVariablesGlobal.InvViewProjMatrix : lastInvViewProjMatrix;
@@ -668,32 +663,6 @@ namespace Illusion.Rendering
         internal void ReleaseHistoryFrameRT(int id)
         {
             _historyRTSystem.ReleaseBuffer(id);
-        }
-
-        /// <summary>
-        /// Creates a GraphicsFence.
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="syncFenceEvent"></param>
-        /// <returns></returns>
-        public GraphicsFence CreateAsyncGraphicsFence(CommandBuffer cmd, IllusionGraphicsFenceEvent syncFenceEvent)
-        {
-            var fence = cmd.CreateAsyncGraphicsFence();
-            _graphicsFences[syncFenceEvent] = fence;
-            return fence;
-        }
-
-        /// <summary>
-        /// Instructs the GPU to pause processing of the queue until it passes through the GraphicsFence fence.
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <param name="syncFenceEvent"></param>
-        public void WaitOnAsyncGraphicsFence(CommandBuffer cmd, IllusionGraphicsFenceEvent syncFenceEvent)
-        {
-            if (_graphicsFences.TryGetValue(syncFenceEvent, out var fence))
-            {
-                cmd.WaitOnAsyncGraphicsFence(fence);
-            }
         }
 
         /// <summary>
