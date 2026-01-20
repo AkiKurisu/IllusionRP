@@ -627,9 +627,8 @@ namespace Illusion.Rendering
                 passData.Variables = _variables;
                 passData.UpsampleCS = _upSampleBlurCS;
                 passData.UpsampleKernel = _upsampleDenoiseKernel;
-                // Upsample target is full resolution
-                passData.RTWidth = _rtWidth * 2;
-                passData.RTHeight = _rtHeight * 2;
+                passData.RTWidth = _rtWidth;
+                passData.RTHeight = _rtHeight;
 
                 builder.UseTexture(aoInput);
                 passData.Input = aoInput;
