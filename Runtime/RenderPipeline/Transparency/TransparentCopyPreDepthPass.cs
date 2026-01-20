@@ -16,16 +16,6 @@ namespace Illusion.Rendering
         private readonly Material _copyDepthMaterial;
 
         private readonly IllusionRendererData _rendererData;
-        
-#if UNITY_SWITCH || UNITY_ANDROID
-        private const GraphicsFormat k_DepthStencilFormat = GraphicsFormat.D24_UNorm_S8_UInt;
-
-        private const int k_DepthBufferBits = 24;
-#else
-        private const GraphicsFormat k_DepthStencilFormat = GraphicsFormat.D32_SFloat_S8_UInt;
-        
-        private const int k_DepthBufferBits = 32;
-#endif
 
         private readonly CopyDepthPass _copyDepthPass;
 
@@ -50,13 +40,13 @@ namespace Illusion.Rendering
         {
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
+            var universalRenderer = (UniversalRenderer)cameraData.renderer;
             TextureHandle source = resource.cameraDepthTexture;
             
             // Allocate pre-depth texture
             var depthDescriptor = cameraData.cameraTargetDescriptor;
             depthDescriptor.graphicsFormat = GraphicsFormat.None;
-            depthDescriptor.depthStencilFormat = k_DepthStencilFormat;
-            depthDescriptor.depthBufferBits = k_DepthBufferBits;
+            depthDescriptor.depthStencilFormat = universalRenderer.cameraDepthTextureFormat;
             depthDescriptor.msaaSamples = 1; // Depth-Only pass don't use MSAA
 
             RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.CameraPreDepthTextureRT, depthDescriptor, 
