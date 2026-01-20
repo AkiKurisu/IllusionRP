@@ -217,7 +217,7 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc(static (SplitLightingPassData data, RasterGraphContext context) =>
                 {
                     // Clear render targets
-                    context.cmd.ClearRenderTarget(RTClearFlags.Color | RTClearFlags.Color1, data.BackGroundColors, 1, 0);
+                    context.cmd.ClearRenderTarget(RTClearFlags.Color0 | RTClearFlags.Color1, data.BackGroundColors, 1, 0);
                     
                     // Draw renderers with SubsurfaceDiffuse shader tag
                     context.cmd.DrawRendererList(data.RendererListHdl);
