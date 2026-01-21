@@ -5,6 +5,43 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-1-21
+
+This version is compatible with Unity 6. Old version for Unity 2022 and Unity 2023 has been moved to [urp14 branch](https://github.com/AkiKurisu/IllusionRP/tree/urp14).
+
+### Changed
+
+- Update all passes to Unity 6.3 and URP 17.
+- Remove UNITY_2023_1_OR_NEWER macro.
+- Remove Graphics Fence pass.
+- Remove ComputeConstantBuffer utility.
+- Remove SetGlobalVariablesPass.
+- Remove Native Render Pass debug option.
+- Remove requireEarlyMotionVector option.
+- Disable Async Compute by default (Known issues).
+- Remove the second blit in VolumetricFogPass.
+- Remove the second blit in ExposurePass.
+- Make all ASE shaders to compatiable to URP 17.
+
+### Added
+
+- Add VRS (Variable Rate Shading) support with StencilVRSGenerationPass and StencilVRSDebugPass.
+- Add IllusionTransformWorldToShadowCoord override.
+
+### Fixed
+
+- Fix CameraPreDepth format.
+- Fix SubsurfaceScatteringPass.cs.
+- Fix GTAO half resolution bug.
+- Fix SSGI half resolution bug.
+- Fix preview camera null exception bug.
+- Fix depth copy bug.
+- Fix RenderTexture null exception in PRTProbeVolume.
+- Fix Subsurface Scattering Clear Color bug.
+- Fix Transparency depth bug.
+- Fix SetGlobalVariablesPass GfxDeviceD3D12::SetComputeBufferData error.
+- Fix subsurface scattering not work.
+
 ## [1.1.6] - 2026-1-11
 
 This version is compatible with Unity 2022.3.62f1 and 2023.2.22f1.
