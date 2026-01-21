@@ -48,10 +48,6 @@ namespace Illusion.Rendering
 
         private readonly FilteringSettings _filteringSettings = new(RenderQueueRange.opaque);
 
-        private readonly ProfilingSampler _samplingProfiler = new("Irradiance");
-
-        private readonly ProfilingSampler _scatteringProfiler = new("Scattering");
-
         private ShaderVariablesSubsurface _shaderVariablesSubsurface;
 
         private bool _scatteringInCS;
@@ -196,8 +192,7 @@ namespace Illusion.Rendering
             UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
             UniversalLightData lightData = frameData.Get<UniversalLightData>();
-            using (var builder = renderGraph.AddRasterRenderPass<SplitLightingPassData>(
-                "SSS Split Lighting", out var passData, _samplingProfiler))
+            using (var builder = renderGraph.AddRasterRenderPass<SplitLightingPassData>("SSS Split Lighting", out var passData))
             {
                 // Setup MRT: diffuse (attachment 0) + albedo (attachment 1)
                 builder.SetRenderAttachment(diffuseHandle, 0);
@@ -228,8 +223,7 @@ namespace Illusion.Rendering
         private void RenderScatteringCompute(RenderGraph renderGraph, TextureHandle diffuseHandle, 
             TextureHandle albedoHandle, TextureHandle lightingHandle)
         {
-            using (var builder = renderGraph.AddComputePass<ScatteringComputePassData>(
-                "SSS Scattering (CS)", out var passData, _scatteringProfiler))
+            using (var builder = renderGraph.AddComputePass<ScatteringComputePassData>("SSS Scattering (Compute)", out var passData))
             {
                 passData.ComputeShader = _computeShader;
                 passData.SubsurfaceScatteringKernel = _subsurfaceScatteringKernel;
@@ -272,8 +266,7 @@ namespace Illusion.Rendering
         private void RenderScatteringRaster(RenderGraph renderGraph, TextureHandle diffuseHandle, 
             TextureHandle albedoHandle, TextureHandle lightingHandle)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<ScatteringRasterPassData>(
-                "SSS Scattering (FS)", out var passData, _scatteringProfiler))
+            using (var builder = renderGraph.AddRasterRenderPass<ScatteringRasterPassData>("SSS Scattering (Raster)", out var passData))
             {
                 passData.ScatteringMaterial = _scatteringMaterial.Value;
                 builder.UseTexture(diffuseHandle);
@@ -361,8 +354,7 @@ namespace Illusion.Rendering
             }
 
             // Pass 1: Set global variables and constant buffer
-            using (var builder = renderGraph.AddComputePass<SetGlobalPassData>(
-                "SSS Setup Global Variables", out var setupPassData, new ProfilingSampler("SSS Setup")))
+            using (var builder = renderGraph.AddComputePass<SetGlobalPassData>("SSS Setup Global Variables", out var setupPassData))
             {
                 builder.UseTexture(lightingHandle);
                 setupPassData.SubsurfaceLightingTexture = lightingHandle;

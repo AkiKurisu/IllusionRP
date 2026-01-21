@@ -37,6 +37,7 @@ namespace Illusion.Rendering.Editor
 		private SerializedDataParameter _maxSteps;
 		private SerializedDataParameter _blurIterations;
 		private SerializedDataParameter _transmittanceThreshold;
+		private SerializedDataParameter _shadingRate;
 		private SerializedDataParameter _enable;
 
 		#endregion
@@ -74,6 +75,7 @@ namespace Illusion.Rendering.Editor
 			_maxSteps = Unpack(pf.Find(x => x.maxSteps));
 			_blurIterations = Unpack(pf.Find(x => x.blurIterations));
 			_transmittanceThreshold = Unpack(pf.Find(x => x.transmittanceThreshold));
+			_shadingRate = Unpack(pf.Find(x => x.shadingRate));
 			_enable = Unpack(pf.Find(x => x.enable));
 		}
 
@@ -116,6 +118,7 @@ namespace Illusion.Rendering.Editor
 			PropertyField(_maxSteps);
 			PropertyField(_blurIterations);
 			PropertyField(_transmittanceThreshold);
+			PropertyField(_shadingRate);
 		}
 
 		#endregion

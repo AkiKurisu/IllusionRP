@@ -46,10 +46,6 @@ namespace Illusion.Rendering
         private readonly Vector4[] _cameraZExtent = new Vector4[2];
 
         private readonly Matrix4x4[] _cameraViewProjections = new Matrix4x4[2];
-        
-        private readonly ProfilingSampler _tracingSampler = new("Tracing");
-        
-        private readonly ProfilingSampler _blurSampler = new("Blur");
 
         private readonly RTHandle[] _ssaoTextures = new RTHandle[4];
 
@@ -397,8 +393,6 @@ namespace Illusion.Rendering
             bool useRedComponentOnly = _supportsR8RenderTextureFormat && actualBlurQuality == AmbientOcclusionBlurQuality.Spatial;
             bool packAODepth = _tracingInCS && _blurInCS;
             
-            float scaleFactor = _downSample ? 0.5f : 1.0f;
-            
             // Create AO packed data texture (intermediate result from tracing)
             var aoPackedDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
             {
@@ -507,7 +501,7 @@ namespace Illusion.Rendering
         private TextureHandle RenderAOComputePass(RenderGraph renderGraph, TextureHandle aoPackedData, 
             TextureHandle depthPyramid, TextureHandle depthStencilTexture, TextureHandle normalBuffer, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<RenderAOPassData>("GTAO Tracing (Compute)", out var passData, _tracingSampler))
+            using (var builder = renderGraph.AddComputePass<RenderAOPassData>("GTAO Tracing (Compute)", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -530,12 +524,12 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                builder.SetRenderFunc((RenderAOPassData data, ComputeGraphContext context) =>
+                builder.SetRenderFunc(static (RenderAOPassData data, ComputeGraphContext context) =>
                 {
                     ConstantBuffer.Push(context.cmd, data.Variables, data.TracingCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, ShaderConstants._AOPackedData, data.AOPackedData);
-                    context.cmd.SetComputeTextureParam(_tracingCS, _tracingKernel, IllusionShaderProperties._StencilTexture, 
-                        depthStencilTexture, 0, RenderTextureSubElement.Stencil);
+                    context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._StencilTexture, 
+                        data.StencilTexture, 0, RenderTextureSubElement.Stencil);
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._CameraDepthTexture, data.DepthTexture);
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._CameraNormalsTexture, data.NormalBuffer);
                     
@@ -551,7 +545,7 @@ namespace Illusion.Rendering
         private TextureHandle RenderAORasterPass(RenderGraph renderGraph, TextureHandle aoPackedData, 
             TextureHandle depthPyramid, TextureHandle depthStencilTexture, TextureHandle normalBuffer)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<RenderAOPassData>("GTAO Tracing (Raster)", out var passData, _tracingSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<RenderAOPassData>("GTAO Tracing (Raster)", out var passData))
             {
                 passData.Variables = _variables;
                 passData.Material = _material.Value;
@@ -569,7 +563,7 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                builder.SetRenderFunc((RenderAOPassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc(static (RenderAOPassData data, RasterGraphContext context) =>
                 {
                     data.Material.SetTexture(IllusionShaderProperties._StencilTexture, data.StencilTexture, RenderTextureSubElement.Stencil);
                     // Material properties already set in PrepareAOParameters
@@ -583,7 +577,7 @@ namespace Illusion.Rendering
         private TextureHandle SpatialDenoiseAOPass(RenderGraph renderGraph, TextureHandle aoPackedData, 
             TextureHandle outputTexture, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<SpatialDenoiseAOPassData>("Spatial Denoise GTAO", out var passData, _blurSampler))
+            using (var builder = renderGraph.AddComputePass<SpatialDenoiseAOPassData>("GTAO Spatial Denoise", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -602,7 +596,7 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                builder.SetRenderFunc((SpatialDenoiseAOPassData data, ComputeGraphContext context) =>
+                builder.SetRenderFunc(static (SpatialDenoiseAOPassData data, ComputeGraphContext context) =>
                 {
                     ConstantBuffer.Push(context.cmd, data.Variables, data.SpatialDenoiseCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.SpatialDenoiseCS, data.DenoiseKernel, ShaderConstants._AOPackedData, data.PackedData);
@@ -620,7 +614,7 @@ namespace Illusion.Rendering
         private TextureHandle UpsampleAOPass(RenderGraph renderGraph, TextureHandle aoInput, 
             TextureHandle depthPyramid, TextureHandle outputTexture, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<UpsampleAOPassData>("Upsample GTAO", out var passData, _blurSampler))
+            using (var builder = renderGraph.AddComputePass<UpsampleAOPassData>("Upsample GTAO", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -638,7 +632,7 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                builder.SetRenderFunc((UpsampleAOPassData data, ComputeGraphContext context) =>
+                builder.SetRenderFunc(static (UpsampleAOPassData data, ComputeGraphContext context) =>
                 {
                     ConstantBuffer.Push(context.cmd, data.Variables, data.UpsampleCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, ShaderConstants._AOPackedData, data.Input);
@@ -656,15 +650,15 @@ namespace Illusion.Rendering
         private TextureHandle BilateralBlurPass(RenderGraph renderGraph, TextureHandle source, 
             TextureHandle destination, ShaderPasses pass)
         {
-            string passName = pass switch
+            string blurPassName = pass switch
             {
-                ShaderPasses.BilateralBlurHorizontal => "Bilateral Blur Horizontal",
-                ShaderPasses.BilateralBlurVertical => "Bilateral Blur Vertical",
-                ShaderPasses.BilateralBlurFinal => "Bilateral Blur Final",
-                _ => "Bilateral Blur"
+                ShaderPasses.BilateralBlurHorizontal => "GTAO Bilateral Blur Horizontal",
+                ShaderPasses.BilateralBlurVertical => "GTAO Bilateral Blur Vertical",
+                ShaderPasses.BilateralBlurFinal => "GTAO Bilateral Blur Final",
+                _ => "GTAO Bilateral Blur"
             };
             
-            using (var builder = renderGraph.AddRasterRenderPass<BilateralBlurAOPassData>(passName, out var passData, _blurSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<BilateralBlurAOPassData>(blurPassName, out var passData))
             {
                 passData.Material = _material.Value;
                 passData.Pass = pass;
@@ -676,7 +670,7 @@ namespace Illusion.Rendering
                 
                 builder.AllowPassCulling(false);
                 
-                builder.SetRenderFunc((BilateralBlurAOPassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc(static (BilateralBlurAOPassData data, RasterGraphContext context) =>
                 {
                     Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, data.Material, (int)data.Pass);
                 });
@@ -688,14 +682,14 @@ namespace Illusion.Rendering
         private TextureHandle GaussianBlurPass(RenderGraph renderGraph, TextureHandle source, 
             TextureHandle destination, ShaderPasses pass)
         {
-            string passName = pass switch
+            string blurPassName = pass switch
             {
-                ShaderPasses.GaussianBlurHorizontal => "Gaussian Blur Horizontal",
-                ShaderPasses.GaussianBlurVertical => "Gaussian Blur Vertical",
-                _ => "Gaussian Blur"
+                ShaderPasses.GaussianBlurHorizontal => "GTAO Gaussian Blur Horizontal",
+                ShaderPasses.GaussianBlurVertical => "GTAO Gaussian Blur Vertical",
+                _ => "GTAO Gaussian Blur"
             };
             
-            using (var builder = renderGraph.AddRasterRenderPass<GaussianBlurAOPassData>(passName, out var passData, _blurSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<GaussianBlurAOPassData>(blurPassName, out var passData))
             {
                 passData.Material = _material.Value;
                 passData.Pass = pass;
@@ -707,7 +701,7 @@ namespace Illusion.Rendering
                 
                 builder.AllowPassCulling(false);
                 
-                builder.SetRenderFunc((GaussianBlurAOPassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc(static (GaussianBlurAOPassData data, RasterGraphContext context) =>
                 {
                     Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, data.Material, (int)data.Pass);
                 });
@@ -725,7 +719,7 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                builder.SetRenderFunc((SetGlobalVectorPassData data, UnsafeGraphContext context) =>
+                builder.SetRenderFunc(static (SetGlobalVectorPassData data, UnsafeGraphContext context) =>
                 {
                     context.cmd.SetGlobalVector(ShaderConstants._AmbientOcclusionParam, data.AmbientOcclusionParam);
                 });
@@ -742,7 +736,7 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                builder.SetRenderFunc((SetGlobalAOPassData data, UnsafeGraphContext context) =>
+                builder.SetRenderFunc(static (SetGlobalAOPassData data, UnsafeGraphContext context) =>
                 {
                     context.cmd.SetGlobalTexture(IllusionShaderProperties.ScreenSpaceOcclusionTexture, data.AOTexture);
                 });

@@ -81,14 +81,6 @@ namespace Illusion.Rendering
 
         private bool _denoiserInitialized;
 
-        private static readonly ProfilingSampler TracingSampler = new("Trace");
-
-        private static readonly ProfilingSampler ReprojectSampler = new("Reproject");
-
-        private static readonly ProfilingSampler DenoiseSampler = new("Denoise");
-
-        private static readonly ProfilingSampler UpsampleSampler = new("Upsample");
-
         private bool _needDenoise;
 
         // Constant buffer structure matching the compute shader
@@ -107,7 +99,6 @@ namespace Illusion.Rendering
         {
             _rendererData = rendererData;
             renderPassEvent = IllusionRenderPassEvent.ScreenSpaceGlobalIlluminationPass;
-            profilingSampler = new ProfilingSampler("Screen Space Global Illumination");
 
             _ssgiComputeShader = rendererData.RuntimeResources.screenSpaceGlobalIlluminationCS;
             _traceKernel = _ssgiComputeShader.FindKernel("TraceGlobalIllumination");
@@ -319,7 +310,7 @@ namespace Illusion.Rendering
         private TextureHandle RenderTracePass(RenderGraph renderGraph, TextureHandle depthPyramidTexture, 
             TextureHandle normalTexture, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<TracePassData>("SSGI Trace", out var passData, TracingSampler))
+            using (var builder = renderGraph.AddComputePass<TracePassData>("SSGI Trace", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -380,7 +371,7 @@ namespace Illusion.Rendering
             TextureHandle motionVectorTexture, TextureHandle colorPyramidTexture, TextureHandle historyDepthTexture,
             TextureHandle exposureTexture, TextureHandle prevExposureTexture, bool isNewFrame, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<ReprojectPassData>("SSGI Reproject", out var passData, ReprojectSampler))
+            using (var builder = renderGraph.AddComputePass<ReprojectPassData>("SSGI Reproject", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -749,7 +740,7 @@ namespace Illusion.Rendering
         
         private TextureHandle RenderUpsamplePass(RenderGraph renderGraph, TextureHandle lowResInput)
         {
-            using (var builder = renderGraph.AddComputePass<UpsamplePassData>("SSGI Upsample", out var passData, UpsampleSampler))
+            using (var builder = renderGraph.AddComputePass<UpsamplePassData>("SSGI Upsample", out var passData))
             {
                 // Setup constant buffer
                 unsafe

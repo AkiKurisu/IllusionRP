@@ -116,7 +116,6 @@ namespace Illusion.Rendering
             _accumulateSmoothSpeedRejectionBothKernel = _computeShader.FindKernel("ScreenSpaceReflectionsAccumulateSmoothSpeedRejectionBoth");
             _accumulateNoWorldSpeedRejectionBothDebugKernel = _computeShader.FindKernel("ScreenSpaceReflectionsAccumulateNoWorldSpeedRejectionBothDebug");
             _accumulateSmoothSpeedRejectionBothDebugKernel = _computeShader.FindKernel("ScreenSpaceReflectionsAccumulateSmoothSpeedRejectionBothDebug");
-            profilingSampler = new ProfilingSampler("Screen Space Reflection");
             ConfigureInput(ScriptableRenderPassInput.Depth
                            | ScriptableRenderPassInput.Normal
                            | ScriptableRenderPassInput.Motion);
@@ -376,7 +375,7 @@ namespace Illusion.Rendering
         private TextureHandle RenderTracingRasterPass(RenderGraph renderGraph, TextureHandle hitPointTexture,
             TextureHandle depthStencilTexture, TextureHandle normalTexture, TextureHandle depthPyramidTexture)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<TracingPassData>("SSR Tracing (Raster)", out var passData, _tracingSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<TracingPassData>("SSR Tracing (Raster)", out var passData))
             {
                 var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceReflection>();
                 var passIndex = (int)volume.mode.value;
@@ -425,7 +424,7 @@ namespace Illusion.Rendering
             TextureHandle colorPyramidTexture, TextureHandle motionVectorTexture, TextureHandle normalTexture,
             TextureHandle ssrAccumTexture)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<ReprojectionPassData>("SSR Reprojection (Raster)", out var passData, _reprojectionSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<ReprojectionPassData>("SSR Reprojection (Raster)", out var passData))
             {
                 passData.Variables = _variables;
                 passData.Material = _material.Value;
@@ -466,7 +465,7 @@ namespace Illusion.Rendering
         private TextureHandle RenderAccumulationPass(RenderGraph renderGraph, TextureHandle hitPointTexture, TextureHandle colorPyramidTexture,
             TextureHandle motionVectorTexture, TextureHandle ssrAccum, TextureHandle ssrAccumPrev, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<AccumulationPassData>("SSR Accumulation", out var passData, _accumulationSampler))
+            using (var builder = renderGraph.AddComputePass<AccumulationPassData>("SSR Accumulation", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -581,7 +580,7 @@ namespace Illusion.Rendering
             TextureHandle colorPyramidTexture, TextureHandle motionVectorTexture, TextureHandle ssrAccum, 
             TextureHandle ssrAccumPrev, bool useAsyncCompute, bool isNewFrame)
         {
-            using (var builder = renderGraph.AddComputePass<CombinedSSRPassData>("Render SSR", out var passData, profilingSampler))
+            using (var builder = renderGraph.AddComputePass<CombinedSSRPassData>("Render SSR", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 

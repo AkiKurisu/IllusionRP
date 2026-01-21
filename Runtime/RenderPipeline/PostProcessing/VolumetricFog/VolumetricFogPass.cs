@@ -134,18 +134,13 @@ namespace Illusion.Rendering.PostProcessing
 		private RTHandle _volumetricFogBlurRTHandle;
 		private RTHandle _volumetricFogUpsampleCompositionRTHandle;
 
-		private readonly ProfilingSampler _downsampleDepthProfilingSampler = new("Downsample Depth");
-		private readonly ProfilingSampler _raymarchSampler = new("Raymarch");
-		private readonly ProfilingSampler _blurSampler = new("Blur");
-		private readonly ProfilingSampler _upsampleSampler = new("Upsample");
-		private readonly ProfilingSampler _compositeSampler = new("Composite");
-
 		private bool _upsampleInCS;
 		private bool _raymarchInCS;
 		private bool _blurInCS;
 
 		private int _rtWidth;
 		private int _rtHeight;
+		private ShadingRateFragmentSize _shadingRateFragmentSize;
 
 		private ShaderVariablesBilateralUpsample _shaderVariablesBilateralUpsampleCB;
 
@@ -193,9 +188,11 @@ namespace Illusion.Rendering.PostProcessing
 		/// Prepares volumetric fog data from rendering data.
 		/// </summary>
 		/// <param name="cameraData"></param>
-		private void PrepareVolumetricFogData(UniversalCameraData cameraData)
+		/// <param name="volume"></param>
+		private void PrepareVolumetricFogData(UniversalCameraData cameraData, VolumetricFog volume)
 		{
-			_raymarchInCS = _rendererData.PreferComputeShader;
+			_shadingRateFragmentSize = volume.shadingRate.value;
+			_raymarchInCS = _rendererData.PreferComputeShader && _shadingRateFragmentSize == ShadingRateFragmentSize.FragmentSize1x1;
 			_blurInCS = _rendererData.PreferComputeShader;
 			_upsampleInCS = _rendererData.PreferComputeShader;
 
@@ -204,7 +201,7 @@ namespace Illusion.Rendering.PostProcessing
 			_rtHeight = descriptor.height;
 
 			// Prepare bilateral upsample constants
-			_shaderVariablesBilateralUpsampleCB._HalfScreenSize = new Vector4(_rtWidth / 2, _rtHeight / 2,
+			_shaderVariablesBilateralUpsampleCB._HalfScreenSize = new Vector4((float)_rtWidth / 2, (float)_rtHeight / 2, 
 				1.0f / (_rtWidth * 0.5f), 1.0f / (_rtHeight * 0.5f));
 			unsafe
 			{
@@ -278,11 +275,12 @@ namespace Illusion.Rendering.PostProcessing
 		/// </summary>
 		/// <param name="cmd"></param>
 		/// <param name="volumetricFogCS"></param>
+		/// <param name="rendererData"></param>
 		/// <param name="mainLightIndex"></param>
 		/// <param name="additionalLightsCount"></param>
 		/// <param name="visibleLights"></param>
-		private void UpdateVolumetricFogComputeShaderParameters(ComputeCommandBuffer cmd,
-			ComputeShader volumetricFogCS,
+		private static void UpdateVolumetricFogComputeShaderParameters(ComputeCommandBuffer cmd,
+			ComputeShader volumetricFogCS, IllusionRendererData rendererData,
 			int mainLightIndex, int additionalLightsCount,
 			NativeArray<VisibleLight> visibleLights)
 		{
@@ -306,7 +304,7 @@ namespace Illusion.Rendering.PostProcessing
 			
 			bool enableProbeVolumeContribution = fogVolume.enableProbeVolumeContribution.value 
 										&& fogVolume.probeVolumeContributionWeight.value > 0.0f
-										&&  _rendererData.SampleProbeVolumes;
+										&&  rendererData.SampleProbeVolumes;
 			if (enableProbeVolumeContribution)
 				volumetricFogCS.EnableKeyword("_PROBE_VOLUME_CONTRIBUTION_ENABLED");
 			else
@@ -456,14 +454,13 @@ namespace Illusion.Rendering.PostProcessing
 		{
 			// Early exit if fog is not active
 			var fogVolume = VolumeManager.instance.stack.GetComponent<VolumetricFog>();
-			if (fogVolume == null || !fogVolume.IsActive())
+			if (!fogVolume || !fogVolume.IsActive())
 				return;
 
 			var resource = frameData.Get<UniversalResourceData>();
 			var cameraData = frameData.Get<UniversalCameraData>();
-			var lightData = frameData.Get<UniversalLightData>();
 			// Prepare data
-			PrepareVolumetricFogData(cameraData);
+			PrepareVolumetricFogData(cameraData, fogVolume);
 			
 			// Get input textures from frame resources
 			TextureHandle cameraDepthTexture = resource.cameraDepthTexture;
@@ -479,7 +476,7 @@ namespace Illusion.Rendering.PostProcessing
 			// Execute sub-passes in sequence
 			var downsampledDepth = RenderDownsampleDepthPass(renderGraph, cameraDepthTexture);
 			var volumetricFogTexture = RenderRaymarchPass(renderGraph, downsampledDepth, exposureTexture,
-				mainShadowsTexture, additionalShadowsTexture, lightData);
+				mainShadowsTexture, additionalShadowsTexture, frameData);
 			volumetricFogTexture = RenderBlurPass(renderGraph, volumetricFogTexture, downsampledDepth);
 			var upsampledTexture = RenderUpsamplePass(renderGraph, volumetricFogTexture, downsampledDepth,
 				cameraColorTexture, cameraDepthTexture);
@@ -495,11 +492,10 @@ namespace Illusion.Rendering.PostProcessing
 		/// <returns></returns>
 		private TextureHandle RenderDownsampleDepthPass(RenderGraph renderGraph, TextureHandle cameraDepthTexture)
 		{
-			using (var builder = renderGraph.AddRasterRenderPass<DownsampleDepthPassData>(
-				"Volumetric Fog Downsample Depth", out var passData, _downsampleDepthProfilingSampler))
+			using (var builder = renderGraph.AddRasterRenderPass<DownsampleDepthPassData>("Volumetric Fog Downsample Depth", out var passData))
 			{
 				// Create downsampled depth texture
-				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2, false, false)
+				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2)
 				{
 					colorFormat = GraphicsFormat.R32_SFloat,
 					name = DownsampledCameraDepthRTName
@@ -513,7 +509,7 @@ namespace Illusion.Rendering.PostProcessing
 				builder.UseTexture(cameraDepthTexture);
 				builder.AllowPassCulling(false);
 
-				builder.SetRenderFunc((DownsampleDepthPassData data, RasterGraphContext context) =>
+				builder.SetRenderFunc(static (DownsampleDepthPassData data, RasterGraphContext context) =>
 				{
 					Blitter.BlitTexture(context.cmd, Vector2.one, data.DownsampleDepthMaterial, data.PassIndex);
 				});
@@ -530,17 +526,17 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="exposureTexture"></param>
 		/// <param name="mainShadowsTexture"></param>
 		/// <param name="additionalShadowsTexture"></param>
-		/// <param name="lightData"></param>
+		/// <param name="frameData"></param>
 		/// <returns></returns>
 		private TextureHandle RenderRaymarchPass(RenderGraph renderGraph, TextureHandle downsampledDepth,
 			TextureHandle exposureTexture, TextureHandle mainShadowsTexture, TextureHandle additionalShadowsTexture,
-			UniversalLightData lightData)
+			ContextContainer frameData)
 		{
 			if (_raymarchInCS)
 				return RenderRaymarchComputePass(renderGraph, downsampledDepth, exposureTexture,
-					mainShadowsTexture, additionalShadowsTexture, lightData);
+					mainShadowsTexture, additionalShadowsTexture, frameData);
 			return RenderRaymarchFragmentPass(renderGraph, downsampledDepth, mainShadowsTexture,
-				additionalShadowsTexture, lightData);
+				additionalShadowsTexture, frameData);
 		}
 
 		/// <summary>
@@ -551,17 +547,17 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="exposureTexture"></param>
 		/// <param name="mainShadowsTexture"></param>
 		/// <param name="additionalShadowsTexture"></param>
-		/// <param name="lightData"></param>
+		/// <param name="frameData"></param>
 		/// <returns></returns>
 		private TextureHandle RenderRaymarchComputePass(RenderGraph renderGraph, TextureHandle downsampledDepth,
 			TextureHandle exposureTexture, TextureHandle mainShadowsTexture, TextureHandle additionalShadowsTexture,
-			UniversalLightData lightData)
+			ContextContainer frameData)
 		{
-			using (var builder = renderGraph.AddComputePass<RaymarchPassData>(
-				"Volumetric Fog Raymarch (CS)", out var passData, _raymarchSampler))
+			var lightData = frameData.Get<UniversalLightData>();
+			using (var builder = renderGraph.AddComputePass<RaymarchPassData>("Volumetric Fog Raymarch (Compute)", out var passData))
 			{
 				// Create output texture
-				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2, false, false)
+				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2)
 				{
 					colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
 					enableRandomWrite = true,
@@ -594,10 +590,10 @@ namespace Illusion.Rendering.PostProcessing
 				builder.AllowPassCulling(false);
 				builder.AllowGlobalStateModification(true);
 
-				builder.SetRenderFunc((RaymarchPassData data, ComputeGraphContext context) =>
+				builder.SetRenderFunc(static (RaymarchPassData data, ComputeGraphContext context) =>
 				{
 					UpdateVolumetricFogComputeShaderParameters(context.cmd,
-						data.RaymarchCS, data.LightData.mainLightIndex, data.LightData.additionalLightsCount,
+						data.RaymarchCS, data.RendererData, data.LightData.mainLightIndex, data.LightData.additionalLightsCount,
 						data.LightData.visibleLights);
 
 					context.cmd.SetComputeTextureParam(data.RaymarchCS, data.RaymarchKernel,
@@ -623,16 +619,16 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="downsampledDepth"></param>
 		/// <param name="mainShadowsTexture"></param>
 		/// <param name="additionalShadowsTexture"></param>
-		/// <param name="lightData"></param>
+		/// <param name="frameData"></param>
 		/// <returns></returns>
 		private TextureHandle RenderRaymarchFragmentPass(RenderGraph renderGraph, TextureHandle downsampledDepth,
-			TextureHandle mainShadowsTexture, TextureHandle additionalShadowsTexture, UniversalLightData lightData)
+			TextureHandle mainShadowsTexture, TextureHandle additionalShadowsTexture, ContextContainer frameData)
 		{
-			using (var builder = renderGraph.AddRasterRenderPass<RaymarchPassData>(
-				"Volumetric Fog Raymarch (FS)", out var passData, _raymarchSampler))
+			var lightData = frameData.Get<UniversalLightData>();
+			using (var builder = renderGraph.AddRasterRenderPass<RaymarchPassData>("Volumetric Fog Raymarch (Raster)", out var passData))
 			{
 				// Create output texture
-				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2, false, false)
+				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2)
 				{
 					colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
 					name = VolumetricFogRenderRTName
@@ -656,6 +652,9 @@ namespace Illusion.Rendering.PostProcessing
 
 				builder.AllowPassCulling(false);
 				builder.AllowGlobalStateModification(true);
+				
+				builder.SetShadingRateFragmentSize(_shadingRateFragmentSize);
+				builder.SetShadingRateCombiner(ShadingRateCombinerStage.Fragment, ShadingRateCombiner.Override);
 
 				builder.SetRenderFunc((RaymarchPassData data, RasterGraphContext context) =>
 				{
@@ -696,11 +695,10 @@ namespace Illusion.Rendering.PostProcessing
 		private TextureHandle RenderBlurComputePass(RenderGraph renderGraph, TextureHandle volumetricFogTexture,
 			TextureHandle downsampledDepth)
 		{
-			using (var builder = renderGraph.AddComputePass<BlurPassData>(
-				"Volumetric Fog Blur (CS)", out var passData, _blurSampler))
+			using (var builder = renderGraph.AddComputePass<BlurPassData>("Volumetric Fog Blur (Compute)", out var passData))
 			{
 				// Create temp blur texture
-				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2, false, false)
+				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2)
 				{
 					colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
 					enableRandomWrite = true,
@@ -725,7 +723,7 @@ namespace Illusion.Rendering.PostProcessing
 				builder.AllowPassCulling(false);
 				builder.AllowGlobalStateModification(true);
 
-				builder.SetRenderFunc((BlurPassData data, ComputeGraphContext context) =>
+				builder.SetRenderFunc(static (BlurPassData data, ComputeGraphContext context) =>
 				{
 					// Ping-pong blur between two textures
 					int halfWidth = data.Width;
@@ -768,11 +766,10 @@ namespace Illusion.Rendering.PostProcessing
 		/// <returns></returns>
 		private TextureHandle RenderBlurFragmentPass(RenderGraph renderGraph, TextureHandle volumetricFogTexture)
 		{
-			using (var builder = renderGraph.AddRasterRenderPass<BlurPassData>(
-				"Volumetric Fog Blur (FS)", out var passData, _blurSampler))
+			using (var builder = renderGraph.AddUnsafePass<BlurPassData>("Volumetric Fog Blur (Raster)", out var passData))
 			{
 				// Create temp blur texture
-				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2, false, false)
+				var desc = new TextureDesc(_rtWidth / 2, _rtHeight / 2)
 				{
 					colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
 					name = VolumetricFogBlurRTName
@@ -785,23 +782,24 @@ namespace Illusion.Rendering.PostProcessing
 				passData.HorizontalBlurPassIndex = _volumetricFogHorizontalBlurPassIndex;
 				passData.VerticalBlurPassIndex = _volumetricFogVerticalBlurPassIndex;
 				passData.BlurIterations = fogVolume.blurIterations.value;
-				builder.SetRenderAttachment(volumetricFogTexture, 0, AccessFlags.ReadWrite);
+				builder.UseTexture(volumetricFogTexture, AccessFlags.ReadWrite);
 				passData.InputTexture = volumetricFogTexture;
-				builder.SetRenderAttachment(tempBlurTexture, 0);
+				builder.UseTexture(tempBlurTexture, AccessFlags.Write);
 				passData.TempBlurTexture = tempBlurTexture;
 				
 				builder.AllowPassCulling(false);
 				builder.AllowGlobalStateModification(true);
 
-				builder.SetRenderFunc((BlurPassData data, RasterGraphContext context) =>
+				builder.SetRenderFunc(static (BlurPassData data, UnsafeGraphContext context) =>
 				{
-					for (int i = 0; i < data.BlurIterations; ++i)
+					CommandBuffer unsafeCmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+
+					int blurIterations = data.BlurIterations;
+
+					for (int i = 0; i < blurIterations; ++i)
 					{
-						// Horizontal blur
-						Blitter.BlitTexture(context.cmd, data.InputTexture, Vector2.one, data.VolumetricFogMaterial, data.HorizontalBlurPassIndex);
-						
-						// Vertical blur
-						Blitter.BlitTexture(context.cmd, data.TempBlurTexture, Vector2.one, data.VolumetricFogMaterial, data.VerticalBlurPassIndex);
+						Blitter.BlitCameraTexture(unsafeCmd, data.InputTexture, data.TempBlurTexture, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store, data.VolumetricFogMaterial, data.HorizontalBlurPassIndex);
+						Blitter.BlitCameraTexture(unsafeCmd, data.TempBlurTexture, data.InputTexture, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store, data.VolumetricFogMaterial, data.VerticalBlurPassIndex);
 					}
 				});
 
@@ -840,11 +838,10 @@ namespace Illusion.Rendering.PostProcessing
 		private TextureHandle RenderUpsampleComputePass(RenderGraph renderGraph, TextureHandle volumetricFogTexture,
 			TextureHandle downsampledDepth, TextureHandle cameraColorTexture, TextureHandle cameraDepthTexture)
 		{
-			using (var builder = renderGraph.AddComputePass<UpsamplePassData>(
-				"Volumetric Fog Upsample (CS)", out var passData, _upsampleSampler))
+			using (var builder = renderGraph.AddComputePass<UpsamplePassData>("Volumetric Fog Upsample (Compute)", out var passData))
 			{
 				// Create output texture
-				var desc = new TextureDesc(_rtWidth, _rtHeight, false, false)
+				var desc = new TextureDesc(_rtWidth, _rtHeight)
 				{
 					colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
 					enableRandomWrite = true,
@@ -873,7 +870,7 @@ namespace Illusion.Rendering.PostProcessing
 				builder.AllowPassCulling(false);
 				builder.AllowGlobalStateModification(true);
 
-				builder.SetRenderFunc((UpsamplePassData data, ComputeGraphContext context) =>
+				builder.SetRenderFunc(static (UpsamplePassData data, ComputeGraphContext context) =>
 				{
 					ConstantBuffer.Push(context.cmd, data.UpsampleVariables, data.UpsampleCS, ShaderIDs.ShaderVariablesBilateralUpsample);
 
@@ -907,11 +904,10 @@ namespace Illusion.Rendering.PostProcessing
 		private TextureHandle RenderUpsampleFragmentPass(RenderGraph renderGraph, TextureHandle volumetricFogTexture,
 			TextureHandle downsampledDepth, TextureHandle cameraColorTexture, TextureHandle cameraDepthTexture)
 		{
-			using (var builder = renderGraph.AddRasterRenderPass<UpsamplePassData>(
-				"Volumetric Fog Upsample (FS)", out var passData, _upsampleSampler))
+			using (var builder = renderGraph.AddRasterRenderPass<UpsamplePassData>("Volumetric Fog Upsample (Raster)", out var passData))
 			{
 				// Create output texture
-				var desc = new TextureDesc(_rtWidth, _rtHeight, false, false)
+				var desc = new TextureDesc(_rtWidth, _rtHeight)
 				{
 					colorFormat = GraphicsFormat.R16G16B16A16_SFloat,
 					name = VolumetricFogUpsampleCompositionRTName
@@ -935,7 +931,7 @@ namespace Illusion.Rendering.PostProcessing
 				builder.AllowPassCulling(false);
 				builder.AllowGlobalStateModification(true);
 
-				builder.SetRenderFunc((UpsamplePassData data, RasterGraphContext context) =>
+				builder.SetRenderFunc(static (UpsamplePassData data, RasterGraphContext context) =>
 				{
 					data.VolumetricFogMaterial.SetTexture(ShaderIDs._VolumetricFogTexture, data.VolumetricFogTexture);
 					

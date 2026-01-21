@@ -195,6 +195,16 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
+                
+                if (frameData.Contains<StencilVRSData>()) 
+                {
+                    var vrsData = frameData.Get<StencilVRSData>();
+                    if (vrsData.ShadingRateImage.IsValid())
+                    {
+                        builder.SetShadingRateImageAttachment(vrsData.ShadingRateImage);
+                        builder.SetShadingRateCombiner(ShadingRateCombinerStage.Fragment, ShadingRateCombiner.Override);
+                    }
+                }
 
                 builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {

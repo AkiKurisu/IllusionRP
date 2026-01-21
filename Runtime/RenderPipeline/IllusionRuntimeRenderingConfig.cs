@@ -74,6 +74,12 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.computeshader")]
         public bool EnableComputeShader { get; set; } = true;
+        
+        /// <summary>
+        /// Whether enable Vrs.
+        /// </summary>
+        [ConfigVariable("r.vrs", IsEditor = true)]
+        public bool EnableVrs { get; set; } = true;
 
         // =================================== Debug ========================================= //
         [ConfigVariable("r.debug.velocity", IsEditor = true)]
@@ -99,6 +105,12 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.debug.perobjectshadow", IsEditor = true)]
         public bool EnablePerObjectShadowDebug { get; set; }
+        
+        /// <summary>
+        /// Enable Vrs debug mode.
+        /// </summary>
+        [ConfigVariable("r.debug.vrs", IsEditor = true)]
+        public bool EnableVrsDebug { get; set; }
 
         /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.

@@ -249,8 +249,6 @@ namespace Illusion.Rendering
 
         public const RenderPassEvent ForwardGBufferPass = RenderPassEvent.AfterRenderingPrePasses + 2;
 
-        public const RenderPassEvent MotionVectorPrepass = RenderPassEvent.AfterRenderingPrePasses + 2;
-
         // ============================== Screen Space Lighting ============================================ //
         // Async Compute
         public const RenderPassEvent AmbientOcclusionPass = RenderPassEvent.AfterRenderingPrePasses + 3;
@@ -260,8 +258,6 @@ namespace Illusion.Rendering
         // ============================== Screen Space Lighting ============================================ //
 
         // ====================================== Shadows ================================================== //
-        public const RenderPassEvent LightsShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 5;
-
         public const RenderPassEvent PerObjectShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 5;
 
         public const RenderPassEvent ContactShadowsPass = RenderPassEvent.AfterRenderingPrePasses + 5;
@@ -286,11 +282,13 @@ namespace Illusion.Rendering
 
         // Copy post-depth before overdrawing.
         public const RenderPassEvent TransparentCopyPostDepthPass = RenderPassEvent.AfterRenderingTransparents + 2;
+        
+        public const RenderPassEvent TransparentStencilVRSPass = RenderPassEvent.AfterRenderingTransparents + 3;
 
-        public const RenderPassEvent TransparentOverdrawPass = RenderPassEvent.AfterRenderingTransparents + 3;
+        public const RenderPassEvent TransparentOverdrawPass = RenderPassEvent.AfterRenderingTransparents + 4;
         // ==================================== Transparency =============================================== //
 
-        public const RenderPassEvent ColorPyramidPass = RenderPassEvent.AfterRenderingTransparents + 4;
+        public const RenderPassEvent ColorPyramidPass = RenderPassEvent.AfterRenderingTransparents + 5;
 
         // =================================== Post Processing ============================================= //
         public const RenderPassEvent VolumetricFogPass = RenderPassEvent.BeforeRenderingPostProcessing - 3;

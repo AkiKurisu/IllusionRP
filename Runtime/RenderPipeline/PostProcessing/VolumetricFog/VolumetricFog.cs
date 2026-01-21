@@ -6,6 +6,13 @@ using UnityEngine.Rendering.Universal;
 
 namespace Illusion.Rendering.PostProcessing
 {
+	[Serializable]
+	public sealed class ShadingRateFragmentSizeParameter : VolumeParameter<ShadingRateFragmentSize>
+	{
+		public ShadingRateFragmentSizeParameter(ShadingRateFragmentSize value, bool overrideState = false)
+			: base(value, overrideState) { }
+	}
+	
 	/// <summary>
 	/// Volume component for the volumetric fog.
 	/// </summary>
@@ -79,6 +86,8 @@ namespace Illusion.Rendering.PostProcessing
 		[Tooltip("Early exit threshold for raymarching optimization. When transmittance falls below this value, raymarching stops early. Lower values = better performance but may cause artifacts. Set to 0 to disable early exit.")]
 		public ClampedFloatParameter transmittanceThreshold = new(0.01f, 0.0f, 0.1f);
 
+		[Tooltip("Raymarch shading rate.")]
+		public ShadingRateFragmentSizeParameter shadingRate = new(ShadingRateFragmentSize.FragmentSize1x1);
 		#endregion
 
 		#region Volume Component Methods

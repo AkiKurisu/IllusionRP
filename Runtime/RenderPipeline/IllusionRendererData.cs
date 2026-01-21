@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -75,6 +74,19 @@ namespace Illusion.Rendering
         
         public TextureHandle scramblingTex;
     }
+
+    public class StencilVRSData : ContextItem 
+    {
+        public TextureHandle ShadingRateColorMask;
+        
+        public TextureHandle ShadingRateImage;
+
+        public override void Reset()
+        {
+            ShadingRateColorMask = TextureHandle.nullHandle;
+            ShadingRateImage = TextureHandle.nullHandle;
+        }
+    }   
     
     /// <summary>
     /// IllusionRP renderer shared data

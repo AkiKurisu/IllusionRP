@@ -22,16 +22,13 @@ namespace Illusion.Rendering
         internal bool requireHistoryColor = true;
 
         /// <summary>
-        /// Whether prefer to calculating effects in compute shader if possible.
+        /// Whether prefer to calculate effects in compute shader if possible.
         /// </summary>
         [SerializeField]
         internal bool preferComputeShader = true;
-
-        /// <summary>
-        /// Enables IllusionRP to use RenderPass API. Has no effect on OpenGLES2.
-        /// </summary>
+        
         [SerializeField]
-        internal bool nativeRenderPass = true;
+        internal bool enableStencilVrs = true;
 
         #endregion General
 
@@ -198,6 +195,8 @@ namespace Illusion.Rendering
         private SetKeywordPass _disableScreenSpaceGlobalIlluminationPass;
 
         private ForwardGBufferPass _forwardGBufferPass;
+        
+        private StencilVRSGenerationPass _transparentStencilVRSPass;
 
         private CopyHistoryColorPass _copyHistoryColorPass;
 
@@ -231,6 +230,8 @@ namespace Illusion.Rendering
         private ExposureDebugPass _exposureDebugPass;
         
         private MotionVectorsDebugPass _motionVectorsDebugPass;
+                        
+        private StencilVRSDebugPass _stencilVRSDebugPass;
 #endif
 
         public override void Create()
@@ -317,10 +318,12 @@ namespace Illusion.Rendering
             _processingPostPass = new PostProcessingPostPass(_rendererData);
 
             _setupPass = new SetupPass(this, _rendererData);
+            _transparentStencilVRSPass = new StencilVRSGenerationPass(IllusionRenderPassEvent.TransparentStencilVRSPass);
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             _exposureDebugPass = new ExposureDebugPass(_rendererData);
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
+            _stencilVRSDebugPass = new StencilVRSDebugPass();
 #endif
         }
 
@@ -386,6 +389,7 @@ namespace Illusion.Rendering
             bool useTransparentOverdrawPass = orderIndependentTransparency && oitTransparentOverdrawPass && !isPreviewCamera;
 
             bool isOffscreenDepth = UniversalRenderingUtility.IsOffscreenDepthTexture(in renderingData.cameraData);
+            bool useVrs = enableStencilVrs && ShadingRateInfo.supportsPerImageTile && config.EnableVrs;
 
             // Setup pass must run first
             renderer.EnqueuePass(_setupPass);
@@ -420,6 +424,11 @@ namespace Illusion.Rendering
             if (useForwardGBuffer)
             {
                 renderer.EnqueuePass(_forwardGBufferPass);
+            }
+
+            if (useVrs)
+            {
+                renderer.EnqueuePass(_transparentStencilVRSPass);
             }
 
             if (useAmbientOcclusion && !isOffscreenDepth)
@@ -512,13 +521,17 @@ namespace Illusion.Rendering
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             // Debug
-            if (IllusionRuntimeRenderingConfig.Get().EnableMotionVectorsDebug)
+            if (config.EnableMotionVectorsDebug)
             {
                 renderer.EnqueuePass(_motionVectorsDebugPass);
             }
-            if (IllusionRuntimeRenderingConfig.Get().ExposureDebugMode != ExposureDebugMode.None && isGameCamera)
+            if (config.ExposureDebugMode != ExposureDebugMode.None && isGameCamera)
             {
                 renderer.EnqueuePass(_exposureDebugPass);
+            }
+            if (useVrs && config.EnableVrsDebug)
+            {
+                renderer.EnqueuePass(_stencilVRSDebugPass);
             }
 #endif
             // AfterRenderingPostProcessing
@@ -606,6 +619,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _screenSpaceReflectionPass);
             SafeDispose(ref _screenSpaceGlobalIlluminationPass);
             SafeDispose(ref _forwardGBufferPass);
+            SafeDispose(ref _transparentStencilVRSPass);
             SafeDispose(ref _depthPyramidPass);
             SafeDispose(ref _convolutionBloomPass);
             SafeDispose(ref _volumetricFogPass);
@@ -616,6 +630,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _setupPass);
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+            SafeDispose(ref _stencilVRSDebugPass);
             SafeDispose(ref _motionVectorsDebugPass);
             SafeDispose(ref _exposureDebugPass);
 #endif

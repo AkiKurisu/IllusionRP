@@ -10,6 +10,7 @@ namespace Illusion.Rendering.Editor
         // General Settings
         private SerializedProperty _requireHistoryColor;
         private SerializedProperty _preferComputeShader;
+        private SerializedProperty _enableStencilVrs;
 
         // Transparency Settings
         private SerializedProperty _orderIndependentTransparency;
@@ -48,6 +49,7 @@ namespace Illusion.Rendering.Editor
             // General Settings
             _requireHistoryColor = Properties.Find(feature => feature.requireHistoryColor);
             _preferComputeShader = Properties.Find(feature => feature.preferComputeShader);
+            _enableStencilVrs = Properties.Find(feature => feature.enableStencilVrs);
 
             // Transparency Settings
             _orderIndependentTransparency = Properties.Find(feature => feature.orderIndependentTransparency);
@@ -116,6 +118,7 @@ namespace Illusion.Rendering.Editor
             {
                 EditorGUILayout.PropertyField(_requireHistoryColor, Styles.RequireHistoryColorLabel);
                 EditorGUILayout.PropertyField(_preferComputeShader, Styles.PreferComputeShaderLabel);
+                EditorGUILayout.PropertyField(_enableStencilVrs, Styles.EnableStencilVrsLabel);
             }
 
             EditorGUILayout.Space();
@@ -202,6 +205,8 @@ namespace Illusion.Rendering.Editor
                 "When temporal anti-aliasing is on, history color will fetch accumulation buffer directly.");
             public static readonly GUIContent PreferComputeShaderLabel = new("Prefer Compute Shader",
                 "Whether prefer to calculating effects in compute shader if possible.");
+            public static readonly GUIContent EnableStencilVrsLabel = new("Enable Stencil VRS",
+                "Whether enable using stencil to control the rasterization and pixel shading rate.");
 
             // Transparency Settings
             public static readonly GUIContent OrderIndependentTransparencyLabel = new("Order Independent Transparency",
