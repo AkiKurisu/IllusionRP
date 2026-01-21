@@ -22,22 +22,13 @@ namespace Illusion.Rendering
         internal bool requireHistoryColor = true;
 
         /// <summary>
-        /// Enable to draw motion vector earlier than drawing objects.
-        /// </summary>
-        [SerializeField]
-        internal bool requireEarlyMotionVector = true;
-
-        /// <summary>
-        /// Whether prefer to calculating effects in compute shader if possible.
+        /// Whether prefer to calculate effects in compute shader if possible.
         /// </summary>
         [SerializeField]
         internal bool preferComputeShader = true;
-
-        /// <summary>
-        /// Enables IllusionRP to use RenderPass API. Has no effect on OpenGLES2.
-        /// </summary>
+        
         [SerializeField]
-        internal bool nativeRenderPass = true;
+        internal bool enableStencilVrs = true;
 
         #endregion General
 
@@ -83,7 +74,7 @@ namespace Illusion.Rendering
         #region Shadows
 
         [SerializeField]
-        internal uint perObjectShadowRenderingLayer;
+        internal RenderingLayerMask perObjectShadowRenderingLayer;
 
         /// <summary>
         /// When enabled, transparent objects will sample per object shadow which will decrease performance."
@@ -204,10 +195,10 @@ namespace Illusion.Rendering
         private SetKeywordPass _disableScreenSpaceGlobalIlluminationPass;
 
         private ForwardGBufferPass _forwardGBufferPass;
+        
+        private StencilVRSGenerationPass _transparentStencilVRSPass;
 
         private CopyHistoryColorPass _copyHistoryColorPass;
-
-        private SetGlobalVariablesPass _setGlobalVariablesPass;
 
         private DepthPyramidPass _depthPyramidPass;
 
@@ -239,6 +230,8 @@ namespace Illusion.Rendering
         private ExposureDebugPass _exposureDebugPass;
         
         private MotionVectorsDebugPass _motionVectorsDebugPass;
+                        
+        private StencilVRSDebugPass _stencilVRSDebugPass;
 #endif
 
         public override void Create()
@@ -291,12 +284,12 @@ namespace Illusion.Rendering
             _enablePRTGIPass = new SetKeywordPass(IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION, true, RenderPassEvent.BeforeRendering);
             _disablePRTGIPass = new SetKeywordPass(IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION, false, RenderPassEvent.BeforeRendering);
 
-            _weightedBlendedOitPass = new WeightedBlendedOITPass(oitFilterLayer, _rendererData);
+            _weightedBlendedOitPass = new WeightedBlendedOITPass(oitFilterLayer);
             _transparentOverdrawPass = TransparentOverdrawPass.Create(oitOverrideStencil);
             _transparentDepthNormalPostPass = new TransparentDepthNormalPostPass();
             _transparentDepthOnlyPass = new TransparentDepthOnlyPostPass();
-            _transparentCopyPreDepthPass = TransparentCopyPreDepthPass.Create(_rendererData);
-            _transparentCopyPostDepthPass = TransparentCopyPostDepthPass.Create();
+            _transparentCopyPreDepthPass = new TransparentCopyPreDepthPass(_rendererData);
+            _transparentCopyPostDepthPass = new TransparentCopyPostDepthPass();
 
             _screenSpaceReflectionPass = new ScreenSpaceReflectionPass(_rendererData);
             _screenSpaceReflectionSyncFencePass = new SyncGraphicsFencePass(RenderPassEvent.BeforeRenderingOpaques, IllusionGraphicsFenceEvent.ScreenSpaceReflection, _rendererData);
@@ -313,7 +306,6 @@ namespace Illusion.Rendering
             _depthPyramidPass = new DepthPyramidPass(_rendererData);
             _colorPyramidPass = new ColorPyramidPass(_rendererData);
             _copyHistoryColorPass = CopyHistoryColorPass.Create(_rendererData);
-            _setGlobalVariablesPass = new SetGlobalVariablesPass(_rendererData);
 
             _enableScreenSpaceSubsurfaceScatteringPass = new SetKeywordPass(IllusionShaderKeywords._SCREEN_SPACE_SSS, true, RenderPassEvent.BeforeRendering);
             _disableScreenSpaceSubsurfaceScatteringPass = new SetKeywordPass(IllusionShaderKeywords._SCREEN_SPACE_SSS, false, RenderPassEvent.BeforeRendering);
@@ -326,10 +318,12 @@ namespace Illusion.Rendering
             _processingPostPass = new PostProcessingPostPass(_rendererData);
 
             _setupPass = new SetupPass(this, _rendererData);
+            _transparentStencilVRSPass = new StencilVRSGenerationPass(IllusionRenderPassEvent.TransparentStencilVRSPass);
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             _exposureDebugPass = new ExposureDebugPass(_rendererData);
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
+            _stencilVRSDebugPass = new StencilVRSDebugPass();
 #endif
         }
 
@@ -388,7 +382,6 @@ namespace Illusion.Rendering
             bool useForwardGBuffer = useScreenSpaceReflection && !isDeferred;
             bool useDepthPyramid = useAmbientOcclusion || useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
             bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
-            bool useMotionVectorPrepass = requireEarlyMotionVector;
             bool needHistoryColor = requireHistoryColor && !useTAA;
             bool useColorPyramid = useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
 
@@ -396,8 +389,9 @@ namespace Illusion.Rendering
             bool useTransparentOverdrawPass = orderIndependentTransparency && oitTransparentOverdrawPass && !isPreviewCamera;
 
             bool isOffscreenDepth = UniversalRenderingUtility.IsOffscreenDepthTexture(in renderingData.cameraData);
+            bool useVrs = enableStencilVrs && ShadingRateInfo.supportsPerImageTile && config.EnableVrs;
 
-            // Setup pass must run first (handles configuration for both Unity 2022 and 2023)
+            // Setup pass must run first
             renderer.EnqueuePass(_setupPass);
 
             // BeforeRendering
@@ -414,9 +408,6 @@ namespace Illusion.Rendering
 
             // BeforeRenderingPrePasses
             renderer.EnqueuePass(_advancedTonemappingPass);
-
-            // AfterRenderingPrePasses
-            renderer.EnqueuePass(_setGlobalVariablesPass);
 
             if (useDepthPostPass)
             {
@@ -435,11 +426,9 @@ namespace Illusion.Rendering
                 renderer.EnqueuePass(_forwardGBufferPass);
             }
 
-            // Re-order motion vector pass renderPassEvent.
-            var motionVectorPass = UniversalRenderingUtility.GetMotionVectorRenderPass(renderer);
-            if (motionVectorPass != null)
+            if (useVrs)
             {
-                motionVectorPass.renderPassEvent = useMotionVectorPrepass ? IllusionRenderPassEvent.MotionVectorPrepass : RenderPassEvent.BeforeRenderingPostProcessing;
+                renderer.EnqueuePass(_transparentStencilVRSPass);
             }
 
             if (useAmbientOcclusion && !isOffscreenDepth)
@@ -532,67 +521,32 @@ namespace Illusion.Rendering
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             // Debug
-            if (IllusionRuntimeRenderingConfig.Get().EnableMotionVectorsDebug)
+            if (config.EnableMotionVectorsDebug)
             {
                 renderer.EnqueuePass(_motionVectorsDebugPass);
             }
-            if (IllusionRuntimeRenderingConfig.Get().ExposureDebugMode != ExposureDebugMode.None && isGameCamera)
+            if (config.ExposureDebugMode != ExposureDebugMode.None && isGameCamera)
             {
                 renderer.EnqueuePass(_exposureDebugPass);
+            }
+            if (useVrs && config.EnableVrsDebug)
+            {
+                renderer.EnqueuePass(_stencilVRSDebugPass);
             }
 #endif
             // AfterRenderingPostProcessing
             renderer.EnqueuePass(_processingPostPass);
         }
 
-        public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
-        {
-            RenderingData renderingDataCopy = renderingData;
-            PerformSetup(renderingData.cameraData.renderer, 
-                ref renderingDataCopy, _rendererData);
-        }
-        
-        // Ref: MainLightShadowCasterPass.Setup
-        private static bool CanRenderMainLightShadow(ref RenderingData renderingData)
-        {
-            if (!renderingData.shadowData.mainLightShadowsEnabled)
-                return false;
-
-#if UNITY_EDITOR
-            if (CoreUtils.IsSceneLightingDisabled(renderingData.cameraData.camera))
-                return false;
-#endif
-
-            if (!renderingData.shadowData.supportsMainLightShadows)
-                return false;
-
-            int shadowLightIndex = renderingData.lightData.mainLightIndex;
-            if (shadowLightIndex == -1)
-                return false;
-
-            VisibleLight shadowLight = renderingData.lightData.visibleLights[shadowLightIndex];
-            Light light = shadowLight.light;
-            if (light.shadows == LightShadows.None)
-                return false;
-
-            if (!renderingData.cullResults.GetShadowCasterBounds(shadowLightIndex, out _))
-                return false;
-
-            return true;
-        }
-
-        private static bool CanRenderAdditionalLightShadow(in RenderingData renderingData)
-        {
-            return renderingData.shadowData.supportsAdditionalLightShadows;
-        }
-
-        private void PerformSetup(ScriptableRenderer renderer, ref RenderingData renderingData, IllusionRendererData rendererData)
+        private void PerformSetup(ContextContainer frameData, IllusionRendererData rendererData)
         {
             UpdateRenderDataSettings();
-            rendererData.Update(renderer, in renderingData);
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var lightData = frameData.Get<UniversalLightData>();
+            var shadowData = frameData.Get<UniversalShadowData>();
+            rendererData.Update(cameraData, lightData, shadowData);
             var config = IllusionRuntimeRenderingConfig.Get();
-            bool isPreviewOrReflectCamera =
-                renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
+            bool isPreviewOrReflectCamera = cameraData.cameraType is CameraType.Preview or CameraType.Reflection;
 
             var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
             rendererData.ContactShadowsSampling = contactShadows
@@ -618,35 +572,8 @@ namespace Illusion.Rendering
             rendererData.SampleScreenSpaceReflection = useScreenSpaceReflection;
             rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination;
 
-            // Re-order light shadow caster pass renderPassEvent better for async compute.
-            // Ref: https://developer.nvidia.com/blog/advanced-api-performance-async-compute-and-overlap/
-            bool enableAsyncCompute = rendererData.PreferComputeShader
-                                      && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
-
-            // Shadow Caster has bug in URP14.0.12 when there is no main/additional light in scene which will clear pre-z.
-            // So skip re-order when shadow is not rendered.
-            bool reorderMainLightShadowPass = enableAsyncCompute && CanRenderMainLightShadow(ref renderingData);
-            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(renderer);
-            if (mainLightShadowCasterPass != null)
-            {
-                mainLightShadowCasterPass.renderPassEvent = reorderMainLightShadowPass
-                    ? IllusionRenderPassEvent.LightsShadowCasterPass
-                    : RenderPassEvent.BeforeRenderingShadows;
-            }
-
-            bool reorderAdditionalLightShadowPass =
-                enableAsyncCompute && CanRenderAdditionalLightShadow(renderingData);
-            var additionalLightsShadowCasterPass =
-                UniversalRenderingUtility.GetAdditionalLightsShadowCasterPass(renderer);
-            if (additionalLightsShadowCasterPass != null)
-            {
-                additionalLightsShadowCasterPass.renderPassEvent = reorderAdditionalLightShadowPass
-                    ? IllusionRenderPassEvent.LightsShadowCasterPass
-                    : RenderPassEvent.BeforeRenderingShadows;
-            }
-
             var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
-            _sceneShadowCasterManager.Cull(in renderingData,
+            _sceneShadowCasterManager.Cull(cameraData, lightData,
                 PerObjectShadowCasterPass.MaxShadowCount,
                 shadow.perObjectShadowLengthOffset.value,
                 IllusionRuntimeRenderingConfig.Get().EnablePerObjectShadowDebug);
@@ -665,11 +592,6 @@ namespace Illusion.Rendering
                                                 && SystemInfo.supportsComputeShaders
                                                 && config.EnableComputeShader;
             _rendererData.RequireHistoryColor = requireHistoryColor;
-            _rendererData.NativeRenderPass = nativeRenderPass
-#if !UNITY_2023_1_OR_NEWER
-                                             && SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2
-#endif
-                                             && config.EnableNativeRenderPass;
             _rendererData.EnableIndirectDiffuseRenderingLayers = enableIndirectDiffuseRenderingLayers;
         }
 
@@ -697,6 +619,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _screenSpaceReflectionPass);
             SafeDispose(ref _screenSpaceGlobalIlluminationPass);
             SafeDispose(ref _forwardGBufferPass);
+            SafeDispose(ref _transparentStencilVRSPass);
             SafeDispose(ref _depthPyramidPass);
             SafeDispose(ref _convolutionBloomPass);
             SafeDispose(ref _volumetricFogPass);
@@ -707,6 +630,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _setupPass);
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+            SafeDispose(ref _stencilVRSDebugPass);
             SafeDispose(ref _motionVectorsDebugPass);
             SafeDispose(ref _exposureDebugPass);
 #endif

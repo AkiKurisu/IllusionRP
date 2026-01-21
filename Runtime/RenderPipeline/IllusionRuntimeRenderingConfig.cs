@@ -65,25 +65,21 @@ namespace Illusion.Rendering
         /// <summary>
         /// Whether enable Async Compute.
         /// </summary>
-        [ConfigVariable("r.asynccompute")]
-#if UNITY_2023_1_OR_NEWER
-        // TODO: Has wrong graphics fence dependency due to NativePassCompiler bug.
+        // [ConfigVariable("r.asynccompute")]
+        // TODO: Fix Async Compute Crash
         public bool EnableAsyncCompute { get; set; } = false;
-#else
-        public bool EnableAsyncCompute { get; set; } = true;
-#endif
-        
-        /// <summary>
-        /// Whether enable Native Render Pass.
-        /// </summary>
-        [ConfigVariable("r.renderpass")]
-        public bool EnableNativeRenderPass { get; set; } = true;
         
         /// <summary>
         /// Whether enable Compute Shader.
         /// </summary>
         [ConfigVariable("r.computeshader")]
         public bool EnableComputeShader { get; set; } = true;
+        
+        /// <summary>
+        /// Whether enable Vrs.
+        /// </summary>
+        [ConfigVariable("r.vrs", IsEditor = true)]
+        public bool EnableVrs { get; set; } = true;
 
         // =================================== Debug ========================================= //
         [ConfigVariable("r.debug.velocity", IsEditor = true)]
@@ -109,6 +105,12 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.debug.perobjectshadow", IsEditor = true)]
         public bool EnablePerObjectShadowDebug { get; set; }
+        
+        /// <summary>
+        /// Enable Vrs debug mode.
+        /// </summary>
+        [ConfigVariable("r.debug.vrs", IsEditor = true)]
+        public bool EnableVrsDebug { get; set; }
 
         /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.

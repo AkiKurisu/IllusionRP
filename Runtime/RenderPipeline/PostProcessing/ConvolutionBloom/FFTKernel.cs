@@ -1,9 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.Rendering;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Illusion.Rendering.PostProcessing
 {
@@ -55,25 +52,25 @@ namespace Illusion.Rendering.PostProcessing
             }
         }
         
-        private LocalKeyword _keywordHighQuality;
+        private readonly LocalKeyword _keywordHighQuality;
         
-        private LocalKeyword _keywordVertical;
+        private readonly LocalKeyword _keywordVertical;
         
-        private LocalKeyword _keywordForward;
+        private readonly LocalKeyword _keywordForward;
         
-        private LocalKeyword _keywordInverse;
+        private readonly LocalKeyword _keywordInverse;
         
-        private LocalKeyword _keywordConvolution2D;
+        private readonly LocalKeyword _keywordConvolution2D;
         
-        private LocalKeyword _keywordInoutTarget;
+        private readonly LocalKeyword _keywordInoutTarget;
         
-        private LocalKeyword _keywordInplace;
+        private readonly LocalKeyword _keywordInplace;
         
-        private  LocalKeyword _keywordReadBlock;
+        private readonly LocalKeyword _keywordReadBlock;
         
-        private LocalKeyword _keywordWriteBlock;
+        private readonly LocalKeyword _keywordWriteBlock;
         
-        private LocalKeyword _keywordRWShift;
+        private readonly LocalKeyword _keywordRWShift;
 
         private int _sizeX;
         
@@ -271,21 +268,19 @@ namespace Illusion.Rendering.PostProcessing
                 }
             }
         }
-        
-#if UNITY_2023_1_OR_NEWER
                 
         public void FFT(ComputeCommandBuffer cmd, TextureHandle texture, bool highQuality)
         {
-            cmd.EnableKeyword(_fftShader, ref _keywordForward);
+            cmd.EnableKeyword(_fftShader, _keywordForward);
             InternalFFT(cmd, texture, highQuality);
-            cmd.DisableKeyword(_fftShader, ref _keywordForward);
+            cmd.DisableKeyword(_fftShader, _keywordForward);
         }
         
         private void InverseFFT(ComputeCommandBuffer cmd, TextureHandle texture, bool highQuality)
         {
-            cmd.EnableKeyword(_fftShader, ref _keywordInverse);
+            cmd.EnableKeyword(_fftShader, _keywordInverse);
             InternalFFT(cmd, texture, highQuality);
-            cmd.DisableKeyword(_fftShader, ref _keywordInverse);
+            cmd.DisableKeyword(_fftShader, _keywordInverse);
         }
         
         private void InternalFFT(ComputeCommandBuffer cmd, TextureHandle texture, bool highQuality)
@@ -297,17 +292,17 @@ namespace Illusion.Rendering.PostProcessing
 
             if (highQuality)
             {
-                cmd.EnableKeyword(_fftShader, ref _keywordHighQuality);
+                cmd.EnableKeyword(_fftShader, _keywordHighQuality);
             }
             else
             {
-                cmd.DisableKeyword(_fftShader, ref _keywordHighQuality);
+                cmd.DisableKeyword(_fftShader, _keywordHighQuality);
             }
             cmd.DispatchCompute(_fftShader, _fftKernel, 1, _sizeY, 1);
 
-            cmd.EnableKeyword(_fftShader, ref _keywordVertical);
+            cmd.EnableKeyword(_fftShader, _keywordVertical);
             cmd.DispatchCompute(_fftShader, _fftKernel, 1, _sizeX, 1);
-            cmd.DisableKeyword(_fftShader, ref _keywordVertical);
+            cmd.DisableKeyword(_fftShader, _keywordVertical);
         }
                 
         public void Convolve(ComputeCommandBuffer cmd, TextureHandle texture, TextureHandle filter, bool highQuality)
@@ -343,7 +338,7 @@ namespace Illusion.Rendering.PostProcessing
             bool vertiacalReadWriteBlock = verticalRange != Vector2Int.zero;
             bool verticalOffset = offset.y != 0;
 
-            cmd.EnableKeyword(_fftShader, ref _keywordInoutTarget);
+            cmd.EnableKeyword(_fftShader, _keywordInoutTarget);
             cmd.SetComputeTextureParam(_fftShader, _fftKernel, ShaderIds.Target, texture);
             UpdateSize(size.x, size.y);
 
@@ -353,32 +348,32 @@ namespace Illusion.Rendering.PostProcessing
             {
                 if (horizontalReadWriteBlock)
                 {
-                    cmd.EnableKeyword(_fftShader, ref _keywordReadBlock);
+                    cmd.EnableKeyword(_fftShader, _keywordReadBlock);
                     cmd.SetComputeIntParams(_fftShader, ShaderIds.ReadWriteRangeAndOffset, rwRangeBeginX, rwRangeEndX);
                 }
 
-                cmd.EnableKeyword(_fftShader, ref _keywordForward);
+                cmd.EnableKeyword(_fftShader, _keywordForward);
                 cmd.DispatchCompute(_fftShader, _fftKernel, 1, horizontalY, 1);
-                cmd.DisableKeyword(_fftShader, ref _keywordForward);
+                cmd.DisableKeyword(_fftShader, _keywordForward);
                 if (horizontalReadWriteBlock)
                 {
-                    cmd.DisableKeyword(_fftShader, ref _keywordReadBlock);
+                    cmd.DisableKeyword(_fftShader, _keywordReadBlock);
                 }
             }
             
             {
-                cmd.EnableKeyword(_fftShader, ref _keywordVertical);
+                cmd.EnableKeyword(_fftShader, _keywordVertical);
                 if (vertiacalReadWriteBlock || verticalOffset)
                 {
                     if (vertiacalReadWriteBlock)
                     {
-                        cmd.EnableKeyword(_fftShader, ref _keywordReadBlock);
-                        cmd.EnableKeyword(_fftShader, ref _keywordWriteBlock);
+                        cmd.EnableKeyword(_fftShader, _keywordReadBlock);
+                        cmd.EnableKeyword(_fftShader, _keywordWriteBlock);
                     }
 
                     if (verticalOffset)
                     {
-                        cmd.EnableKeyword(_fftShader, ref _keywordRWShift);
+                        cmd.EnableKeyword(_fftShader, _keywordRWShift);
                     }
 
                     cmd.SetComputeIntParams(_fftShader, ShaderIds.ReadWriteRangeAndOffset,
@@ -388,47 +383,46 @@ namespace Illusion.Rendering.PostProcessing
                         offset.y);
                 }
 
-                cmd.EnableKeyword(_fftShader, ref _keywordConvolution2D);
-                cmd.EnableKeyword(_fftShader, ref _keywordInplace);
+                cmd.EnableKeyword(_fftShader, _keywordConvolution2D);
+                cmd.EnableKeyword(_fftShader, _keywordInplace);
 
                 cmd.SetComputeIntParams(_fftShader, ShaderIds.TargetSize, size.x, size.y);
                 cmd.SetComputeTextureParam(_fftShader, _convolution2DKernel, ShaderIds.Target, texture);
                 cmd.SetComputeTextureParam(_fftShader, _convolution2DKernel, ShaderIds.ConvKernelSpectrum, filter);
                 cmd.DispatchCompute(_fftShader, _convolution2DKernel, 1, (_sizeX + 1) / 2, 1);
 
-                cmd.DisableKeyword(_fftShader, ref _keywordInplace);
-                cmd.DisableKeyword(_fftShader, ref _keywordConvolution2D);
+                cmd.DisableKeyword(_fftShader, _keywordInplace);
+                cmd.DisableKeyword(_fftShader, _keywordConvolution2D);
 
-                cmd.DisableKeyword(_fftShader, ref _keywordVertical);
+                cmd.DisableKeyword(_fftShader, _keywordVertical);
                 if (vertiacalReadWriteBlock)
                 {
-                    cmd.DisableKeyword(_fftShader, ref _keywordReadBlock);
-                    cmd.DisableKeyword(_fftShader, ref _keywordWriteBlock);
+                    cmd.DisableKeyword(_fftShader, _keywordReadBlock);
+                    cmd.DisableKeyword(_fftShader, _keywordWriteBlock);
                 }
 
                 if (verticalOffset)
                 {
-                    cmd.DisableKeyword(_fftShader, ref _keywordRWShift);
+                    cmd.DisableKeyword(_fftShader, _keywordRWShift);
                 }
             }
 
             {
                 if (horizontalReadWriteBlock)
                 {
-                    cmd.EnableKeyword(_fftShader, ref _keywordWriteBlock);
+                    cmd.EnableKeyword(_fftShader, _keywordWriteBlock);
                     cmd.SetComputeIntParams(_fftShader, ShaderIds.ReadWriteRangeAndOffset, rwRangeBeginX, rwRangeEndX);
                 }
 
-                cmd.EnableKeyword(_fftShader, ref _keywordInverse);
+                cmd.EnableKeyword(_fftShader, _keywordInverse);
                 cmd.DispatchCompute(_fftShader, _fftKernel, 1, horizontalY, 1);
-                cmd.DisableKeyword(_fftShader, ref _keywordInverse);
+                cmd.DisableKeyword(_fftShader, _keywordInverse);
                 if (horizontalReadWriteBlock)
                 {
-                    cmd.DisableKeyword(_fftShader, ref _keywordWriteBlock);
+                    cmd.DisableKeyword(_fftShader, _keywordWriteBlock);
                 }
             }
         }
-#endif
         
         private static class ShaderIds
         {

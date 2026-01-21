@@ -7,6 +7,7 @@
 GLOBAL_CBUFFER_START(ShaderVariablesGlobal, b1)
     float4x4 _GlobalViewMatrix;
     float4x4 _GlobalViewProjMatrix;
+    float4x4 _GlobalInvProjMatrix;
     float4x4 _GlobalInvViewProjMatrix;
     float4x4 _GlobalPrevInvViewProjMatrix;
 #if UNITY_VERSION < 202310
@@ -64,7 +65,11 @@ float2 ClampAndScaleUVForPoint(float2 UV)
 }
 #endif
 
-float GetCurrentExposureMultiplier()
+#define GetCurrentExposureMultiplier IllusionGetCurrentExposureMultiplier
+
+#define GetPreviousExposureMultiplier IllusionGetCurrentExposureMultiplier
+
+float IllusionGetCurrentExposureMultiplier()
 {
 #if SHADEROPTIONS_PRE_EXPOSITION
     // _ProbeExposureScale is a scale used to perform range compression to avoid saturation of the content of the probes. It is 1.0 if we are not rendering probes.
@@ -74,7 +79,7 @@ float GetCurrentExposureMultiplier()
 #endif
 }
 
-float GetPreviousExposureMultiplier()
+float IllusionGetPreviousExposureMultiplier()
 {
 #if SHADEROPTIONS_PRE_EXPOSITION
     // _ProbeExposureScale is a scale used to perform range compression to avoid saturation of the content of the probes. It is 1.0 if we are not rendering probes.

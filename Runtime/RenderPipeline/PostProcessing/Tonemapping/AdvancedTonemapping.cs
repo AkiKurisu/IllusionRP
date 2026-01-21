@@ -37,12 +37,8 @@ namespace Illusion.Rendering.PostProcessing
     }
     
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Advanced Tonemapping")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Advanced Tonemapping", typeof(UniversalRenderPipeline))]
-#endif
     public sealed class AdvancedTonemapping : VolumeComponent, IPostProcessComponent
     {
         /// <summary>

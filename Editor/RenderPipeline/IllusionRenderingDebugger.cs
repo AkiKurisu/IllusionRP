@@ -62,7 +62,7 @@ namespace Illusion.Rendering.Editor
                 _config.EnableScreenSpaceGlobalIllumination);
 
             _config.EnableContactShadows = EditorGUILayout.ToggleLeft(
-                new GUIContent("Contact Shadows", "Enable/Disable Contact Shadows"),
+                new GUIContent("Contact Shadows", "Enable/Disable contact shadows"),
                 _config.EnableContactShadows);
 
             _config.EnablePercentageCloserSoftShadows = EditorGUILayout.ToggleLeft(
@@ -74,27 +74,28 @@ namespace Illusion.Rendering.Editor
                 _config.EnableScreenSpaceAmbientOcclusion);
 
             _config.EnableVolumetricFog = EditorGUILayout.ToggleLeft(
-                new GUIContent("Volumetric Fog", "Enable/Disable Volumetric Fog"),
+                new GUIContent("Volumetric Fog", "Enable/Disable volumetric fog"),
                 _config.EnableVolumetricFog);
 
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = EditorGUILayout.ToggleLeft(
-                new GUIContent("PRT Global Illumination", "Enable/Disable PRT GI"),
+                new GUIContent("PRT Global Illumination", "Enable/Disable PRT global illumination"),
                 _config.EnablePrecomputedRadianceTransferGlobalIllumination);
 
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField("Graphics API Settings", EditorStyles.boldLabel);
 
-            _config.EnableAsyncCompute = EditorGUILayout.ToggleLeft(
-                new GUIContent("Async Compute", "Enable/Disable Async Compute"),
-                _config.EnableAsyncCompute);
-
-            _config.EnableNativeRenderPass = EditorGUILayout.ToggleLeft(
-                new GUIContent("Native Render Pass", "Enable/Disable Native Render Pass"),
-                _config.EnableNativeRenderPass);
+            // TODO: Fix Async Compute Crash
+            // _config.EnableAsyncCompute = EditorGUILayout.ToggleLeft(
+            //     new GUIContent("Async Compute", "Enable/Disable async compute"),
+            //     _config.EnableAsyncCompute);
 
             _config.EnableComputeShader = EditorGUILayout.ToggleLeft(
-                new GUIContent("Compute Shader", "Enable/Disable Compute Shader"),
+                new GUIContent("Compute Shader", "Enable/Disable compute shader"),
                 _config.EnableComputeShader);
+            
+            _config.EnableVrs = EditorGUILayout.ToggleLeft(
+                new GUIContent("Stencil VRS", "Enable/Disable stencil vrs control"),
+                _config.EnableVrs);
         }
 
         private void DrawDebugOptions()
@@ -102,16 +103,20 @@ namespace Illusion.Rendering.Editor
             EditorGUILayout.LabelField("Debug Options", EditorStyles.boldLabel);
             // Debug toggles
             _config.EnableMotionVectorsDebug = EditorGUILayout.ToggleLeft(
-                new GUIContent("Motion Vectors Debug", "Visualize motion vectors"),
+                new GUIContent("Motion Vectors Debug", "Visualize motion vector color"),
                 _config.EnableMotionVectorsDebug);
 
             _config.EnableScreenSpaceReflectionDebug = EditorGUILayout.ToggleLeft(
-                new GUIContent("SSR Debug", "Visualize Screen Space Reflection"),
+                new GUIContent("SSR Debug", "Visualize screen space reflection"),
                 _config.EnableScreenSpaceReflectionDebug);
 
             _config.EnablePerObjectShadowDebug = EditorGUILayout.ToggleLeft(
-                new GUIContent("Per Object Shadow Debug", "Visualize per object shadows"),
+                new GUIContent("Per Object Shadow Debug", "Visualize per-object shadows"),
                 _config.EnablePerObjectShadowDebug);
+            
+            _config.EnableVrsDebug = EditorGUILayout.ToggleLeft(
+                new GUIContent("Stencil VRS Debug", "Visualize stencil vrs color mask"),
+                _config.EnableVrsDebug);
             
             EditorGUILayout.Space(5);
             EditorGUILayout.LabelField("Advanced Debug", EditorStyles.boldLabel);
@@ -192,8 +197,7 @@ namespace Illusion.Rendering.Editor
             _config.EnableScreenSpaceAmbientOcclusion = true;
             _config.EnableVolumetricFog = true;
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = true;
-            _config.EnableAsyncCompute = true;
-            _config.EnableNativeRenderPass = true;
+            _config.EnableAsyncCompute = false;
             _config.EnableComputeShader = true;
             Repaint();
         }

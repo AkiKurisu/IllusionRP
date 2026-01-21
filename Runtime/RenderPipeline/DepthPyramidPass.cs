@@ -2,10 +2,8 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -26,29 +24,9 @@ namespace Illusion.Rendering
         {
             _rendererData = rendererData;
             renderPassEvent = IllusionRenderPassEvent.DepthPyramidPass;
-        }
-
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
             ConfigureInput(ScriptableRenderPassInput.Depth);
         }
 
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            var cameraTargetDescriptor = renderingData.cameraData.cameraTargetDescriptor;
-            _mipChainInfo = _rendererData.DepthMipChainInfo;
-            var mipChainSize = _rendererData.DepthMipChainSize;
-            var depthDescriptor = cameraTargetDescriptor;
-            depthDescriptor.enableRandomWrite = true;
-            depthDescriptor.width = mipChainSize.x;
-            depthDescriptor.height = mipChainSize.y;
-            depthDescriptor.graphicsFormat = GraphicsFormat.R32_SFloat;
-            depthDescriptor.depthBufferBits = 0;
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.DepthPyramidRT, depthDescriptor, name: "CameraDepthBufferMipChain");
-            cmd.SetGlobalTexture(IllusionShaderProperties._DepthPyramid, _rendererData.DepthPyramidRT);
-        }
-
-#if UNITY_2023_1_OR_NEWER
         private class CopyDepthPassData
         {
             internal TextureHandle InputDepthTexture;
@@ -65,12 +43,15 @@ namespace Illusion.Rendering
             internal PackedMipChainInfo MipChainInfo;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            
+            if (cameraData.cameraType is CameraType.Preview or CameraType.Reflection) return;
             
             // Get or allocate depth pyramid RT
-            var cameraTargetDescriptor = renderingData.cameraData.cameraTargetDescriptor;
+            var cameraTargetDescriptor = cameraData.cameraTargetDescriptor;
             _mipChainInfo = _rendererData.DepthMipChainInfo;
             var mipChainSize = _rendererData.DepthMipChainSize;
             var depthDescriptor = cameraTargetDescriptor;
@@ -79,16 +60,19 @@ namespace Illusion.Rendering
             depthDescriptor.height = mipChainSize.y;
             depthDescriptor.graphicsFormat = GraphicsFormat.R32_SFloat;
             depthDescriptor.depthBufferBits = 0;
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.DepthPyramidRT, depthDescriptor, name: "CameraDepthBufferMipChain");
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.DepthPyramidRT, depthDescriptor, name: "CameraDepthBufferMipChain");
 
             TextureHandle depthPyramidHandle = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
-            TextureHandle cameraDepth = renderer.activeDepthTexture;
+            TextureHandle cameraDepth = resource.cameraDepthTexture;
 
             // Copy depth to pyramid mip 0
             using (var builder = renderGraph.AddComputePass<CopyDepthPassData>("Copy Depth Buffer", out var passData, CopyDepthSampler))
             {
-                passData.InputDepthTexture = builder.UseTexture(cameraDepth);
-                passData.OutputDepthPyramid = builder.UseTexture(depthPyramidHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(cameraDepth);
+                passData.InputDepthTexture = cameraDepth;
+
+                builder.UseTexture(depthPyramidHandle, AccessFlags.Write);
+                passData.OutputDepthPyramid = depthPyramidHandle;
                 passData.GPUCopy = _rendererData.GPUCopy;
                 passData.Width = cameraTargetDescriptor.width;
                 passData.Height = cameraTargetDescriptor.height;
@@ -105,51 +89,23 @@ namespace Illusion.Rendering
             // Generate depth pyramid
             using (var builder = renderGraph.AddComputePass<DepthPyramidPassData>("Depth Pyramid", out var passData, DepthPyramidSampler))
             {
-                passData.DepthPyramidTexture = builder.UseTexture(depthPyramidHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(depthPyramidHandle, AccessFlags.Write);
+                passData.DepthPyramidTexture = depthPyramidHandle;
                 passData.MipGenerator = _rendererData.MipGenerator;
                 passData.MipChainInfo = _mipChainInfo;
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
+                
+                builder.SetGlobalTextureAfterPass(depthPyramidHandle, IllusionShaderProperties._DepthPyramid);
 
                 builder.SetRenderFunc((DepthPyramidPassData data, ComputeGraphContext context) =>
                 {
                     data.MipGenerator.RenderMinDepthPyramid(context.cmd, data.DepthPyramidTexture, data.MipChainInfo);
                 });
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties._DepthPyramid, depthPyramidHandle);
         }
-#endif
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var cameraTargetDescriptor = renderingData.cameraData.cameraTargetDescriptor;
-            // In prepass stage use DepthTexture
-            var cameraDepth = UniversalRenderingUtility.GetDepthTexture(renderingData.cameraData.renderer);
-            var cmd = CommandBufferPool.Get();
-            // Copy Depth
-            if (cameraDepth.IsValid())
-            {
-                var gpuCopy = _rendererData.GPUCopy;
-                using (new ProfilingScope(cmd, CopyDepthSampler))
-                {
-                    gpuCopy.SampleCopyChannel_xyzw2x(cmd, cameraDepth, _rendererData.DepthPyramidRT,
-                        new RectInt(0, 0, cameraTargetDescriptor.width, cameraTargetDescriptor.height));
-                }
-            }
-            // Depth Pyramid
-            {
-                using (new ProfilingScope(cmd, DepthPyramidSampler))
-                {
-                    _rendererData.MipGenerator.RenderMinDepthPyramid(cmd, _rendererData.DepthPyramidRT, _mipChainInfo);
-                }
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
+        
         public void Dispose()
         {
             // pass

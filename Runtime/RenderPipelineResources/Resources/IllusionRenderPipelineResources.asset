@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: IllusionRenderPipelineResources
   m_EditorClassIdentifier: 
   alwaysIncludedShaders:
+  - {fileID: 4800000, guid: 3b548bfd6150485791d6b46dc09f76d9, type: 3}
   - {fileID: 4800000, guid: d9d196ed72cf0a547a1a65cf7fc9f895, type: 3}
   - {fileID: 4800000, guid: 109e553fc0efe06429d056fb23c59a1c, type: 3}
   - {fileID: 4800000, guid: 63e7fa58448d546468eba8e6243780a6, type: 3}
@@ -30,6 +31,7 @@ MonoBehaviour:
   preIntegratedFGD_CharlieFabricLambertShader: {fileID: 4800000, guid: 6b5875a88815e6546ac591e537e0a211, type: 3}
   preIntegratedFGD_GGXDisneyDiffuseShader: {fileID: 4800000, guid: 202f6c6e19a562c439f3f0fe581e80cf, type: 3}
   debugShaders:
+  - {fileID: 4800000, guid: 8bbd92567fd5ceb458f6f0317acc0bc7, type: 3}
   - {fileID: 4800000, guid: 7746387bc7e49cd4fa068adfcb7b1fc6, type: 3}
   - {fileID: 4800000, guid: a3a85e85940649bebb7d83de5e7d6b5e, type: 3}
   clearBuffer2D: {fileID: 7200000, guid: 555dfd3ed0cc5d940b569b3705c7cb1f, type: 3}

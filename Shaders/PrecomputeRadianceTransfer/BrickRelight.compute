@@ -3,7 +3,7 @@
 
 #pragma kernel CSMain
 
-#pragma multi_compile _ _FORWARD_PLUS
+#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
 #pragma multi_compile _ _ADDITIONAL_LIGHTS
 #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
@@ -81,7 +81,7 @@ float3 EvaluateSurfelRadiance(Surfel surfel, uint surfelGlobalIndex)
     float NdotL = saturate(dot(surfel.normal, mainLight.direction));
     half3 directLighting = surfel.albedo * mainLight.color * (NdotL * atten);
 
-#if _FORWARD_PLUS
+#if _CLUSTER_LIGHT_LOOP
     // Forward+ rendering path needs this data before the light loop.
     float2 uv = ComputeNormalizedDeviceCoordinates(surfel.position, UNITY_MATRIX_VP);
     InputData inputData = (InputData)0;

@@ -140,7 +140,7 @@ half3 GetStepAdditionalLightsColor(float2 uv, float3 currPosWS, float3 rd, half 
 #if _ADDITIONAL_LIGHTS_CONTRIBUTION_DISABLED
     return half3(0.0, 0.0, 0.0);
 #endif
-#if _FORWARD_PLUS
+#if _CLUSTER_LIGHT_LOOP
     // Forward+ rendering path needs this data before the light loop.
     InputData inputData = (InputData)0;
     inputData.normalizedScreenSpaceUV = uv;

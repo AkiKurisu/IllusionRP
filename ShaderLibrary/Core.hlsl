@@ -49,7 +49,6 @@
     #endif
 #else
     #define COORD_TEXTURE2D_X(pixelCoord)                                    pixelCoord
-    #define LOAD_TEXTURE2D_X_MSAA                                            LOAD_TEXTURE2D_MSAA
     #define RW_TEXTURE2D_X                                                   RW_TEXTURE2D
     #define TEXTURE2D_X_MSAA(type, textureName)                              Texture2DMS<type, 1> textureName
     #define TEXTURE2D_X_UINT(textureName)                                    Texture2D<uint> textureName

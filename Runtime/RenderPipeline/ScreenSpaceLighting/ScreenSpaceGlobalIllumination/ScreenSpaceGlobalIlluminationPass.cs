@@ -2,10 +2,8 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -83,14 +81,6 @@ namespace Illusion.Rendering
 
         private bool _denoiserInitialized;
 
-        private static readonly ProfilingSampler TracingSampler = new("Trace");
-
-        private static readonly ProfilingSampler ReprojectSampler = new("Reproject");
-
-        private static readonly ProfilingSampler DenoiseSampler = new("Denoise");
-
-        private static readonly ProfilingSampler UpsampleSampler = new("Upsample");
-
         private bool _needDenoise;
 
         // Constant buffer structure matching the compute shader
@@ -109,7 +99,6 @@ namespace Illusion.Rendering
         {
             _rendererData = rendererData;
             renderPassEvent = IllusionRenderPassEvent.ScreenSpaceGlobalIlluminationPass;
-            profilingSampler = new ProfilingSampler("Screen Space Global Illumination");
 
             _ssgiComputeShader = rendererData.RuntimeResources.screenSpaceGlobalIlluminationCS;
             _traceKernel = _ssgiComputeShader.FindKernel("TraceGlobalIllumination");
@@ -133,20 +122,12 @@ namespace Illusion.Rendering
             // Initialize point distribution buffer for denoiser (16 samples * 4 frame periods)
             _pointDistribution = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 16 * 4, 2 * sizeof(float));
             _denoiserInitialized = false;
-#if UNITY_2023_1_OR_NEWER
             ConfigureInput(ScriptableRenderPassInput.Depth
                            | ScriptableRenderPassInput.Normal
                            | ScriptableRenderPassInput.Motion);
-#endif
         }
 
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            PrepareSSGIData(ref renderingData);
-            AllocateTextures(ref renderingData);
-        }
-
-        private void PrepareSSGIData(ref RenderingData renderingData)
+        private void PrepareSSGIData(UniversalCameraData cameraData)
         {
             // Get SSGI volume settings
             var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
@@ -154,8 +135,8 @@ namespace Illusion.Rendering
                 return;
 
             _needDenoise = volume.denoise.value;
-            _screenWidth = renderingData.cameraData.cameraTargetDescriptor.width;
-            _screenHeight = renderingData.cameraData.cameraTargetDescriptor.height;
+            _screenWidth = cameraData.cameraTargetDescriptor.width;
+            _screenHeight = cameraData.cameraTargetDescriptor.height;
             _halfResolution = volume.halfResolution.value;
 
             int resolutionDivider = _halfResolution ? 2 : 1;
@@ -173,125 +154,6 @@ namespace Illusion.Rendering
             }
         }
 
-        private void AllocateTextures(ref RenderingData renderingData)
-        {
-            var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
-            if (!volume || !volume.enable.value)
-                return;
-
-            // Allocate hit point texture
-            _targetDescriptor = renderingData.cameraData.cameraTargetDescriptor;
-            _targetDescriptor.msaaSamples = 1;
-            _targetDescriptor.graphicsFormat = GraphicsFormat.R16G16_SFloat;
-            _targetDescriptor.depthBufferBits = 0;
-            _targetDescriptor.width = Mathf.CeilToInt(_rtWidth);
-            _targetDescriptor.height = Mathf.CeilToInt(_rtHeight);
-            _targetDescriptor.enableRandomWrite = true;
-            RenderingUtils.ReAllocateIfNeeded(ref _hitPointRT, _targetDescriptor,
-                name: "_IndirectDiffuseHitPointTexture", filterMode: FilterMode.Point);
-
-            // Allocate output texture (low res if half resolution, full res otherwise)
-            _targetDescriptor.graphicsFormat = GraphicsFormat.B10G11R11_UFloatPack32;
-            RenderingUtils.ReAllocateIfNeeded(ref _outputRT, _targetDescriptor,
-                name: "_IndirectDiffuseTexture", filterMode: FilterMode.Point);
-
-            // Allocate full resolution upsampled texture if half resolution mode
-            if (_halfResolution)
-            {
-                var fullResDescriptor = renderingData.cameraData.cameraTargetDescriptor;
-                fullResDescriptor.msaaSamples = 1;
-                fullResDescriptor.graphicsFormat = GraphicsFormat.B10G11R11_UFloatPack32;
-                fullResDescriptor.depthBufferBits = 0;
-                fullResDescriptor.enableRandomWrite = true;
-                fullResDescriptor.width = Mathf.CeilToInt(_screenWidth);
-                fullResDescriptor.height = Mathf.CeilToInt(_screenHeight);
-                RenderingUtils.ReAllocateIfNeeded(ref _upsampledRT, fullResDescriptor,
-                    name: "_IndirectDiffuseUpsampled", filterMode: FilterMode.Point);
-            }
-
-            // Allocate denoising buffers if enabled
-            if (volume.denoise.value)
-            {
-                // Allocate validation buffer for temporal filter
-                var validationDescriptor = renderingData.cameraData.cameraTargetDescriptor;
-                validationDescriptor.msaaSamples = 1;
-                validationDescriptor.graphicsFormat = GraphicsFormat.R8_UInt;
-                validationDescriptor.depthBufferBits = 0;
-                validationDescriptor.enableRandomWrite = true;
-                validationDescriptor.width = Mathf.CeilToInt(_screenWidth);
-                validationDescriptor.height = Mathf.CeilToInt(_screenHeight);
-                RenderingUtils.ReAllocateIfNeeded(ref _validationBufferRT, validationDescriptor,
-                    name: "_SSGIValidationBuffer", filterMode: FilterMode.Point);
-
-                _targetDescriptor.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
-                RenderingUtils.ReAllocateIfNeeded(ref _temporalRT, _targetDescriptor,
-                    name: "_SSGITemporalOutput", filterMode: FilterMode.Point);
-                _targetDescriptor.graphicsFormat = GraphicsFormat.B10G11R11_UFloatPack32;
-                RenderingUtils.ReAllocateIfNeeded(ref _denoisedRT, _targetDescriptor,
-                    name: "_SSGIDenoisedOutput", filterMode: FilterMode.Point);
-
-                // Allocate second pass denoising buffers if enabled
-                if (volume.secondDenoiserPass.value)
-                {
-                    _targetDescriptor.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
-                    RenderingUtils.ReAllocateIfNeeded(ref _temporalRT2, _targetDescriptor,
-                        name: "_SSGITemporalOutput2", filterMode: FilterMode.Point);
-                    _targetDescriptor.graphicsFormat = GraphicsFormat.B10G11R11_UFloatPack32;
-                    RenderingUtils.ReAllocateIfNeeded(ref _denoisedRT2, _targetDescriptor,
-                        name: "_SSGIDenoisedOutput2", filterMode: FilterMode.Point);
-                }
-
-                // Allocate intermediate buffer for half resolution bilateral filter
-                if (volume.halfResolutionDenoiser.value)
-                {
-                    RenderingUtils.ReAllocateIfNeeded(ref _intermediateRT, _targetDescriptor,
-                        name: "_DiffuseDenoiserIntermediate", filterMode: FilterMode.Point);
-                }
-
-                // Allocate first history buffer
-                float scaleFactor = _halfResolution ? 0.5f : 1.0f;
-                if (scaleFactor != _historyResolutionScale ||
-                    _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination) == null)
-                {
-                    _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
-                    var historyAllocator = new IllusionRendererData.CustomHistoryAllocator(
-                        new Vector2(scaleFactor, scaleFactor),
-                        GraphicsFormat.R16G16B16A16_SFloat,
-                        "IndirectDiffuseHistoryBuffer");
-                    _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination,
-                        historyAllocator.Allocator, 1);
-                }
-
-                // Allocate second history buffer for second denoiser pass
-                if (volume.secondDenoiserPass.value)
-                {
-                    if (scaleFactor != _historyResolutionScale ||
-                        _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2) == null)
-                    {
-                        _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
-                        var historyAllocator2 = new IllusionRendererData.CustomHistoryAllocator(
-                            new Vector2(scaleFactor, scaleFactor),
-                            GraphicsFormat.R16G16B16A16_SFloat,
-                            "IndirectDiffuseHistoryBuffer2");
-                        _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2,
-                            historyAllocator2.Allocator, 1);
-                    }
-                }
-
-                _historyResolutionScale = scaleFactor;
-            }
-
-            if (volume.enableProbeVolumes.value && _rendererData.SampleProbeVolumes)
-            {
-                _ssgiComputeShader.EnableKeyword("_PROBE_VOLUME_ENABLE");
-            }
-            else
-            {
-                _ssgiComputeShader.DisableKeyword("_PROBE_VOLUME_ENABLE");
-            }
-        }
-
-#if UNITY_2023_1_OR_NEWER
         // RenderGraph PassData classes
         private class TracePassData
         {
@@ -413,16 +275,8 @@ namespace Illusion.Rendering
             public int GeneratePointDistributionKernel;
             public GraphicsBuffer PointDistribution;
         }
-#endif
 
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
-            ConfigureInput(ScriptableRenderPassInput.Depth
-                           | ScriptableRenderPassInput.Normal
-                           | ScriptableRenderPassInput.Motion);
-        }
-
-        private void PrepareVariables(ref CameraData cameraData)
+        private void PrepareVariables(UniversalCameraData cameraData)
         {
             var camera = cameraData.camera;
             var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
@@ -447,451 +301,16 @@ namespace Illusion.Rendering
             _giVariables.IndirectDiffuseFrameIndex = (int)(_rendererData.FrameCount % 16);
         }
 
-        private void ExecuteTrace(CommandBuffer cmd, ref CameraData cameraData)
-        {
-            var normalTexture = UniversalRenderingUtility.GetNormalTexture(cameraData.renderer);
-
-            if (!normalTexture.IsValid())
-                return;
-
-            var depthTexture = _rendererData.DepthPyramidRT;
-            int kernel = _halfResolution ? _traceHalfKernel : _traceKernel;
-            var offsetBuffer = _rendererData.DepthMipChainInfo.GetOffsetBufferData(
-                _rendererData.DepthPyramidMipLevelOffsetsBuffer);
-
-            _rendererData.BindDitheredRNGData8SPP(cmd);
-            
-            // Set constant buffer
-            ConstantBuffer.Push(cmd, _giVariables, _ssgiComputeShader, Properties.ShaderVariablesSSGI);
-
-            // Bind input textures
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._DepthPyramid, depthTexture);
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._CameraNormalsTexture, normalTexture);
-            cmd.SetComputeBufferParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._DepthPyramidMipLevelOffsets, offsetBuffer);
-
-            // Bind output texture
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                Properties.IndirectDiffuseHitPointTextureRW, _hitPointRT);
-
-            // Dispatch compute shader
-            int tileSize = 8;
-            int tilesX = IllusionRenderingUtils.DivRoundUp((int)_rtWidth, tileSize);
-            int tilesY = IllusionRenderingUtils.DivRoundUp((int)_rtHeight, tileSize);
-            cmd.DispatchCompute(_ssgiComputeShader, kernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-        }
-
-        private void ExecuteReproject(CommandBuffer cmd, ref CameraData cameraData)
-        {
-            var normalTexture = UniversalRenderingUtility.GetNormalTexture(cameraData.renderer);
-            if (!normalTexture.IsValid())
-                return;
-
-            var motionVectorTexture = UniversalRenderingUtility.GetMotionVectorColor(cameraData.renderer);
-            var depthTexture = _rendererData.DepthPyramidRT;
-
-            // Get previous frame color pyramid
-            var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(cameraData, out bool isNewFrame);
-            if (preFrameColorRT == null)
-                return;
-
-            // Get history depth texture (use current depth as fallback)
-            var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
-            if (historyDepthRT == null || !historyDepthRT.IsValid())
-            {
-                historyDepthRT = depthTexture;
-            }
-
-            int kernel = _halfResolution ? _reprojectHalfKernel : _reprojectKernel;
-            var offsetBuffer = _rendererData.DepthMipChainInfo.GetOffsetBufferData(
-                _rendererData.DepthPyramidMipLevelOffsetsBuffer);
-
-            // Set constant buffer
-            ConstantBuffer.Push(cmd, _giVariables, _ssgiComputeShader, Properties.ShaderVariablesSSGI);
-
-            // Bind input textures
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._DepthPyramid, depthTexture);
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._CameraNormalsTexture, normalTexture);
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._MotionVectorTexture,
-                isNewFrame && motionVectorTexture.IsValid() ? motionVectorTexture : Texture2D.blackTexture);
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._ColorPyramidTexture, preFrameColorRT);
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                Properties.HistoryDepthTexture, historyDepthRT);
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                Properties.IndirectDiffuseHitPointTexture, _hitPointRT);
-            cmd.SetComputeBufferParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._DepthPyramidMipLevelOffsets, offsetBuffer);
-
-            // Exposure texture may not be initialized in the first frame
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._ExposureTexture, _rendererData.GetExposureTexture());
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                IllusionShaderProperties._PrevExposureTexture, _rendererData.GetPreviousExposureTexture());
-
-            // Bind output texture
-            cmd.SetComputeTextureParam(_ssgiComputeShader, kernel,
-                Properties.IndirectDiffuseTextureRW, _outputRT);
-
-            // Dispatch compute shader
-            int tileSize = 8;
-            int tilesX = IllusionRenderingUtils.DivRoundUp((int)_rtWidth, tileSize);
-            int tilesY = IllusionRenderingUtils.DivRoundUp((int)_rtHeight, tileSize);
-            cmd.DispatchCompute(_ssgiComputeShader, kernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-        }
-
-        private void InitializeDiffuseDenoiser(CommandBuffer cmd)
-        {
-            // Generate point distribution (only needs to be done once)
-            if (!_denoiserInitialized)
-            {
-                cmd.SetComputeBufferParam(_diffuseDenoiserCS, _generatePointDistributionKernel,
-                    Properties.PointDistributionRW, _pointDistribution);
-                cmd.DispatchCompute(_diffuseDenoiserCS, _generatePointDistributionKernel, 1, 1, 1);
-                _denoiserInitialized = true;
-            }
-        }
-
         private static float GetPixelSpreadTangent(float fov, int width, int height)
         {
             // Calculate the pixel spread angle tangent for the current FOV and resolution
             return Mathf.Tan(fov * Mathf.Deg2Rad * 0.5f) / (height * 0.5f);
         }
 
-        // TODO: Move out of SSGI render pass
-        private void ExecuteValidateHistory(CommandBuffer cmd, ref CameraData cameraData, float historyValidity)
-        {
-            var depthTexture = _rendererData.DepthPyramidRT;
-            var normalTexture = UniversalRenderingUtility.GetNormalTexture(cameraData.renderer);
-            var motionVectorTexture = UniversalRenderingUtility.GetMotionVectorColor(cameraData.renderer);
-
-            if (!depthTexture.IsValid() || !normalTexture.IsValid())
-                return;
-
-            // Get history depth and normal textures
-            var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
-            var historyNormalRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Normal);
-
-            // If history is not available, clear validation buffer and return
-            if (historyDepthRT == null || !historyDepthRT.IsValid() || historyNormalRT == null || !historyNormalRT.IsValid())
-            {
-                CoreUtils.SetRenderTarget(cmd, _validationBufferRT, clearFlag: ClearFlag.Color, Color.black);
-                return;
-            }
-
-            // Calculate pixel spread tangent
-            float pixelSpreadTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, (int)_screenWidth, (int)_screenHeight);
-
-            // Bind input textures
-            cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-                Properties.DepthTexture, depthTexture);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-                Properties.HistoryDepthTexture, historyDepthRT);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-                Properties.NormalBufferTexture, normalTexture);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-                Properties.HistoryNormalTexture, historyNormalRT);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-                IllusionShaderProperties._MotionVectorTexture,
-                motionVectorTexture.IsValid() ? motionVectorTexture : Texture2D.blackTexture);
-
-            // cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-            //     Properties.StencilTexture, depthTexture, 0, RenderTextureSubElement.Stencil);
-            // cmd.SetComputeIntParam(_temporalFilterCS, Properties.ObjectMotionStencilBit, 0); // Default to 0 if no stencil
-
-            // Bind constants
-            cmd.SetComputeFloatParam(_temporalFilterCS, Properties.HistoryValidity, historyValidity);
-            cmd.SetComputeFloatParam(_temporalFilterCS, Properties.PixelSpreadAngleTangent, pixelSpreadTangent);
-            cmd.SetComputeVectorParam(_temporalFilterCS, Properties.HistorySizeAndScale, _rendererData.EvaluateRayTracingHistorySizeAndScale(historyNormalRT));
-
-            // Bind output buffer
-            cmd.SetComputeTextureParam(_temporalFilterCS, _validateHistoryKernel,
-                Properties.ValidationBufferRW, _validationBufferRT);
-
-            // Dispatch
-            int tileSize = 8;
-            int tilesX = IllusionRenderingUtils.DivRoundUp((int)_screenWidth, tileSize);
-            int tilesY = IllusionRenderingUtils.DivRoundUp((int)_screenHeight, tileSize);
-            cmd.DispatchCompute(_temporalFilterCS, _validateHistoryKernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-        }
-
-        private void ExecuteTemporalDenoise(CommandBuffer cmd, ref CameraData cameraData, ref ScreenSpaceGlobalIllumination volume,
-            RTHandle inputRT, RTHandle outputRT, int historyType)
-        {
-            var depthTexture = _rendererData.DepthPyramidRT;
-            var normalTexture = UniversalRenderingUtility.GetNormalTexture(cameraData.renderer);
-            var motionVectorTexture = UniversalRenderingUtility.GetMotionVectorColor(cameraData.renderer);
-
-            if (!depthTexture.IsValid() || !normalTexture.IsValid())
-                return;
-
-            // Get history buffer
-            var historyRT = _rendererData.GetCurrentFrameRT(historyType);
-
-            // Calculate pixel spread tangent for the denoiser resolution
-            float pixelSpreadTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, (int)_rtWidth, (int)_rtHeight);
-
-            // Determine resolution multiplier (1.0 for full res, 0.5 for half res)
-            float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
-
-            // Bind input textures for temporal accumulation
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                Properties.DenoiseInputTexture, inputRT);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                Properties.HistoryBuffer, historyRT);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                Properties.DepthTexture, depthTexture);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                Properties.ValidationBuffer, _validationBufferRT);
-            // cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-            //     Properties.VelocityBuffer, Texture2D.blackTexture); // Not used for SSGI
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                IllusionShaderProperties._MotionVectorTexture,
-                motionVectorTexture.IsValid() ? motionVectorTexture : Texture2D.blackTexture);
-            
-            // Bind exposure textures
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                IllusionShaderProperties._ExposureTexture, _rendererData.GetExposureTexture());
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                IllusionShaderProperties._PrevExposureTexture, _rendererData.GetPreviousExposureTexture());
-
-            // Bind constants
-            cmd.SetComputeFloatParam(_temporalFilterCS, Properties.HistoryValidity, 1.0f);
-            cmd.SetComputeIntParam(_temporalFilterCS, Properties.ReceiverMotionRejection, 0);
-            cmd.SetComputeIntParam(_temporalFilterCS, Properties.OccluderMotionRejection, 0);
-            cmd.SetComputeFloatParam(_temporalFilterCS, Properties.PixelSpreadAngleTangent, pixelSpreadTangent);
-            cmd.SetComputeVectorParam(_temporalFilterCS, Properties.DenoiserResolutionMultiplierVals,
-                new Vector4(resolutionMultiplier, 1.0f / resolutionMultiplier, 1, 1));
-            cmd.SetComputeIntParam(_temporalFilterCS, Properties.EnableExposureControl, 1);
-
-            // Bind output buffer
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalAccumulationColorKernel,
-                Properties.AccumulationOutputTextureRW, outputRT);
-
-            // Dispatch temporal accumulation
-            int tileSize = 8;
-            int tilesX = IllusionRenderingUtils.DivRoundUp(_rtWidth, tileSize);
-            int tilesY = IllusionRenderingUtils.DivRoundUp(_rtHeight, tileSize);
-            cmd.DispatchCompute(_temporalFilterCS, _temporalAccumulationColorKernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-
-            // Copy the accumulated result to history buffer for next frame
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalFilterCopyHistoryKernel,
-                Properties.DenoiseInputTexture, outputRT);
-            cmd.SetComputeTextureParam(_temporalFilterCS, _temporalFilterCopyHistoryKernel,
-                Properties.DenoiseOutputTextureRW, historyRT);
-            cmd.SetComputeVectorParam(_temporalFilterCS, Properties.DenoiserResolutionMultiplierVals,
-                new Vector4(resolutionMultiplier, 1.0f / resolutionMultiplier, 1, 1));
-            cmd.DispatchCompute(_temporalFilterCS, _temporalFilterCopyHistoryKernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-        }
-
-        private void ExecuteSpatialDenoise(CommandBuffer cmd, ref CameraData cameraData, RTHandle inputRT, RTHandle outputRT,
-            float kernelSize, bool halfResolutionFilter, bool jitterFilter)
-        {
-            var normalTexture = UniversalRenderingUtility.GetNormalTexture(cameraData.renderer);
-
-            if (!normalTexture.IsValid())
-                return;
-
-            // Initialize point distribution buffer if needed
-            InitializeDiffuseDenoiser(cmd);
-            
-            // Determine resolution multiplier (1.0 for full res, 0.5 for half res)
-            float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
-
-            // Calculate pixel spread tangent for the current resolution
-            float pixelSpreadTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, _rtWidth, _rtHeight);
-
-            // Setup bilateral filter parameters
-            cmd.SetComputeFloatParam(_diffuseDenoiserCS, Properties.DenoiserFilterRadius, kernelSize);
-            cmd.SetComputeFloatParam(_diffuseDenoiserCS, Properties.PixelSpreadAngleTangent, pixelSpreadTangent);
-            cmd.SetComputeIntParam(_diffuseDenoiserCS, Properties.HalfResolutionFilter, halfResolutionFilter ? 1 : 0);
-            cmd.SetComputeVectorParam(_diffuseDenoiserCS, Properties.DenoiserResolutionMultiplierVals,
-                new Vector4(resolutionMultiplier, 1.0f / resolutionMultiplier, 0.0f, 0.0f));
-            // Set jitter frame period for temporal variation
-            int frameIndex = (int)(_rendererData.FrameCount % 16);
-            if (jitterFilter)
-                cmd.SetComputeIntParam(_diffuseDenoiserCS, Properties.JitterFramePeriod, frameIndex % 4);
-            else
-                cmd.SetComputeIntParam(_diffuseDenoiserCS, Properties.JitterFramePeriod, -1);
-            
-
-            // Bind resources for bilateral filter
-            cmd.SetComputeBufferParam(_diffuseDenoiserCS, _bilateralFilterColorKernel,
-                Properties.PointDistribution, _pointDistribution);
-            cmd.SetComputeTextureParam(_diffuseDenoiserCS, _bilateralFilterColorKernel,
-                Properties.DenoiseInputTexture, inputRT);
-            cmd.SetComputeTextureParam(_diffuseDenoiserCS, _bilateralFilterColorKernel,
-                Properties.DepthTexture, _rendererData.DepthPyramidRT);
-            cmd.SetComputeTextureParam(_diffuseDenoiserCS, _bilateralFilterColorKernel,
-                Properties.NormalBufferTexture, normalTexture);
-
-            // Bind output texture
-            if (halfResolutionFilter)
-            {
-                cmd.SetComputeTextureParam(_diffuseDenoiserCS, _bilateralFilterColorKernel,
-                    Properties.DenoiseOutputTextureRW, _intermediateRT);
-            }
-            else
-            {
-                cmd.SetComputeTextureParam(_diffuseDenoiserCS, _bilateralFilterColorKernel,
-                    Properties.DenoiseOutputTextureRW, outputRT);
-            }
-
-            // Dispatch bilateral filter
-            int tileSize = 8;
-            int tilesX = IllusionRenderingUtils.DivRoundUp(_rtWidth, tileSize);
-            int tilesY = IllusionRenderingUtils.DivRoundUp(_rtHeight, tileSize);
-            cmd.DispatchCompute(_diffuseDenoiserCS, _bilateralFilterColorKernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-
-            // If using half resolution filter, perform gather pass to upsample
-            if (halfResolutionFilter)
-            {
-                cmd.SetComputeTextureParam(_diffuseDenoiserCS, _gatherColorKernel,
-                    Properties.DenoiseInputTexture, _intermediateRT);
-                cmd.SetComputeTextureParam(_diffuseDenoiserCS, _gatherColorKernel,
-                    Properties.DepthTexture, _rendererData.DepthPyramidRT);
-                cmd.SetComputeTextureParam(_diffuseDenoiserCS, _gatherColorKernel,
-                    Properties.DenoiseOutputTextureRW, outputRT);
-                cmd.DispatchCompute(_diffuseDenoiserCS, _gatherColorKernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-            }
-        }
-
-        private void ExecuteUpsample(CommandBuffer cmd, RTHandle lowResInput)
-        {
-            // Setup upsample constant buffer
-            unsafe
-            {
-                _upsampleVariables._HalfScreenSize = new Vector4(
-                    _rtWidth,
-                    _rtHeight,
-                    1.0f / _rtWidth,
-                    1.0f / _rtHeight);
-
-                // Fill distance-based weights (2x2 pattern for half resolution)
-                for (int i = 0; i < 16; ++i)
-                    _upsampleVariables._DistanceBasedWeights[i] = BilateralUpsample.distanceBasedWeights_2x2[i];
-
-                // Fill tap offsets (2x2 pattern for half resolution)
-                for (int i = 0; i < 32; ++i)
-                    _upsampleVariables._TapOffsets[i] = BilateralUpsample.tapOffsets_2x2[i];
-            }
-
-            // Set constant buffer
-            ConstantBuffer.Push(cmd, _upsampleVariables, _bilateralUpsampleCS, Properties.ShaderVariablesBilateralUpsample);
-
-            // Setup half screen size vector
-            Vector4 halfScreenSize = new Vector4(_rtWidth, _rtHeight, 1.0f / _rtWidth, 1.0f / _rtHeight);
-
-            // Bind textures
-            cmd.SetComputeTextureParam(_bilateralUpsampleCS, _bilateralUpsampleKernel,
-                Properties.LowResolutionTexture, lowResInput);
-            cmd.SetComputeVectorParam(_bilateralUpsampleCS, Properties.HalfScreenSize, halfScreenSize);
-            cmd.SetComputeTextureParam(_bilateralUpsampleCS, _bilateralUpsampleKernel,
-                Properties.OutputUpscaledTexture, _upsampledRT);
-
-            // Dispatch (full resolution tiles)
-            int tileSize = 8;
-            int tilesX = IllusionRenderingUtils.DivRoundUp((int)_screenWidth, tileSize);
-            int tilesY = IllusionRenderingUtils.DivRoundUp((int)_screenHeight, tileSize);
-            cmd.DispatchCompute(_bilateralUpsampleCS, _bilateralUpsampleKernel, tilesX, tilesY, IllusionRendererData.MaxViewCount);
-        }
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            if (!_rendererData.SampleScreenSpaceIndirectDiffuse)
-            {
-                return;
-            }
-
-            ref var cameraData = ref renderingData.cameraData;
-            var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
-            if (!volume || !volume.enable.value)
-                return;
-
-            // Need previous frame color pyramid
-            var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(cameraData, out _);
-            if (preFrameColorRT == null)
-                return;
-
-            // Prepare shader variables
-            PrepareVariables(ref cameraData);
-
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                using (new ProfilingScope(cmd, TracingSampler))
-                {
-                    ExecuteTrace(cmd, ref cameraData);
-                }
-
-                using (new ProfilingScope(cmd, ReprojectSampler))
-                {
-                    ExecuteReproject(cmd, ref cameraData);
-                }
-
-                RTHandle finalRT = _outputRT;
-                if (_needDenoise)
-                {
-                    using (new ProfilingScope(cmd, DenoiseSampler))
-                    {
-                        // Validate history before temporal denoising
-                        ExecuteValidateHistory(cmd, ref cameraData, 1.0f);
-
-                        ExecuteTemporalDenoise(cmd, ref cameraData, ref volume,
-                            finalRT, _temporalRT,
-                            (int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
-
-                        bool halfResFilter = volume.halfResolutionDenoiser.value;
-                        ExecuteSpatialDenoise(cmd, ref cameraData, _temporalRT, _denoisedRT,
-                            volume.denoiserRadius.value, halfResFilter, volume.secondDenoiserPass.value);
-
-                        finalRT = _denoisedRT;
-
-                        // Second pass: Apply second denoiser pass if enabled
-                        if (volume.secondDenoiserPass.value)
-                        {
-                            ExecuteTemporalDenoise(cmd, ref cameraData, ref volume,
-                                finalRT, _temporalRT2,
-                                (int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
-
-                            // Spatial denoising with smaller kernel (0.5x)
-                            ExecuteSpatialDenoise(cmd, ref cameraData, _temporalRT2, _denoisedRT2,
-                                volume.denoiserRadius.value * 0.5f, halfResFilter, false);
-
-                            finalRT = _denoisedRT2;
-                        }
-                    }
-                }
-
-                // Bilateral upsampling from half resolution to full resolution
-                if (_halfResolution)
-                {
-                    using (new ProfilingScope(cmd, UpsampleSampler))
-                    {
-                        ExecuteUpsample(cmd, finalRT);
-                        finalRT = _upsampledRT;
-                    }
-                }
-
-                cmd.SetGlobalTexture(Properties.IndirectDiffuseTexture, finalRT);
-            }
-
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
-        // RenderGraph implementation methods
-        
         private TextureHandle RenderTracePass(RenderGraph renderGraph, TextureHandle depthPyramidTexture, 
             TextureHandle normalTexture, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<TracePassData>("SSGI Trace", out var passData, TracingSampler))
+            using (var builder = renderGraph.AddComputePass<TracePassData>("SSGI Trace", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -911,11 +330,14 @@ namespace Illusion.Rendering
                     enableRandomWrite = true,
                     name = "SSGI Hit Point"
                 };
-                passData.HitPointTexture = builder.UseTexture(renderGraph.CreateTexture(hitPointDesc), 
-                    IBaseRenderGraphBuilder.AccessFlags.Write);
+                var hitPoint = renderGraph.CreateTexture(hitPointDesc);
+                builder.UseTexture(hitPoint, AccessFlags.Write);
+                passData.HitPointTexture = hitPoint;
                 
-                passData.DepthPyramidTexture = builder.UseTexture(depthPyramidTexture);
-                passData.NormalTexture = builder.UseTexture(normalTexture);
+                builder.UseTexture(depthPyramidTexture);
+                passData.DepthPyramidTexture = depthPyramidTexture;
+                builder.UseTexture(normalTexture);
+                passData.NormalTexture = normalTexture;
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -924,7 +346,7 @@ namespace Illusion.Rendering
                 {
                     _rendererData.BindDitheredRNGData8SPP(context.cmd.GetNativeCommandBuffer());
                     
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
                     
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.TraceKernel,
                         IllusionShaderProperties._DepthPyramid, data.DepthPyramidTexture);
@@ -949,7 +371,7 @@ namespace Illusion.Rendering
             TextureHandle motionVectorTexture, TextureHandle colorPyramidTexture, TextureHandle historyDepthTexture,
             TextureHandle exposureTexture, TextureHandle prevExposureTexture, bool isNewFrame, bool useAsyncCompute)
         {
-            using (var builder = renderGraph.AddComputePass<ReprojectPassData>("SSGI Reproject", out var passData, ReprojectSampler))
+            using (var builder = renderGraph.AddComputePass<ReprojectPassData>("SSGI Reproject", out var passData))
             {
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
@@ -970,23 +392,33 @@ namespace Illusion.Rendering
                     enableRandomWrite = true,
                     name = "SSGI Output"
                 };
-                passData.OutputTexture = builder.UseTexture(renderGraph.CreateTexture(outputDesc), IBaseRenderGraphBuilder.AccessFlags.Write);
+                var output = renderGraph.CreateTexture(outputDesc);
+                builder.UseTexture(output, AccessFlags.Write);
+                passData.OutputTexture = output;
                 
-                passData.HitPointTexture = builder.UseTexture(hitPointTexture);
-                passData.DepthPyramidTexture = builder.UseTexture(depthPyramidTexture);
-                passData.NormalTexture = builder.UseTexture(normalTexture);
-                passData.MotionVectorTexture = builder.UseTexture(motionVectorTexture);
-                passData.ColorPyramidTexture = builder.UseTexture(colorPyramidTexture);
-                passData.HistoryDepthTexture = builder.UseTexture(historyDepthTexture);
-                passData.ExposureTexture = builder.UseTexture(exposureTexture);
-                passData.PrevExposureTexture = builder.UseTexture(prevExposureTexture);
+                builder.UseTexture(hitPointTexture);
+                passData.HitPointTexture = hitPointTexture;
+                builder.UseTexture(depthPyramidTexture);
+                passData.DepthPyramidTexture = depthPyramidTexture;
+                builder.UseTexture(normalTexture);
+                passData.NormalTexture = normalTexture;
+                builder.UseTexture(motionVectorTexture);
+                passData.MotionVectorTexture = motionVectorTexture;
+                builder.UseTexture(colorPyramidTexture);
+                passData.ColorPyramidTexture = colorPyramidTexture;
+                builder.UseTexture(historyDepthTexture);
+                passData.HistoryDepthTexture = historyDepthTexture;
+                builder.UseTexture(exposureTexture);
+                passData.ExposureTexture = exposureTexture;
+                builder.UseTexture(prevExposureTexture);
+                passData.PrevExposureTexture = prevExposureTexture;
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
                 builder.SetRenderFunc((ReprojectPassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
                     
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.ReprojectKernel,
                         IllusionShaderProperties._DepthPyramid, data.DepthPyramidTexture);
@@ -1018,7 +450,7 @@ namespace Illusion.Rendering
             }
         }
         
-        private TextureHandle RenderValidateHistoryPass(RenderGraph renderGraph, ref CameraData cameraData,
+        private TextureHandle RenderValidateHistoryPass(RenderGraph renderGraph, UniversalCameraData cameraData,
             TextureHandle depthTexture, TextureHandle normalTexture, TextureHandle historyDepthTexture,
             TextureHandle motionVectorTexture, float historyValidity)
         {
@@ -1031,7 +463,8 @@ namespace Illusion.Rendering
                 if (historyNormalRT.IsValid())
                 {
                     TextureHandle historyNormalTexture = renderGraph.ImportTexture(historyNormalRT);
-                    passData.HistoryNormalTexture = builder.UseTexture(historyNormalTexture);
+                    builder.UseTexture(historyNormalTexture);
+                    passData.HistoryNormalTexture = historyNormalTexture;
                     sizeAndScale = _rendererData.EvaluateRayTracingHistorySizeAndScale(historyNormalRT);
                 }
                 else
@@ -1057,12 +490,18 @@ namespace Illusion.Rendering
                     clearBuffer = true,
                     clearColor = Color.black
                 };
-                passData.ValidationBufferTexture = builder.UseTexture(renderGraph.CreateTexture(validationDesc), IBaseRenderGraphBuilder.AccessFlags.Write);
+                var validation = renderGraph.CreateTexture(validationDesc);
+                builder.UseTexture(validation, AccessFlags.Write);
+                passData.ValidationBufferTexture = validation;
                 
-                passData.DepthTexture = builder.UseTexture(depthTexture);
-                passData.HistoryDepthTexture = builder.UseTexture(historyDepthTexture);
-                passData.NormalTexture = builder.UseTexture(normalTexture);
-                passData.MotionVectorTexture = builder.UseTexture(motionVectorTexture);
+                builder.UseTexture(depthTexture);
+                passData.DepthTexture = depthTexture;
+                builder.UseTexture(historyDepthTexture);
+                passData.HistoryDepthTexture = historyDepthTexture;
+                builder.UseTexture(normalTexture);
+                passData.NormalTexture = normalTexture;
+                builder.UseTexture(motionVectorTexture);
+                passData.MotionVectorTexture = motionVectorTexture;
                 
                 builder.AllowPassCulling(false);
                 
@@ -1093,7 +532,7 @@ namespace Illusion.Rendering
             }
         }
         
-        private TextureHandle RenderTemporalDenoisePass(RenderGraph renderGraph, ref CameraData cameraData,
+        private TextureHandle RenderTemporalDenoisePass(RenderGraph renderGraph, UniversalCameraData cameraData,
             TextureHandle inputTexture, TextureHandle historyBuffer, TextureHandle depthTexture,
             TextureHandle validationBuffer, TextureHandle motionVectorTexture, TextureHandle exposureTexture,
             TextureHandle prevExposureTexture, float resolutionMultiplier)
@@ -1117,15 +556,24 @@ namespace Illusion.Rendering
                     enableRandomWrite = true,
                     name = "SSGI Temporal Output"
                 };
-                passData.OutputTexture = builder.UseTexture(renderGraph.CreateTexture(outputDesc), IBaseRenderGraphBuilder.AccessFlags.Write);
+                var output = renderGraph.CreateTexture(outputDesc);
+                builder.UseTexture(output, AccessFlags.Write);
+                passData.OutputTexture = output;
                 
-                passData.InputTexture = builder.UseTexture(inputTexture);
-                passData.HistoryBuffer = builder.UseTexture(historyBuffer, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
-                passData.DepthTexture = builder.UseTexture(depthTexture);
-                passData.ValidationBuffer = builder.UseTexture(validationBuffer);
-                passData.MotionVectorTexture = builder.UseTexture(motionVectorTexture);
-                passData.ExposureTexture = builder.UseTexture(exposureTexture);
-                passData.PrevExposureTexture = builder.UseTexture(prevExposureTexture);
+                builder.UseTexture(inputTexture);
+                passData.InputTexture = inputTexture;
+                builder.UseTexture(historyBuffer, AccessFlags.ReadWrite);
+                passData.HistoryBuffer = historyBuffer;
+                builder.UseTexture(depthTexture);
+                passData.DepthTexture = depthTexture;
+                builder.UseTexture(validationBuffer);
+                passData.ValidationBuffer = validationBuffer;
+                builder.UseTexture(motionVectorTexture);
+                passData.MotionVectorTexture = motionVectorTexture;
+                builder.UseTexture(exposureTexture);
+                passData.ExposureTexture = exposureTexture;
+                builder.UseTexture(prevExposureTexture);
+                passData.PrevExposureTexture = prevExposureTexture;
                 
                 builder.AllowPassCulling(false);
                 
@@ -1191,7 +639,7 @@ namespace Illusion.Rendering
             }
         }
         
-        private TextureHandle RenderSpatialDenoisePass(RenderGraph renderGraph, ref CameraData cameraData,
+        private TextureHandle RenderSpatialDenoisePass(RenderGraph renderGraph, UniversalCameraData cameraData,
             TextureHandle inputTexture, TextureHandle depthTexture, TextureHandle normalTexture,
             float kernelSize, bool halfResolutionFilter, bool jitterFilter, float resolutionMultiplier)
         {
@@ -1218,18 +666,23 @@ namespace Illusion.Rendering
                     enableRandomWrite = true,
                     name = "SSGI Spatial Output"
                 };
-                passData.OutputTexture = builder.UseTexture(renderGraph.CreateTexture(outputDesc), 
-                    IBaseRenderGraphBuilder.AccessFlags.Write);
+                var output = renderGraph.CreateTexture(outputDesc);
+                builder.UseTexture(output, AccessFlags.Write);
+                passData.OutputTexture = output;
                 
-                passData.InputTexture = builder.UseTexture(inputTexture);
-                passData.DepthTexture = builder.UseTexture(depthTexture);
-                passData.NormalTexture = builder.UseTexture(normalTexture);
+                builder.UseTexture(inputTexture);
+                passData.InputTexture = inputTexture;
+                builder.UseTexture(depthTexture);
+                passData.DepthTexture = depthTexture;
+                builder.UseTexture(normalTexture);
+                passData.NormalTexture = normalTexture;
                 
                 // Create intermediate texture if half resolution filter
                 if (halfResolutionFilter)
                 {
-                    passData.IntermediateTexture = builder.UseTexture(renderGraph.CreateTexture(outputDesc), 
-                        IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
+                    var intermediate = renderGraph.CreateTexture(outputDesc);
+                    builder.UseTexture(intermediate, AccessFlags.ReadWrite);
+                    passData.IntermediateTexture = intermediate;
                 }
                 
                 builder.AllowPassCulling(false);
@@ -1287,7 +740,7 @@ namespace Illusion.Rendering
         
         private TextureHandle RenderUpsamplePass(RenderGraph renderGraph, TextureHandle lowResInput)
         {
-            using (var builder = renderGraph.AddComputePass<UpsamplePassData>("SSGI Upsample", out var passData, UpsampleSampler))
+            using (var builder = renderGraph.AddComputePass<UpsamplePassData>("SSGI Upsample", out var passData))
             {
                 // Setup constant buffer
                 unsafe
@@ -1316,22 +769,24 @@ namespace Illusion.Rendering
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
                 
                 // Create full resolution output texture
-                var outputDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
+                var outputDesc = new TextureDesc(passData.Width, passData.Height)
                 {
                     colorFormat = GraphicsFormat.B10G11R11_UFloatPack32,
                     enableRandomWrite = true,
                     name = "SSGI Upsampled"
                 };
-                passData.OutputTexture = builder.UseTexture(renderGraph.CreateTexture(outputDesc), 
-                    IBaseRenderGraphBuilder.AccessFlags.Write);
+                var output = renderGraph.CreateTexture(outputDesc);
+                builder.UseTexture(output, AccessFlags.Write);
+                passData.OutputTexture = output;
                 
-                passData.LowResolutionTexture = builder.UseTexture(lowResInput);
+                builder.UseTexture(lowResInput);
+                passData.LowResolutionTexture = lowResInput;
                 
                 builder.AllowPassCulling(false);
                 
                 builder.SetRenderFunc((UpsamplePassData data, ComputeGraphContext context) =>
                 {
-                    ComputeConstantBuffer.Push(context.cmd, data.Variables, data.BilateralUpsampleCS, Properties.ShaderVariablesBilateralUpsample);
+                    ConstantBuffer.Push(context.cmd, data.Variables, data.BilateralUpsampleCS, Properties.ShaderVariablesBilateralUpsample);
                     
                     context.cmd.SetComputeTextureParam(data.BilateralUpsampleCS, data.UpsampleKernel,
                         Properties.LowResolutionTexture, data.LowResolutionTexture);
@@ -1348,30 +803,31 @@ namespace Illusion.Rendering
             }
         }
         
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             if (!_rendererData.SampleScreenSpaceIndirectDiffuse)
             {
                 return;
             }
 
-            ref var cameraData = ref renderingData.cameraData;
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
             var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
             if (!volume || !volume.enable.value)
                 return;
 
             // Prepare SSGI data
-            PrepareSSGIData(ref renderingData);
+            PrepareSSGIData(cameraData);
             
             // Prepare shader variables
-            PrepareVariables(ref cameraData);
+            PrepareVariables(cameraData);
 
             // Import external textures
             var depthPyramidTexture = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
-            var normalTexture = frameResources.GetTexture(UniversalResource.CameraNormalsTexture);
+            var normalTexture = resource.cameraNormalsTexture;
             
             // Get previous frame color pyramid
-            var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(cameraData, out bool isNewFrame);
+            var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(frameData, out bool isNewFrame);
             if (preFrameColorRT == null)
                 return;
             
@@ -1386,7 +842,7 @@ namespace Illusion.Rendering
             var historyDepthTexture = renderGraph.ImportTexture(historyDepthRT);
             
             // Get motion vector texture
-            var motionVectorTexture = frameResources.GetTexture(UniversalResource.MotionVectorColor);
+            var motionVectorTexture = resource.motionVectorColor;
             motionVectorTexture = motionVectorTexture.IsValid() && isNewFrame ? motionVectorTexture : renderGraph.ImportTexture(_rendererData.GetBlackTextureRT());
             
             // Get exposure textures
@@ -1415,16 +871,16 @@ namespace Illusion.Rendering
                 }
                 
                 // Validate history
-                var validationTexture = RenderValidateHistoryPass(renderGraph, ref cameraData,
+                var validationTexture = RenderValidateHistoryPass(renderGraph, cameraData,
                     depthPyramidTexture, normalTexture, historyDepthTexture,
                     motionVectorTexture, 1.0f);
                 
-                // First temporal denoise pass
+                // Allocate first history buffer
+                float scaleFactor = _halfResolution ? 0.5f : 1.0f;
                 var historyBuffer1 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
-                if (historyBuffer1 == null)
+                if (scaleFactor != _historyResolutionScale || historyBuffer1 == null)
                 {
-                    // Allocate history if not exists
-                    float scaleFactor = _halfResolution ? 0.5f : 1.0f;
+                    _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
                     var historyAllocator = new IllusionRendererData.CustomHistoryAllocator(
                         new Vector2(scaleFactor, scaleFactor),
                         GraphicsFormat.R16G16B16A16_SFloat,
@@ -1435,13 +891,13 @@ namespace Illusion.Rendering
                 var historyTexture1 = renderGraph.ImportTexture(historyBuffer1);
                 
                 float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
-                var temporalOutput = RenderTemporalDenoisePass(renderGraph, ref cameraData,
+                var temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                     giTexture, historyTexture1, depthPyramidTexture, validationTexture,
                     motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier);
                 
                 // First spatial denoise pass
                 bool halfResFilter = volume.halfResolutionDenoiser.value;
-                var spatialOutput = RenderSpatialDenoisePass(renderGraph, ref cameraData,
+                var spatialOutput = RenderSpatialDenoisePass(renderGraph, cameraData,
                     temporalOutput, depthPyramidTexture, normalTexture,
                     volume.denoiserRadius.value, halfResFilter, volume.secondDenoiserPass.value, resolutionMultiplier);
                 
@@ -1451,9 +907,9 @@ namespace Illusion.Rendering
                 if (volume.secondDenoiserPass.value)
                 {
                     var historyBuffer2 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
-                    if (historyBuffer2 == null)
+                    if (scaleFactor != _historyResolutionScale || historyBuffer2 == null)
                     {
-                        float scaleFactor = _halfResolution ? 0.5f : 1.0f;
+                        _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
                         var historyAllocator2 = new IllusionRendererData.CustomHistoryAllocator(
                             new Vector2(scaleFactor, scaleFactor),
                             GraphicsFormat.R16G16B16A16_SFloat,
@@ -1463,16 +919,17 @@ namespace Illusion.Rendering
                     }
                     var historyTexture2 = renderGraph.ImportTexture(historyBuffer2);
                     
-                    temporalOutput = RenderTemporalDenoisePass(renderGraph, ref cameraData,
+                    temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                         giTexture, historyTexture2, depthPyramidTexture, validationTexture,
                         motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier);
                     
-                    spatialOutput = RenderSpatialDenoisePass(renderGraph, ref cameraData,
+                    spatialOutput = RenderSpatialDenoisePass(renderGraph, cameraData,
                         temporalOutput, depthPyramidTexture, normalTexture,
                         volume.denoiserRadius.value * 0.5f, halfResFilter, false, resolutionMultiplier);
                     
                     giTexture = spatialOutput;
                 }
+                _historyResolutionScale = scaleFactor;
             }
             
             // Upsample if half resolution
@@ -1484,8 +941,7 @@ namespace Illusion.Rendering
             // Set global texture
             RenderGraphUtils.SetGlobalTexture(renderGraph, Properties.IndirectDiffuseTexture, giTexture);
         }
-#endif
-
+        
         public void Dispose()
         {
             _hitPointRT?.Release();

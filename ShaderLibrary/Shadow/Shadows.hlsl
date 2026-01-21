@@ -7,6 +7,9 @@
 // Override URP GetShadowCoord.
 #define GetShadowCoord IllusionGetShadowCoord
 
+// Override URP TransformWorldToShadowCoord.
+#define TransformWorldToShadowCoord IllusionTransformWorldToShadowCoord
+
 // Override URP ApplyShadowBias.
 #if APPLY_SHADOW_BIAS_FRAGMENT
     #define ApplyShadowBias(positionWS, normalWS, lightDirection) positionWS
@@ -37,6 +40,22 @@ float3 IllusionApplyShadowBias(float3 positionWS, float3 normalWS, float3 lightD
     positionWS = -lightDirection * shadowBias.xxx + positionWS;
     positionWS = normalWS * scale.xxx + positionWS;
     return positionWS;
+}
+
+float4 IllusionTransformWorldToShadowCoord(float3 positionWS)
+{
+#if defined(_MAIN_LIGHT_SHADOWS_SCREEN) && (SURFACE_TYPE_RECEIVE_SCREEN_SPACE_SHADOWS)
+    float4 shadowCoord = float4(ComputeNormalizedDeviceCoordinatesWithZ(positionWS, GetWorldToHClipMatrix()), 1.0);
+#else
+    #ifdef _MAIN_LIGHT_SHADOWS_CASCADE
+        half cascadeIndex = ComputeCascadeIndex(positionWS);
+    #else
+        half cascadeIndex = half(0.0);
+    #endif
+
+    float4 shadowCoord = float4(mul(_MainLightWorldToShadow[cascadeIndex], float4(positionWS, 1.0)).xyz, 0.0);
+#endif
+    return shadowCoord;
 }
 
 // Vertex shader

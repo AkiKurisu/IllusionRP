@@ -1,9 +1,6 @@
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Illusion.Rendering.Shadows
 {
@@ -97,7 +94,6 @@ namespace Illusion.Rendering.Shadows
             }
         }
 
-#if UNITY_2023_1_OR_NEWER
         private class DenoisePassData
         {
             // Camera parameters
@@ -154,9 +150,12 @@ namespace Illusion.Rendering.Shadows
                 passData.DiffuseShadowDenoiserCs = _shadowDenoiser;
 
                 // Input buffers
-                passData.DepthStencilBuffer = builder.UseTexture(depthBuffer);
-                passData.NormalBuffer = builder.UseTexture(normalBuffer);
-                passData.NoisyBuffer = builder.UseTexture(noisyBuffer);
+                builder.UseTexture(depthBuffer);
+                passData.DepthStencilBuffer = depthBuffer;
+                builder.UseTexture(normalBuffer);
+                passData.NormalBuffer = normalBuffer;
+                builder.UseTexture(noisyBuffer);
+                passData.NoisyBuffer = noisyBuffer;
 
                 // Temporary buffer
                 // TODO: Transient has bug in Unity 2023
@@ -166,10 +165,12 @@ namespace Illusion.Rendering.Shadows
                 //     enableRandomWrite = true, 
                 //     name = "Intermediate buffer" 
                 // });
-                passData.IntermediateBuffer = builder.UseTexture(intermediateBuffer, IBaseRenderGraphBuilder.AccessFlags.ReadWrite);
+                builder.UseTexture(intermediateBuffer, AccessFlags.ReadWrite);
+                passData.IntermediateBuffer = intermediateBuffer;
 
                 // Output buffer - write to the provided output texture
-                passData.OutputBuffer = builder.UseTexture(outputBuffer, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(outputBuffer, AccessFlags.Write);
+                passData.OutputBuffer = outputBuffer;
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -233,7 +234,6 @@ namespace Illusion.Rendering.Shadows
                 });
             }
         }
-#endif
     }
 }
 

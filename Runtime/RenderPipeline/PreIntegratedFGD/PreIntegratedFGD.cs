@@ -1,9 +1,7 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
+using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Illusion.Rendering
 {
@@ -86,39 +84,12 @@ namespace Illusion.Rendering
             return _preIntegratedFgd[(int)index];
         }
 
-        public void RenderInit(CommandBuffer cmd, FGDIndex index)
-        {
-            if (_isInit[(int)index])
-                return;
-            
-            CoreUtils.DrawFullScreen(cmd, _preIntegratedFGDMaterial[(int)index], _preIntegratedFgd[(int)index]);
-            _isInit[(int)index] = true;
-        }
-
-        public void Bind(CommandBuffer cmd, FGDIndex index)
-        {
-            switch (index)
-            {
-                case FGDIndex.FGD_GGXAndDisneyDiffuse:
-                    cmd.SetGlobalTexture(IllusionShaderProperties._PreIntegratedFGD_GGXDisneyDiffuse, _preIntegratedFgd[(int)index]);
-                    break;
-
-                case FGDIndex.FGD_CharlieAndFabricLambert:
-                    cmd.SetGlobalTexture(IllusionShaderProperties._PreIntegratedFGD_CharlieAndFabric, _preIntegratedFgd[(int)index]);
-                    break;
-                case FGDIndex.Count:
-                default:
-                    break;
-            }
-        }
-        
-#if UNITY_2023_1_OR_NEWER
         public bool IsInit(FGDIndex index)
         {
             return _isInit[(int)index];
         }
         
-        public void RenderInit(LowLevelCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
+        public void RenderInit(UnsafeCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
         {
             if (_isInit[(int)index])
                 return;
@@ -128,7 +99,7 @@ namespace Illusion.Rendering
             _isInit[(int)index] = true;
         }
         
-        public void Bind(LowLevelCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
+        public void Bind(UnsafeCommandBuffer cmd, TextureHandle textureHandle, FGDIndex index)
         {
             switch (index)
             {
@@ -144,7 +115,6 @@ namespace Illusion.Rendering
                     break;
             }
         }
-#endif
 
         public void Cleanup(FGDIndex index)
         {

@@ -26,7 +26,7 @@
 // @IllusionRP: APV not valid in URP 14
 // #pragma multi_compile PROBE_VOLUMES_OFF PROBE_VOLUMES_L1 PROBE_VOLUMES_L2
 
-#pragma multi_compile _ _FORWARD_PLUS
+#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 #pragma multi_compile _ _REFLECTION_PROBE_BOX_PROJECTION
 #pragma multi_compile_local _ _PROBE_VOLUME_ENABLE // For PRTGI
 

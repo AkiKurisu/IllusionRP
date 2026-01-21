@@ -3,7 +3,7 @@
 
 #pragma kernel CSMain
 
-#pragma multi_compile _ _FORWARD_PLUS
+#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 #pragma multi_compile _ _RELIGHT_DEBUG_RADIANCE
 
 //--------------------------------------------------------------------------------------------------

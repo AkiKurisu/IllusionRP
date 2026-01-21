@@ -3,10 +3,8 @@ using System;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.PostProcessing
 {
@@ -33,7 +31,6 @@ namespace Illusion.Rendering.PostProcessing
         
         private RTHandle _debugFontTexRTHandle;
 
-#if UNITY_2023_1_OR_NEWER
         private class DebugHistogramPassData
         {
             internal ComputeShader DebugImageHistogramCs;
@@ -74,7 +71,6 @@ namespace Illusion.Rendering.PostProcessing
             internal TextureHandle Source;
             internal TextureHandle Destination;
         }
-#endif
         
         public ExposureDebugPass(IllusionRendererData rendererData)
         {
@@ -84,52 +80,31 @@ namespace Illusion.Rendering.PostProcessing
             profilingSampler = new ProfilingSampler("Exposure Debug");
             renderPassEvent = IllusionRenderPassEvent.FullScreenDebugPass;
         }
-
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            PrepareDebugExposureData(ref renderingData);
-        }
         
-        private void PrepareDebugExposureData(ref RenderingData renderingData)
+        private void PrepareDebugExposureData(UniversalCameraData cameraData)
         {
             _exposure = VolumeManager.instance.stack.GetComponent<Exposure>();
             IllusionRenderingUtils.ValidateComputeBuffer(ref _rendererData.DebugImageHistogram, DebugImageHistogramBins, 4 * sizeof(uint));
             _rendererData.DebugImageHistogram.SetData(_emptyDebugImageHistogram);    // Clear the histogram
             
-            var descriptor = renderingData.cameraData.cameraTargetDescriptor;
+            var descriptor = cameraData.cameraTargetDescriptor;
             descriptor.depthBufferBits = (int)DepthBits.None;
             descriptor.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.DebugExposureTexture, descriptor,
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.DebugExposureTexture, descriptor,
                 wrapMode: TextureWrapMode.Clamp, name: "ExposureDebug");
         }
 
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            var cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                var colorBeforePostProcess = _rendererData.GetPreviousFrameColorRT(renderingData.cameraData, out _);
-                DoGenerateDebugImageHistogram(cmd, ref renderingData, colorBeforePostProcess);
-                var colorAfterPostProcess = renderingData.cameraData.renderer.GetCameraColorBackBuffer(cmd);
-                DoDebugExposure(cmd, ref renderingData, colorAfterPostProcess);
-                IllusionRenderingUtils.FinalBlit(cmd, ref renderingData, _rendererData.DebugExposureTexture);
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
-        {
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
             // Prepare debug exposure data (replaces OnCameraSetup for RenderGraph)
-            PrepareDebugExposureData(ref renderingData);
-            
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            
+            PrepareDebugExposureData(cameraData);
+
             // Import textures
-            var colorBeforePostProcess = _rendererData.GetPreviousFrameColorRT(renderingData.cameraData, out _);
+            var colorBeforePostProcess = _rendererData.GetPreviousFrameColorRT(frameData, out _);
             TextureHandle sourceBeforePostProcess = renderGraph.ImportTexture(colorBeforePostProcess);
-            TextureHandle colorAfterPostProcess = renderer.activeColorTexture;
+            TextureHandle colorAfterPostProcess = resource.activeColorTexture;
             TextureHandle debugOutputTexture = renderGraph.ImportTexture(_rendererData.DebugExposureTexture);
             
             // Stage 1: Generate debug histogram
@@ -138,10 +113,11 @@ namespace Illusion.Rendering.PostProcessing
             {
                 histogramPassData.DebugImageHistogramCs = _debugImageHistogramCs;
                 histogramPassData.DebugImageHistogramKernel = _debugImageHistogramKernel;
-                histogramPassData.SourceTexture = builder.UseTexture(sourceBeforePostProcess);
+                builder.UseTexture(sourceBeforePostProcess);
+                histogramPassData.SourceTexture = sourceBeforePostProcess;
                 histogramPassData.HistogramBuffer = _rendererData.DebugImageHistogram;
-                histogramPassData.CameraWidth = renderingData.cameraData.camera.pixelWidth;
-                histogramPassData.CameraHeight = renderingData.cameraData.camera.pixelHeight;
+                histogramPassData.CameraWidth = cameraData.camera.pixelWidth;
+                histogramPassData.CameraHeight = cameraData.camera.pixelHeight;
                 
                 builder.AllowPassCulling(false);
                 
@@ -155,10 +131,11 @@ namespace Illusion.Rendering.PostProcessing
             using (var builder = renderGraph.AddRasterRenderPass<DebugExposurePassData>("Debug Exposure Overlay", 
                 out var debugPassData, profilingSampler))
             {
-                PrepareDebugPassData(debugPassData, ref renderingData, renderGraph, 
+                PrepareDebugPassData(debugPassData, cameraData, renderGraph, 
                     colorAfterPostProcess, debugOutputTexture);
                 
-                debugPassData.OutputTexture = builder.UseTextureFragment(debugOutputTexture, 0);
+                builder.SetRenderAttachment(debugOutputTexture, 0);
+                debugPassData.OutputTexture = debugOutputTexture;
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -173,8 +150,10 @@ namespace Illusion.Rendering.PostProcessing
             using (var builder = renderGraph.AddRasterRenderPass<FinalBlitPassData>("Debug Exposure Final Blit", 
                 out var blitPassData, new ProfilingSampler("Debug Exposure Final Blit")))
             {
-                blitPassData.Source = builder.UseTexture(debugOutputTexture);
-                blitPassData.Destination = builder.UseTextureFragment(renderer.activeColorTexture, 0);
+                builder.UseTexture(debugOutputTexture);
+                blitPassData.Source = debugOutputTexture;
+                builder.SetRenderAttachment(resource.activeColorTexture, 0);
+                blitPassData.Destination = resource.activeColorTexture;
                 
                 builder.AllowPassCulling(false);
                 
@@ -186,7 +165,7 @@ namespace Illusion.Rendering.PostProcessing
             }
         }
 
-        private void PrepareDebugPassData(DebugExposurePassData passData, ref RenderingData renderingData, 
+        private void PrepareDebugPassData(DebugExposurePassData passData, UniversalCameraData cameraData, 
             RenderGraph renderGraph, TextureHandle sourceTexture, TextureHandle outputTexture)
         {
             var renderingConfig = IllusionRuntimeRenderingConfig.Get();
@@ -235,7 +214,7 @@ namespace Illusion.Rendering.PostProcessing
             }
             passData.DebugFontTex = renderGraph.ImportTexture(_debugFontTexRTHandle);
             
-            _exposure.ComputeProceduralMeteringParams(renderingData.cameraData.camera, 
+            _exposure.ComputeProceduralMeteringParams(cameraData.camera, 
                 out passData.ProceduralMaskParams, out passData.ProceduralMaskParams2);
             
             passData.ExposureParams = new Vector4(_exposure.compensation.value, _exposure.limitMin.value,
@@ -251,7 +230,7 @@ namespace Illusion.Rendering.PostProcessing
             passData.ExposureParams2 = new Vector4(0.0f, 0.0f, ColorUtils.lensImperfectionExposureScale, 
                 ColorUtils.s_LightMeterCalibrationConstant);
             
-            passData.MousePixelCoord = IllusionRenderingUtils.GetMouseCoordinates(ref renderingData.cameraData);
+            passData.MousePixelCoord = IllusionRenderingUtils.GetMouseCoordinates(cameraData);
             passData.ExposureDebugMode = renderingConfig.ExposureDebugMode;
             
             // Determine pass index and debug params based on debug mode
@@ -278,93 +257,7 @@ namespace Illusion.Rendering.PostProcessing
                 passData.PassIndex = 3;
             }
         }
-#endif
 
-        private void DoDebugExposure(CommandBuffer cmd, ref RenderingData renderingData, RTHandle sourceTexture)
-        {
-            var renderingConfig = IllusionRuntimeRenderingConfig.Get();
-            
-            var currentExposure = _rendererData.GetExposureTexture();
-            var previousExposure =_rendererData.GetPreviousExposureTexture();
-            var debugExposureData = _rendererData.GetExposureDebugData();
-            _histogramBuffer = renderingConfig.ExposureDebugMode == ExposureDebugMode.FinalImageHistogramView ? _rendererData.DebugImageHistogram : _rendererData.HistogramBuffer;
-
-            
-            _exposure.ComputeProceduralMeteringParams(renderingData.cameraData.camera, 
-                out var proceduralMeteringParams1, out var proceduralMeteringParams2);
-            Vector4 exposureParams = new Vector4(_exposure.compensation.value, _exposure.limitMin.value,
-                            _exposure.limitMax.value, 0f);
-
-            Vector4 exposureVariants = new Vector4(1.0f, (int)_exposure.meteringMode.value, (int)_exposure.adaptationMode.value, 0.0f);
-            Vector2 histogramFraction = _exposure.histogramPercentages.value / 100.0f;
-            float evRange = _exposure.limitMax.value - _exposure.limitMin.value;
-            float histScale = 1.0f / Mathf.Max(1e-5f, evRange);
-            float histBias = -_exposure.limitMin.value * histScale;
-            Vector4 histogramParams = new Vector4(histScale, histBias, histogramFraction.x, histogramFraction.y);
-
-            var material = _debugExposureMaterial.Value;
-            material.SetVector(ExposureShaderIDs._ProceduralMaskParams, proceduralMeteringParams1);
-            material.SetVector(ExposureShaderIDs._ProceduralMaskParams2, proceduralMeteringParams2);
-
-            material.SetVector(ExposureShaderIDs._HistogramExposureParams, histogramParams);
-            material.SetVector(ExposureShaderIDs._Variants, exposureVariants);
-            material.SetVector(ExposureShaderIDs._ExposureParams, exposureParams);
-            material.SetVector(ExposureShaderIDs._ExposureParams2, new Vector4(0.0f, 0.0f, ColorUtils.lensImperfectionExposureScale, ColorUtils.s_LightMeterCalibrationConstant));
-            material.SetVector(ExposureShaderIDs._MousePixelCoord, IllusionRenderingUtils.GetMouseCoordinates(ref renderingData.cameraData));
-            material.SetTexture(ExposureShaderIDs._SourceTexture, sourceTexture);
-            material.SetTexture(ExposureShaderIDs._DebugFullScreenTexture, sourceTexture);
-            material.SetTexture(ExposureShaderIDs._PreviousExposureTexture, previousExposure);
-            material.SetTexture(IllusionShaderProperties._ExposureTexture, currentExposure);
-            material.SetTexture(ExposureShaderIDs._ExposureWeightMask, _exposure.weightTextureMask.value);
-            material.SetBuffer(ExposureShaderIDs._HistogramBuffer, _histogramBuffer);
-            material.SetTexture(ExposureShaderIDs._DebugFont, _rendererData.RuntimeResources.debugFontTex);
-
-
-            int passIndex = 0;
-            if (renderingConfig.ExposureDebugMode == ExposureDebugMode.MeteringWeighted)
-            {
-                passIndex = 1;
-                material.SetVector(ExposureShaderIDs._ExposureDebugParams, new Vector4(renderingConfig.DisplayMaskOnly ? 1 : 0, 0, 0, 0));
-            }
-            if (renderingConfig.ExposureDebugMode == ExposureDebugMode.HistogramView)
-            {
-                material.SetTexture(ExposureShaderIDs._ExposureDebugTexture, debugExposureData);
-                var tonemappingSettings = VolumeManager.instance.stack.GetComponent<Tonemapping>();
-                var tonemappingMode = tonemappingSettings.IsActive() ? tonemappingSettings.mode.value : TonemappingMode.None;
-
-                bool centerAroundMiddleGrey = renderingConfig.CenterHistogramAroundMiddleGrey;
-                bool displayOverlay = renderingConfig.DisplayOnSceneOverlay;
-                material.SetVector(ExposureShaderIDs._ExposureDebugParams, new Vector4(0.0f, (int)tonemappingMode, centerAroundMiddleGrey ? 1 : 0, displayOverlay ? 1 : 0));
-                passIndex = 2;
-            }
-            if (renderingConfig.ExposureDebugMode == ExposureDebugMode.FinalImageHistogramView)
-            {
-                bool finalImageRGBHistogram = renderingConfig.DisplayFinalImageHistogramAsRGB;
-
-                material.SetVector(ExposureShaderIDs._ExposureDebugParams, new Vector4(0, 0, 0, finalImageRGBHistogram ? 1 : 0));
-                material.SetBuffer(ExposureShaderIDs._FullImageHistogram, _histogramBuffer);
-                passIndex = 3;
-            }
-            
-            CoreUtils.SetRenderTarget(cmd, _rendererData.DebugExposureTexture);
-            cmd.DrawProcedural(Matrix4x4.identity, material, passIndex, MeshTopology.Triangles, 3, 1);
-        }
-
-        private void DoGenerateDebugImageHistogram(CommandBuffer cmd, ref RenderingData renderingData, RTHandle sourceTexture)
-        {
-            int cameraWidth = renderingData.cameraData.camera.pixelWidth;
-            int cameraHeight = renderingData.cameraData.camera.pixelHeight;
-            cmd.SetComputeTextureParam(_debugImageHistogramCs, _debugImageHistogramKernel, ExposureShaderIDs._SourceTexture, sourceTexture);
-            cmd.SetComputeBufferParam(_debugImageHistogramCs, _debugImageHistogramKernel, ExposureShaderIDs._HistogramBuffer, _rendererData.DebugImageHistogram);
-
-            int threadGroupSizeX = 16;
-            int threadGroupSizeY = 16;
-            int dispatchSizeX = IllusionRenderingUtils.DivRoundUp(cameraWidth / 2, threadGroupSizeX);
-            int dispatchSizeY = IllusionRenderingUtils.DivRoundUp(cameraHeight / 2, threadGroupSizeY);
-            cmd.DispatchCompute(_debugImageHistogramCs, _debugImageHistogramKernel, dispatchSizeX, dispatchSizeY, 1);
-        }
-
-#if UNITY_2023_1_OR_NEWER
         private static void DoGenerateDebugImageHistogram(DebugHistogramPassData data, ComputeCommandBuffer cmd)
         {
             cmd.SetComputeTextureParam(data.DebugImageHistogramCs, data.DebugImageHistogramKernel, 
@@ -411,7 +304,6 @@ namespace Illusion.Rendering.PostProcessing
             
             cmd.DrawProcedural(Matrix4x4.identity, material, data.PassIndex, MeshTopology.Triangles, 3, 1);
         }
-#endif
 
         public void Dispose()
         {

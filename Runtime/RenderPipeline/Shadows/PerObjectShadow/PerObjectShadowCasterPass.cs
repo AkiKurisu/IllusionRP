@@ -22,11 +22,8 @@
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -96,40 +93,14 @@ namespace Illusion.Rendering.Shadows
             int shadowRTDepthBits = Mathf.Max((int)depthBits, (int)DepthBits.Depth8);
             ShadowUtils.ShadowRTReAllocateIfNeeded(ref _shadowMap, shadowRTSize, shadowRTSize,
                 shadowRTDepthBits, name: "_MainLightPerObjectShadow");
-
-            ConfigureTarget(_shadowMap);
-            ConfigureClear(ClearFlag.All, Color.black);
         }
 
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            CommandBuffer cmd = CommandBufferPool.Get();
-
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                if (_casterManager.VisibleCount > 0)
-                {
-                    RenderShadowMap(cmd, ref renderingData);
-                    SetShadowSamplingData(cmd);
-                    SetPerObjectShadowPCSSData(cmd, ref renderingData);
-                }
-                else
-                {
-                    cmd.SetGlobalInt(PropertyIds.ShadowCount(), 0);
-                }
-            }
-            // Reset matrices
-            cmd.SetViewProjectionMatrices(renderingData.cameraData.GetViewMatrix(), renderingData.cameraData.GetProjectionMatrix());
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
         private class PassData
         {
             internal PerObjectShadowCasterPass Pass;
             internal TextureHandle ShadowmapTexture;
-            internal RenderingData RenderingData;
+            internal UniversalLightData LightData;
+            internal UniversalShadowData ShadowData;
             internal ShadowCasterManager CasterManager;
             internal int ShadowMapSizeInTile;
             internal int TileResolution;
@@ -143,8 +114,12 @@ namespace Illusion.Rendering.Shadows
             internal IllusionRendererData RendererData;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var lightData = frameData.Get<UniversalLightData>();
+            var shadowData = frameData.Get<UniversalShadowData>();
             if (_casterManager.VisibleCount <= 0)
             {
                 // No shadows to render, set shadow count to 0
@@ -167,17 +142,17 @@ namespace Illusion.Rendering.Shadows
             TextureHandle shadowTexture;
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadowmap", out var passData, profilingSampler))
             {
-                InitPassData(ref passData, ref renderingData);
+                InitPassData(ref passData, lightData, shadowData);
                 
                 passData.ShadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _shadowMap.rt.descriptor, "_MainLightPerObjectShadow", true);
-                builder.UseTextureFragmentDepth(passData.ShadowmapTexture);
+                builder.SetRenderAttachmentDepth(passData.ShadowmapTexture);
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
-                    RenderShadowMapRG(context.cmd, data);
+                    RenderShadowMap(context.cmd, data);
                 });
                 
                 shadowTexture = passData.ShadowmapTexture;
@@ -186,7 +161,7 @@ namespace Illusion.Rendering.Shadows
             // Pass 2: Set global shadow properties
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Set Per-Object Shadow Globals", out var passData, profilingSampler))
             {
-                InitPassData(ref passData, ref renderingData);
+                InitPassData(ref passData, lightData, shadowData);
                 passData.ShadowmapTexture = shadowTexture;
                 
                 if (shadowTexture.IsValid())
@@ -197,19 +172,20 @@ namespace Illusion.Rendering.Shadows
                 
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
-                    SetupShadowGlobalsRG(context.cmd, data);
+                    SetupShadowGlobalVariables(context.cmd, data);
                 });
             }
             
             // The camera need to be setup again after the shadows since those passes override some settings
-            UniversalRenderer renderer = (UniversalRenderer)renderingData.cameraData.renderer;
-            renderer.SetupRenderGraphCameraProperties(renderGraph, ref renderingData, renderer.isActiveTargetBackBuffer);
+            UniversalRenderer renderer = (UniversalRenderer)cameraData.renderer;
+            renderer.SetupRenderGraphCameraProperties(renderGraph, resource.activeColorTexture);
         }
 
-        private void InitPassData(ref PassData passData, ref RenderingData renderingData)
+        private void InitPassData(ref PassData passData, UniversalLightData lightData, UniversalShadowData shadowData)
         {
             passData.Pass = this;
-            passData.RenderingData = renderingData;
+            passData.LightData = lightData;
+            passData.ShadowData = shadowData;
             passData.CasterManager = _casterManager;
             passData.ShadowMapSizeInTile = _shadowMapSizeInTile;
             passData.TileResolution = _tileResolution;
@@ -223,7 +199,7 @@ namespace Illusion.Rendering.Shadows
             passData.RendererData = _rendererData;
         }
 
-        private static void RenderShadowMapRG(RasterCommandBuffer cmd, PassData data)
+        private static void RenderShadowMap(RasterCommandBuffer cmd, PassData data)
         {
             cmd.SetGlobalDepthBias(1.0f, 2.5f);
             CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
@@ -232,15 +208,14 @@ namespace Illusion.Rendering.Shadows
             {
                 data.CasterManager.GetMatrices(i, out Matrix4x4 viewMatrix, out Matrix4x4 projectionMatrix);
 
-                int mainLightIndex = data.RenderingData.lightData.mainLightIndex;
-                VisibleLight mainLight = data.RenderingData.lightData.visibleLights[mainLightIndex];
-                Vector4 shadowBias = ShadowUtils.GetShadowBias(ref mainLight, mainLightIndex,
-                    ref data.RenderingData.shadowData, projectionMatrix, data.Pass._shadowMap.rt.width);
+                int mainLightIndex = data.LightData.mainLightIndex;
+                VisibleLight mainLight = data.LightData.visibleLights[mainLightIndex];
+                Vector4 shadowBias = ShadowUtils.GetShadowBias(ref mainLight, mainLightIndex, data.ShadowData, projectionMatrix, data.Pass._shadowMap.rt.width);
                 data.ShadowBiases[i] = shadowBias;
                 ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref mainLight, shadowBias);
 
                 Vector2Int tilePos = new(i % data.ShadowMapSizeInTile, i / data.ShadowMapSizeInTile);
-                DrawShadowRG(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
+                DrawShadow(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
                 data.ShadowMatrixArray[i] = data.Pass.GetShadowMatrix(tilePos, in viewMatrix, projectionMatrix);
                 data.ShadowMapRectArray[i] = data.Pass.GetShadowMapRect(tilePos);
                 data.ShadowCasterIdArray[i] = data.CasterManager.GetId(i);
@@ -250,7 +225,7 @@ namespace Illusion.Rendering.Shadows
             CoreUtils.SetKeyword(cmd, KeywordNames._CASTING_SELF_SHADOW, false);
         }
 
-        private static void DrawShadowRG(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
+        private static void DrawShadow(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
         {
             cmd.SetViewProjectionMatrices(view, proj);
 
@@ -262,7 +237,7 @@ namespace Illusion.Rendering.Shadows
             cmd.DisableScissorRect();
         }
 
-        private static void SetupShadowGlobalsRG(RasterCommandBuffer cmd, PassData data)
+        private static void SetupShadowGlobalVariables(RasterCommandBuffer cmd, PassData data)
         {
             // Set shadow map texture
             cmd.SetGlobalTexture(PropertyIds.ShadowMap(), data.ShadowmapTexture);
@@ -329,118 +304,6 @@ namespace Illusion.Rendering.Shadows
                 cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssParams1, data.PerObjShadowPcssParams1);
                 cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssProjs, data.PerObjShadowPcssProjs);
             }
-        }
-#endif
-
-        private void RenderShadowMap(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            cmd.SetGlobalDepthBias(1.0f, 2.5f); // these values match HDRP defaults (see https://github.com/Unity-Technologies/Graphics/blob/9544b8ed2f98c62803d285096c91b44e9d8cbc47/com.unity.render-pipelines.high-definition/Runtime/Lighting/Shadow/HDShadowAtlas.cs#L197 )
-            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
-
-            for (int i = 0; i < _casterManager.VisibleCount; i++)
-            {
-                _casterManager.GetMatrices(i, out Matrix4x4 viewMatrix, out Matrix4x4 projectionMatrix);
-
-                int mainLightIndex = renderingData.lightData.mainLightIndex;
-                VisibleLight mainLight = renderingData.lightData.visibleLights[mainLightIndex];
-                Vector4 shadowBias = ShadowUtils.GetShadowBias(ref mainLight, mainLightIndex,
-                    ref renderingData.shadowData, projectionMatrix, _shadowMap.rt.width);
-                _perObjShadowBiases[i] = shadowBias;
-                ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref mainLight, shadowBias);
-
-                Vector2Int tilePos = new(i % _shadowMapSizeInTile, i / _shadowMapSizeInTile);
-                DrawShadow(cmd, i, tilePos, in viewMatrix, in projectionMatrix);
-                _shadowMatrixArray[i] = GetShadowMatrix(tilePos, in viewMatrix, projectionMatrix);
-                _shadowMapRectArray[i] = GetShadowMapRect(tilePos);
-                _shadowCasterIdArray[i] = _casterManager.GetId(i);
-            }
-
-            cmd.SetGlobalDepthBias(0.0f, 0.0f); // Restore previous depth bias values
-            CoreUtils.SetKeyword(cmd, KeywordNames._CASTING_SELF_SHADOW, false);
-
-            cmd.SetGlobalTexture(PropertyIds.ShadowMap(), _shadowMap);
-            cmd.SetGlobalInt(PropertyIds.ShadowCount(), _casterManager.VisibleCount);
-            cmd.SetGlobalMatrixArray(PropertyIds.ShadowMatrices(), _shadowMatrixArray);
-            cmd.SetGlobalVectorArray(PropertyIds.ShadowMapRects(), _shadowMapRectArray);
-            cmd.SetGlobalVectorArray(PropertyIds.ShadowBiases(), _perObjShadowBiases);
-            cmd.SetGlobalFloatArray(PropertyIds.ShadowCasterIds(), _shadowCasterIdArray);
-        }
-
-        private void SetShadowSamplingData(CommandBuffer cmd)
-        {
-            int renderTargetWidth = _shadowMap.rt.width;
-            int renderTargetHeight = _shadowMap.rt.height;
-            float invShadowAtlasWidth = 1.0f / renderTargetWidth;
-            float invShadowAtlasHeight = 1.0f / renderTargetHeight;
-            float invHalfShadowAtlasWidth = 0.5f * invShadowAtlasWidth;
-            float invHalfShadowAtlasHeight = 0.5f * invShadowAtlasHeight;
-
-            cmd.SetGlobalVector(PropertyIds.ShadowOffset0(),
-                new Vector4(-invHalfShadowAtlasWidth, -invHalfShadowAtlasHeight, invHalfShadowAtlasWidth, -invHalfShadowAtlasHeight));
-            cmd.SetGlobalVector(PropertyIds.ShadowOffset1(),
-                new Vector4(-invHalfShadowAtlasWidth, invHalfShadowAtlasHeight, invHalfShadowAtlasWidth, invHalfShadowAtlasHeight));
-            cmd.SetGlobalVector(PropertyIds.ShadowMapSize(),
-                new Vector4(invShadowAtlasWidth, invShadowAtlasHeight, renderTargetWidth, renderTargetHeight));
-        }
-
-        private void SetPerObjectShadowPCSSData(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            if (!_rendererData.PCSSShadowSampling)
-            {
-                return;
-            }
-
-            // Get PCSS parameters from renderer data
-            var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
-            float lightAngularDiameter = pcssParams.angularDiameter.value;
-            float dirlightDepth2Radius = Mathf.Tan(0.5f * Mathf.Deg2Rad * lightAngularDiameter);
-            float minFilterAngularDiameter =
-                Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, pcssParams.minFilterMaxAngularDiameter.value);
-            float halfMinFilterAngularDiameterTangent =
-                Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(minFilterAngularDiameter, lightAngularDiameter));
-
-            float halfBlockerSearchAngularDiameterTangent =
-                Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, lightAngularDiameter));
-
-            for (int i = 0; i < _casterManager.VisibleCount; i++)
-            {
-                _casterManager.GetMatrices(i, out _, out Matrix4x4 projectionMatrix);
-
-                // Calculate shadowmap depth to radial scale for per-object shadow
-                float shadowmapDepth2RadialScale = Mathf.Abs(projectionMatrix.m00 / projectionMatrix.m22);
-
-                // PCSS Parameters 0
-                _perObjShadowPcssParams0[i].x = dirlightDepth2Radius * shadowmapDepth2RadialScale; // depth2RadialScale
-                _perObjShadowPcssParams0[i].y = 1.0f / _perObjShadowPcssParams0[i].x; // radial2DepthScale
-                _perObjShadowPcssParams0[i].z = pcssParams.maxPenumbraSize.value / (2.0f * halfMinFilterAngularDiameterTangent); // maxBlockerDistance
-                _perObjShadowPcssParams0[i].w = pcssParams.maxSamplingDistance.value; // maxSamplingDistance
-
-                // PCSS Parameters 1
-                _perObjShadowPcssParams1[i].x = pcssParams.minFilterSizeTexels.value; // minFilterRadius(in texels)
-                _perObjShadowPcssParams1[i].y = 1.0f / (halfMinFilterAngularDiameterTangent * shadowmapDepth2RadialScale); // minFilterRadial2DepthScale
-                _perObjShadowPcssParams1[i].z = 1.0f / (halfBlockerSearchAngularDiameterTangent * shadowmapDepth2RadialScale); // blockerRadial2DepthScale
-                _perObjShadowPcssParams1[i].w = 0; // unused
-
-                // Projection parameters
-                _perObjShadowPcssProjs[i] = new Vector4(projectionMatrix.m00, projectionMatrix.m11, projectionMatrix.m22, projectionMatrix.m23);
-            }
-
-            // Set global shader properties
-            cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssParams0, _perObjShadowPcssParams0);
-            cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssParams1, _perObjShadowPcssParams1);
-            cmd.SetGlobalVectorArray(PropertyIds._PerObjShadowPcssProjs, _perObjShadowPcssProjs);
-        }
-
-        private void DrawShadow(CommandBuffer cmd, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
-        {
-            cmd.SetViewProjectionMatrices(view, proj);
-
-            Rect viewport = new(tilePos * _tileResolution, new Vector2(_tileResolution, _tileResolution));
-            cmd.SetViewport(viewport);
-
-            cmd.EnableScissorRect(new Rect(viewport.x + 4, viewport.y + 4, viewport.width - 8, viewport.height - 8));
-            _casterManager.Draw(cmd, casterIndex);
-            cmd.DisableScissorRect();
         }
 
         private Matrix4x4 GetShadowMatrix(Vector2Int tilePos, in Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)

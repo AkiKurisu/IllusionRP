@@ -39,8 +39,6 @@
 
 RW_TEXTURE2D_X(float4, _Destination);
 
-SamplerState sampler_LinearClamp;
-
 CBUFFER_START(cb)
     float4 _Size;       // x: src width, y: src height, zw: unused
 CBUFFER_END

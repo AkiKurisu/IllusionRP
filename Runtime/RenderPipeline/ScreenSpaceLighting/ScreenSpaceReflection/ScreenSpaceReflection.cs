@@ -41,12 +41,8 @@ namespace Illusion.Rendering
     }
 
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Screen Space Reflection")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Screen Space Reflection", typeof(UniversalRenderPipeline))]
-#endif
     public class ScreenSpaceReflection : VolumeComponent
     {
         public BoolParameter enable = new(false, BoolParameter.DisplayType.EnumPopup);

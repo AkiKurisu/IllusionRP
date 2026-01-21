@@ -10,7 +10,7 @@
     #define SAMPLE_PROBE_VOLUME(worldPos, normal, bakedGI) bakedGI
 #endif
 
-#if USE_FORWARD_PLUS
+#if USE_CLUSTER_LIGHT_LOOP
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ReflectionProbeNormalization.hlsl"
 
 half CalculateNormalizationFactorFromReflectionProbes(float3 lightingInReflDir, half3 sampleDir, float3 positionWS, float2 normalizedScreenSpaceUV)
@@ -42,7 +42,7 @@ half CalculateNormalizationFactorFromReflectionProbes(float3 lightingInReflDir, 
 half SampleProbeVolumeReflectionNormalize(float3 worldPos, float3 normal, float2 normalizedScreenSpaceUV,
     float3 bakedGI, float3 reflectionDir)
 {
-#if USE_FORWARD_PLUS && _PRT_GLOBAL_ILLUMINATION_ON
+#if USE_CLUSTER_LIGHT_LOOP && _PRT_GLOBAL_ILLUMINATION_ON
     UNITY_BRANCH
     if (_coefficientVoxelGridSize == 0)
     {

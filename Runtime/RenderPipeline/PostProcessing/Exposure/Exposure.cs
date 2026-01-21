@@ -6,12 +6,8 @@ using UnityEngine.Rendering.Universal;
 namespace Illusion.Rendering.PostProcessing
 {
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Exposure")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Exposure", typeof(UniversalRenderPipeline))]
-#endif
     public class Exposure : VolumeComponent, IPostProcessComponent
     {
         // /// <summary>

@@ -1,11 +1,8 @@
 ﻿using System;
-using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -49,13 +46,7 @@ namespace Illusion.Rendering
 
         private int _height;
 
-        private FilteringSettings _filteringSettings = new(RenderQueueRange.opaque);
-
-        private readonly ProfilingSampler _samplingProfiler = new("Irradiance");
-
-        private readonly ProfilingSampler _scatteringProfiler = new("Scattering");
-
-        private readonly RenderTargetIdentifier[] _colorBuffers = new RenderTargetIdentifier[2];
+        private readonly FilteringSettings _filteringSettings = new(RenderQueueRange.opaque);
 
         private ShaderVariablesSubsurface _shaderVariablesSubsurface;
 
@@ -83,6 +74,8 @@ namespace Illusion.Rendering
         private int _sssActiveDiffusionProfileCount;
         
         private int _sampleBudget;
+
+        private readonly Color[] _backGroundColors = { Color.clear, Color.clear };
         
         private unsafe struct ShaderVariablesSubsurface
         {
@@ -98,64 +91,7 @@ namespace Illusion.Rendering
             
             public Vector3 Padding;
         }
-
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            _scatteringInCS = _rendererData.PreferComputeShader;
-            _nativeRenderPass = _rendererData.NativeRenderPass && !_scatteringInCS && renderingData.cameraData.isRenderPassSupportedCamera;
-            var desc = renderingData.cameraData.cameraTargetDescriptor;
-            desc.depthBufferBits = 0;
-            desc.msaaSamples = 1;
-            desc.colorFormat = RenderTextureFormat.ARGBHalf;
-            _width = desc.width;
-            _height = desc.height;
-
-            if (!_nativeRenderPass)
-            {
-                RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[0], desc, FilterMode.Point, TextureWrapMode.Clamp,
-                    name: nameof(ShaderIDs._SubsurfaceDiffuse));
-
-                RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[1], desc, FilterMode.Point, TextureWrapMode.Clamp,
-                    name: nameof(ShaderIDs._SubsurfaceAlbedo));
-            }
-            
-            desc.enableRandomWrite = _scatteringInCS;
-            desc.colorFormat = _supportFastRendering ? RenderTextureFormat.RGB111110Float : RenderTextureFormat.ARGBHalf;
-            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[2], desc, FilterMode.Point, TextureWrapMode.Clamp,
-                name: nameof(ShaderIDs._SubsurfaceLighting));
-            
-            cmd.SetGlobalTexture(ShaderIDs._SubsurfaceLighting, _diffuseRT[2]);
-        }
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            PrepareSubsurfaceData();
-
-            CommandBuffer cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                // Always set global buffer
-                ConstantBuffer.PushGlobal(cmd, _shaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
-                
-                // Match HDRP Projection Matrix, pre-handle reverse z.
-                var inverseProjectMatrix = renderingData.cameraData.GetGPUProjectionMatrix().inverse;
-                cmd.SetGlobalMatrix(ShaderIDs._InvProjectMatrix, inverseProjectMatrix);
-                cmd.SetViewProjectionMatrices(renderingData.cameraData.GetViewMatrix(), renderingData.cameraData.GetProjectionMatrix());
-                cmd.SetViewport(new Rect(0f, 0f, _width, _height));
-
-                var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
-                // Disney sss
-                if (param.enable.value 
-                    && _rendererData.IsLightingActive 
-                    && renderingData.cameraData.cameraType is not (CameraType.Preview or CameraType.Reflection))
-                {
-                    ExecuteSubsurfaceScattering(cmd, context, ref renderingData);
-                }
-            }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
+        
         private void SetDiffusionProfileAtIndex(DiffusionProfileAsset settings, int index)
         {
             // if the diffusion profile was already set and it haven't changed then there is nothing to upgrade
@@ -190,7 +126,7 @@ namespace Illusion.Rendering
             _sssActiveDiffusionProfileCount = profileCount;
         }
 
-        private unsafe void UpdateShaderVariablesSubsurface(SubsurfaceScattering param, ref ShaderVariablesSubsurface cb)
+        private unsafe void UpdateShaderVariablesSubsurface(ref ShaderVariablesSubsurface cb)
         {
             cb.DiffusionProfileCount = (uint)_sssActiveDiffusionProfileCount;
             for (int i = 0; i < _sssActiveDiffusionProfileCount; ++i)
@@ -210,201 +146,14 @@ namespace Illusion.Rendering
         {
             var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
             UpdateCurrentDiffusionProfileSettings(param);
-            UpdateShaderVariablesSubsurface(param, ref _shaderVariablesSubsurface);
+            UpdateShaderVariablesSubsurface(ref _shaderVariablesSubsurface);
             _sampleBudget = (int)param.sampleBudget.value;
         }
-
-        private RTHandle GetPreDepthTexture(ref RenderingData renderingData)
-        {
-            var depthTexture = UniversalRenderingUtility.GetDepthTexture(renderingData.cameraData.renderer);
-            var preDepthTexture = _rendererData.CameraPreDepthTextureRT;
-            if (!preDepthTexture.IsValid() || renderingData.cameraData.cameraType == CameraType.Preview)
-            {
-                preDepthTexture = depthTexture;
-            }
-
-            return preDepthTexture;
-        }
-
-        private void ExecuteSubsurfaceScattering(CommandBuffer cmd, ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            // Configure Graphics Fence (AO)
-            _rendererData.WaitOnAsyncGraphicsFence(cmd, IllusionGraphicsFenceEvent.AmbientOcclusion);
-            
-            if (_nativeRenderPass)
-            {
-                using (new ProfilingScope((CommandBuffer)null, profilingSampler))
-                {
-                    DoNativeRenderPass(context, ref renderingData);
-                }
-                return;
-            }
-
-            var colorTarget = renderingData.cameraData.renderer.cameraColorTargetHandle;
-            var depthTarget = renderingData.cameraData.renderer.cameraDepthTargetHandle;
-            SetupSplitLightingRenderTargets(cmd, ref renderingData);
-
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
-            using (new ProfilingScope(cmd, _samplingProfiler))
-            {
-                DoSplitLighting(cmd, context, ref renderingData);
-            }
-
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
-            using (new ProfilingScope(cmd, _scatteringProfiler))
-            {
-                DoSubsurfaceScattering(cmd);
-            }
-            
-            cmd.SetRenderTarget(colorTarget, depthTarget);
-
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
-        }
-
-        private void DoNativeRenderPass(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            var camDesc = renderingData.cameraData.cameraTargetDescriptor;
-            var depthTexture = GetPreDepthTexture(ref renderingData);
-            int width = camDesc.width, height = camDesc.height, samples = Mathf.Max(1, camDesc.msaaSamples);
-            var rtFormat = RenderTextureFormat.ARGBHalf;
-            
-            var diffuseDesc = new AttachmentDescriptor(rtFormat);
-            diffuseDesc.ConfigureClear(Color.clear, 0);
-            diffuseDesc.loadStoreTarget = BuiltinRenderTextureType.None;
-            
-            var albedoDesc = new AttachmentDescriptor(rtFormat);
-            albedoDesc.ConfigureClear(Color.clear, 0);
-            albedoDesc.loadStoreTarget = BuiltinRenderTextureType.None;
-            
-            rtFormat = _supportFastRendering ? RenderTextureFormat.RGB111110Float : RenderTextureFormat.ARGBHalf;
-            var lightingDesc = new AttachmentDescriptor(rtFormat);
-            lightingDesc.ConfigureTarget(_diffuseRT[2], false, true);
-            lightingDesc.ConfigureClear(Color.clear, 0);
-            
-            var depthDesc = new AttachmentDescriptor(camDesc.depthStencilFormat);
-            depthDesc.ConfigureTarget(depthTexture, true, true);
-            
-            const int kDepth = 0;
-            const int kDiffuse = 1;
-            const int kAlbedo = 2;
-            const int kLighting = 3;
-            var attachments = new NativeArray<AttachmentDescriptor>(4, Allocator.Temp);
-            attachments[kDepth] = depthDesc;     // 0 -> Depth
-            attachments[kDiffuse] = diffuseDesc;   // 1 -> Diffuse
-            attachments[kAlbedo] = albedoDesc;    // 2 -> Albedo
-            attachments[kLighting] = lightingDesc;  // 3 -> Lighting
-            using (context.BeginScopedRenderPass(width, height, samples, attachments, depthAttachmentIndex: kDepth))
-            {
-                attachments.Dispose();
-
-                var compositeBuffer = new NativeArray<int>(2, Allocator.Temp);
-                compositeBuffer[0] = kDiffuse;
-                compositeBuffer[1] = kAlbedo;
-                using (context.BeginScopedSubPass(compositeBuffer, isDepthStencilReadOnly: false))
-                {
-                    compositeBuffer.Dispose();
-                    CommandBuffer cmd = CommandBufferPool.Get();
-                    using (new ProfilingScope(cmd, _samplingProfiler))
-                    {
-                        context.ExecuteCommandBuffer(cmd);
-                        cmd.Clear();
-
-                        var diffuseSetting = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, ref renderingData, SortingCriteria.None);
-                        var rendererListParams = new RendererListParams(renderingData.cullResults, diffuseSetting, _filteringSettings);
-                        var rendererList = context.CreateRendererList(ref rendererListParams);
-                        cmd.DrawRendererList(rendererList);
-                    }
-
-                    context.ExecuteCommandBuffer(cmd);
-                    cmd.Clear();
-                    CommandBufferPool.Release(cmd);
-                    // Need to execute it immediately to avoid sync issues between context and cmd buffer
-                    context.ExecuteCommandBuffer(renderingData.commandBuffer);
-                    renderingData.commandBuffer.Clear();
-                }
-
-                var compositeTarget = new NativeArray<int>(1, Allocator.Temp);
-                compositeTarget[0] = kLighting;
-                var compositeInput = new NativeArray<int>(2, Allocator.Temp);
-                compositeInput[0] = kDiffuse;
-                compositeInput[1] = kAlbedo;
-                using (context.BeginScopedSubPass(compositeTarget, compositeInput, isDepthStencilReadOnly: true))
-                {
-                    compositeTarget.Dispose();
-                    compositeInput.Dispose();
-                    CommandBuffer cmd = CommandBufferPool.Get();
-                    using (new ProfilingScope(cmd, _scatteringProfiler))
-                    {
-                        _scatteringMaterial.Value.EnableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
-                        Blitter.BlitTexture(cmd, Vector2.one, _scatteringMaterial.Value, 0);
-                    }
-
-                    context.ExecuteCommandBuffer(cmd);
-                    cmd.Clear();
-                    CommandBufferPool.Release(cmd);
-                    // Need to execute it immediately to avoid sync issues between context and cmd buffer
-                    context.ExecuteCommandBuffer(renderingData.commandBuffer);
-                    renderingData.commandBuffer.Clear();
-                }
-            }
-        }
-
-        private void SetupSplitLightingRenderTargets(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            var depthTexture = GetPreDepthTexture(ref renderingData);
-            // MRT (Diffuse & Albedo & Depth)
-            _colorBuffers[0] = _diffuseRT[0];
-            _colorBuffers[1] = _diffuseRT[1];
-            cmd.SetRenderTarget(_colorBuffers, depthTexture); // ignore transparent post depth
-            cmd.ClearRenderTarget(false, true, Color.clear);
-        }
-
-        private void DoSplitLighting(CommandBuffer cmd, ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
-            var diffuseSetting = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, ref renderingData, SortingCriteria.None);
-            var rendererListParams = new RendererListParams(renderingData.cullResults, diffuseSetting, _filteringSettings);
-            var rendererList = context.CreateRendererList(ref rendererListParams);
-            cmd.DrawRendererList(rendererList);
-        }
-
-        private void DoSubsurfaceScattering(CommandBuffer cmd)
-        {
-            if (_scatteringInCS)
-            {
-                CoreUtils.SetRenderTarget(cmd, _diffuseRT[2], ClearFlag.Color, Color.clear);
-                cmd.SetComputeIntParam(_computeShader, ShaderIDs._SssSampleBudget, _sampleBudget);
-                cmd.SetComputeTextureParam(_computeShader, _subsurfaceScatteringKernel, ShaderIDs._SubsurfaceDiffuse, _diffuseRT[0]);
-                cmd.SetComputeTextureParam(_computeShader, _subsurfaceScatteringKernel, ShaderIDs._SubsurfaceAlbedo, _diffuseRT[1]);
-                cmd.SetComputeTextureParam(_computeShader, _subsurfaceScatteringKernel, ShaderIDs._SubsurfaceLighting, _diffuseRT[2]);
-
-                var numTilesX = (_width + 15) / 16;
-                var numTilesY = (_height + 15) / 16;
-                var numTilesZ = IllusionRendererData.MaxViewCount;
-                // Perform the SSS filtering pass
-                cmd.DispatchCompute(_computeShader, _subsurfaceScatteringKernel, numTilesX, numTilesY, numTilesZ);
-            }
-            else
-            {
-                _scatteringMaterial.Value.DisableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
-                _scatteringMaterial.Value.SetTexture(ShaderIDs._SubsurfaceDiffuse, _diffuseRT[0]);
-                _scatteringMaterial.Value.SetTexture(ShaderIDs._SubsurfaceAlbedo, _diffuseRT[1]);
-                Blitter.BlitCameraTexture(cmd, _diffuseRT[2], _diffuseRT[2], _scatteringMaterial.Value, 0);
-            }
-        }
-
-#if UNITY_2023_1_OR_NEWER
+        
         private class SplitLightingPassData
         {
-            internal TextureHandle DiffuseTexture;
-            internal TextureHandle AlbedoTexture;
-            internal TextureHandle DepthTexture;
             internal RendererListHandle RendererListHdl;
-            internal RenderingData RenderingData;
+            internal Color[] BackGroundColors;
         }
 
         private class ScatteringComputePassData
@@ -429,10 +178,8 @@ namespace Illusion.Rendering
 
         private class SetGlobalPassData
         {
-            internal IllusionRendererData RendererData;
             internal TextureHandle SubsurfaceLightingTexture;
             internal ShaderVariablesSubsurface ShaderVariablesSubsurface;
-            internal Matrix4x4 InverseProjectMatrix;
             internal Matrix4x4 ViewMatrix;
             internal Matrix4x4 ProjectionMatrix;
             internal int Width;
@@ -440,19 +187,22 @@ namespace Illusion.Rendering
         }
 
         private void RenderSplitLighting(RenderGraph renderGraph, TextureHandle diffuseHandle, TextureHandle albedoHandle, 
-            TextureHandle depthHandle, ref RenderingData renderingData)
+            TextureHandle depthHandle, ContextContainer frameData)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<SplitLightingPassData>(
-                "SSS Split Lighting", out var passData, _samplingProfiler))
+            UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
+            UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
+            UniversalLightData lightData = frameData.Get<UniversalLightData>();
+            using (var builder = renderGraph.AddRasterRenderPass<SplitLightingPassData>("SSS Split Lighting", out var passData))
             {
                 // Setup MRT: diffuse (attachment 0) + albedo (attachment 1)
-                passData.DiffuseTexture = builder.UseTextureFragment(diffuseHandle, 0);
-                passData.AlbedoTexture = builder.UseTextureFragment(albedoHandle, 1);
-                passData.DepthTexture = builder.UseTextureFragmentDepth(depthHandle);
-                passData.RenderingData = renderingData;
+                builder.SetRenderAttachment(diffuseHandle, 0);
+                builder.SetRenderAttachment(albedoHandle, 1);
+                builder.SetRenderAttachmentDepth(depthHandle);
+
+                passData.BackGroundColors = _backGroundColors;
 
                 // Create renderer list with SubsurfaceDiffuse shader tag
-                var drawingSettings = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, ref renderingData, SortingCriteria.None);
+                var drawingSettings = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, renderingData, cameraData, lightData, SortingCriteria.None);
                 var rendererListParams = new RendererListParams(renderingData.cullResults, drawingSettings, _filteringSettings);
                 passData.RendererListHdl = renderGraph.CreateRendererList(rendererListParams);
                 builder.UseRendererList(passData.RendererListHdl);
@@ -462,7 +212,7 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc(static (SplitLightingPassData data, RasterGraphContext context) =>
                 {
                     // Clear render targets
-                    context.cmd.ClearRenderTarget(false, true, Color.clear);
+                    context.cmd.ClearRenderTarget(RTClearFlags.Color0 | RTClearFlags.Color1, data.BackGroundColors, 1, 0);
                     
                     // Draw renderers with SubsurfaceDiffuse shader tag
                     context.cmd.DrawRendererList(data.RendererListHdl);
@@ -473,20 +223,24 @@ namespace Illusion.Rendering
         private void RenderScatteringCompute(RenderGraph renderGraph, TextureHandle diffuseHandle, 
             TextureHandle albedoHandle, TextureHandle lightingHandle)
         {
-            using (var builder = renderGraph.AddComputePass<ScatteringComputePassData>(
-                "SSS Scattering (CS)", out var passData, _scatteringProfiler))
+            using (var builder = renderGraph.AddComputePass<ScatteringComputePassData>("SSS Scattering (Compute)", out var passData))
             {
                 passData.ComputeShader = _computeShader;
                 passData.SubsurfaceScatteringKernel = _subsurfaceScatteringKernel;
-                passData.DiffuseTexture = builder.UseTexture(diffuseHandle);
-                passData.AlbedoTexture = builder.UseTexture(albedoHandle);
-                passData.LightingTexture = builder.UseTexture(lightingHandle, IBaseRenderGraphBuilder.AccessFlags.Write);
+                builder.UseTexture(diffuseHandle);
+                passData.DiffuseTexture = diffuseHandle;
+                builder.UseTexture(albedoHandle);
+                passData.AlbedoTexture = albedoHandle;
+                builder.UseTexture(lightingHandle, AccessFlags.Write);
+                passData.LightingTexture = lightingHandle;
                 passData.SampleBudget = _sampleBudget;
                 passData.Width = _width;
                 passData.Height = _height;
 
                 builder.AllowPassCulling(false);
 
+                builder.SetGlobalTextureAfterPass(lightingHandle, ShaderIDs._SubsurfaceLighting);
+                
                 builder.SetRenderFunc(static (ScatteringComputePassData data, ComputeGraphContext context) =>
                 {
                     // Set compute shader parameters
@@ -512,16 +266,20 @@ namespace Illusion.Rendering
         private void RenderScatteringRaster(RenderGraph renderGraph, TextureHandle diffuseHandle, 
             TextureHandle albedoHandle, TextureHandle lightingHandle)
         {
-            using (var builder = renderGraph.AddRasterRenderPass<ScatteringRasterPassData>(
-                "SSS Scattering (FS)", out var passData, _scatteringProfiler))
+            using (var builder = renderGraph.AddRasterRenderPass<ScatteringRasterPassData>("SSS Scattering (Raster)", out var passData))
             {
                 passData.ScatteringMaterial = _scatteringMaterial.Value;
-                passData.DiffuseTexture = builder.UseTexture(diffuseHandle);
-                passData.AlbedoTexture = builder.UseTexture(albedoHandle);
-                passData.LightingTexture = builder.UseTextureFragment(lightingHandle, 0);
+                builder.UseTexture(diffuseHandle);
+                passData.DiffuseTexture = diffuseHandle;
+                builder.UseTexture(albedoHandle);
+                passData.AlbedoTexture = albedoHandle;
+                builder.SetRenderAttachment(lightingHandle, 0);
+                passData.LightingTexture = lightingHandle;
 
                 builder.AllowPassCulling(false);
 
+                builder.SetGlobalTextureAfterPass(lightingHandle, ShaderIDs._SubsurfaceLighting);
+                
                 builder.SetRenderFunc(static (ScatteringRasterPassData data, RasterGraphContext context) =>
                 {
                     // Disable native render pass keyword
@@ -537,14 +295,17 @@ namespace Illusion.Rendering
             }
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            
             // Prepare subsurface scattering data
             PrepareSubsurfaceData();
 
             // Setup texture allocation
             _scatteringInCS = _rendererData.PreferComputeShader;
-            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            var desc = cameraData.cameraTargetDescriptor;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
             desc.colorFormat = RenderTextureFormat.ARGBHalf;
@@ -552,16 +313,16 @@ namespace Illusion.Rendering
             _height = desc.height;
 
             // Allocate diffuse and albedo textures
-            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[0], desc, FilterMode.Point, TextureWrapMode.Clamp,
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _diffuseRT[0], desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: nameof(ShaderIDs._SubsurfaceDiffuse));
 
-            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[1], desc, FilterMode.Point, TextureWrapMode.Clamp,
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _diffuseRT[1], desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: nameof(ShaderIDs._SubsurfaceAlbedo));
 
             // Allocate lighting texture
             desc.enableRandomWrite = _scatteringInCS;
             desc.colorFormat = _supportFastRendering ? RenderTextureFormat.RGB111110Float : RenderTextureFormat.ARGBHalf;
-            RenderingUtils.ReAllocateIfNeeded(ref _diffuseRT[2], desc, FilterMode.Point, TextureWrapMode.Clamp, 
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _diffuseRT[2], desc, FilterMode.Point, TextureWrapMode.Clamp, 
                 name: nameof(ShaderIDs._SubsurfaceLighting));
 
             // Import textures into RenderGraph
@@ -572,21 +333,20 @@ namespace Illusion.Rendering
             // Get depth texture
             TextureHandle depthHandle;
             var preDepthTexture = _rendererData.CameraPreDepthTextureRT;
-            if (!preDepthTexture.IsValid() || renderingData.cameraData.cameraType == CameraType.Preview)
+            if (!preDepthTexture.IsValid() || cameraData.cameraType == CameraType.Preview)
             {
-                depthHandle = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
+                depthHandle = resource.cameraDepthTexture;
             }
             else
             {
                 depthHandle = renderGraph.ImportTexture(preDepthTexture);
             }
-            var invProjectMatrix = IllusionRenderingUtils.GetGPUProjectionMatrix(ref renderingData.cameraData, _diffuseRT[2]).inverse;
 
             // Check if SSS is enabled
             var param = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>();
             if (!param.enable.value 
                 || !_rendererData.IsLightingActive 
-                || renderingData.cameraData.cameraType is CameraType.Preview or CameraType.Reflection)
+                || cameraData.cameraType is CameraType.Preview or CameraType.Reflection)
             {
                 // Set global texture even if disabled
                 RenderGraphUtils.SetGlobalTexture(renderGraph, ShaderIDs._SubsurfaceLighting, lightingHandle);
@@ -594,15 +354,13 @@ namespace Illusion.Rendering
             }
 
             // Pass 1: Set global variables and constant buffer
-            using (var builder = renderGraph.AddComputePass<SetGlobalPassData>(
-                "SSS Setup Global Variables", out var setupPassData, new ProfilingSampler("SSS Setup")))
+            using (var builder = renderGraph.AddComputePass<SetGlobalPassData>("SSS Setup Global Variables", out var setupPassData))
             {
-                setupPassData.RendererData = _rendererData;
-                setupPassData.SubsurfaceLightingTexture = builder.UseTexture(lightingHandle);
+                builder.UseTexture(lightingHandle);
+                setupPassData.SubsurfaceLightingTexture = lightingHandle;
                 setupPassData.ShaderVariablesSubsurface = _shaderVariablesSubsurface;
-                setupPassData.InverseProjectMatrix = invProjectMatrix;
-                setupPassData.ViewMatrix = renderingData.cameraData.GetViewMatrix();
-                setupPassData.ProjectionMatrix = renderingData.cameraData.GetProjectionMatrix();
+                setupPassData.ViewMatrix = cameraData.GetViewMatrix();
+                setupPassData.ProjectionMatrix = cameraData.GetProjectionMatrix();
                 setupPassData.Width = _width;
                 setupPassData.Height = _height;
 
@@ -612,10 +370,9 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc((SetGlobalPassData data, ComputeGraphContext context) =>
                 {
                     // Set global buffer
-                    ComputeConstantBuffer.PushGlobal(context.cmd, data.ShaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
+                    ConstantBuffer.PushGlobal(context.cmd, data.ShaderVariablesSubsurface, ShaderIDs._ShaderVariablesSubsurface);
 
                     // Set global matrices
-                    context.cmd.SetGlobalMatrix(ShaderIDs._InvProjectMatrix, data.InverseProjectMatrix);
                     context.cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
                     context.cmd.SetViewport(new Rect(0f, 0f, data.Width, data.Height));
 
@@ -625,7 +382,7 @@ namespace Illusion.Rendering
             }
 
             // Pass 2: Split lighting rendering (RasterPass with MRT)
-            RenderSplitLighting(renderGraph, diffuseHandle, albedoHandle, depthHandle, ref renderingData);
+            RenderSplitLighting(renderGraph, diffuseHandle, albedoHandle, depthHandle, frameData);
 
             // Pass 3: Subsurface scattering (Compute or Raster)
             if (_scatteringInCS)
@@ -636,11 +393,7 @@ namespace Illusion.Rendering
             {
                 RenderScatteringRaster(renderGraph, diffuseHandle, albedoHandle, lightingHandle);
             }
-
-            // Set global texture for shaders
-            RenderGraphUtils.SetGlobalTexture(renderGraph, ShaderIDs._SubsurfaceLighting, lightingHandle);
         }
-#endif
 
         public void Dispose()
         {
@@ -660,8 +413,6 @@ namespace Illusion.Rendering
             public static readonly int _SubsurfaceAlbedo = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _SubsurfaceLighting = MemberNameHelpers.ShaderPropertyID();
-
-            public static readonly int _InvProjectMatrix = MemberNameHelpers.ShaderPropertyID();
             
             public static readonly int _SssSampleBudget = MemberNameHelpers.ShaderPropertyID();
         }

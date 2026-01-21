@@ -16,6 +16,7 @@ Unity high-definition graphics plugin for Universal Render Pipelines.
 
 - High-quality graphics features with one-click integration for your URP project
 - Ready-to-use shaders and templates for Amplify Shader Editor
+- Compatible with Unity 2022, 2023, and Unity 6 versions
 
 # Demo
 
@@ -46,6 +47,12 @@ Designed for <b>Forward</b> and <b>Forward+</b> rendering path, <b>Deferred</b> 
 - Standalone Windows (DX12)
 
 # Version
+
+[Unity 6](https://github.com/AkiKurisu/IllusionRP/tree/master)
+
+- Unity 6.3 (URP 17.3.0)
+
+[Unity 2022 and Unity 2023](https://github.com/AkiKurisu/IllusionRP/tree/urp14)
 
 - Unity 2022.3.62f1 (URP 14.0.12)
 
@@ -252,6 +259,8 @@ Thanks to the following great works and articles.
 [HigashiSan/Weighted-Blended-OIT-in-Unity-URP](https://github.com/HigashiSan/Weighted-Blended-OIT-in-Unity-URP)
 
 [Unity-Technologies/Graphics](https://github.com/Unity-Technologies/Graphics)
+
+[Unity-Technologies/shading-rate-demo](https://github.com/Unity-Technologies/shading-rate-demo)
 
 [yaoling1997/GT-ToneMapping](https://github.com/yaoling1997/GT-ToneMapping)
 

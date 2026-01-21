@@ -2,10 +2,8 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -50,41 +48,28 @@ namespace Illusion.Rendering.Shadows
             renderPassEvent = IllusionRenderPassEvent.DiffuseShadowDenoisePass;
             _profilingSampler = new ProfilingSampler("Diffuse Shadow Denoise");
             _denoiser = new DiffuseShadowDenoiser(_rendererData.RuntimeResources.diffuseShadowDenoiserCS);
-#if UNITY_2023_1_OR_NEWER
             ConfigureInput(ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal);
-#endif
         }
 
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        private void PrepareTextures(UniversalCameraData cameraData)
         {
-            PrepareTextures(ref renderingData);
-        }
-
-        private void PrepareTextures(ref RenderingData renderingData)
-        {
-            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            var desc = cameraData.cameraTargetDescriptor;
             desc.enableRandomWrite = true;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
             desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
 
             // Temporary buffers
-            RenderingUtils.ReAllocateIfNeeded(ref _intermediateBuffer, desc, name: "Intermediate buffer");
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _intermediateBuffer, desc, name: "Intermediate buffer");
 
             // Output buffer
-            RenderingUtils.ReAllocateIfNeeded(ref _rendererData.ContactShadowsDenoisedRT, desc, name: "Denoised Buffer");
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ContactShadowsDenoisedRT, desc, name: "Denoised Buffer");
             // TODO: Add distance based denoise support
             // _distanceBuffer = null;
         }
 
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
+        private void PrepareDenoiseParameters(UniversalCameraData cameraData)
         {
-            ConfigureInput(ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal);
-        }
-
-        private void PrepareDenoiseParameters(ref RenderingData renderingData)
-        {
-            var cameraData = renderingData.cameraData;
             var camera = cameraData.camera;
             var contactShadows = VolumeManager.instance.stack.GetComponent<ContactShadows>();
 
@@ -101,50 +86,21 @@ namespace Illusion.Rendering.Shadows
             _viewCount = 1;
         }
 
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             if (!_rendererData.ContactShadowsSampling) return;
             
-            // Prepare data
-            var cameraData = renderingData.cameraData;
-            var renderer = cameraData.renderer;
-
-            _depthStencilBuffer = UniversalRenderingUtility.GetDepthTexture(renderer);
-            if (_depthStencilBuffer == null) return;
-
-            _normalBuffer = UniversalRenderingUtility.GetNormalTexture(renderer);
-            if (_normalBuffer == null) return;
-
-            PrepareDenoiseParameters(ref renderingData);
-
-            var cmd = CommandBufferPool.Get();
-            
-            // Call denoiser
-            _denoiser.DenoiseBuffer(cmd,
-                _depthStencilBuffer, _normalBuffer,
-                _rendererData.ContactShadowsRT, _intermediateBuffer, _rendererData.ContactShadowsDenoisedRT,
-                _texWidth, _texHeight, _viewCount,
-                _lightAngle, _cameraFov, _kernelSize,
-                _profilingSampler);
-
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-#if UNITY_2023_1_OR_NEWER
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
-        {
-            if (!_rendererData.ContactShadowsSampling) return;
-            
+            var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
             // TODO: Replace with TransientTexture
-            PrepareTextures(ref renderingData);
+            PrepareTextures(cameraData);
             
             // Prepare parameters
-            PrepareDenoiseParameters(ref renderingData);
+            PrepareDenoiseParameters(cameraData);
 
             // Import depth and normal textures
-            TextureHandle depthHandle = frameResources.GetTexture(UniversalResource.CameraDepthTexture);
-            TextureHandle normalHandle = frameResources.GetTexture(UniversalResource.CameraNormalsTexture);
+            TextureHandle depthHandle = resource.cameraDepthTexture;
+            TextureHandle normalHandle = resource.cameraNormalsTexture;
 
             // Import input and output textures
             TextureHandle noisyHandle = renderGraph.ImportTexture(_rendererData.ContactShadowsRT);
@@ -159,7 +115,6 @@ namespace Illusion.Rendering.Shadows
                 _lightAngle, _cameraFov, _kernelSize,
                 _profilingSampler);
         }
-#endif
 
         public void Dispose()
         {

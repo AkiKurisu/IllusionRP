@@ -19,10 +19,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.Shadows
 {
@@ -34,13 +32,12 @@ namespace Illusion.Rendering.Shadows
             profilingSampler = new ProfilingSampler("MainLightPerObjectSceneShadow (Preview)");
         }
 
-#if UNITY_2023_1_OR_NEWER
         private class PassData
         {
             internal int shadowCountPropertyID;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadow Preview", out var passData, profilingSampler))
             {
@@ -54,20 +51,6 @@ namespace Illusion.Rendering.Shadows
                     context.cmd.SetGlobalInt(data.shadowCountPropertyID, 0);
                 });
             }
-        }
-#endif
-
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            CommandBuffer cmd = CommandBufferPool.Get();
-
-            using (new ProfilingScope(cmd, profilingSampler))
-            {
-                cmd.SetGlobalInt(PerObjectShadowCasterPass.PropertyIds.ShadowCount(), 0);
-            }
-
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
         }
     }
 }

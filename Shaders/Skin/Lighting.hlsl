@@ -262,10 +262,10 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
     
     uint pixelLightCount = GetAdditionalLightsCount();
 
-    #if USE_FORWARD_PLUS
+    #if USE_CLUSTER_LIGHT_LOOP
     for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
     {
-        FORWARD_PLUS_SUBTRACTIVE_LIGHT_CHECK
+        CLUSTER_LIGHT_LOOP_SUBTRACTIVE_LIGHT_CHECK
 
         Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask);
 
@@ -345,10 +345,10 @@ half4 SkinSpecular(InputData inputData, SurfaceData surfaceData, SkinData SkinDa
     
     uint pixelLightCount = GetAdditionalLightsCount();
 
-    #if USE_FORWARD_PLUS
+    #if USE_CLUSTER_LIGHT_LOOP
     for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
     {
-        FORWARD_PLUS_SUBTRACTIVE_LIGHT_CHECK
+        CLUSTER_LIGHT_LOOP_SUBTRACTIVE_LIGHT_CHECK
 
         Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask);
 

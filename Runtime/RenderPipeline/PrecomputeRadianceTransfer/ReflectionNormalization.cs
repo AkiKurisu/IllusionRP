@@ -9,12 +9,8 @@ namespace Illusion.Rendering.PRTGI
     /// Volume component for reflection normalization parameters.
     /// </summary>
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Reflection Normalization")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Reflection Normalization", typeof(UniversalRenderPipeline))]
-#endif
     public sealed class ReflectionNormalization : VolumeComponent, IPostProcessComponent
     {
         #region Public Attributes
@@ -30,15 +26,6 @@ namespace Illusion.Rendering.PRTGI
 
         [Tooltip("Weight for blending between normalized and original reflection values.")]
         public ClampedFloatParameter probeVolumeWeight = new(1.0f, 0.0f, 1.0f);
-
-        #endregion
-
-        #region Initialization Methods
-
-        public ReflectionNormalization()
-        {
-            displayName = "Reflection Normalization";
-        }
 
         #endregion
 

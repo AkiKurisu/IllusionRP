@@ -2,10 +2,8 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using System;
 using Unity.Collections.LowLevel.Unsafe;
-#if UNITY_2023_1_OR_NEWER
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -238,67 +236,6 @@ namespace Illusion.Rendering
             }
         }
 
-        // Generates an in-place depth pyramid
-        // TODO: Mip-mapping depth is problematic for precision at lower mips, generate a packed atlas instead
-        public void RenderMinDepthPyramid(CommandBuffer cmd, RenderTexture texture, PackedMipChainInfo info)
-        {
-            if (!texture.IsCreated())
-                texture.Create();
-            var cs = _depthPyramidCs;
-            int kernel = _depthDownsampleKernel;
-
-            cmd.SetComputeTextureParam(cs, kernel, IllusionShaderProperties._DepthMipChain, texture);
-
-            // Note: Gather() doesn't take a LOD parameter and we cannot bind an SRV of a MIP level,
-            // and we don't support Min samplers either. So we are forced to perform 4x loads.
-            for (int dstIndex0 = 1; dstIndex0 < info.mipLevelCount;)
-            {
-                int minCount = Mathf.Min(info.mipLevelCount - dstIndex0, 4);
-                int cbCount = 0;
-                if (dstIndex0 < info.mipLevelCountCheckerboard)
-                {
-                    cbCount = info.mipLevelCountCheckerboard - dstIndex0;
-                    Debug.Assert(dstIndex0 == 1, "expected to make checkerboard mips on the first pass");
-                    Debug.Assert(cbCount <= minCount, "expected fewer checkerboard mips than min mips");
-                    Debug.Assert(cbCount <= 2, "expected 2 or fewer checkerboard mips for now");
-                }
-
-                Vector2Int srcOffset = info.mipLevelOffsets[dstIndex0 - 1];
-                Vector2Int srcSize = info.mipLevelSizes[dstIndex0 - 1];
-                int dstIndex1 = Mathf.Min(dstIndex0 + 1, info.mipLevelCount - 1);
-                int dstIndex2 = Mathf.Min(dstIndex0 + 2, info.mipLevelCount - 1);
-                int dstIndex3 = Mathf.Min(dstIndex0 + 3, info.mipLevelCount - 1);
-
-                DepthPyramidConstants cb = new DepthPyramidConstants
-                {
-                    _MinDstCount = (uint)minCount,
-                    _CbDstCount = (uint)cbCount,
-                    _SrcOffset = srcOffset,
-                    _SrcLimit = srcSize - Vector2Int.one,
-                    _DstSize0 = info.mipLevelSizes[dstIndex0],
-                    _DstSize1 = info.mipLevelSizes[dstIndex1],
-                    _DstSize2 = info.mipLevelSizes[dstIndex2],
-                    _DstSize3 = info.mipLevelSizes[dstIndex3],
-                    _MinDstOffset0 = info.mipLevelOffsets[dstIndex0],
-                    _MinDstOffset1 = info.mipLevelOffsets[dstIndex1],
-                    _MinDstOffset2 = info.mipLevelOffsets[dstIndex2],
-                    _MinDstOffset3 = info.mipLevelOffsets[dstIndex3],
-                    _CbDstOffset0 = info.mipLevelOffsetsCheckerboard[dstIndex0],
-                    _CbDstOffset1 = info.mipLevelOffsetsCheckerboard[dstIndex1],
-                };
-                ConstantBuffer.Push(cmd, cb, cs, IllusionShaderProperties.DepthPyramidConstants);
-
-                IllusionRenderingUtils.SetKeyword(cmd, cs, "ENABLE_CHECKERBOARD", cbCount != 0);
-
-                Vector2Int dstSize = info.mipLevelSizes[dstIndex0];
-                cmd.DispatchCompute(cs, kernel, IllusionRenderingUtils.DivRoundUp(dstSize.x, 8),
-                    IllusionRenderingUtils.DivRoundUp(dstSize.y, 8), texture.volumeDepth);
-
-                dstIndex0 += minCount;
-            }
-        }
-        
-#if UNITY_2023_1_OR_NEWER
          // Generates an in-place depth pyramid
         // TODO: Mip-mapping depth is problematic for precision at lower mips, generate a packed atlas instead
         public void RenderMinDepthPyramid(ComputeCommandBuffer cmd, TextureHandle texture, PackedMipChainInfo info)
@@ -350,7 +287,7 @@ namespace Illusion.Rendering
                 _depthPyramidConstantBuffer.SetData(_constantsArray);
                 cmd.SetBufferData(_depthPyramidConstantBuffer, _constantsArray);
                 cmd.SetComputeConstantBufferParam(cs, IllusionShaderProperties.DepthPyramidConstants, _depthPyramidConstantBuffer, 0, _depthPyramidConstantBuffer.stride);
-                cmd.SetKeyword(cs, ref _enableCheckBoard, cbCount != 0);
+                cmd.SetKeyword(cs, _enableCheckBoard, cbCount != 0);
 
                 Vector2Int dstSize = info.mipLevelSizes[dstIndex0];
                 int depth = ((RenderTexture)texture).volumeDepth;
@@ -360,117 +297,7 @@ namespace Illusion.Rendering
                 dstIndex0 += minCount;
             }
         }
-#endif
         
-        // Generates the gaussian pyramid of source into destination
-        // We can't do it in place as the color pyramid has to be read while writing to the color
-        // buffer in some cases (e.g. refraction, distortion)
-        // Returns the number of mips
-        public int RenderColorGaussianPyramid(CommandBuffer cmd, Vector2Int size, Texture source, RenderTexture destination)
-        {
-            // Select between Tex2D and Tex2DArray versions of the kernels
-            bool sourceIsArray = (source.dimension == TextureDimension.Tex2DArray);
-            int rtIndex = sourceIsArray ? 1 : 0;
-            // Sanity check
-            if (sourceIsArray)
-            {
-                Debug.Assert(source.dimension == destination.dimension, "MipGenerator source texture does not match dimension of destination!");
-            }
-
-            int srcMipLevel = 0;
-            int srcMipWidth = size.x;
-            int srcMipHeight = size.y;
-            int slices = destination.volumeDepth;
-
-            // Check if format has changed since last time we generated mips
-            if (_tempDownsamplePyramid[rtIndex] != null && _tempDownsamplePyramid[rtIndex].rt.graphicsFormat != destination.graphicsFormat)
-            {
-                RTHandles.Release(_tempDownsamplePyramid[rtIndex]);
-                _tempDownsamplePyramid[rtIndex] = null;
-            }
-
-            if (_tempDownsamplePyramid[rtIndex] == null)
-            {
-                _tempDownsamplePyramid[rtIndex] = RTHandles.Alloc(
-                    Vector2.one * 0.5f,
-                    sourceIsArray ? TextureXR.slices : 1,
-                    dimension: source.dimension,
-                    filterMode: FilterMode.Bilinear,
-                    colorFormat: destination.graphicsFormat,
-                    enableRandomWrite: true,
-                    useMipMap: false,
-                    useDynamicScale: true,
-                    name: "Temporary Downsampled Pyramid"
-                );
-
-                cmd.SetRenderTarget(_tempDownsamplePyramid[rtIndex]);
-                cmd.ClearRenderTarget(false, true, Color.black);
-            }
-
-            bool isHardwareDrsOn = DynamicResolutionHandler.instance.HardwareDynamicResIsEnabled();
-            var hardwareTextureSize = new Vector2Int(source.width, source.height);
-            if (isHardwareDrsOn)
-                hardwareTextureSize = DynamicResolutionHandler.instance.ApplyScalesOnSize(hardwareTextureSize);
-
-            float sourceScaleX = size.x / (float)hardwareTextureSize.x;
-            float sourceScaleY = size.y / (float)hardwareTextureSize.y;
-
-            // Copies src mip0 to dst mip0
-            // Note that we still use a fragment shader to do the first copy because fragment are faster at copying
-            // data types like R11G11B10 (default) and pretty similar in term of speed with R16G16B16A16.
-            _propertyBlock.SetTexture(IllusionShaderProperties._BlitTexture, source);
-            _propertyBlock.SetVector(IllusionShaderProperties._BlitScaleBias, new Vector4(sourceScaleX, sourceScaleY, 0f, 0f));
-            _propertyBlock.SetFloat(IllusionShaderProperties._BlitMipLevel, 0f);
-            cmd.SetRenderTarget(destination, 0, CubemapFace.Unknown, -1);
-            cmd.SetViewport(new Rect(0, 0, srcMipWidth, srcMipHeight));
-            cmd.DrawProcedural(Matrix4x4.identity, Blitter.GetBlitMaterial(source.dimension), 0, MeshTopology.Triangles, 3, 1, _propertyBlock);
-
-            var finalTargetSize = new Vector2Int(destination.width, destination.height);
-            if (destination.useDynamicScale && isHardwareDrsOn)
-                finalTargetSize = DynamicResolutionHandler.instance.ApplyScalesOnSize(finalTargetSize);
-
-            // Note: smaller mips are excluded as we don't need them and the gaussian compute works
-            // on 8x8 blocks
-            while (srcMipWidth >= 8 || srcMipHeight >= 8)
-            {
-                int dstMipWidth = Mathf.Max(1, srcMipWidth >> 1);
-                int dstMipHeight = Mathf.Max(1, srcMipHeight >> 1);
-                
-                cmd.SetComputeVectorParam(_colorPyramidCS, IllusionShaderProperties._Size,
-                    new Vector4(srcMipWidth, srcMipHeight, 0f, 0f));
-
-                {
-                    // Downsample.
-                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorDownsampleKernel, IllusionShaderProperties._Source,
-                        destination, srcMipLevel);
-                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorDownsampleKernel, IllusionShaderProperties._Destination,
-                        _tempDownsamplePyramid[rtIndex]);
-                    cmd.DispatchCompute(_colorPyramidCS, _colorDownsampleKernel, (dstMipWidth + 7) / 8,
-                        (dstMipHeight + 7) / 8, TextureXR.slices);
-
-                    // Single pass blur
-                    cmd.SetComputeVectorParam(_colorPyramidCS, IllusionShaderProperties._Size,
-                        new Vector4(dstMipWidth, dstMipHeight, 0f, 0f));
-                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorGaussianKernel, IllusionShaderProperties._Source,
-                        _tempDownsamplePyramid[rtIndex]);
-                    cmd.SetComputeTextureParam(_colorPyramidCS, _colorGaussianKernel, IllusionShaderProperties._Destination,
-                        destination, srcMipLevel + 1);
-                    cmd.DispatchCompute(_colorPyramidCS, _colorGaussianKernel, (dstMipWidth + 7) / 8,
-                        (dstMipHeight + 7) / 8, TextureXR.slices);
-                }
-
-                srcMipLevel++;
-                srcMipWidth >>= 1;
-                srcMipHeight >>= 1;
-
-                finalTargetSize.x >>= 1;
-                finalTargetSize.y >>= 1;
-            }
-
-            return srcMipLevel + 1;
-        }
-
-#if UNITY_2023_1_OR_NEWER
         // RenderGraph version: Copies source texture to destination mip 0 using fragment shader
         // This is the first step of color pyramid generation, separated for RasterRenderPass
         public void CopySourceToColorPyramidMip0(RasterCommandBuffer cmd, TextureHandle source, TextureHandle destination, 
@@ -573,6 +400,5 @@ namespace Illusion.Rendering
 
             return _tempDownsamplePyramid[rtIndex];
         }
-#endif
     }
 }

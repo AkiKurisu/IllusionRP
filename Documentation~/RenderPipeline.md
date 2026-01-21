@@ -27,8 +27,6 @@ subgraph Prepass Screen Space Lighting
 end
 
 subgraph Prepass Shadows Part
-  MainLightShadow[Main Light Shadow]
-  AdditionalLightShadows[Additional Light Shadows]
   PerObjectShadows[Per Object Shadows]
   ContactShadows[Contact Shadows]
   PCSS[PCSS Filtering]
@@ -47,6 +45,7 @@ end
 subgraph After Transparent
   OIT[OIT]
   CopyPostDepth[Transparent Copy Post Depth]
+  TransparentVrs[Transparent VRS Generation]
   TransparentOverdraw[Transparent Overdraw]
   ColorPyramid[Color Pyramid]
 end
@@ -81,7 +80,8 @@ PRTRelight --> SSGI
 SSGI --> Subsurface
 Subsurface --> OIT
 OIT --> CopyPostDepth
-CopyPostDepth --> TransparentOverdraw
+CopyPostDepth --> TransparentVrs
+TransparentVrs --> TransparentOverdraw
 TransparentOverdraw --> ColorPyramid
 ColorPyramid --> DownsampleDepth
 DownsampleDepth --> VolumetricLight

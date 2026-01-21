@@ -1,8 +1,6 @@
 ﻿using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering
 {
@@ -19,25 +17,17 @@ namespace Illusion.Rendering
             _rendererData = rendererData;
             profilingSampler = new ProfilingSampler($"Sync GraphicsFence {syncFenceEvent.ToString()}");
         }
-        
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            if (!IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute) return;
-            
-            using (new ProfilingScope(renderingData.commandBuffer, profilingSampler))
+            // pass
+            if (_syncFenceEvent == IllusionGraphicsFenceEvent.ScreenSpaceReflection)
             {
-                _rendererData.WaitOnAsyncGraphicsFence(renderingData.commandBuffer, _syncFenceEvent);
+                if (_rendererData.ScreenSpaceReflectionTexture.IsValid())
+                {
+                    RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties.SsrLightingTexture, _rendererData.ScreenSpaceReflectionTexture);
+                }
             }
         }
-                
-#if UNITY_2023_1_OR_NEWER
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
-            ref RenderingData renderingData)
-        {
-            if (!IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute) return;
-            
-            // pass
-        }
-#endif
     }
 }

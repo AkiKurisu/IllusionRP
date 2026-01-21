@@ -19,12 +19,8 @@ namespace Illusion.Rendering.Shadows
     }
     
     [Serializable]
-#if UNITY_2023_1_OR_NEWER
     [SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
     [VolumeComponentMenu("Illusion/Contact Shadows")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Contact Shadows", typeof(UniversalRenderPipeline))]
-#endif
     public class ContactShadows : VolumeComponent
     {
         /// <summary>

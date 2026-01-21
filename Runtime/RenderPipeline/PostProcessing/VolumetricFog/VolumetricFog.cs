@@ -1,19 +1,24 @@
 // Modified from https://github.com/CristianQiu/Unity-URP-Volumetric-Light
+using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
 namespace Illusion.Rendering.PostProcessing
 {
+	[Serializable]
+	public sealed class ShadingRateFragmentSizeParameter : VolumeParameter<ShadingRateFragmentSize>
+	{
+		public ShadingRateFragmentSizeParameter(ShadingRateFragmentSize value, bool overrideState = false)
+			: base(value, overrideState) { }
+	}
+	
 	/// <summary>
 	/// Volume component for the volumetric fog.
 	/// </summary>
-#if UNITY_2023_1_OR_NEWER
+	[Serializable]
 	[SupportedOnRenderPipeline(typeof(UniversalRenderPipelineAsset))]
 	[VolumeComponentMenu("Illusion/Volumetric Fog")]
-#else
-    [VolumeComponentMenuForRenderPipeline("Illusion/Volumetric Fog", typeof(UniversalRenderPipeline))]
-#endif
 	public sealed class VolumetricFog : VolumeComponent, IPostProcessComponent
 	{
 		#region Public Attributes
@@ -81,15 +86,8 @@ namespace Illusion.Rendering.PostProcessing
 		[Tooltip("Early exit threshold for raymarching optimization. When transmittance falls below this value, raymarching stops early. Lower values = better performance but may cause artifacts. Set to 0 to disable early exit.")]
 		public ClampedFloatParameter transmittanceThreshold = new(0.01f, 0.0f, 0.1f);
 
-		#endregion
-
-		#region Initialization Methods
-
-		public VolumetricFog()
-		{
-			displayName = "Volumetric Fog";
-		}
-
+		[Tooltip("Raymarch shading rate.")]
+		public ShadingRateFragmentSizeParameter shadingRate = new(ShadingRateFragmentSize.FragmentSize1x1);
 		#endregion
 
 		#region Volume Component Methods

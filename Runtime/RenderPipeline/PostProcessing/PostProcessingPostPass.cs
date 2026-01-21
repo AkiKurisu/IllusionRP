@@ -1,8 +1,6 @@
 ﻿using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-#if UNITY_2023_1_OR_NEWER
-using UnityEngine.Experimental.Rendering.RenderGraphModule;
-#endif
 
 namespace Illusion.Rendering.PostProcessing
 {
@@ -16,29 +14,20 @@ namespace Illusion.Rendering.PostProcessing
             renderPassEvent = IllusionRenderPassEvent.PostProcessPostPass;
             profilingSampler = new ProfilingSampler("Post Processing Post");
         }
-        
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
-        {
-            _rendererData.DidResetPostProcessingHistoryInLastFrame = _rendererData.ResetPostProcessingHistory;
 
-            _rendererData.ResetPostProcessingHistory = false;
-        }
-        
-#if UNITY_2023_1_OR_NEWER
         private class PostProcessingPostPassData
         {
             internal IllusionRendererData RendererData;
         }
 
-        public override void RecordRenderGraph(RenderGraph renderGraph, FrameResources frameResources,
-            ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            using (var builder = renderGraph.AddLowLevelPass<PostProcessingPostPassData>("Post Processing Post", out var passData, profilingSampler))
+            using (var builder = renderGraph.AddUnsafePass<PostProcessingPostPassData>("Post Processing Post", out var passData, profilingSampler))
             {
                 builder.AllowPassCulling(false);
                 passData.RendererData = _rendererData;
 
-                builder.SetRenderFunc(static (PostProcessingPostPassData data, LowLevelGraphContext _) =>
+                builder.SetRenderFunc(static (PostProcessingPostPassData data, UnsafeGraphContext _) =>
                 {
                     data.RendererData.DidResetPostProcessingHistoryInLastFrame = data.RendererData.ResetPostProcessingHistory;
 
@@ -46,6 +35,5 @@ namespace Illusion.Rendering.PostProcessing
                 });
             }
         }
-#endif
     }
 }

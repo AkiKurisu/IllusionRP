@@ -479,10 +479,10 @@ half4 HairPBR(InputData inputData, SurfaceData surfaceData, HairData HairData)
     #if defined(_ADDITIONAL_LIGHTS)
     uint pixelLightCount = GetAdditionalLightsCount();
 
-    #if USE_FORWARD_PLUS
+    #if USE_CLUSTER_LIGHT_LOOP
     for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
     {
-        FORWARD_PLUS_SUBTRACTIVE_LIGHT_CHECK
+        CLUSTER_LIGHT_LOOP_SUBTRACTIVE_LIGHT_CHECK
 
         Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask);
 
@@ -540,6 +540,6 @@ inline void ClipHair(in float4 screenPos, in float alpha, in float threshold)
     float dither = Dither8x8Bayer(fmod(screenUV.x, 8), fmod(screenUV.y, 8));
     threshold = lerp(threshold, dither, 0.5);
 #endif
-    clip(alpha - threshold);
+    AlphaDiscard( alpha, threshold );
 }
 #endif
