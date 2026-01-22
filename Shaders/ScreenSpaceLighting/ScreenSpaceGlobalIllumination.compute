@@ -23,9 +23,7 @@
 #pragma kernel ReprojectGlobalIllumination      REPROJECT_GLOBAL_ILLUMINATION=ReprojectGlobalIllumination GI_REPROJECT
 #pragma kernel ReprojectGlobalIlluminationHalf  REPROJECT_GLOBAL_ILLUMINATION=ReprojectGlobalIlluminationHalf GI_REPROJECT HALF_RES
 
-// @IllusionRP: APV not valid in URP 14
-// #pragma multi_compile PROBE_VOLUMES_OFF PROBE_VOLUMES_L1 PROBE_VOLUMES_L2
-
+#pragma multi_compile PROBE_VOLUMES_L1 PROBE_VOLUMES_L2
 #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 #pragma multi_compile _ _REFLECTION_PROBE_BOX_PROJECTION
 #pragma multi_compile_local _ _PROBE_VOLUME_ENABLE // For PRTGI
@@ -358,19 +356,18 @@ void REPROJECT_GLOBAL_ILLUMINATION(uint3 dispatchThreadId : SV_DispatchThreadID,
                 * GetInversePreviousExposureMultiplier();
     }
 #if defined(PROBE_VOLUMES_L1) || defined(PROBE_VOLUMES_L2)
-    else
+    else if (_EnableProbeVolumes)
     {
-        BuiltinData apvBuiltinData;
-        ZERO_INITIALIZE(BuiltinData, apvBuiltinData);
-
+        float3 bakeDiffuseLighting;
+        float3 backBakeDiffuseLighting;
         EvaluateAdaptiveProbeVolume(GetAbsolutePositionWS(posInput.positionWS), // @IllusionRP: Camera Relative Rendering not work in URP
                                     normalWS,
                                     -normalWS, // Not used
                                     GetWorldSpaceNormalizeViewDir(posInput.positionWS),
                                     posInput.positionSS,
-                                    apvBuiltinData.bakeDiffuseLighting,
-                                    apvBuiltinData.backBakeDiffuseLighting); // Not used
-        color = apvBuiltinData.bakeDiffuseLighting;
+                                    bakeDiffuseLighting,
+                                    backBakeDiffuseLighting); // Not used
+        color = bakeDiffuseLighting;
     }
 #elif defined(_PROBE_VOLUME_ENABLE)
     else
