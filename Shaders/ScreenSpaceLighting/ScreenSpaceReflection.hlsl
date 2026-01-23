@@ -29,7 +29,7 @@ half4 FragSSRLinearVS(Varyings input) : SV_Target
     float smoothness;
 #ifdef _DEFERRED_RENDERING_PATH
     half4 gbuffer2 = SAMPLE_TEXTURE2D_X_LOD(_GBuffer2, sampler_PointClamp, input.texcoord, 0);
-    normalWS = normalize(UnpackNormal(gbuffer2.xyz));
+    normalWS = normalize(UnpackNormal(gbuffer2));
     smoothness = gbuffer2.a;
 #else
     half4 gbuffer2 = SAMPLE_TEXTURE2D_X_LOD(_ForwardGBuffer, sampler_PointClamp, input.texcoord, 0);
