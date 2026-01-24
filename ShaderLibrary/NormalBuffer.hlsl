@@ -13,7 +13,7 @@ void GetNormal(uint2 positionSS, out float3 N)
 {
 #ifdef _DEFERRED_RENDERING_PATH
     half4 gbuffer2 = LOAD_TEXTURE2D_X(_GBuffer2, positionSS);
-    N = normalize(UnpackNormal(gbuffer2.xyz));
+    N = normalize(UnpackNormal(gbuffer2));
 #else
     N = LoadSceneNormals(positionSS);
 #endif
@@ -21,15 +21,15 @@ void GetNormal(uint2 positionSS, out float3 N)
 // We have fixed it in URP version since we store smoothness instead of perceptual roughness
 void GetNormalAndPerceptualRoughness(uint2 positionSS, out float3 N, out float perceptualRoughness)
 {
-    #ifdef _DEFERRED_RENDERING_PATH
+#ifdef _DEFERRED_RENDERING_PATH
     half4 gbuffer2 = LOAD_TEXTURE2D_X(_GBuffer2, positionSS);
-    N = normalize(UnpackNormal(gbuffer2.xyz));
+    N = normalize(UnpackNormal(gbuffer2));
     float smoothness = gbuffer2.a;
-    #else
+#else
     N = LoadSceneNormals(positionSS);
     float4 gbuffer = LOAD_TEXTURE2D_X(_ForwardGBuffer, positionSS);
     float smoothness = gbuffer.r;
-    #endif
+#endif
     perceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(smoothness);
 }
 #endif

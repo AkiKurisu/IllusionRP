@@ -40,7 +40,9 @@ namespace Illusion.Rendering
             // Get the render pipeline's conversion look-up table 
             var vrsPipelineResources = GraphicsSettings.GetRenderPipelineSettings<VrsRenderPipelineRuntimeResources>();
             var lut = vrsPipelineResources.conversionLookupTable;
+#if UNITY_EDITOR
             vrsPipelineResources.visualizationLookupTable = lut;
+#endif
 
             var material = _material.Value;
             material.SetColor(Properties.ShadingRateColor1X1, lut[ShadingRateFragmentSize.FragmentSize1x1]);

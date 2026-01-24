@@ -38,8 +38,6 @@ namespace Illusion.Rendering.PRTGI
 
         private readonly ProfilingSampler _relightProbeSampler = new("Relight Probe");
 
-        private static int[] _coefficientClearValue;
-
         private struct ReflectionProbeData
         {
             public Vector4 L0L1;
@@ -74,17 +72,10 @@ namespace Illusion.Rendering.PRTGI
 
             _reflectionProbeData = new ReflectionProbeData[UniversalRenderPipeline.maxVisibleReflectionProbes];
             _reflectionProbeComputeBuffer = new ComputeBuffer(_reflectionProbeData.Length, 48);
-
-            _coefficientClearValue = new int[27];
-            for (int i = 0; i < 27; i++)
-            {
-                _coefficientClearValue[i] = 0;
-            }
         }
 
         private class ReflectionNormalizationPassData
         {
-            internal IllusionRendererData RendererData;
             internal ComputeBuffer ReflectionProbeComputeBuffer;
             internal ReflectionProbeData[] ReflectionProbeData;
             internal NativeArray<VisibleReflectionProbe> VisibleReflectionProbes;
@@ -94,7 +85,6 @@ namespace Illusion.Rendering.PRTGI
 
         private class PRTRelightPassData
         {
-            internal IllusionRendererData RendererData;
             internal PRTProbeVolume Volume;
             internal ComputeShader BrickRelightCS;
             internal ComputeShader ProbeRelightCS;
@@ -123,25 +113,29 @@ namespace Illusion.Rendering.PRTGI
 #endif
         }
 
+        private bool EnableRelight(UniversalCameraData cameraData)
+        {
+            if (cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return false;
+            
+#if UNITY_EDITOR
+            if (PRTVolumeManager.IsBaking) return false;
+#endif
+            
+            bool enableRelight = _rendererData.SampleProbeVolumes;
+            enableRelight &= _rendererData.IsLightingActive;
+            return enableRelight;
+        }
+
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             var cameraData = frameData.Get<UniversalCameraData>();
             var renderingData = frameData.Get<UniversalRenderingData>();
            
             RecordReflectionNormalizationPass(renderGraph, renderingData);
-            
-            if (cameraData.cameraType is CameraType.Reflection or CameraType.Preview) return;
-            
-#if UNITY_EDITOR
-            if (PRTVolumeManager.IsBaking) return;
-#endif
 
-            PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
-            bool enableRelight = _rendererData.SampleProbeVolumes;
-            enableRelight &= _rendererData.IsLightingActive;
-
-            if (enableRelight)
+            if (EnableRelight(cameraData))
             {
+                PRTProbeVolume volume = PRTVolumeManager.ProbeVolume;
                 if (_volume != volume)
                 {
                     ReleaseVolumeBuffer();
@@ -166,12 +160,12 @@ namespace Illusion.Rendering.PRTGI
             {
                 // Mark voxel invalid using a low-level pass
                 using (var builder = renderGraph.AddUnsafePass<EmptyPassData>("PRT Mark Voxel Invalid", 
-                    out var passData, new ProfilingSampler("PRT Mark Voxel Invalid")))
+                    out _, new ProfilingSampler("PRT Mark Voxel Invalid")))
                 {
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
 
-                    builder.SetRenderFunc(static (EmptyPassData data, UnsafeGraphContext context) =>
+                    builder.SetRenderFunc(static (EmptyPassData _, UnsafeGraphContext context) =>
                     {
                         context.cmd.SetGlobalFloat(ShaderProperties._coefficientVoxelGridSize, 0);
                     });
@@ -186,7 +180,6 @@ namespace Illusion.Rendering.PRTGI
             using (var builder = renderGraph.AddUnsafePass<ReflectionNormalizationPassData>("PRT Reflection Normalization", 
                 out var passData, new ProfilingSampler("PRT Reflection Normalization")))
             {
-                passData.RendererData = _rendererData;
                 passData.ReflectionProbeComputeBuffer = _reflectionProbeComputeBuffer;
                 passData.ReflectionProbeData = _reflectionProbeData;
                 passData.VisibleReflectionProbes = renderingData.cullResults.visibleReflectionProbes;
@@ -267,7 +260,7 @@ namespace Illusion.Rendering.PRTGI
                 using (var builder = renderGraph.AddComputePass<PRTRelightPassData>("PRT Relight Bricks", 
                     out var passData, _relightBrickSampler))
                 {
-                    SetupBrickRelightPassData(passData, volume, brickIndicesToUpdate, coefficientVoxel3D, validityVoxel3D,
+                    SetupBrickRelightPassData(passData, volume, brickIndicesToUpdate,
                         voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
 
                     builder.UseTexture(coefficientVoxel3D);
@@ -326,8 +319,7 @@ namespace Illusion.Rendering.PRTGI
                 using (var builder = renderGraph.AddComputePass<PRTRelightPassData>("PRT Relight Probes", 
                     out var probePassData, _relightProbeSampler))
                 {
-                    SetupProbeRelightPassData(probePassData, volume, probesToUpdate, brickIndicesToUpdate, 
-                        coefficientVoxel3D, validityVoxel3D, voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
+                    SetupProbeRelightPassData(probePassData, volume, probesToUpdate, brickIndicesToUpdate, voxelCorner, voxelSize, boundingBoxMin, boundingBoxSize, originalBoundingBoxMin);
 
                     builder.UseTexture(coefficientVoxel3D);
                     probePassData.CoefficientVoxel3D = coefficientVoxel3D;
@@ -379,10 +371,9 @@ namespace Illusion.Rendering.PRTGI
         }
 
         private void SetupBrickRelightPassData(PRTRelightPassData passData, PRTProbeVolume volume, 
-            List<int> brickIndicesToUpdate, TextureHandle coefficientVoxel3D, TextureHandle validityVoxel3D,
-            Vector4 voxelCorner, Vector4 voxelSize, Vector4 boundingBoxMin, Vector4 boundingBoxSize, Vector4 originalBoundingBoxMin)
+            List<int> brickIndicesToUpdate, Vector4 voxelCorner, Vector4 voxelSize, 
+            Vector4 boundingBoxMin, Vector4 boundingBoxSize, Vector4 originalBoundingBoxMin)
         {
-            passData.RendererData = _rendererData;
             passData.Volume = volume;
             passData.BrickRelightCS = _brickRelightCS;
             passData.ProbeRelightCS = _probeRelightCS;
@@ -404,15 +395,14 @@ namespace Illusion.Rendering.PRTGI
             passData.EnableRelightShadow = volume.enableRelightShadow;
 #if UNITY_EDITOR
             passData.DebugMode = volume.debugMode;
-            passData.CoefficientClearValue = _coefficientClearValue;
+            passData.CoefficientClearValue = PRTProbeDebugData.CoefficientClearValue;
 #endif
         }
 
         private void SetupProbeRelightPassData(PRTRelightPassData passData, PRTProbeVolume volume, 
-            List<PRTProbe> probesToUpdate, List<int> brickIndicesToUpdate, TextureHandle coefficientVoxel3D, TextureHandle validityVoxel3D,
-            Vector4 voxelCorner, Vector4 voxelSize, Vector4 boundingBoxMin, Vector4 boundingBoxSize, Vector4 originalBoundingBoxMin)
+            List<PRTProbe> probesToUpdate, List<int> brickIndicesToUpdate, Vector4 voxelCorner, Vector4 voxelSize, 
+            Vector4 boundingBoxMin, Vector4 boundingBoxSize, Vector4 originalBoundingBoxMin)
         {
-            passData.RendererData = _rendererData;
             passData.Volume = volume;
             passData.BrickRelightCS = _brickRelightCS;
             passData.ProbeRelightCS = _probeRelightCS;
@@ -435,7 +425,7 @@ namespace Illusion.Rendering.PRTGI
             passData.EnableRelightShadow = volume.enableRelightShadow;
 #if UNITY_EDITOR
             passData.DebugMode = volume.debugMode;
-            passData.CoefficientClearValue = _coefficientClearValue;
+            passData.CoefficientClearValue = PRTProbeDebugData.CoefficientClearValue;
 #endif
         }
         

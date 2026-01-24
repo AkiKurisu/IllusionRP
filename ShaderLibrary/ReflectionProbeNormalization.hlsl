@@ -25,7 +25,7 @@ StructuredBuffer<ReflectionProbeData> _reflectionProbeNormalizationData;
 // -------------------------------------------------------------
 // Same idea as in Rendering of COD:IW [Drobot 2017]
 
-float EvaluateReflectionProbeSH(float3 sampleDir, float4 reflProbeSHL0L1, float4 reflProbeSHL2_1, float reflProbeSHL2_2)
+float IllusionEvaluateReflectionProbeSH(float3 sampleDir, float4 reflProbeSHL0L1, float4 reflProbeSHL2_1, float reflProbeSHL2_2)
 {
     float outFactor = 0;
     float L0 = reflProbeSHL0L1.x;
@@ -46,9 +46,9 @@ float EvaluateReflectionProbeSH(float3 sampleDir, float4 reflProbeSHL0L1, float4
     return outFactor;
 }
 
-float GetReflectionProbeNormalizationFactor(float3 lightingInReflDir, float3 sampleDir, float4 reflProbeSHL0L1, float4 reflProbeSHL2_1, float reflProbeSHL2_2)
+float IllusionGetReflectionProbeNormalizationFactor(float3 lightingInReflDir, float3 sampleDir, float4 reflProbeSHL0L1, float4 reflProbeSHL2_1, float reflProbeSHL2_2)
 {
-    float refProbeNormalization = EvaluateReflectionProbeSH(sampleDir, reflProbeSHL0L1, reflProbeSHL2_1, reflProbeSHL2_2);
+    float refProbeNormalization = IllusionEvaluateReflectionProbeSH(sampleDir, reflProbeSHL0L1, reflProbeSHL2_1, reflProbeSHL2_2);
 
     float localNormalization = Luminance(lightingInReflDir);
     return lerp(1.f, clamp(SafeDiv(localNormalization, refProbeNormalization), _MinReflProbeNormalizationFactor, _MaxReflProbeNormalizationFactor), _ReflProbeNormalizationWeight);

@@ -30,7 +30,7 @@ half CalculateNormalizationFactorFromReflectionProbes(float3 lightingInReflDir, 
         float factor = 1.0f;
         if (probeData.normalizeWithProbeVolume > 0)
         {
-            factor = GetReflectionProbeNormalizationFactor(lightingInReflDir, sampleDir, probeData.L0L1, probeData.L2_1, probeData.L2_2);
+            factor = IllusionGetReflectionProbeNormalizationFactor(lightingInReflDir, sampleDir, probeData.L0L1, probeData.L2_1, probeData.L2_2);
         }
         totalFactor += factor * weight;
         totalWeight += weight;
