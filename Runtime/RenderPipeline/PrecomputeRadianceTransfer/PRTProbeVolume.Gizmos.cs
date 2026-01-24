@@ -8,6 +8,17 @@ namespace Illusion.Rendering.PRTGI
 {
     internal class PRTProbeDebugData : IDisposable
     {
+        public static readonly int[] CoefficientClearValue;
+        
+        static PRTProbeDebugData()
+        {
+            CoefficientClearValue = new int[27];
+            for (int i = 0; i < 27; i++)
+            {
+                CoefficientClearValue[i] = 0;
+            }
+        }
+        
         // Local surfel array for this probe
         public Surfel[] LocalSurfels { get; private set; }
 
@@ -44,6 +55,7 @@ namespace Illusion.Rendering.PRTGI
             }
             
             CoefficientSH9 = new ComputeBuffer(27, sizeof(float));
+            CoefficientSH9.SetData(CoefficientClearValue);
         }
 
         public void Dispose()
