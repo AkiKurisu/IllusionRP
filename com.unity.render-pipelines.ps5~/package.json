@@ -1,7 +1,7 @@
 {
   "name": "com.unity.render-pipelines.ps5",
   "description": "PS5 SRP Extension.",
-  "version": "14.0.9",
-  "unity": "2022.3",
+  "version": "17.3.0",
+  "unity": "6000.3",
   "displayName": "PS5 SRP Extension"
 }

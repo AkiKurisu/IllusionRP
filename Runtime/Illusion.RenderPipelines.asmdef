@@ -22,12 +22,12 @@
     "versionDefines": [
         {
             "name": "com.unity.render-pipelines.universal",
-            "expression": "14.0.12",
+            "expression": "17.3.0",
             "define": "URP_INSTALL"
         },
         {
             "name": "com.kurisu.chris",
-            "expression": "1.5.2",
+            "expression": "1.6.0",
             "define": "CHRIS_INSTALL"
         }
     ],
