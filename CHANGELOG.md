@@ -5,6 +5,17 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-1-24
+
+### Fixed
+
+- Fix prt probe incorrect debug effects after enabling MultiRelight.
+- Fix HD Skin missing DepthNormals Pass.
+- Fix StencilVRSGenerationPass build exception.
+- Fix Vulkan shader compilation error in UnpackNormal method.
+- Fix AdaptiveProbeVolume support for SSGI.
+- Fix material compilation error when enable AdaptiveProbeVolume.
+
 ## [1.2.0] - 2026-1-21
 
 This version is compatible with Unity 6. Old version for Unity 2022 and Unity 2023 has been moved to [urp14 branch](https://github.com/AkiKurisu/IllusionRP/tree/urp14).

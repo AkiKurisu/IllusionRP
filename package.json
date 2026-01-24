@@ -1,7 +1,7 @@
 {
   "name": "com.kurisu.illusion-render-pipelines",
   "displayName": "Illusion RP",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "unity": "6000.3",
   "description": "Unity high-definition graphics plugin for Universal Render Pipelines.",
   "dependencies": {
