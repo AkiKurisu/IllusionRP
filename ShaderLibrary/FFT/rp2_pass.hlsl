@@ -169,7 +169,11 @@ void RP2_Pass_Reverse(uint i, uint P, uint R)
 
 		complex2 sub_buffer[MAX_RADIX];
 		for (uint r = 0; r < R; r++)
-			sub_buffer[r] = buffer[index_transform(r * tmp1 + tmp2)];
+		{
+			uint index = index_transform(r * tmp1 + tmp2);
+			if (index >= SIZE + PADDING_SIZE) continue;
+			sub_buffer[r] = buffer[index];
+		}
 
 		uint sP = 1;
 		for (int _ = log2(R); _ > 0; _ -= 1)
@@ -180,7 +184,15 @@ void RP2_Pass_Reverse(uint i, uint P, uint R)
 		uint idx_map[MAX_RADIX];
 		shuffle_map_R2(R, idx_map);
 		for (uint t = 0; t < R; t++)
-			buffer[index_transform(t * tmp1 + tmp2)] = sub_buffer[idx_map[t]];
+		{
+			uint index = index_transform(t * tmp1 + tmp2);
+			
+			if (index >= SIZE + PADDING_SIZE)continue;
+			uint id = idx_map[t];
+			
+			if (id >= MAX_RADIX)continue;
+			buffer[index] = sub_buffer[id];
+		}
 	}
 	ACTIVE_THREAD_END
 	GroupMemoryBarrierWithGroupSync();
