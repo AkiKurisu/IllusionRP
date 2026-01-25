@@ -5,8 +5,6 @@ Shader "Hidden/ConvolutionBloom/PsfRemap"
         _MaxClamp ("KernelMaxClamp", float) = 5
         _MinClamp ("KernelMinClamp", float) = 1
         _FFT_EXTEND ("FFT EXTEND", Vector) = (0.1, 0.1,0,0)
-        _ScreenX ("Screen X", Int) = 0
-        _ScreenY ("Screen Y", Int) = 0
         _Power ("Power", float) = 1
         _Scaler ("Scaler", float) = 1
         _EnableRemap ("EnableRemap", int) = 1
@@ -28,8 +26,6 @@ Shader "Hidden/ConvolutionBloom/PsfRemap"
             float _MaxClamp;
             float _MinClamp;
             float4 _FFT_EXTEND;
-            int _ScreenX;
-            int _ScreenY;
             float _Power;
             float _Scaler;
             int _EnableRemap;
@@ -46,8 +42,7 @@ Shader "Hidden/ConvolutionBloom/PsfRemap"
                 uv.y = fmod(uv.y + 0.5, 1.0);
                 float2 fft_extend = _FFT_EXTEND.xy;
                 float2 img_map_size = 1 - 2 * fft_extend;
-                float2 screen_size = float2(_ScreenX, _ScreenY);
-                float2 kenrel_map_size = sqrt(_ScreenX * _ScreenY) * img_map_size / screen_size;
+                float2 kenrel_map_size = sqrt(_ScreenSize.x * _ScreenSize.y) * img_map_size * _ScreenSize.zw;
                 uv = (uv - (1 - kenrel_map_size) * 0.5) / kenrel_map_size;
                 
                 half4 col;
