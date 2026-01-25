@@ -303,6 +303,6 @@ namespace Illusion.Rendering
 
         public const RenderPassEvent PostProcessPostPass = RenderPassEvent.AfterRenderingPostProcessing;
 
-        public const RenderPassEvent FullScreenDebugPass = RenderPassEvent.AfterRendering + 2; // Ensure after Final Blit.
+        public const RenderPassEvent FullScreenDebugPass = RenderPassEvent.AfterRenderingPostProcessing + 1;
     }
 }
