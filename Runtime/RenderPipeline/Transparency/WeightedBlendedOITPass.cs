@@ -162,7 +162,7 @@ namespace Illusion.Rendering
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
             
-                builder.SetRenderFunc((OITPassData data, RasterGraphContext context) =>
+                builder.SetRenderFunc(static (OITPassData data, RasterGraphContext context) =>
                 {
                     data.CompositeMaterial.EnableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
                     Blitter.BlitTexture(context.cmd, data.ColorHandle, new Vector4(1, 1, 0, 0), data.CompositeMaterial, 0);
