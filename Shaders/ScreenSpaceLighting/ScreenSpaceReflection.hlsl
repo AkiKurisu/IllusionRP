@@ -95,7 +95,7 @@ half4 FragSSRLinearSS(Varyings input) : SV_Target
     float3 normalWS = 0;
 #ifdef _DEFERRED_RENDERING_PATH
     half4 gbuffer2 = SAMPLE_TEXTURE2D_X_LOD(_GBuffer2, sampler_PointClamp, input.texcoord, 0);
-    normalWS = normalize(UnpackNormal(gbuffer2.xyz));
+    normalWS = normalize(UnpackNormal(gbuffer2));
 #else
     normalWS = SampleSceneNormals(input.texcoord);
 #endif
