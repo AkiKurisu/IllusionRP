@@ -115,13 +115,8 @@ namespace Illusion.Rendering
             {
                 passData.CompositeMaterial = _compositeMat.Value;
                 builder.SetRenderAttachment(accumulateHandle, 0);
-                passData.AccumulateHandle = accumulateHandle;
                 builder.SetRenderAttachment(revealageHandle, 1);
-                passData.RevealageHandle = revealageHandle;
-                builder.UseTexture(colorTarget);
-                passData.ColorHandle = colorTarget;
                 builder.SetRenderAttachmentDepth(depthTarget);
-                passData.DepthHandle = depthTarget;
 
                 passData.CameraData = cameraData;
                 InitRendererLists(frameData, ref passData, default, renderGraph, true);
@@ -160,13 +155,10 @@ namespace Illusion.Rendering
                 passData.CameraData = cameraData;
                 passData.CompositeMaterial = _compositeMat.Value;
                 builder.SetInputAttachment(accumulateHandle, 0);
-                passData.AccumulateHandle = accumulateHandle;
                 builder.SetInputAttachment(revealageHandle, 1);
-                passData.RevealageHandle = revealageHandle;
                 builder.SetRenderAttachment(colorTarget, 0);
                 passData.ColorHandle = colorTarget;
                 builder.SetRenderAttachmentDepth(depthTarget, AccessFlags.Read);
-                passData.DepthHandle = depthTarget;
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
             
@@ -185,9 +177,6 @@ namespace Illusion.Rendering
 
         private class OITPassData
         {
-            internal TextureHandle AccumulateHandle;
-            internal TextureHandle RevealageHandle;
-            internal TextureHandle DepthHandle;
             internal TextureHandle ColorHandle;
             internal Material CompositeMaterial;
             internal UniversalCameraData CameraData;
