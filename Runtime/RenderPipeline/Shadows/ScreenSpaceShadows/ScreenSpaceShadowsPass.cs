@@ -98,8 +98,8 @@ namespace Illusion.Rendering.Shadows
             _penumbraMaskDesc.autoGenerateMips = false;
             _penumbraMaskDesc.useMipMap = false;
             _penumbraMaskDesc.msaaSamples = 1;
-            _penumbraMaskDesc.width = cameraTargetDesc.width / pcssParams.penumbraMaskScale.value;
-            _penumbraMaskDesc.height = cameraTargetDesc.height / pcssParams.penumbraMaskScale.value;
+            _penumbraMaskDesc.width = Mathf.CeilToInt((float)cameraTargetDesc.width / pcssParams.penumbraMaskScale.value);
+            _penumbraMaskDesc.height = Mathf.CeilToInt((float)cameraTargetDesc.height / pcssParams.penumbraMaskScale.value);
             _colorAttachmentWidth = cameraTargetDesc.width;
             _colorAttachmentHeight = cameraTargetDesc.height;
 
