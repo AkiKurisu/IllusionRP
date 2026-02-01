@@ -42,32 +42,7 @@ namespace Illusion.Rendering.PostProcessing
         
         private readonly ProfilingSampler _otfFftSampler = new("Convolution Bloom OTF FFT");
 
-        private static class ShaderProperties
-        {
-            public static readonly int FFTExtend = Shader.PropertyToID("_FFT_EXTEND");
-
-            public static readonly int Threshold = Shader.PropertyToID("_Threshlod");
-
-            public static readonly int ThresholdKnee = Shader.PropertyToID("_ThresholdKnee");
-
-            public static readonly int TexelSize = Shader.PropertyToID("_TexelSize");
-
-            public static readonly int MaxClamp = Shader.PropertyToID("_MaxClamp");
-
-            public static readonly int MinClamp = Shader.PropertyToID("_MinClamp");
-
-            public static readonly int KernelPow = Shader.PropertyToID("_Power");
-
-            public static readonly int KernelScaler = Shader.PropertyToID("_Scaler");
-
-            public static readonly int ScreenX = Shader.PropertyToID("_ScreenX");
-
-            public static readonly int ScreenY = Shader.PropertyToID("_ScreenY");
-
-            public static readonly int EnableRemap = Shader.PropertyToID("_EnableRemap");
-
-            public static readonly int Intensity = Shader.PropertyToID("_Intensity");
-        }
+        private bool _psfInitialized;
 
         public ConvolutionBloomPass(IllusionRendererData rendererData)
         {
@@ -193,7 +168,7 @@ namespace Illusion.Rendering.PostProcessing
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             var bloomParams = VolumeManager.instance.stack.GetComponent<ConvolutionBloom>();
-            if (bloomParams == null || !bloomParams.IsActive()) return;
+            if (!bloomParams || !bloomParams.IsActive()) return;
             
             float threshold = bloomParams.threshold.value;
             float thresholdKnee = bloomParams.scatter.value;
@@ -206,15 +181,13 @@ namespace Illusion.Rendering.PostProcessing
             UpdateRenderTextureSize(bloomParams);
 
             var resource = frameData.Get<UniversalResourceData>();
-            var cameraData = frameData.Get<UniversalCameraData>();
             TextureHandle colorTexture = resource.activeColorTexture;
-            var targetX = cameraData.camera.pixelWidth;
-            var targetY = cameraData.camera.pixelHeight;
             
             // Update OTF if parameters changed
-            if (bloomParams.IsParamUpdated())
+            if (bloomParams.IsParamUpdated() || !_psfInitialized)
             {
-                RenderOTFUpdatePass(renderGraph, bloomParams, new Vector2Int(targetX, targetY), highQuality);
+                _psfInitialized = true;
+                RenderOTFUpdatePass(renderGraph, bloomParams, highQuality);
             }
             
             // Import RTHandles as TextureHandles
@@ -222,8 +195,7 @@ namespace Illusion.Rendering.PostProcessing
             TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
 
             // Pass 1: Bright mask extraction
-            fftTargetHandle = RenderBrightMaskPass(renderGraph, colorTexture, fftTargetHandle,
-                bloomParams, threshold, thresholdKnee, clampMax, new Vector2Int(targetX, targetY), fftExtend);
+            fftTargetHandle = RenderBrightMaskPass(renderGraph, colorTexture, fftTargetHandle, threshold, thresholdKnee, clampMax, fftExtend);
 
             // Pass 2: FFT Convolution
             fftTargetHandle = RenderConvolutionPass(renderGraph, fftTargetHandle, otfHandle,
@@ -234,8 +206,8 @@ namespace Illusion.Rendering.PostProcessing
         }
 
         private TextureHandle RenderBrightMaskPass(RenderGraph renderGraph, TextureHandle source,
-            TextureHandle destination, ConvolutionBloom bloomParams, float threshold, float thresholdKnee,
-            float maxClamp, Vector2Int screenSize, Vector2 fftExtend)
+            TextureHandle destination, float threshold, float thresholdKnee,
+            float maxClamp, Vector2 fftExtend)
         {
             using (var builder = renderGraph.AddRasterRenderPass<BrightMaskPassData>("Convolution Bloom Bright Mask", out var passData, _brightMaskSampler))
             {
@@ -244,7 +216,6 @@ namespace Illusion.Rendering.PostProcessing
                 passData.Threshold = threshold;
                 passData.ThresholdKnee = thresholdKnee;
                 passData.MaxClamp = maxClamp;
-                passData.TexelSize = new Vector4(1f / screenSize.x, 1f / screenSize.y, 0, 0);
                 
                 builder.UseTexture(source);
                 passData.Source = source;
@@ -258,7 +229,6 @@ namespace Illusion.Rendering.PostProcessing
                     data.BrightMaskMaterial.SetFloat(ShaderProperties.Threshold, data.Threshold);
                     data.BrightMaskMaterial.SetFloat(ShaderProperties.ThresholdKnee, data.ThresholdKnee);
                     data.BrightMaskMaterial.SetFloat(ShaderProperties.MaxClamp, data.MaxClamp);
-                    data.BrightMaskMaterial.SetVector(ShaderProperties.TexelSize, data.TexelSize);
                     
                     Blitter.BlitTexture(context.cmd, data.Source, Vector2.one, data.BrightMaskMaterial, 0);
                 });
@@ -336,7 +306,7 @@ namespace Illusion.Rendering.PostProcessing
             }
         }
 
-        private void RenderOTFUpdatePass(RenderGraph renderGraph, ConvolutionBloom param, Vector2Int size, bool highQuality)
+        private void RenderOTFUpdatePass(RenderGraph renderGraph, ConvolutionBloom param, bool highQuality)
         {
             TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
             
@@ -367,8 +337,6 @@ namespace Illusion.Rendering.PostProcessing
                     passData.PsfRemapMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
                     passData.PsfRemapMaterial.SetFloat(ShaderProperties.KernelPow, param.imagePSFPow.value);
                     passData.PsfRemapMaterial.SetFloat(ShaderProperties.KernelScaler, param.imagePSFScale.value);
-                    passData.PsfRemapMaterial.SetInt(ShaderProperties.ScreenX, size.x);
-                    passData.PsfRemapMaterial.SetInt(ShaderProperties.ScreenY, size.y);
                     passData.PsfRemapMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                     builder.SetRenderFunc(static (OTFUpdatePassData data, RasterGraphContext context) =>
                     {
@@ -378,8 +346,6 @@ namespace Illusion.Rendering.PostProcessing
                 else
                 {
                     passData.PsfGeneratorMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
-                    passData.PsfGeneratorMaterial.SetInt(ShaderProperties.ScreenX, size.x);
-                    passData.PsfGeneratorMaterial.SetInt(ShaderProperties.ScreenY, size.y);
                     passData.PsfGeneratorMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                     builder.SetRenderFunc(static (OTFUpdatePassData data, RasterGraphContext context) =>
                     {
@@ -404,6 +370,27 @@ namespace Illusion.Rendering.PostProcessing
                     data.FFTKernel.FFT(context.cmd, data.OtfTextureHandle, data.HighQuality);
                 });
             }
+        }
+        
+        private static class ShaderProperties
+        {
+            public static readonly int FFTExtend = Shader.PropertyToID("_FFT_EXTEND");
+
+            public static readonly int Threshold = Shader.PropertyToID("_Threshlod");
+
+            public static readonly int ThresholdKnee = Shader.PropertyToID("_ThresholdKnee");
+
+            public static readonly int MaxClamp = Shader.PropertyToID("_MaxClamp");
+
+            public static readonly int MinClamp = Shader.PropertyToID("_MinClamp");
+
+            public static readonly int KernelPow = Shader.PropertyToID("_Power");
+
+            public static readonly int KernelScaler = Shader.PropertyToID("_Scaler");
+
+            public static readonly int EnableRemap = Shader.PropertyToID("_EnableRemap");
+
+            public static readonly int Intensity = Shader.PropertyToID("_Intensity");
         }
     }
 }

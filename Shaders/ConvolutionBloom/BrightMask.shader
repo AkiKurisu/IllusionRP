@@ -6,7 +6,6 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
         _Threshlod ("Threshlod", float) = 10
         _ThresholdKnee ("ThresholdKnee", float) = 0.1
         _MaxClamp ("MaxClamp", float) = 5
-        _TexelSize ("TexelSize", Vector) = (0.01, 0.01, 0, 0)
         
     }
     SubShader
@@ -36,7 +35,6 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
             float4 _FFT_EXTEND;
             float _Threshlod;
             float _ThresholdKnee;
-            float4 _TexelSize;
             float _MaxClamp;
 
             #define Threshold _Threshlod
@@ -86,7 +84,7 @@ Shader "Hidden/ConvolutionBloom/BrightMask"
                 if (uv.x > 1 || uv.y > 1 || uv.x < 0 || uv.y < 0) return 0;
 
 
-                float2 texelSize = _TexelSize.xy * 2;
+                float2 texelSize = _ScreenSize.zw * 2;
                 half4 A = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(-1.0, -1.0));
                 half4 B = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(0.0, -1.0));
                 half4 C = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv + texelSize * float2(1.0, -1.0));

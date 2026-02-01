@@ -53,8 +53,7 @@ namespace Illusion.Rendering.PostProcessing
         [Header("FFT")]
         public Vector2Parameter fftExtend = new(new Vector2(0.1f, 0.1f));
         
-        [HideInInspector]
-        public BoolParameter updateOTF = new(true);
+        public BoolParameter updateOTF = new(false);
         
         public BoolParameter generatePSF = new(false);
 

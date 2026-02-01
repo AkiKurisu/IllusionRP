@@ -44,7 +44,6 @@ namespace Illusion.Rendering.PostProcessing
         private class DebugExposurePassData
         {
             internal Material DebugExposureMaterial;
-            internal TextureHandle OutputTexture;
             internal TextureHandle SourceTexture;
             internal TextureHandle CurrentExposure;
             internal TextureHandle PreviousExposure;
@@ -104,20 +103,21 @@ namespace Illusion.Rendering.PostProcessing
             // Import textures
             var colorBeforePostProcess = _rendererData.GetPreviousFrameColorRT(frameData, out _);
             TextureHandle sourceBeforePostProcess = renderGraph.ImportTexture(colorBeforePostProcess);
-            TextureHandle colorAfterPostProcess = resource.activeColorTexture;
+            TextureHandle colorTarget = resource.cameraColor;
             TextureHandle debugOutputTexture = renderGraph.ImportTexture(_rendererData.DebugExposureTexture);
             
             // Stage 1: Generate debug histogram
             using (var builder = renderGraph.AddComputePass<DebugHistogramPassData>("Debug Image Histogram", 
-                out var histogramPassData, new ProfilingSampler("Debug Image Histogram")))
+                out var data))
             {
-                histogramPassData.DebugImageHistogramCs = _debugImageHistogramCs;
-                histogramPassData.DebugImageHistogramKernel = _debugImageHistogramKernel;
+                data.DebugImageHistogramCs = _debugImageHistogramCs;
+                data.DebugImageHistogramKernel = _debugImageHistogramKernel;
+                data.HistogramBuffer = _rendererData.DebugImageHistogram;
+                data.CameraWidth = cameraData.camera.pixelWidth;
+                data.CameraHeight = cameraData.camera.pixelHeight;
+
                 builder.UseTexture(sourceBeforePostProcess);
-                histogramPassData.SourceTexture = sourceBeforePostProcess;
-                histogramPassData.HistogramBuffer = _rendererData.DebugImageHistogram;
-                histogramPassData.CameraWidth = cameraData.camera.pixelWidth;
-                histogramPassData.CameraHeight = cameraData.camera.pixelHeight;
+                data.SourceTexture = sourceBeforePostProcess;
                 
                 builder.AllowPassCulling(false);
                 
@@ -129,14 +129,15 @@ namespace Illusion.Rendering.PostProcessing
             
             // Stage 2: Render debug exposure overlay
             using (var builder = renderGraph.AddRasterRenderPass<DebugExposurePassData>("Debug Exposure Overlay", 
-                out var debugPassData, profilingSampler))
+                out var data))
             {
-                PrepareDebugPassData(debugPassData, cameraData, renderGraph, 
-                    colorAfterPostProcess, debugOutputTexture);
+                PrepareDebugPassData(data, cameraData, renderGraph);
+                
+                builder.UseTexture(colorTarget);
+                data.SourceTexture = colorTarget;
                 
                 builder.SetRenderAttachment(debugOutputTexture, 0);
-                debugPassData.OutputTexture = debugOutputTexture;
-                
+
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
@@ -148,12 +149,12 @@ namespace Illusion.Rendering.PostProcessing
             
             // Stage 3: Final blit to camera target
             using (var builder = renderGraph.AddRasterRenderPass<FinalBlitPassData>("Debug Exposure Final Blit", 
-                out var blitPassData, new ProfilingSampler("Debug Exposure Final Blit")))
+                out var data))
             {
                 builder.UseTexture(debugOutputTexture);
-                blitPassData.Source = debugOutputTexture;
-                builder.SetRenderAttachment(resource.activeColorTexture, 0);
-                blitPassData.Destination = resource.activeColorTexture;
+                data.Source = debugOutputTexture;
+                
+                builder.SetRenderAttachment(colorTarget, 0);
                 
                 builder.AllowPassCulling(false);
                 
@@ -166,13 +167,11 @@ namespace Illusion.Rendering.PostProcessing
         }
 
         private void PrepareDebugPassData(DebugExposurePassData passData, UniversalCameraData cameraData, 
-            RenderGraph renderGraph, TextureHandle sourceTexture, TextureHandle outputTexture)
+            RenderGraph renderGraph)
         {
             var renderingConfig = IllusionRuntimeRenderingConfig.Get();
             
             passData.DebugExposureMaterial = _debugExposureMaterial.Value;
-            passData.SourceTexture = sourceTexture;
-            passData.OutputTexture = outputTexture;
             
             var currentExposure = _rendererData.GetExposureTexture();
             var previousExposure = _rendererData.GetPreviousExposureTexture();
@@ -198,7 +197,7 @@ namespace Illusion.Rendering.PostProcessing
                 }
                 
                 // Create new RTHandle wrapper
-                if (currentWeightMask != null)
+                if (currentWeightMask)
                 {
                     _weightTextureMaskRTHandle = RTHandles.Alloc(currentWeightMask);
                 }

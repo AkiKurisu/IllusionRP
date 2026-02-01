@@ -191,7 +191,7 @@ namespace Illusion.Rendering
 
         private readonly MaterialPropertyBlock _propertyBlock;
 
-        private LocalKeyword _enableCheckBoard;
+        private readonly LocalKeyword _enableCheckBoard;
         
         private readonly ComputeBuffer _depthPyramidConstantBuffer;
 
@@ -209,8 +209,7 @@ namespace Illusion.Rendering
             _colorGaussianKernel = _colorPyramidCS.FindKernel("KColorGaussian");
             _propertyBlock = new MaterialPropertyBlock();
             _enableCheckBoard = new LocalKeyword(_depthPyramidCs, "ENABLE_CHECKERBOARD");
-            _depthPyramidConstantBuffer = new ComputeBuffer(1, UnsafeUtility.SizeOf<DepthPyramidConstants>(),
-                ComputeBufferType.Constant);
+            _depthPyramidConstantBuffer = new ComputeBuffer(1, UnsafeUtility.SizeOf<DepthPyramidConstants>(), ComputeBufferType.Constant);
             _constantsArray = new DepthPyramidConstants[1];
         }
 
@@ -223,6 +222,7 @@ namespace Illusion.Rendering
                 RTHandles.Release(_tempDownsamplePyramid[i]);
                 _tempDownsamplePyramid[i] = null;
             }
+            _depthPyramidConstantBuffer.Dispose();
         }
 
         private int xrMaxSliceCount
