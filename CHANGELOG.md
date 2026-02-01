@@ -5,6 +5,17 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-2-2
+
+### Fixed
+
+- Fix ScreenSpaceShadowsPass exception when penumbra mask is too small.
+- Fix MipGenerator memory leak.
+- Fix ExposureDebugPass not work.
+- Optimize ConvolutionBloomPass.
+- Fix ScreenSpaceReflection FragSSRLinearSS compile error.
+- Fix FFTRadixN compilation unroll error.
+
 ## [1.2.1] - 2026-1-24
 
 ### Fixed
