@@ -276,7 +276,7 @@ half3 HairMarschnerNoPI(BRDFData brdfData, half3 L, half3 V, float3 N, HairData 
     Mp = Hair_G(B[0] * BScale, ThetaH - ShiftR);
     Np = 0.25 * CosHalfPhi;
     Fp = Hair_F(sqrt(saturate(0.5 + 0.5 * VoL)));
-    specR += Mp * Np * Fp * (HairData.Tint * 4) * lerp(1, HairData.Backlit, saturate(-VoL));
+    specR += Mp * Np * Fp * (HairData.Tint * 2) * lerp(1, HairData.Backlit, saturate(-VoL));
 #endif
 
     // TT
@@ -290,7 +290,7 @@ half3 HairMarschnerNoPI(BRDFData brdfData, half3 L, half3 V, float3 N, HairData 
     Tp = PositivePow(abs(brdfData.albedo), 0.5 * sqrt(1 - Pow2(h * a)) / CosThetaD);
     
     Np = exp(-3.65 * CosPhi - 3.98);
-    specR += Mp * Np * Fp * Tp * HairData.Backlit * 0.2f;
+    specR += Mp * Np * Fp * Tp * HairData.Backlit;
 #endif
 
     // TRT
@@ -314,7 +314,16 @@ half3 HairMarschnerNoPI(BRDFData brdfData, half3 L, half3 V, float3 N, HairData 
 half3 HairMarschner(BRDFData brdfData, half3 L, half3 V, float3 N, HairData HairData)
 {
     half3 specR = HairMarschnerNoPI(brdfData, L, V, N, HairData);
-    specR *= INV_PI;
+    // specR *= INV_PI;
+    
+    // Gate direct light contribution by NdotL to prevent the lobe's near-zero alpha shift
+    // from producing specular when light comes from behind the mesh surface (dot(N,L) < 0).
+    // Applied here (not in HairMarschnerNoPI) so the GI path calling HairMarschnerNoPI directly
+    // with a tangent-plane L vector (dot(N,L) = 0 by construction) is not incorrectly zeroed out.
+
+    // UE4/HDRP omit this entirely because their Marschner runs on strand geometry, where
+    // the fiber cylinder itself occludes back-facing contributions.
+    specR *= saturate(dot(N, L));
     
 #if REAL_IS_HALF
     specR = specR - HALF_MIN;
