@@ -66,8 +66,6 @@ namespace Illusion.Rendering
             RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ForwardGBuffer");
 
-            UniversalRenderingUtility.EnsureCameraDepthGraphicsResourcesForFrame(renderGraph, resource, cameraData);
-            UniversalRenderingUtility.EnsureCameraNormalsTextureForFrame(renderGraph, resource, cameraData);
             TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
             TextureHandle normalsTexture = resource.cameraNormalsTexture;
             if (!depthTexture.IsValid() || !normalsTexture.IsValid()) return;
