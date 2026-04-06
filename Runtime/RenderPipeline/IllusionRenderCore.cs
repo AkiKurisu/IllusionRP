@@ -236,7 +236,7 @@ namespace Illusion.Rendering
         // ================================= Depth Prepass ================================================ //
         // @IllusionRP:
         // URP 17, CameraDepth will be copied to CameraDepthTexture AfterRenderingPrePasses.
-        public const RenderPassEvent TransparentDepthNormalPostPass = RenderPassEvent.BeforeRenderingPrePasses;
+        public const RenderPassEvent TransparentDepthNormalPrePass = RenderPassEvent.BeforeRenderingPrePasses;
 
         // Copy pre-depth should before depth only post pass.
         public const RenderPassEvent TransparentCopyPreDepthPass = RenderPassEvent.AfterRenderingPrePasses;
@@ -244,7 +244,7 @@ namespace Illusion.Rendering
         // Screen space effect need ignore transparent post depth since normal is not matched with depth.
         public const RenderPassEvent DepthPyramidPass = RenderPassEvent.AfterRenderingPrePasses;
 
-        public const RenderPassEvent TransparentDepthOnlyPostPass = RenderPassEvent.AfterRenderingPrePasses + 1;
+        public const RenderPassEvent TransparentDepthOnlyPrePass = RenderPassEvent.AfterRenderingPrePasses + 1;
         // ================================= Depth Prepass ================================================ //
 
         public const RenderPassEvent ForwardGBufferPass = RenderPassEvent.AfterRenderingPrePasses + 2;

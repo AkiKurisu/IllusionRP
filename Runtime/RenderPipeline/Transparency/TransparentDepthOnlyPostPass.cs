@@ -11,7 +11,7 @@ namespace Illusion.Rendering
     /// </summary>
     public class TransparentDepthOnlyPostPass : ScriptableRenderPass, IDisposable
     {
-        private const string DepthProfilerTag = "Transparent Post Depth";
+        private const string DepthProfilerTag = "Transparent Depth Only";
 
         private readonly FilteringSettings _filteringSettings;
 
@@ -19,7 +19,7 @@ namespace Illusion.Rendering
 
         public TransparentDepthOnlyPostPass()
         {
-            renderPassEvent = IllusionRenderPassEvent.TransparentDepthOnlyPostPass;
+            renderPassEvent = IllusionRenderPassEvent.TransparentDepthOnlyPrePass;
             _filteringSettings = new FilteringSettings(RenderQueueRange.all);
             profilingSampler = new ProfilingSampler("Transparent Post Depth");
             ConfigureInput(ScriptableRenderPassInput.Depth);
