@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Reflection;
+using UnityEngine.Experimental.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal.Internal;
 
 namespace UnityEngine.Rendering.Universal
@@ -24,12 +26,6 @@ namespace UnityEngine.Rendering.Universal
                 return _fieldInfo!.GetValue(universalRenderer) as TRenderPass;
             }
         }
-        
-        private static FieldInfo _opaqueColorFieldInfo;
-        
-        private static FieldInfo _normalsTextureFieldInfo;
-
-        private static FieldInfo _motionVectorColorFieldInfo;
 
         private static FieldInfo _motionVectorDepthFieldInfo;
         
@@ -42,7 +38,7 @@ namespace UnityEngine.Rendering.Universal
         /// </summary>
         /// <param name="frameData"></param>
         /// <returns></returns>
-        public static RenderGraphModule.TextureHandle GetDepthWriteTextureHandle(this ContextContainer frameData)
+        public static TextureHandle GetDepthWriteTextureHandle(this ContextContainer frameData)
         {
             var res = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
@@ -55,6 +51,83 @@ namespace UnityEngine.Rendering.Universal
             }
 
             return depthTexture;
+        }
+
+        /// <summary>
+        /// Ensures depth resources match URP's RenderGraph allocation (see UniversalRendererRenderGraph.CreateCameraDepthCopyTexture
+        /// and CreateIntermediateCameraDepthAttachment). Fills <c>_cameraDepthTexture</c> via backing field (internal setter)
+        /// and assigns <see cref="UniversalResourceData.cameraDepth"/> when depth priming applies.
+        /// </summary>
+        public static void EnsureCameraDepthGraphicsResourcesForFrame(RenderGraph renderGraph,
+            UniversalResourceData resourceData, UniversalCameraData cameraData)
+        {
+            if (cameraData.renderer is not UniversalRenderer universalRenderer)
+                return;
+
+            var targetDesc = cameraData.cameraTargetDescriptor;
+            int w = targetDesc.width;
+            int h = targetDesc.height;
+            Color clearValue = cameraData.backgroundColor;
+            
+            {
+                // CreateCameraDepthCopyTexture: depth-stencil format, MSAA off (URP uses TextureDesc.format).
+                var desc = new TextureDesc(w, h)
+                {
+                    format = universalRenderer.cameraDepthTextureFormat,
+                    msaaSamples = MSAASamples.None,
+                    name = "_CameraDepthTexture",
+                    clearBuffer = true,
+                    clearColor = clearValue
+                };
+                TextureHandle depthCopy = renderGraph.CreateTexture(desc);
+                resourceData.cameraDepthTexture = depthCopy;
+            }
+
+            bool usePrimedDepth = cameraData.renderer.useDepthPriming
+                                  && (cameraData.renderType == CameraRenderType.Base || cameraData.clearDepth);
+            if (usePrimedDepth)
+            {
+                var desc = new TextureDesc(w, h)
+                {
+                    format = universalRenderer.cameraDepthAttachmentFormat,
+                    msaaSamples = (MSAASamples)targetDesc.msaaSamples,
+                    name = "_CameraDepthAttachment",
+                    clearBuffer = true,
+                    clearColor = clearValue
+                };
+                resourceData.cameraDepth = renderGraph.CreateTexture(desc);
+            }
+        }
+
+        /// <summary>
+        /// Ensures <see cref="UniversalResourceData.cameraNormalsTexture"/> matches URP's RenderGraph allocation
+        /// (see UniversalRendererRenderGraph.CreateCameraNormalsTexture). If the handle is invalid, creates the same
+        /// kind of texture and assigns it to frame resources so all passes reading <c>resource.cameraNormalsTexture</c> stay consistent.
+        /// </summary>
+        public static TextureHandle EnsureCameraNormalsTextureForFrame(RenderGraph renderGraph,
+            UniversalResourceData resourceData, UniversalCameraData cameraData)
+        {
+            TextureHandle handle = resourceData.cameraNormalsTexture;
+            if (handle.IsValid())
+                return handle;
+
+            var targetDesc = cameraData.cameraTargetDescriptor;
+            int w = targetDesc.width;
+            int h = targetDesc.height;
+            GraphicsFormat format = DepthNormalOnlyPass.GetGraphicsFormat();
+
+            var desc = new TextureDesc(w, h)
+            {
+                colorFormat = format,
+                msaaSamples = MSAASamples.None,
+                name = "_CameraNormalsTexture",
+                clearBuffer = true,
+                clearColor = Color.black
+            };
+
+            handle = renderGraph.CreateTexture(desc);
+            resourceData.cameraNormalsTexture = handle;
+            return handle;
         }
         
         public static DrawingSettings CreateDrawingSettings(ShaderTagId shaderTagId, ContextContainer frameData, SortingCriteria sortingCriteria)

@@ -9,7 +9,7 @@ using UnityEngine.Rendering.Universal.Internal;
 namespace Illusion.Rendering
 {
     /// <summary>
-    /// Copy current depth before writing transparent post depth, should be used with <see cref="TransparentDepthNormalPostPass"/>.
+    /// Copy current depth before writing transparent post depth, should be used with <see cref="TransparentDepthOnlyPostPass"/>.
     /// </summary>
     public class TransparentCopyPreDepthPass :  ScriptableRenderPass, IDisposable
     {

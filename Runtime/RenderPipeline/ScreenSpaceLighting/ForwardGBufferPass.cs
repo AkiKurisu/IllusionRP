@@ -10,14 +10,11 @@ namespace Illusion.Rendering
 {
     public class ForwardGBufferPass : ScriptableRenderPass, IDisposable
     {
-        private int _passIndex;
-
-        private string _targetName;
-
         private readonly List<ShaderTagId> _shaderTagIdList = new();
 
         private readonly FilteringSettings _filteringSettings;
 
+        /// <summary>No per-drawer override: depth/write state comes from the ForwardGBuffer shader pass.</summary>
         private readonly RenderStateBlock _renderStateBlock;
 
         private readonly IllusionRendererData _rendererData;
@@ -28,27 +25,27 @@ namespace Illusion.Rendering
             _shaderTagIdList.Add(new ShaderTagId("ForwardGBuffer"));
 
             _rendererData = rendererData;
-            _filteringSettings = new FilteringSettings(RenderQueueRange.opaque);
+            _filteringSettings = new FilteringSettings(RenderQueueRange.all);
             renderPassEvent = IllusionRenderPassEvent.ForwardGBufferPass;
             _renderStateBlock = new RenderStateBlock(RenderStateMask.Depth)
             {
-                // ZWrite Off
-                // ZTest Equal
-                depthState = new DepthState(false, CompareFunction.Equal)
+                // ZWrite On
+                // ZTest LessEqual
+                depthState = new DepthState(true, CompareFunction.LessEqual)
             };
-            ConfigureInput(ScriptableRenderPassInput.Normal | ScriptableRenderPassInput.Depth);
+            
+            // Match URP GetRenderPassInputs: depth + normals so prepass / resource requirements align with ForwardGBuffer writing _CameraNormalsTexture.
+            ConfigureInput(ScriptableRenderPassInput.Depth | ScriptableRenderPassInput.Normal);
         }
 
         public void Dispose()
         {
             // pass
         }
-        
+
         private class PassData
         {
             internal TextureHandle ForwardGBufferHandle;
-            internal TextureHandle DepthHandle;
-            internal UniversalRenderingData RenderingData;
             internal RendererListHandle RendererListHdl;
         }
 
@@ -56,21 +53,25 @@ namespace Illusion.Rendering
         {
             var cameraData = frameData.Get<UniversalCameraData>();
             var renderingData = frameData.Get<UniversalRenderingData>();
+            var resource = frameData.Get<UniversalResourceData>();
 
             // Allocate Forward GBuffer RT
             var desc = cameraData.cameraTargetDescriptor;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
             desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
-                    ? GraphicsFormat.R8_UNorm
-                    : GraphicsFormat.B8G8R8A8_UNorm;
+                ? GraphicsFormat.R8_UNorm
+                : GraphicsFormat.B8G8R8A8_UNorm;
 
             RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ForwardGBuffer");
-            
+
+            UniversalRenderingUtility.EnsureCameraDepthGraphicsResourcesForFrame(renderGraph, resource, cameraData);
+            UniversalRenderingUtility.EnsureCameraNormalsTextureForFrame(renderGraph, resource, cameraData);
             TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
-            if (!depthTexture.IsValid()) return;
-            
+            TextureHandle normalsTexture = resource.cameraNormalsTexture;
+            if (!depthTexture.IsValid() || !normalsTexture.IsValid()) return;
+
             TextureHandle forwardGBufferHandle = renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
 
             using (var builder = renderGraph.AddUnsafePass<PassData>("Clear Forward GBuffer", out var passData, profilingSampler))
@@ -86,17 +87,15 @@ namespace Illusion.Rendering
                     context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
                 });
             }
-            
-            // Render Forward GBuffer
+
+            // Render Forward GBuffer (MRT: smoothness + camera normals) + depth
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Forward GBuffer", out var passData, profilingSampler))
             {
                 builder.SetRenderAttachment(forwardGBufferHandle, 0);
-                passData.ForwardGBufferHandle = forwardGBufferHandle;
+                builder.SetRenderAttachment(normalsTexture, 1);
                 builder.SetRenderAttachmentDepth(depthTexture);
-                passData.DepthHandle = depthTexture;
-                passData.RenderingData = renderingData;
+                passData.ForwardGBufferHandle = forwardGBufferHandle;
 
-                // Create renderer list
                 SortingCriteria sortingCriteria = cameraData.defaultOpaqueSortFlags;
                 DrawingSettings drawingSettings = UniversalRenderingUtility.CreateDrawingSettings(_shaderTagIdList, frameData, sortingCriteria);
                 RenderingUtils.CreateRendererListWithRenderStateBlock(renderGraph, ref renderingData.cullResults, drawingSettings, _filteringSettings, _renderStateBlock, ref passData.RendererListHdl);
@@ -104,20 +103,15 @@ namespace Illusion.Rendering
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
-                
-                builder.SetGlobalTextureAfterPass(forwardGBufferHandle, Properties._ForwardGBuffer);
+
+                builder.SetGlobalTextureAfterPass(forwardGBufferHandle, IllusionShaderProperties._ForwardGBuffer);
+                builder.SetGlobalTextureAfterPass(normalsTexture, IllusionShaderProperties._CameraNormalsTexture);
 
                 builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {
-                    // Draw renderers with ForwardGBuffer shader tag
                     context.cmd.DrawRendererList(data.RendererListHdl);
                 });
             }
-        }
-        
-        private static class Properties
-        {
-            public static readonly int _ForwardGBuffer = MemberNameHelpers.ShaderPropertyID();
         }
     }
 }

@@ -160,8 +160,6 @@ namespace Illusion.Rendering
 
         private TransparentCopyPostDepthPass _transparentCopyPostDepthPass;
 
-        private TransparentDepthNormalPostPass _transparentDepthNormalPostPass;
-
         private TransparentDepthOnlyPostPass _transparentDepthOnlyPass;
 
         private TransparentOverdrawPass _transparentOverdrawPass;
@@ -286,8 +284,7 @@ namespace Illusion.Rendering
 
             _weightedBlendedOitPass = new WeightedBlendedOITPass(oitFilterLayer);
             _transparentOverdrawPass = TransparentOverdrawPass.Create(oitOverrideStencil);
-            _transparentDepthNormalPostPass = new TransparentDepthNormalPostPass();
-            _transparentDepthOnlyPass = new TransparentDepthOnlyPostPass();
+            _transparentDepthOnlyPass = new TransparentDepthOnlyPostPass(_rendererData);
             _transparentCopyPreDepthPass = new TransparentCopyPreDepthPass(_rendererData);
             _transparentCopyPostDepthPass = new TransparentCopyPostDepthPass();
 
@@ -379,7 +376,7 @@ namespace Illusion.Rendering
             bool hasValidVolume = PRTVolumeManager.ProbeVolume && PRTVolumeManager.ProbeVolume.IsActivate();
             _rendererData.SampleProbeVolumes = usePrecomputedRadianceTransfer && hasValidVolume;
 
-            bool useForwardGBuffer = useScreenSpaceReflection && !isDeferred;
+            bool useForwardGBuffer = !isDeferred; // Replace DepthNormal with ForwardGBuffer in Forward/Forward+.
             bool useDepthPyramid = useAmbientOcclusion || useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
             bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
             bool needHistoryColor = requireHistoryColor && !useTAA;
@@ -412,7 +409,6 @@ namespace Illusion.Rendering
             if (useDepthPostPass)
             {
                 renderer.EnqueuePass(_transparentCopyPreDepthPass);
-                renderer.EnqueuePass(_transparentDepthNormalPostPass);
                 renderer.EnqueuePass(_transparentDepthOnlyPass);
             }
 
@@ -615,7 +611,6 @@ namespace Illusion.Rendering
             SafeDispose(ref _weightedBlendedOitPass);
             SafeDispose(ref _transparentCopyPreDepthPass);
             SafeDispose(ref _transparentCopyPostDepthPass);
-            SafeDispose(ref _transparentDepthNormalPostPass);
             SafeDispose(ref _screenSpaceReflectionPass);
             SafeDispose(ref _screenSpaceGlobalIlluminationPass);
             SafeDispose(ref _forwardGBufferPass);
