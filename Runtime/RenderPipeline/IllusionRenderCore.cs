@@ -105,6 +105,8 @@ namespace Illusion.Rendering
 
         public static readonly int _ContactShadowMap = MemberNameHelpers.ShaderPropertyID();
 
+        public static readonly int ScreenSpaceShadowmapTexture = Shader.PropertyToID("_ScreenSpaceShadowmapTexture");
+
         public static readonly int _MotionVectorTexture = MemberNameHelpers.ShaderPropertyID();
 
         public static readonly int _ColorPyramidTexture = MemberNameHelpers.ShaderPropertyID();
@@ -223,7 +225,15 @@ namespace Illusion.Rendering
         /// <summary>
         /// Screen Space Global Illumination second history buffer for second denoiser pass.
         /// </summary>
-        ScreenSpaceGlobalIllumination2
+        ScreenSpaceGlobalIllumination2,
+        /// <summary>
+        /// Screen Space Shadow history buffer for temporal denoising.
+        /// </summary>
+        ScreenSpaceShadowHistory,
+        /// <summary>
+        /// Screen Space Shadow history validity buffer for temporal denoising.
+        /// </summary>
+        ScreenSpaceShadowHistoryValidity
     }
 
     public enum IllusionGraphicsFenceEvent

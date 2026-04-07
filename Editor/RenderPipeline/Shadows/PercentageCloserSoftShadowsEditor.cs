@@ -16,6 +16,9 @@ namespace Illusion.Rendering.Editor
         private SerializedDataParameter _findBlockerSampleCount;
         private SerializedDataParameter _pcfSampleCount;
         private SerializedDataParameter _penumbraMaskScale;
+        private SerializedDataParameter _shadowTemporalAccumulation;
+        private SerializedDataParameter _shadowSpatialDenoise;
+        private SerializedDataParameter _shadowDenoiseKernelSize;
 
         public override void OnEnable()
         {
@@ -30,6 +33,9 @@ namespace Illusion.Rendering.Editor
             _findBlockerSampleCount = Unpack(o.Find(x => x.findBlockerSampleCount));
             _pcfSampleCount = Unpack(o.Find(x => x.pcfSampleCount));
             _penumbraMaskScale = Unpack(o.Find(x => x.penumbraMaskScale));
+            _shadowTemporalAccumulation = Unpack(o.Find(x => x.shadowTemporalAccumulation));
+            _shadowSpatialDenoise = Unpack(o.Find(x => x.shadowSpatialDenoise));
+            _shadowDenoiseKernelSize = Unpack(o.Find(x => x.shadowDenoiseKernelSize));
         }
 
         public override void OnInspectorGUI()
@@ -43,6 +49,9 @@ namespace Illusion.Rendering.Editor
             PropertyField(_findBlockerSampleCount, EditorGUIUtility.TrTextContent("Blocker Search Samples", "Number of samples for blocker search. Higher values give better quality but lower performance."));
             PropertyField(_pcfSampleCount, EditorGUIUtility.TrTextContent("PCF Samples", "Number of samples for PCF filtering. Higher values give smoother shadows but lower performance."));
             PropertyField(_penumbraMaskScale, EditorGUIUtility.TrTextContent("Penumbra Mask Scale", "Scale factor for the penumbra mask texture. Higher values use smaller textures (better performance, lower quality)."));
+            PropertyField(_shadowTemporalAccumulation, EditorGUIUtility.TrTextContent("Shadow Temporal Accumulation", "Enable temporal accumulation for screen-space shadows."));
+            PropertyField(_shadowSpatialDenoise, EditorGUIUtility.TrTextContent("Shadow Spatial Denoise", "Enable spatial bilateral denoising after temporal accumulation."));
+            PropertyField(_shadowDenoiseKernelSize, EditorGUIUtility.TrTextContent("Shadow Denoise Kernel Size", "Filter radius for spatial bilateral shadow denoiser."));
         }
     }
 }

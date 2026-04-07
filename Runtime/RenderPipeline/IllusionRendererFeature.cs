@@ -140,6 +140,8 @@ namespace Illusion.Rendering
 
         private ScreenSpaceShadowsPass _screenSpaceShadowsPass;
 
+        private ScreenSpaceShadowTemporalPass _screenSpaceShadowTemporalPass;
+
         private DiffuseShadowDenoisePass _diffuseShadowDenoisePass;
 
         private ScreenSpaceShadowsPostPass _screenSpaceShadowsPostPass;
@@ -269,6 +271,7 @@ namespace Illusion.Rendering
 
             _contactShadowsPass = new ContactShadowsPass(_rendererData);
             _screenSpaceShadowsPass = new ScreenSpaceShadowsPass(_rendererData);
+            _screenSpaceShadowTemporalPass = new ScreenSpaceShadowTemporalPass(_rendererData);
             _diffuseShadowDenoisePass = new DiffuseShadowDenoisePass(_rendererData);
             _screenSpaceShadowsPostPass = new ScreenSpaceShadowsPostPass();
             _subsurfaceScatteringPass = new SubsurfaceScatteringPass(_rendererData);
@@ -339,6 +342,11 @@ namespace Illusion.Rendering
                                     && contactShadowParam.enable.value;
 
             bool useTransparentShadow = transparentReceivePerObjectShadows && !isPreviewCamera;
+            var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
+            bool useShadowTemporalAccumulation = config.EnablePercentageCloserSoftShadows
+                                                 && pcssShadows
+                                                 && !isPreviewCamera
+                                                 && pcssParams.shadowTemporalAccumulation.value;
 
             var ambientOcclusionParam = VolumeManager.instance.stack.GetComponent<GroundTruthAmbientOcclusion>();
             bool useAmbientOcclusion = config.EnableScreenSpaceAmbientOcclusion
@@ -465,6 +473,10 @@ namespace Illusion.Rendering
 
             // AfterRenderingGBuffer
             renderer.EnqueuePass(_screenSpaceShadowsPass);
+            if (useShadowTemporalAccumulation)
+            {
+                renderer.EnqueuePass(_screenSpaceShadowTemporalPass);
+            }
             
             // Always add subsurface scattering, upload parameters only when feature is disabled.
             renderer.EnqueuePass(_subsurfaceScatteringPass);
@@ -552,6 +564,8 @@ namespace Illusion.Rendering
             rendererData.PCSSShadowSampling = pcssShadows
                                               && !isPreviewOrReflectCamera
                                               && config.EnablePercentageCloserSoftShadows;
+            var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
+            bool useShadowTemporalAccumulation = rendererData.PCSSShadowSampling && pcssParams.shadowTemporalAccumulation.value;
 
             var screenSpaceGlobalIlluminationParam =
                 VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
@@ -566,7 +580,7 @@ namespace Illusion.Rendering
                                             && screenSpaceReflection && !isPreviewOrReflectCamera
                                             && screenSpaceReflectionParam.enable.value;
             rendererData.SampleScreenSpaceReflection = useScreenSpaceReflection;
-            rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination;
+            rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination || useShadowTemporalAccumulation;
 
             var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
             _sceneShadowCasterManager.Cull(cameraData, lightData,
@@ -606,6 +620,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _charlieAndFabricLambertPass);
             SafeDispose(ref _perObjShadowPass);
             SafeDispose(ref _screenSpaceShadowsPass);
+            SafeDispose(ref _screenSpaceShadowTemporalPass);
             SafeDispose(ref _subsurfaceScatteringPass);
             SafeDispose(ref _contactShadowsPass);
             SafeDispose(ref _weightedBlendedOitPass);
