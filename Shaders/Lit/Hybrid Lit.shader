@@ -63,13 +63,9 @@ Shader "Universal Render Pipeline/Hybrid Lit"
         [HideInInspector] _AddPrecomputedVelocity("_AddPrecomputedVelocity", Float) = 0.0
         [HideInInspector] _XRMotionVectorsPass("_XRMotionVectorsPass", Float) = 1.0
         
-        // GBuffer
-        [HideInInspector] _StencilRefGBuffer("_StencilRefGBuffer", Int) = 0 // Nothing
-        [HideInInspector] _StencilWriteMaskGBuffer("_StencilWriteMaskGBuffer", Int) = 4 // IllusionStencilUsage.TraceReflectionRay
-        
-         // Depth prepass
-        [HideInInspector] _StencilRefDepth("_StencilRefDepth", Int) = 0 // Nothing
-        [HideInInspector] _StencilWriteMaskDepth("_StencilWriteMaskDepth", Int) = 1 // IllusionStencilUsage.NotReceiveAmbientOcclusion
+        // ForwardGBuffer
+        [HideInInspector] _StencilRefDepth("_StencilRefDepth", Int) = 4 // IllusionStencilUsage.TraceReflectionRay
+        [HideInInspector] _StencilWriteMaskDepth("_StencilWriteMaskDepth", Int) = 5 // IllusionStencilUsage.ForwardGBufferWriteMask
 
         [ToggleUI] _ReceiveShadows("Receive Shadows", Float) = 1.0
         // Editmode props
@@ -425,38 +421,47 @@ Shader "Universal Render Pipeline/Hybrid Lit"
             {
                 "LightMode" = "ForwardGBuffer"
             }
-            
-            ZWrite Off
-            Cull Off
-            ZTest Equal
-            
-            // To be able to tag stencil with disableSSR information for forward
+
+            ZWrite On
+            Cull[_Cull]
+            ZTest LEqual
+
+            // To be able to tag stencil with disableAO information for forward (same as former DepthNormals pass)
             Stencil
             {
-                WriteMask [_StencilWriteMaskGBuffer]
-                Ref [_StencilRefGBuffer]
+                WriteMask [_StencilWriteMaskDepth]
+                Ref [_StencilRefDepth]
                 Comp Always
                 Pass Replace
             }
-            
+
             HLSLPROGRAM
             #pragma target 4.5
             #pragma shader_feature_local_fragment _SPECULAR_SETUP
-            
+
+            // -------------------------------------
+            // Material Keywords (depth normals + smoothness)
+            #pragma shader_feature_local _NORMALMAP
+            #pragma shader_feature_local _PARALLAXMAP
+            #pragma shader_feature_local _ _DETAIL_MULX2 _DETAIL_SCALED
+            #pragma shader_feature_local _ALPHATEST_ON
+            #pragma shader_feature_local_fragment _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+
             // -------------------------------------
             // Unity defined keywords
             #pragma multi_compile _ LOD_FADE_CROSSFADE
-            
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
+
             //--------------------------------------
             // GPU Instancing
             #pragma multi_compile_instancing
             #pragma instancing_options renderinglayer
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
-                        
+
             #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/HybridLitForwardGBufferPass.hlsl"
 
-            #pragma vertex LitPassVertex
-            #pragma fragment LitForwardGBufferPassFragment
+            #pragma vertex DepthNormalsVertex
+            #pragma fragment LitForwardGBufferMRTFragment
             ENDHLSL
         }
 
@@ -500,65 +505,6 @@ Shader "Universal Render Pipeline/Hybrid Lit"
             // Includes
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/DepthOnlyPass.hlsl"
-            ENDHLSL
-        }
-
-        // This pass is used when drawing to a _CameraNormalsTexture texture
-        Pass
-        {
-            Name "DepthNormals"
-            Tags
-            {
-                "LightMode" = "DepthNormals"
-            }
-
-            // -------------------------------------
-            // Render State Commands
-            ZWrite On
-            Cull[_Cull]
-            
-            // To be able to tag stencil with disableAO information for forward
-            Stencil
-            {
-                WriteMask [_StencilWriteMaskDepth]
-                Ref [_StencilRefDepth]
-                Comp Always
-                Pass Replace
-            }
-
-            HLSLPROGRAM
-            #pragma target 2.0
-
-            // -------------------------------------
-            // Shader Stages
-            #pragma vertex DepthNormalsVertex
-            #pragma fragment DepthNormalsFragment
-
-            // -------------------------------------
-            // Material Keywords
-            #pragma shader_feature_local _NORMALMAP
-            #pragma shader_feature_local _PARALLAXMAP
-            #pragma shader_feature_local _ _DETAIL_MULX2 _DETAIL_SCALED
-            #pragma shader_feature_local _ALPHATEST_ON
-            #pragma shader_feature_local_fragment _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
-
-            // -------------------------------------
-            // Unity defined keywords
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
-
-            // -------------------------------------
-            // Universal Pipeline keywords
-            #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
-
-            //--------------------------------------
-            // GPU Instancing
-            #pragma multi_compile_instancing
-            #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
-
-            // -------------------------------------
-            // Includes
-            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitDepthNormalsPass.hlsl"
             ENDHLSL
         }
 

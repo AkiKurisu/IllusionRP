@@ -80,6 +80,8 @@ namespace Illusion.Rendering.Editor
             {
                 if ((SurfaceType)surfaceTypeProp.floatValue == SurfaceType.Transparent)
                 {
+                    // Merged ForwardGBuffer replaces DepthNormals; transparents must not write depth/normals here.
+                    material.SetShaderPassEnabled("ForwardGBuffer", false);
                     if (material.HasProperty(IllusionShaderProperties.OrderIndependent))
                     {
                         var hasOrderIndependent =
@@ -91,6 +93,7 @@ namespace Illusion.Rendering.Editor
                 else
                 {
                     material.SetShaderPassEnabled("OIT", false);
+                    material.SetShaderPassEnabled("ForwardGBuffer", true);
                 }
             }
 
@@ -104,18 +107,14 @@ namespace Illusion.Rendering.Editor
             }
 
             int stencilRefDepth = 0;
-            int stencilWriteMaskDepth = 0;
-            int stencilRefGBuffer = 0;
-            int stencilWriteMaskGBuffer = 0;
-            stencilWriteMaskDepth |= (int)IllusionStencilUsage.NotReceiveAmbientOcclusion;
-            stencilWriteMaskGBuffer |= (int)IllusionStencilUsage.TraceReflectionRay;
+            int stencilWriteMaskDepth = (int)IllusionStencilUsage.ForwardGBufferWriteMask;
 
             if (material.HasProperty(IllusionShaderProperties.ScreenSpaceReflections))
             {
                 var receiveSSR = Mathf.Approximately(material.GetFloat(IllusionShaderProperties.ScreenSpaceReflections), 1.0f);
                 if (receiveSSR)
                 {
-                    stencilRefGBuffer |= (int)IllusionStencilUsage.TraceReflectionRay;
+                    stencilRefDepth |= (int)IllusionStencilUsage.TraceReflectionRay;
                 }
             }
 
@@ -132,12 +131,6 @@ namespace Illusion.Rendering.Editor
             {
                 material.SetInt(IllusionShaderProperties.StencilRefDepth, stencilRefDepth);
                 material.SetInt(IllusionShaderProperties.StencilWriteMaskDepth, stencilWriteMaskDepth);
-            }
-
-            if (material.HasProperty(IllusionShaderProperties.StencilRefGBuffer) && material.HasProperty(IllusionShaderProperties.StencilWriteMaskGBuffer))
-            {
-                material.SetInt(IllusionShaderProperties.StencilRefGBuffer, stencilRefGBuffer);
-                material.SetInt(IllusionShaderProperties.StencilWriteMaskGBuffer, stencilWriteMaskGBuffer);
             }
         }
 

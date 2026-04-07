@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal.Internal;
 
 namespace UnityEngine.Rendering.Universal
@@ -25,14 +26,6 @@ namespace UnityEngine.Rendering.Universal
             }
         }
         
-        private static FieldInfo _opaqueColorFieldInfo;
-        
-        private static FieldInfo _normalsTextureFieldInfo;
-
-        private static FieldInfo _motionVectorColorFieldInfo;
-
-        private static FieldInfo _motionVectorDepthFieldInfo;
-        
         private static FieldInfo _activeRenderPassQueueFieldInfo;
         
         private static FieldInfo _shadowSliceDataFieldInfo;
@@ -42,7 +35,7 @@ namespace UnityEngine.Rendering.Universal
         /// </summary>
         /// <param name="frameData"></param>
         /// <returns></returns>
-        public static RenderGraphModule.TextureHandle GetDepthWriteTextureHandle(this ContextContainer frameData)
+        public static TextureHandle GetDepthWriteTextureHandle(this ContextContainer frameData)
         {
             var res = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
