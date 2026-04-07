@@ -459,17 +459,22 @@ namespace Illusion.Rendering
                 // Get history buffers
                 Vector4 sizeAndScale = Vector4.one;
 
+                var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
                 var historyNormalRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Normal);
                 if (historyNormalRT.IsValid())
                 {
                     TextureHandle historyNormalTexture = renderGraph.ImportTexture(historyNormalRT);
                     builder.UseTexture(historyNormalTexture);
                     passData.HistoryNormalTexture = historyNormalTexture;
-                    sizeAndScale = _rendererData.EvaluateRayTracingHistorySizeAndScale(historyNormalRT);
                 }
                 else
                 {
                     passData.HistoryNormalTexture = normalTexture;
+                }
+                
+                if (historyDepthRT.IsValid())
+                {
+                    sizeAndScale = _rendererData.EvaluateRayTracingHistorySizeAndScale(historyDepthRT);
                 }
                 
                 passData.TemporalFilterCS = _temporalFilterCS;
@@ -482,7 +487,7 @@ namespace Illusion.Rendering
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
                 
                 // Create validation buffer
-                var validationDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
+                var validationDesc = new TextureDesc((int)_screenWidth, (int)_screenHeight, false, false)
                 {
                     colorFormat = GraphicsFormat.R8_UInt,
                     enableRandomWrite = true,
@@ -535,7 +540,7 @@ namespace Illusion.Rendering
         private TextureHandle RenderTemporalDenoisePass(RenderGraph renderGraph, UniversalCameraData cameraData,
             TextureHandle inputTexture, TextureHandle historyBuffer, TextureHandle depthTexture,
             TextureHandle validationBuffer, TextureHandle motionVectorTexture, TextureHandle exposureTexture,
-            TextureHandle prevExposureTexture, float resolutionMultiplier)
+            TextureHandle prevExposureTexture, float resolutionMultiplier, float historyResolutionMultiplier)
         {
             using (var builder = renderGraph.AddComputePass<TemporalDenoisePassData>("SSGI Temporal Denoise", out var passData))
             {
@@ -544,7 +549,11 @@ namespace Illusion.Rendering
                 passData.CopyHistoryKernel = _temporalFilterCopyHistoryKernel;
                 passData.HistoryValidity = 1.0f;
                 passData.PixelSpreadAngleTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, _rtWidth, _rtHeight);
-                passData.ResolutionMultiplier = new Vector4(resolutionMultiplier, 1.0f / resolutionMultiplier, 1, 1);
+                passData.ResolutionMultiplier = new Vector4(
+                    resolutionMultiplier,
+                    1.0f / resolutionMultiplier,
+                    historyResolutionMultiplier,
+                    1.0f / historyResolutionMultiplier);
                 passData.Width = _rtWidth;
                 passData.Height = _rtHeight;
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
@@ -893,7 +902,7 @@ namespace Illusion.Rendering
                 float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
                 var temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                     giTexture, historyTexture1, depthPyramidTexture, validationTexture,
-                    motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier);
+                    motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, scaleFactor);
                 
                 // First spatial denoise pass
                 bool halfResFilter = volume.halfResolutionDenoiser.value;
@@ -921,7 +930,7 @@ namespace Illusion.Rendering
                     
                     temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                         giTexture, historyTexture2, depthPyramidTexture, validationTexture,
-                        motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier);
+                        motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, scaleFactor);
                     
                     spatialOutput = RenderSpatialDenoisePass(renderGraph, cameraData,
                         temporalOutput, depthPyramidTexture, normalTexture,
