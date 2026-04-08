@@ -67,6 +67,28 @@ namespace Illusion.Rendering.Shadows
         [AdditionalProperty]
         [Tooltip("Scale factor for the penumbra mask texture. Higher values use smaller textures (better performance, lower quality).")]
         public ClampedIntParameter penumbraMaskScale = new(4, 1, 32);
+
+        /// <summary>
+        /// Enable temporal accumulation for screen-space PCSS shadows.
+        /// </summary>
+        [Header("Denoiser")]
+        [AdditionalProperty]
+        [Tooltip("Enable temporal accumulation for screen-space shadows.")]
+        public BoolParameter shadowTemporalAccumulation = new(true);
+
+        /// <summary>
+        /// Enable spatial bilateral denoising after temporal accumulation.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Enable spatial bilateral denoising after temporal accumulation.")]
+        public BoolParameter shadowSpatialDenoise = new(false);
+
+        /// <summary>
+        /// Bilateral denoiser filter radius for screen-space shadows.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Filter radius for spatial bilateral shadow denoiser.")]
+        public ClampedIntParameter shadowDenoiseKernelSize = new(4, 1, 16);
     }
 }
 

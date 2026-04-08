@@ -126,8 +126,11 @@ namespace Illusion.Rendering.Shadows
                 ? GraphicsFormat.R8_UNorm
                 : GraphicsFormat.B8G8R8A8_UNorm;
 
-            // Create screen space shadows texture
-            TextureHandle screenSpaceShadowsTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, descriptor, "_ScreenSpaceShadowmapTexture", true);
+            // Keep a persistent screen space shadow texture so temporal accumulation can run in a follow-up pass.
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ScreenSpaceShadowsRT, descriptor,
+                wrapMode: TextureWrapMode.Clamp, filterMode: FilterMode.Bilinear,
+                name: "_ScreenSpaceShadowmapTexture");
+            TextureHandle screenSpaceShadowsTexture = renderGraph.ImportTexture(_rendererData.ScreenSpaceShadowsRT);
             
             TextureHandle preDepthTexture = resource.cameraDepthTexture;
             var preDepthRT = _rendererData.CameraPreDepthTextureRT;
@@ -182,8 +185,13 @@ namespace Illusion.Rendering.Shadows
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
-                
-                builder.SetGlobalTextureAfterPass(screenSpaceShadowsTexture, ShaderProperties._ScreenSpaceShadowmapTexture);
+
+                var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
+                bool useShadowTemporalAccumulation = _rendererData.PCSSShadowSampling && pcssParams.shadowTemporalAccumulation.value;
+                if (!useShadowTemporalAccumulation)
+                {
+                    builder.SetGlobalTextureAfterPass(screenSpaceShadowsTexture, IllusionShaderProperties.ScreenSpaceShadowmapTexture);
+                }
 
                 builder.SetRenderFunc((ShadowPassData data, RasterGraphContext rgContext) =>
                 {
@@ -321,8 +329,6 @@ namespace Illusion.Rendering.Shadows
         
         private static class ShaderProperties
         {
-            public static readonly int _ScreenSpaceShadowmapTexture = MemberNameHelpers.ShaderPropertyID();
-            
             public static readonly int CascadeOffsetScales = Shader.PropertyToID("_CascadeOffsetScales");
 
             public static readonly int DirLightPcssParams0 = Shader.PropertyToID("_DirLightPcssParams0");
