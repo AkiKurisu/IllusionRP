@@ -21,8 +21,6 @@ namespace Illusion.Rendering.PostProcessing
         private Exposure _exposure;
 
         private readonly LazyMaterial _debugExposureMaterial = new(IllusionShaders.DebugExposure);
-        
-        private ComputeBuffer _histogramBuffer;
 
         private readonly IllusionRendererData _rendererData;
         
@@ -83,8 +81,8 @@ namespace Illusion.Rendering.PostProcessing
         private void PrepareDebugExposureData(UniversalCameraData cameraData)
         {
             _exposure = VolumeManager.instance.stack.GetComponent<Exposure>();
-            IllusionRenderingUtils.ValidateComputeBuffer(ref _rendererData.DebugImageHistogram, DebugImageHistogramBins, 4 * sizeof(uint));
-            _rendererData.DebugImageHistogram.SetData(_emptyDebugImageHistogram);    // Clear the histogram
+            var debugHist = _rendererData.GetDebugImageHistogramForCamera(cameraData.camera);
+            debugHist.SetData(_emptyDebugImageHistogram); // Clear the histogram
             
             var descriptor = cameraData.cameraTargetDescriptor;
             descriptor.depthBufferBits = (int)DepthBits.None;
@@ -112,7 +110,7 @@ namespace Illusion.Rendering.PostProcessing
             {
                 data.DebugImageHistogramCs = _debugImageHistogramCs;
                 data.DebugImageHistogramKernel = _debugImageHistogramKernel;
-                data.HistogramBuffer = _rendererData.DebugImageHistogram;
+                data.HistogramBuffer = _rendererData.GetDebugImageHistogramForCamera(cameraData.camera);
                 data.CameraWidth = cameraData.camera.pixelWidth;
                 data.CameraHeight = cameraData.camera.pixelHeight;
 
@@ -182,8 +180,8 @@ namespace Illusion.Rendering.PostProcessing
             passData.ExposureDebugData = renderGraph.ImportTexture(debugExposureData);
             
             passData.HistogramBuffer = renderingConfig.ExposureDebugMode == ExposureDebugMode.FinalImageHistogramView 
-                ? _rendererData.DebugImageHistogram 
-                : _rendererData.HistogramBuffer;
+                ? _rendererData.GetDebugImageHistogramForCamera(cameraData.camera) 
+                : _rendererData.GetHistogramBufferForCamera(cameraData.camera);
             
             // Import Texture2D resources as TextureHandle with cached RTHandle wrappers
             var currentWeightMask = _exposure.weightTextureMask.value;

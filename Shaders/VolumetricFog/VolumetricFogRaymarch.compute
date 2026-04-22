@@ -22,7 +22,7 @@
 // Included headers
 //--------------------------------------------------------------------------------------------------
 
-#include "Packages/com.unity.render-pipelines.ps5/ShaderLibrary/API/FoveatedRendering_PSSL.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/com.unity.render-pipelines.ps5/ShaderLibrary/API/FoveatedRendering_PSSL.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/VolumetricFog/VolumetricFog.hlsl"
 

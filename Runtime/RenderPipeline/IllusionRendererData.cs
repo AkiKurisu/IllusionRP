@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -242,15 +243,51 @@ namespace Illusion.Rendering
         
         public RTHandle DebugExposureTexture;
 
-        public ComputeBuffer DebugImageHistogram;
+        public ComputeBuffer GetDebugImageHistogramForCamera(Camera camera)
+        {
+            if (camera == null)
+                return null;
+            int id = camera.GetInstanceID();
+            TouchCameraResources(id);
+            if (!_debugImageHistogramsByCameraId.TryGetValue(id, out var buf))
+                buf = null;
+            IllusionRenderingUtils.ValidateComputeBuffer(ref buf, DebugImageHistogramBinCount, 4 * sizeof(uint));
+            _debugImageHistogramsByCameraId[id] = buf;
+            return buf;
+        }
 
-        public ComputeBuffer HistogramBuffer;
+        public ComputeBuffer GetHistogramBufferForCamera(Camera camera)
+        {
+            if (camera == null)
+                return null;
+            int id = camera.GetInstanceID();
+            TouchCameraResources(id);
+            if (!_histogramBuffersByCameraId.TryGetValue(id, out var buf))
+                buf = null;
+            IllusionRenderingUtils.ValidateComputeBuffer(ref buf, ExposureHistogramBinCount, sizeof(uint));
+            _histogramBuffersByCameraId[id] = buf;
+            return buf;
+        }
 
         public static IllusionRendererData Active { get; private set; }
 
         private UniversalAdditionalCameraData _additionalCameraData;
 
-        private readonly BufferedRTHandleSystem _historyRTSystem = new();
+        private readonly Dictionary<int, BufferedRTHandleSystem> _historyRTSystemsByCameraId = new();
+
+        private readonly Dictionary<int, ComputeBuffer> _histogramBuffersByCameraId = new();
+
+        private readonly Dictionary<int, ComputeBuffer> _debugImageHistogramsByCameraId = new();
+
+        private readonly Dictionary<int, int> _cameraResourceLastUsedUnityFrame = new();
+
+        private int _lastUnityFrameAdvanced;
+
+        private int _lastStalePruneUnityFrame = -1;
+
+        public const int ExposureHistogramBinCount = 128;
+
+        public const int DebugImageHistogramBinCount = 256;
 
         private Camera _camera;
 
@@ -315,6 +352,7 @@ namespace Illusion.Rendering
             // neutral exposure texture isn't 0
             _emptyExposureTexture = RTHandles.Alloc(1, 1, colorFormat: ExposureFormat,
                 enableRandomWrite: true, name: "Empty EV100 Exposure");
+            SetExposureTextureToEmpty(_emptyExposureTexture);
 
             _debugExposureData = RTHandles.Alloc(1, 1, colorFormat: ExposureFormat,
                 enableRandomWrite: true, name: "Debug Exposure Info");
@@ -328,11 +366,79 @@ namespace Illusion.Rendering
             };
         }
 
+        private void TouchCameraResources(int cameraInstanceId)
+        {
+            _cameraResourceLastUsedUnityFrame[cameraInstanceId] = Time.frameCount;
+        }
+
+        private BufferedRTHandleSystem GetOrCreateHistorySystem(Camera camera)
+        {
+            int id = camera.GetInstanceID();
+            TouchCameraResources(id);
+            if (!_historyRTSystemsByCameraId.TryGetValue(id, out var sys))
+            {
+                sys = new BufferedRTHandleSystem();
+                _historyRTSystemsByCameraId[id] = sys;
+            }
+
+            return sys;
+        }
+
+        private BufferedRTHandleSystem GetHistorySystemForCamera(Camera camera)
+        {
+            if (camera == null)
+                return null;
+            return _historyRTSystemsByCameraId.TryGetValue(camera.GetInstanceID(), out var sys) ? sys : null;
+        }
+
+        private const int StaleCameraResourceMaxFrames = 600;
+
+        private void PruneStalePerCameraResources()
+        {
+            int fc = Time.frameCount;
+            List<int> staleIds = null;
+            foreach (var kv in _cameraResourceLastUsedUnityFrame)
+            {
+                if (fc - kv.Value > StaleCameraResourceMaxFrames)
+                    (staleIds ??= new List<int>()).Add(kv.Key);
+            }
+
+            if (staleIds == null)
+                return;
+
+            foreach (int id in staleIds)
+            {
+                _cameraResourceLastUsedUnityFrame.Remove(id);
+                if (_historyRTSystemsByCameraId.TryGetValue(id, out var histSys))
+                {
+                    histSys.Dispose();
+                    _historyRTSystemsByCameraId.Remove(id);
+                }
+
+                if (_histogramBuffersByCameraId.TryGetValue(id, out var hb))
+                {
+                    CoreUtils.SafeRelease(hb);
+                    _histogramBuffersByCameraId.Remove(id);
+                }
+
+                if (_debugImageHistogramsByCameraId.TryGetValue(id, out var db))
+                {
+                    CoreUtils.SafeRelease(db);
+                    _debugImageHistogramsByCameraId.Remove(id);
+                }
+            }
+        }
+
         public void Update(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
         {
             Active = this;
-            // Advance render frame
-            FrameCount++;
+            int unityFrame = Time.frameCount;
+            if (unityFrame != _lastUnityFrameAdvanced)
+            {
+                _lastUnityFrameAdvanced = unityFrame;
+                FrameCount++;
+            }
+
             IsFirstFrame = false;
             UpdateCameraData(cameraData);
             UpdateLightData(lightData);
@@ -340,6 +446,12 @@ namespace Illusion.Rendering
             UpdateRenderTextures(cameraData);
             UpdateDebugSettings(cameraData);
             UpdateVolumeParameters();
+
+            if (unityFrame != _lastStalePruneUnityFrame)
+            {
+                _lastStalePruneUnityFrame = unityFrame;
+                PruneStalePerCameraResources();
+            }
         }
 
         public void Dispose()
@@ -350,7 +462,16 @@ namespace Illusion.Rendering
             }
 
             MipGenerator.Release();
-            _historyRTSystem.Dispose();
+            foreach (var kv in _historyRTSystemsByCameraId)
+                kv.Value.Dispose();
+            _historyRTSystemsByCameraId.Clear();
+            foreach (var kv in _histogramBuffersByCameraId)
+                CoreUtils.SafeRelease(kv.Value);
+            _histogramBuffersByCameraId.Clear();
+            foreach (var kv in _debugImageHistogramsByCameraId)
+                CoreUtils.SafeRelease(kv.Value);
+            _debugImageHistogramsByCameraId.Clear();
+            _cameraResourceLastUsedUnityFrame.Clear();
             CameraPreDepthTextureRT?.Release();
             CameraPreviousColorTextureRT?.Release();
             DepthPyramidMipLevelOffsetsBuffer?.Release();
@@ -360,12 +481,8 @@ namespace Illusion.Rendering
             ForwardGBufferRT?.Release();
             DebugExposureTexture?.Release();
             DepthPyramidRT?.Release();
-            CoreUtils.SafeRelease(HistogramBuffer);
-            HistogramBuffer = null;
             CoreUtils.SafeRelease(_ambientProbeBuffer);
             _ambientProbeBuffer = null;
-            CoreUtils.SafeRelease(DebugImageHistogram);
-            DebugImageHistogram = null;
             RTHandles.Release(_emptyExposureTexture);
             
             // Release default texture RTHandle wrappers
@@ -408,9 +525,17 @@ namespace Illusion.Rendering
             if (++_taaFrameIndex >= kMaxSampleCount)
                 _taaFrameIndex = 0;
             _shaderVariablesGlobal.TaaFrameInfo = new Vector4(0, _taaFrameIndex, FrameCount, useTAA ? 1 : 0);
-            _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame
-                = IllusionRenderingUtils.ComputeViewportScaleAndLimit(_historyRTSystem.rtHandleProperties.previousViewportSize,
-                    _historyRTSystem.rtHandleProperties.previousRenderTargetSize);
+            var historySys = GetHistorySystemForCamera(cameraData.camera);
+            if (historySys != null)
+            {
+                _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame
+                    = IllusionRenderingUtils.ComputeViewportScaleAndLimit(historySys.rtHandleProperties.previousViewportSize,
+                        historySys.rtHandleProperties.previousRenderTargetSize);
+            }
+            else
+            {
+                _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame = Vector4.zero;
+            }
             
             MicroShadows microShadowingSettings = VolumeManager.instance.stack.GetComponent<MicroShadows>();
             _shaderVariablesGlobal.MicroShadowOpacity = microShadowingSettings.enable.value ? microShadowingSettings.opacity.value : 0.0f;
@@ -486,20 +611,21 @@ namespace Illusion.Rendering
 
         private void UpdateRenderTextures(UniversalCameraData cameraData)
         {
+            var historySys = GetOrCreateHistorySystem(cameraData.camera);
             var descriptor = cameraData.cameraTargetDescriptor;
             var viewportSize = new Vector2Int(descriptor.width, descriptor.height);
-            _historyRTSystem.SwapAndSetReferenceSize(descriptor.width, descriptor.height);
+            historySys.SwapAndSetReferenceSize(descriptor.width, descriptor.height);
 
             // Since we do not use RTHandleScale, ensure render texture size correct
-            if (_historyRTSystem.rtHandleProperties.currentRenderTargetSize.x > descriptor.width
-                || _historyRTSystem.rtHandleProperties.currentRenderTargetSize.y > descriptor.height)
+            if (historySys.rtHandleProperties.currentRenderTargetSize.x > descriptor.width
+                || historySys.rtHandleProperties.currentRenderTargetSize.y > descriptor.height)
             {
-                _historyRTSystem.ResetReferenceSize(descriptor.width, descriptor.height);
+                historySys.ResetReferenceSize(descriptor.width, descriptor.height);
                 _exposureTextures.Clear();
             }
 
             DepthMipChainInfo.ComputePackedMipChainInfo(viewportSize, 0);
-            
+
             SetupExposureTextures();
         }
 
@@ -629,10 +755,18 @@ namespace Illusion.Rendering
 
         public Vector4 EvaluateRayTracingHistorySizeAndScale(RTHandle buffer)
         {
-            return new Vector4(_historyRTSystem.rtHandleProperties.previousViewportSize.x,
-                _historyRTSystem.rtHandleProperties.previousViewportSize.y,
-                (float)_historyRTSystem.rtHandleProperties.previousViewportSize.x / buffer.rt.width,
-                (float)_historyRTSystem.rtHandleProperties.previousViewportSize.y / buffer.rt.height);
+            return EvaluateRayTracingHistorySizeAndScale(buffer, _camera);
+        }
+
+        public Vector4 EvaluateRayTracingHistorySizeAndScale(RTHandle buffer, Camera camera)
+        {
+            var sys = GetHistorySystemForCamera(camera);
+            if (sys == null)
+                return Vector4.one;
+            return new Vector4(sys.rtHandleProperties.previousViewportSize.x,
+                sys.rtHandleProperties.previousViewportSize.y,
+                (float)sys.rtHandleProperties.previousViewportSize.x / buffer.rt.width,
+                (float)sys.rtHandleProperties.previousViewportSize.y / buffer.rt.height);
         }
 
         /// <summary>
@@ -644,8 +778,9 @@ namespace Illusion.Rendering
         /// <returns>A new RTHandle.</returns>
         public RTHandle AllocHistoryFrameRT(int id, Func<string, int, RTHandleSystem, RTHandle> allocator, int bufferCount)
         {
-            _historyRTSystem.AllocBuffer(id, (rts, i) => allocator(_camera.name, i, rts), bufferCount);
-            return _historyRTSystem.GetFrameRT(id, 0);
+            var sys = GetOrCreateHistorySystem(_camera);
+            sys.AllocBuffer(id, (rts, i) => allocator(_camera.name, i, rts), bufferCount);
+            return sys.GetFrameRT(id, 0);
         }
 
         /// <summary>
@@ -655,7 +790,7 @@ namespace Illusion.Rendering
         /// <returns>The RTHandle from previous frame.</returns>
         public RTHandle GetPreviousFrameRT(int id)
         {
-            return _historyRTSystem.GetFrameRT(id, 1);
+            return GetHistorySystemForCamera(_camera)?.GetFrameRT(id, 1);
         }
 
         /// <summary>
@@ -665,7 +800,7 @@ namespace Illusion.Rendering
         /// <returns>The RTHandle of the current frame.</returns>
         public RTHandle GetCurrentFrameRT(int id)
         {
-            return _historyRTSystem.GetFrameRT(id, 0);
+            return GetHistorySystemForCamera(_camera)?.GetFrameRT(id, 0);
         }
 
         /// <summary>
@@ -674,7 +809,7 @@ namespace Illusion.Rendering
         /// <param name="id"></param>
         internal void ReleaseHistoryFrameRT(int id)
         {
-            _historyRTSystem.ReleaseBuffer(id);
+            GetHistorySystemForCamera(_camera)?.ReleaseBuffer(id);
         }
 
         /// <summary>

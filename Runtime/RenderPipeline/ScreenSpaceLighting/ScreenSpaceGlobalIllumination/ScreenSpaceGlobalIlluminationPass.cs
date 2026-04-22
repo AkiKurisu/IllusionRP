@@ -465,7 +465,7 @@ namespace Illusion.Rendering
                     TextureHandle historyNormalTexture = renderGraph.ImportTexture(historyNormalRT);
                     builder.UseTexture(historyNormalTexture);
                     passData.HistoryNormalTexture = historyNormalTexture;
-                    sizeAndScale = _rendererData.EvaluateRayTracingHistorySizeAndScale(historyNormalRT);
+                    sizeAndScale = _rendererData.EvaluateRayTracingHistorySizeAndScale(historyNormalRT, cameraData.camera);
                 }
                 else
                 {

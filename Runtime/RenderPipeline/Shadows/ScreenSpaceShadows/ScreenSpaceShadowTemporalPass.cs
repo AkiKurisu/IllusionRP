@@ -115,7 +115,7 @@ namespace Illusion.Rendering.Shadows
                 : resource.cameraNormalsTexture;
 
             Vector4 historySizeAndScale = historyDepthRT != null && historyDepthRT.IsValid()
-                ? _rendererData.EvaluateRayTracingHistorySizeAndScale(historyDepthRT)
+                ? _rendererData.EvaluateRayTracingHistorySizeAndScale(historyDepthRT, cameraData.camera)
                 : Vector4.one;
 
             int width = cameraData.cameraTargetDescriptor.width;

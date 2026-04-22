@@ -1,4 +1,4 @@
-﻿#ifndef ILLUSION_LIGHTING_DATA_INCLUDED
+#ifndef ILLUSION_LIGHTING_DATA_INCLUDED
 #define ILLUSION_LIGHTING_DATA_INCLUDED
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
@@ -91,7 +91,7 @@ half4 CalculateFinalColor(LightingData lightingData, half3 albedo, half alpha, f
 #else
     half fogFactor = fogCoord;
 #endif
-    half3 lightingColor = CalculateLightingColor(lightingData, albedo);
+    half3 lightingColor = CalculateLightingColor(lightingData, albedo) * GetCurrentExposureMultiplier();
     half3 finalColor = MixFog(lightingColor, fogFactor);
 
     return half4(finalColor, alpha);

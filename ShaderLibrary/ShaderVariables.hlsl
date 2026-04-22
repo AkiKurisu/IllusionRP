@@ -1,4 +1,4 @@
-﻿#ifndef ILLUSION_SHADER_VARIABLES_INCLUDED
+#ifndef ILLUSION_SHADER_VARIABLES_INCLUDED
 #define ILLUSION_SHADER_VARIABLES_INCLUDED
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -67,7 +67,7 @@ float2 ClampAndScaleUVForPoint(float2 UV)
 
 #define GetCurrentExposureMultiplier IllusionGetCurrentExposureMultiplier
 
-#define GetPreviousExposureMultiplier IllusionGetCurrentExposureMultiplier
+#define GetPreviousExposureMultiplier IllusionGetPreviousExposureMultiplier
 
 float IllusionGetCurrentExposureMultiplier()
 {

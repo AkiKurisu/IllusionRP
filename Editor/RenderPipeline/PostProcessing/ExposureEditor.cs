@@ -37,6 +37,8 @@ namespace Illusion.Rendering.Editor
 
         private SerializedDataParameter _targetMidGray;
 
+        private SerializedDataParameter _sceneViewPreferFixedExposure;
+
         private int _repaintsAfterChange;
         private int _settingsForDoubleRefreshHash;
 
@@ -72,11 +74,24 @@ namespace Illusion.Rendering.Editor
             _proceduralMaxIntensity = Unpack(o.Find(x => x.maskMaxIntensity));
 
             _targetMidGray = Unpack(o.Find(x => x.targetMidGray));
+            _sceneViewPreferFixedExposure = Unpack(o.Find(x => x.sceneViewPreferFixedExposure));
         }
 
         public override void OnInspectorGUI()
         {
             PropertyField(_mode);
+
+            EditorGUILayout.Space();
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                EditorGUILayout.LabelField(
+                    EditorGUIUtility.TrTextContent("Scene View",
+                        "Editor Scene View only. Prefer fixed exposure fallback vs histogram; when not overridden uses IllusionRuntimeRenderingConfig.SceneViewPreferFixedExposure."),
+                    EditorStyles.miniBoldLabel);
+                PropertyField(_sceneViewPreferFixedExposure,
+                    EditorGUIUtility.TrTextContent("Prefer Fixed Exposure",
+                        "Scene View uses KFixedExposure at the midpoint of Limit Min/Max EV instead of histogram."));
+            }
 
             int mode = _mode.value.intValue;
             // if (mode == (int)ExposureMode.UsePhysicalCamera)

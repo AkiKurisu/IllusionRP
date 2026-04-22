@@ -65,8 +65,10 @@ namespace Illusion.Rendering.PostProcessing
         
         // Cached RTHandle wrappers for custom textures (RenderGraph)
         private RTHandle _textureMeteringMaskRTHandle;
-        
+        private Texture _cachedMeteringMaskTexture;
+
         private RTHandle _exposureCurveRTHandle;
+        private Texture _cachedExposureCurveTexture;
 
         private class ExposurePassData
         {
@@ -80,11 +82,8 @@ namespace Illusion.Rendering.PostProcessing
             internal TextureHandle NextExposure;
             internal TextureHandle ExposureDebugData;
             
-            // For setting global textures
-            internal TextureHandle CurrentExposureTexture;
-            internal TextureHandle PreviousExposureTexture;
-            
             internal ComputeBuffer HistogramBuffer;
+            internal int[] EmptyHistogram;
             internal TextureHandle TextureMeteringMask;
             internal TextureHandle ExposureCurve;
             
@@ -106,6 +105,10 @@ namespace Illusion.Rendering.PostProcessing
             
             internal IllusionRendererData RendererData;
             internal Material ApplyExposureMaterial;
+            
+            // For setting global textures after compute
+            internal TextureHandle CurrentExposureTexture;
+            internal TextureHandle PreviousExposureTexture;
         }
 
         private class ApplyExposurePassData
@@ -130,7 +133,7 @@ namespace Illusion.Rendering.PostProcessing
         private void PrepareExposureData(UniversalCameraData cameraData)
         {
             _exposure = VolumeManager.instance.stack.GetComponent<Exposure>();
-            if (_rendererData.IsExposureFixed())
+            if (_rendererData.CanRunFixedExposurePass())
             {
                 return;
             }
@@ -183,9 +186,6 @@ namespace Illusion.Rendering.PostProcessing
 
             // if (isHistogramBased)
             {
-                IllusionRenderingUtils.ValidateComputeBuffer(ref _rendererData.HistogramBuffer, HistogramBins, sizeof(uint));
-                _rendererData.HistogramBuffer.SetData(_emptyHistogram);    // Clear the histogram
-
                 Vector2 histogramFraction = _exposure.histogramPercentages.value / 100.0f;
                 float evRange = limitMax - limitMin;
                 float histScale = 1.0f / Mathf.Max(1e-5f, evRange);
@@ -195,6 +195,10 @@ namespace Illusion.Rendering.PostProcessing
                 if (_histogramOutputDebugData)
                 {
                     _histogramExposureCs.EnableKeyword("OUTPUT_DEBUG_DATA");
+                }
+                else
+                {
+                    _histogramExposureCs.DisableKeyword("OUTPUT_DEBUG_DATA");
                 }
             }
         }
@@ -273,6 +277,9 @@ namespace Illusion.Rendering.PostProcessing
 
             cmd.SetComputeVectorParam(cs, ExposureShaderIDs._HistogramExposureParams, data.HistogramExposureParams);
 
+            // Clear histogram buffer on GPU timeline to avoid race with previous frame's read
+            cmd.SetBufferData(data.HistogramBuffer, data.EmptyHistogram);
+
             // Generate histogram.
             var kernel = data.ExposurePreparationKernel;
             cmd.SetComputeTextureParam(cs, kernel, ExposureShaderIDs._PreviousExposureTexture, data.PrevExposure);
@@ -325,6 +332,10 @@ namespace Illusion.Rendering.PostProcessing
             bool resetHistory = _rendererData.ResetPostProcessingHistory;
             ProfilingSampler sampler = isFixedExposure ? _fixedExposureSampler : _automaticExposureSampler;
             
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            LogExposureDebugInfo(isFixedExposure, resetHistory);
+#endif
+            
             // Main exposure pass
             using (var builder = renderGraph.AddComputePass<ExposurePassData>("Exposure Pass", out var passData, sampler))
             {
@@ -347,20 +358,17 @@ namespace Illusion.Rendering.PostProcessing
                     passData.ExposureDebugData = debugDataHandle;
                 }
                 
-                // Import textures for SetGlobalTexture
+                // Import exposure textures for global binding after compute
                 var currentExposureRT = _rendererData.GetExposureTexture();
                 var previousExposureRT = _rendererData.GetPreviousExposureTexture();
-                var currentExposureHandle = renderGraph.ImportTexture(currentExposureRT);
-                builder.UseTexture(currentExposureHandle);
-                passData.CurrentExposureTexture = currentExposureHandle;
-                var previousExposureHandle = renderGraph.ImportTexture(previousExposureRT);
-                builder.UseTexture(previousExposureHandle);
-                passData.PreviousExposureTexture = previousExposureHandle;
+                passData.CurrentExposureTexture = renderGraph.ImportTexture(currentExposureRT);
+                builder.UseTexture(passData.CurrentExposureTexture);
+                passData.PreviousExposureTexture = renderGraph.ImportTexture(previousExposureRT);
+                builder.UseTexture(passData.PreviousExposureTexture);
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
                 
-                // Set render function
                 builder.SetRenderFunc(static (ExposurePassData data, ComputeGraphContext context) =>
                 {
                     if (data.IsFixedExposure)
@@ -372,7 +380,7 @@ namespace Illusion.Rendering.PostProcessing
                         DoHistogramBasedExposure(data, context.cmd);
                     }
                     
-                    // Set global textures using TextureHandle
+                    // Set global textures so post-processing and subsequent passes use the correct exposure
                     context.cmd.SetGlobalTexture(IllusionShaderProperties._ExposureTexture, data.CurrentExposureTexture);
                     context.cmd.SetGlobalTexture(IllusionShaderProperties._PrevExposureTexture, data.PreviousExposureTexture);
                 });
@@ -423,11 +431,17 @@ namespace Illusion.Rendering.PostProcessing
             
             if (isFixedExposure)
             {
-                // Fixed exposure setup
+                // Fixed exposure setup (KFixedExposure: ev100 = ParamEV100 - ParamExposureCompensation)
                 float m_DebugExposureCompensation = 0;
-                passData.ExposureParams = new Vector4(_exposure.compensation.value + m_DebugExposureCompensation, 
-                    _exposure.fixedExposure.value, 0f, 0f);
-                passData.ExposureParams2 = new Vector4(0.0f, 0.0f, ColorUtils.lensImperfectionExposureScale, 
+                float fixedEvSlot = _exposure.fixedExposure.value;
+                if (cameraData.cameraType == CameraType.SceneView && _exposure.mode.value != ExposureMode.Fixed)
+                {
+                    fixedEvSlot = Mathf.Lerp(_exposure.limitMin.value, _exposure.limitMax.value, 0.5f);
+                }
+
+                passData.ExposureParams = new Vector4(_exposure.compensation.value + m_DebugExposureCompensation,
+                    fixedEvSlot, 0f, 0f);
+                passData.ExposureParams2 = new Vector4(0.0f, 0.0f, ColorUtils.lensImperfectionExposureScale,
                     ColorUtils.s_LightMeterCalibrationConstant);
             }
             else
@@ -439,10 +453,10 @@ namespace Illusion.Rendering.PostProcessing
                 passData.ExposurePreparationKernel = _exposurePreparationKernel;
                 passData.ExposureReductionKernel = _exposureReductionKernel;
                 
-                passData.ExposureVariants = _exposureVariants;
+                passData.ExposureVariants = (int[])_exposureVariants.Clone();
                 
                 // Import Texture2D resources as TextureHandle with cached RTHandle wrappers
-                if (_textureMeteringMaskRTHandle == null || _textureMeteringMask == null)
+                if (_textureMeteringMaskRTHandle == null || _cachedMeteringMaskTexture != _textureMeteringMask)
                 {
                     // Release old RTHandle if texture changed
                     if (_textureMeteringMaskRTHandle != null)
@@ -450,12 +464,13 @@ namespace Illusion.Rendering.PostProcessing
                         RTHandles.Release(_textureMeteringMaskRTHandle);
                         _textureMeteringMaskRTHandle = null;
                     }
-                    
+
                     // Create new RTHandle wrapper
                     if (_textureMeteringMask != null)
                     {
                         _textureMeteringMaskRTHandle = RTHandles.Alloc(_textureMeteringMask);
                     }
+                    _cachedMeteringMaskTexture = _textureMeteringMask;
                 }
                 
                 RTHandle meteringMaskHandle = _textureMeteringMaskRTHandle ?? _rendererData.GetWhiteTextureRT();
@@ -469,7 +484,7 @@ namespace Illusion.Rendering.PostProcessing
                 passData.ExposureParams2 = _exposureParams2;
                 
                 // Import exposure curve texture if available with cached RTHandle wrapper
-                if (_exposureCurveRTHandle == null || _exposureCurve == null)
+                if (_exposureCurveRTHandle == null || _cachedExposureCurveTexture != _exposureCurve)
                 {
                     // Release old RTHandle if texture changed
                     if (_exposureCurveRTHandle != null)
@@ -477,12 +492,13 @@ namespace Illusion.Rendering.PostProcessing
                         RTHandles.Release(_exposureCurveRTHandle);
                         _exposureCurveRTHandle = null;
                     }
-                    
+
                     // Create new RTHandle wrapper
                     if (_exposureCurve != null)
                     {
                         _exposureCurveRTHandle = RTHandles.Alloc(_exposureCurve);
                     }
+                    _cachedExposureCurveTexture = _exposureCurve;
                 }
                 
                 RTHandle exposureCurveHandle = _exposureCurveRTHandle ?? _rendererData.GetWhiteTextureRT();
@@ -495,7 +511,8 @@ namespace Illusion.Rendering.PostProcessing
                 passData.HistogramUsesCurve = _histogramUsesCurve;
                 passData.HistogramOutputDebugData = _histogramOutputDebugData;
                 
-                passData.HistogramBuffer = _rendererData.HistogramBuffer;
+                passData.HistogramBuffer = _rendererData.GetHistogramBufferForCamera(cameraData.camera);
+                passData.EmptyHistogram = _emptyHistogram;
                 passData.CameraWidth = cameraData.camera.pixelWidth;
                 passData.CameraHeight = cameraData.camera.pixelHeight;
             }
@@ -513,5 +530,34 @@ namespace Illusion.Rendering.PostProcessing
             _textureMeteringMaskRTHandle = null;
             _exposureCurveRTHandle = null;
         }
+        
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        private int _debugLogFrameCounter;
+        
+        private void LogExposureDebugInfo(bool isFixedExposure, bool resetHistory)
+        {
+            var config = IllusionRuntimeRenderingConfig.Get();
+            if (config.ExposureDebugMode == ExposureDebugMode.None)
+                return;
+            
+            // Log every 60 frames to avoid console spam
+            _debugLogFrameCounter++;
+            if (_debugLogFrameCounter % 60 != 0)
+                return;
+            
+            _rendererData.GrabExposureRequiredTextures(out var prevExposure, out var nextExposure);
+            var currentExposure = _rendererData.GetExposureTexture();
+            
+            string currentName = currentExposure?.name ?? "NULL";
+            string currentRT = currentExposure?.rt != null ? $"{currentExposure.rt.width}x{currentExposure.rt.height} {currentExposure.rt.graphicsFormat}" : "RT=NULL";
+            string prevName = prevExposure?.name ?? "NULL";
+            string nextName = nextExposure?.name ?? "NULL";
+            
+            Debug.Log($"[Exposure Debug] Mode={(_exposure?.mode.value)}, Fixed={isFixedExposure}, ResetHistory={resetHistory}\n" +
+                      $"  CurrentExposure: {currentName} ({currentRT})\n" +
+                      $"  PrevForCompute: {prevName}, NextForCompute(WriteTarget): {nextName}\n" +
+                      $"  FixedEV100={_exposure?.fixedExposure.value:F3}, Compensation={_exposure?.compensation.value:F3}");
+        }
+#endif
     }
 }

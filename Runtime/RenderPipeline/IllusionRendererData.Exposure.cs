@@ -1,4 +1,4 @@
-﻿using Illusion.Rendering.PostProcessing;
+using Illusion.Rendering.PostProcessing;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -9,7 +9,8 @@ namespace Illusion.Rendering
     {
         private static void SetExposureTextureToEmpty(RTHandle exposureTexture)
         {
-            var tex = new Texture2D(1, 1, GraphicsFormat.R16G16_SFloat, TextureCreationFlags.None);
+            // Use the same format as ExposureFormat to avoid implicit format conversion during Blit
+            var tex = new Texture2D(1, 1, ExposureFormat, TextureCreationFlags.None);
             tex.SetPixel(0, 0, new Color(1f, ColorUtils.ConvertExposureToEV100(1f), 0f, 0f));
             tex.Apply();
             Graphics.Blit(tex, exposureTexture);
@@ -56,6 +57,12 @@ namespace Illusion.Rendering
             return _debugExposureData;
         }
 
+        /// <summary>
+        /// Returns the exposure texture that was used as _ExposureTexture during the PREVIOUS frame's rendering.
+        /// Note: This buffer is also the ExposurePass write target for the current frame. The returned value
+        /// is only valid BEFORE ExposurePass runs (i.e., at frame start in SetupPass). After ExposurePass
+        /// writes the newly computed exposure, this buffer will contain the current frame's computed exposure.
+        /// </summary>
         public RTHandle GetPreviousExposureTexture()
         {
             // If the history was reset in the previous frame, then the history buffers were actually rendered with a neutral EV100 exposure multiplier
@@ -66,8 +73,18 @@ namespace Illusion.Rendering
         public bool IsExposureFixed()
         {
             if (_exposure == null) return true;
-            return _exposure.mode.value == ExposureMode.Fixed;
-            // || _automaticExposure.mode.value == ExposureMode.UsePhysicalCamera;
+            if (_exposure.mode.value == ExposureMode.Fixed)
+                return true;
+            return ResolveSceneViewPreferFixedExposure();
+        }
+
+        private bool ResolveSceneViewPreferFixedExposure()
+        {
+            if (_camera == null || _camera.cameraType != CameraType.SceneView)
+                return false;
+            if (_exposure.sceneViewPreferFixedExposure.overrideState)
+                return _exposure.sceneViewPreferFixedExposure.value;
+            return IllusionRuntimeRenderingConfig.Get().SceneViewPreferFixedExposure;
         }
         
         public bool CanRunFixedExposurePass() => IsExposureFixed()

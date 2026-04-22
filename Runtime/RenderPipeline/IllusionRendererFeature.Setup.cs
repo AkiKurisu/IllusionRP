@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
@@ -34,6 +35,8 @@ namespace Illusion.Rendering
                 internal TextureHandle ActiveColor;
                 internal TextureHandle PreviousFrameColor;
                 internal TextureHandle MotionVectorColor;
+                internal TextureHandle CurrentExposureTexture;
+                internal TextureHandle PreviousExposureTexture;
             }
 
             public override void RecordRenderGraph(RenderGraph renderGraph,  ContextContainer frameData)
@@ -43,6 +46,16 @@ namespace Illusion.Rendering
                 
                 _rendererFeature.PerformSetup(frameData, _rendererData);
                 _rendererData.BindDitheredRNGData1SPP(renderGraph);
+                
+                // Bind exposure textures immediately via Shader.SetGlobalTexture during recording.
+                // This ensures exposure globals are set reliably regardless of render graph pass execution.
+                // The render graph pass below also sets them via cmd.SetGlobalTexture as a standard path.
+                var immediateExposureRT = _rendererData.GetExposureTexture();
+                if (immediateExposureRT?.rt != null)
+                    Shader.SetGlobalTexture(IllusionShaderProperties._ExposureTexture, immediateExposureRT.rt);
+                var immediatePrevExposureRT = _rendererData.GetPreviousExposureTexture();
+                if (immediatePrevExposureRT?.rt != null)
+                    Shader.SetGlobalTexture(IllusionShaderProperties._PrevExposureTexture, immediatePrevExposureRT.rt);
                 
                 using (var builder = renderGraph.AddRasterRenderPass<SetGlobalVariablesPassData>("Set Global Variables", out var passData, profilingSampler))
                 {
@@ -65,6 +78,15 @@ namespace Illusion.Rendering
                     passData.MotionVectorColor = motionVectorColorRT;
                     builder.UseTexture(motionVectorColorRT);
                     
+                    // Import exposure textures for global binding at frame start (before main rendering)
+                    var currentExposureRT = _rendererData.GetExposureTexture();
+                    passData.CurrentExposureTexture = renderGraph.ImportTexture(currentExposureRT);
+                    builder.UseTexture(passData.CurrentExposureTexture);
+                    
+                    var previousExposureRT = _rendererData.GetPreviousExposureTexture();
+                    passData.PreviousExposureTexture = renderGraph.ImportTexture(previousExposureRT);
+                    builder.UseTexture(passData.PreviousExposureTexture);
+                    
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
 
@@ -74,6 +96,11 @@ namespace Illusion.Rendering
                         data.RendererData.PushGlobalBuffers(context.cmd, data.CameraData, data.LightData, yFlip);
                         context.cmd.SetGlobalTexture(IllusionShaderProperties._HistoryColorTexture, data.PreviousFrameColor);
                         context.cmd.SetGlobalTexture(IllusionShaderProperties._MotionVectorTexture, data.MotionVectorColor);
+                        
+                        // Set exposure globals at frame start so main rendering uses consistent pre-exposure
+                        context.cmd.SetGlobalTexture(IllusionShaderProperties._ExposureTexture, data.CurrentExposureTexture);
+                        context.cmd.SetGlobalTexture(IllusionShaderProperties._PrevExposureTexture, data.PreviousExposureTexture);
+                        
                         data.RendererData.BindAmbientProbe(context.cmd);
                     });
                 }
