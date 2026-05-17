@@ -392,9 +392,11 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.ViewMatrix = cameraData.camera.worldToCameraMatrix;
             _shaderVariablesGlobal.ViewProjMatrix = IllusionRenderingUtils.CalculateViewProjMatrix(cameraData, yFlip);
             _shaderVariablesGlobal.InvProjMatrix = cameraData.GetGPUProjectionMatrix(true).inverse;
-            var lastInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
+            var previousInvViewProjMatrix = _shaderVariablesGlobal.InvViewProjMatrix;
             _shaderVariablesGlobal.InvViewProjMatrix = _shaderVariablesGlobal.ViewProjMatrix.inverse;
-            _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount > 1 ? _shaderVariablesGlobal.InvViewProjMatrix : lastInvViewProjMatrix;
+            _shaderVariablesGlobal.PrevInvViewProjMatrix = FrameCount <= 1 || ResetPostProcessingHistory
+                ? _shaderVariablesGlobal.InvViewProjMatrix
+                : previousInvViewProjMatrix;
 
             // No RTHandleScale in IllusionRP
             // _shaderVariablesGlobal.RTHandleScale = RTHandles.rtHandleProperties.rtHandleScale;

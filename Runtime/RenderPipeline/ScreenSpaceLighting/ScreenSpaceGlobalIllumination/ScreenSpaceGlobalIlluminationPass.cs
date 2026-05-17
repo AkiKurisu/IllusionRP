@@ -75,7 +75,17 @@ namespace Illusion.Rendering
 
         private bool _halfResolution;
 
-        private float _historyResolutionScale;
+        private float _historyResolutionScale0;
+
+        private float _historyResolutionScale1;
+
+        private bool _hasSsgiHistory0State;
+
+        private bool _hasSsgiHistory1State;
+
+        private uint _lastSsgiHistory0FrameCount;
+
+        private uint _lastSsgiHistory1FrameCount;
 
         private readonly GraphicsBuffer _pointDistribution;
 
@@ -307,6 +317,23 @@ namespace Illusion.Rendering
             return Mathf.Tan(fov * Mathf.Deg2Rad * 0.5f) / (height * 0.5f);
         }
 
+        private float EvaluateCommonHistoryValidity(bool hasPreviousColor, bool hasHistoryDepth, bool hasHistoryNormal)
+        {
+            bool invalidHistory = _rendererData.FrameCount <= 1
+                                  || _rendererData.ResetPostProcessingHistory
+                                  || !hasPreviousColor
+                                  || !hasHistoryDepth
+                                  || !hasHistoryNormal;
+            return invalidHistory ? 0.0f : 1.0f;
+        }
+
+        private float EvaluateSignalHistoryValidity(float commonHistoryValidity, bool historyReallocated,
+            bool hasHistoryState, uint lastHistoryFrameCount)
+        {
+            bool nonConsecutiveFrame = !hasHistoryState || lastHistoryFrameCount + 1 != _rendererData.FrameCount;
+            return commonHistoryValidity > 0.0f && !historyReallocated && !nonConsecutiveFrame ? 1.0f : 0.0f;
+        }
+
         private TextureHandle RenderTracePass(RenderGraph renderGraph, TextureHandle depthPyramidTexture, 
             TextureHandle normalTexture, bool useAsyncCompute)
         {
@@ -452,20 +479,16 @@ namespace Illusion.Rendering
         
         private TextureHandle RenderValidateHistoryPass(RenderGraph renderGraph, UniversalCameraData cameraData,
             TextureHandle depthTexture, TextureHandle normalTexture, TextureHandle historyDepthTexture,
-            TextureHandle motionVectorTexture, float historyValidity)
+            TextureHandle motionVectorTexture, float historyValidity, Vector4 historySizeAndScale)
         {
             using (var builder = renderGraph.AddComputePass<ValidateHistoryPassData>("SSGI Validate History", out var passData))
             {
-                // Get history buffers
-                Vector4 sizeAndScale = Vector4.one;
-
                 var historyNormalRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Normal);
                 if (historyNormalRT.IsValid())
                 {
                     TextureHandle historyNormalTexture = renderGraph.ImportTexture(historyNormalRT);
                     builder.UseTexture(historyNormalTexture);
                     passData.HistoryNormalTexture = historyNormalTexture;
-                    sizeAndScale = _rendererData.EvaluateRayTracingHistorySizeAndScale(historyNormalRT);
                 }
                 else
                 {
@@ -476,7 +499,7 @@ namespace Illusion.Rendering
                 passData.ValidateHistoryKernel = _validateHistoryKernel;
                 passData.HistoryValidity = historyValidity;
                 passData.PixelSpreadAngleTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, (int)_screenWidth, (int)_screenHeight);
-                passData.HistorySizeAndScale = sizeAndScale;
+                passData.HistorySizeAndScale = historySizeAndScale;
                 passData.Width = (int)_screenWidth;
                 passData.Height = (int)_screenHeight;
                 passData.ViewCount = IllusionRendererData.MaxViewCount;
@@ -535,14 +558,14 @@ namespace Illusion.Rendering
         private TextureHandle RenderTemporalDenoisePass(RenderGraph renderGraph, UniversalCameraData cameraData,
             TextureHandle inputTexture, TextureHandle historyBuffer, TextureHandle depthTexture,
             TextureHandle validationBuffer, TextureHandle motionVectorTexture, TextureHandle exposureTexture,
-            TextureHandle prevExposureTexture, float resolutionMultiplier)
+            TextureHandle prevExposureTexture, float resolutionMultiplier, float historyValidity)
         {
             using (var builder = renderGraph.AddComputePass<TemporalDenoisePassData>("SSGI Temporal Denoise", out var passData))
             {
                 passData.TemporalFilterCS = _temporalFilterCS;
                 passData.TemporalAccumulationKernel = _temporalAccumulationColorKernel;
                 passData.CopyHistoryKernel = _temporalFilterCopyHistoryKernel;
-                passData.HistoryValidity = 1.0f;
+                passData.HistoryValidity = historyValidity;
                 passData.PixelSpreadAngleTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, _rtWidth, _rtHeight);
                 passData.ResolutionMultiplier = new Vector4(resolutionMultiplier, 1.0f / resolutionMultiplier, 1, 1);
                 passData.Width = _rtWidth;
@@ -828,18 +851,26 @@ namespace Illusion.Rendering
             
             // Get previous frame color pyramid
             var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(frameData, out bool isNewFrame);
-            if (preFrameColorRT == null)
+            if (!preFrameColorRT.IsValid())
                 return;
+            bool hasPreviousColor = isNewFrame;
             
             var colorPyramidTexture = renderGraph.ImportTexture(preFrameColorRT);
             
             // Get history depth texture
             var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
-            if (!historyDepthRT.IsValid())
+            bool hasHistoryDepth = historyDepthRT.IsValid();
+            Vector4 historySizeAndScale = hasHistoryDepth
+                ? _rendererData.EvaluateRayTracingHistorySizeAndScale(historyDepthRT)
+                : Vector4.one;
+            if (!hasHistoryDepth)
             {
                 historyDepthRT = _rendererData.DepthPyramidRT;
             }
             var historyDepthTexture = renderGraph.ImportTexture(historyDepthRT);
+
+            var historyNormalRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Normal);
+            bool hasHistoryNormal = historyNormalRT.IsValid();
             
             // Get motion vector texture
             var motionVectorTexture = resource.motionVectorColor;
@@ -870,15 +901,18 @@ namespace Illusion.Rendering
                     _denoiserInitialized = true;
                 }
                 
+                float commonHistoryValidity = EvaluateCommonHistoryValidity(hasPreviousColor, hasHistoryDepth, hasHistoryNormal);
+                
                 // Validate history
                 var validationTexture = RenderValidateHistoryPass(renderGraph, cameraData,
                     depthPyramidTexture, normalTexture, historyDepthTexture,
-                    motionVectorTexture, 1.0f);
+                    motionVectorTexture, commonHistoryValidity, historySizeAndScale);
                 
                 // Allocate first history buffer
                 float scaleFactor = _halfResolution ? 0.5f : 1.0f;
                 var historyBuffer1 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
-                if (scaleFactor != _historyResolutionScale || historyBuffer1 == null)
+                bool history0Reallocated = !Mathf.Approximately(scaleFactor, _historyResolutionScale0) || historyBuffer1 == null;
+                if (history0Reallocated)
                 {
                     _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
                     var historyAllocator = new IllusionRendererData.CustomHistoryAllocator(
@@ -889,11 +923,16 @@ namespace Illusion.Rendering
                         historyAllocator.Allocator, 1);
                 }
                 var historyTexture1 = renderGraph.ImportTexture(historyBuffer1);
+                float historyValidity0 = EvaluateSignalHistoryValidity(commonHistoryValidity, history0Reallocated,
+                    _hasSsgiHistory0State, _lastSsgiHistory0FrameCount);
                 
                 float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
                 var temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                     giTexture, historyTexture1, depthPyramidTexture, validationTexture,
-                    motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier);
+                    motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, historyValidity0);
+                _hasSsgiHistory0State = true;
+                _lastSsgiHistory0FrameCount = _rendererData.FrameCount;
+                _historyResolutionScale0 = scaleFactor;
                 
                 // First spatial denoise pass
                 bool halfResFilter = volume.halfResolutionDenoiser.value;
@@ -907,7 +946,8 @@ namespace Illusion.Rendering
                 if (volume.secondDenoiserPass.value)
                 {
                     var historyBuffer2 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
-                    if (scaleFactor != _historyResolutionScale || historyBuffer2 == null)
+                    bool history1Reallocated = !Mathf.Approximately(scaleFactor, _historyResolutionScale1) || historyBuffer2 == null;
+                    if (history1Reallocated)
                     {
                         _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
                         var historyAllocator2 = new IllusionRendererData.CustomHistoryAllocator(
@@ -918,10 +958,15 @@ namespace Illusion.Rendering
                             historyAllocator2.Allocator, 1);
                     }
                     var historyTexture2 = renderGraph.ImportTexture(historyBuffer2);
+                    float historyValidity1 = EvaluateSignalHistoryValidity(commonHistoryValidity, history1Reallocated,
+                        _hasSsgiHistory1State, _lastSsgiHistory1FrameCount);
                     
                     temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                         giTexture, historyTexture2, depthPyramidTexture, validationTexture,
-                        motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier);
+                        motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, historyValidity1);
+                    _hasSsgiHistory1State = true;
+                    _lastSsgiHistory1FrameCount = _rendererData.FrameCount;
+                    _historyResolutionScale1 = scaleFactor;
                     
                     spatialOutput = RenderSpatialDenoisePass(renderGraph, cameraData,
                         temporalOutput, depthPyramidTexture, normalTexture,
@@ -929,7 +974,6 @@ namespace Illusion.Rendering
                     
                     giTexture = spatialOutput;
                 }
-                _historyResolutionScale = scaleFactor;
             }
             
             // Upsample if half resolution
