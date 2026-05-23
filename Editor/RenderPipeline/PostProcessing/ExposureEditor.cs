@@ -37,6 +37,8 @@ namespace Illusion.Rendering.Editor
 
         private SerializedDataParameter _targetMidGray;
 
+        private SerializedDataParameter _sceneViewPreferFixedExposure;
+
         private int _repaintsAfterChange;
         private int _settingsForDoubleRefreshHash;
 
@@ -72,11 +74,15 @@ namespace Illusion.Rendering.Editor
             _proceduralMaxIntensity = Unpack(o.Find(x => x.maskMaxIntensity));
 
             _targetMidGray = Unpack(o.Find(x => x.targetMidGray));
+            _sceneViewPreferFixedExposure = Unpack(o.Find(x => x.sceneViewPreferFixedExposure));
         }
 
         public override void OnInspectorGUI()
         {
             PropertyField(_mode);
+            EditorGUILayout.Space();
+            EditorGUILayout.HelpBox("Scene View can use a fixed exposure fallback instead of sharing histogram auto exposure behavior with Game cameras.", MessageType.Info);
+            PropertyField(_sceneViewPreferFixedExposure, EditorGUIUtility.TrTextContent("Prefer Fixed Exposure"));
 
             int mode = _mode.value.intValue;
             // if (mode == (int)ExposureMode.UsePhysicalCamera)

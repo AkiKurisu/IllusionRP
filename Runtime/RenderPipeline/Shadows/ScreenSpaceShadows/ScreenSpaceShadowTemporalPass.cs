@@ -21,10 +21,6 @@ namespace Illusion.Rendering.Shadows
         private readonly ProfilingSampler _temporalSampler = new("Screen Space Shadow Temporal");
         private readonly ProfilingSampler _spatialSampler = new("Screen Space Shadow Spatial");
 
-        private bool _hasDirectionalHistoryState;
-        private Vector3 _lastMainLightDirection;
-        private uint _lastHistoryFrameCount;
-
         private class TemporalPassData
         {
             public ComputeShader TemporalFilterCS;
@@ -303,29 +299,31 @@ namespace Illusion.Rendering.Shadows
 
         private float EvaluateHistoryValidity(UniversalLightData lightData)
         {
+            ref var shadowState = ref _rendererData.CurrentScreenSpaceShadowTemporalState;
             float historyValidity = 1.0f;
 
             int mainLightIndex = lightData.mainLightIndex;
             if (mainLightIndex < 0 || mainLightIndex >= lightData.visibleLights.Length || lightData.visibleLights[mainLightIndex].light == null)
             {
-                _hasDirectionalHistoryState = false;
+                shadowState.HasDirectionalHistoryState = false;
                 return 0.0f;
             }
 
             Vector3 currentMainLightDirection = lightData.visibleLights[mainLightIndex].light.transform.forward;
-            bool lightDirectionChanged = !_hasDirectionalHistoryState
-                                         || (currentMainLightDirection - _lastMainLightDirection).sqrMagnitude > 1e-6f;
-            bool nonConsecutiveFrame = !_hasDirectionalHistoryState || (_lastHistoryFrameCount + 1) != _rendererData.FrameCount;
-            bool invalidByFrame = _rendererData.IsFirstFrame || nonConsecutiveFrame;
+            bool lightDirectionChanged = !shadowState.HasDirectionalHistoryState
+                                         || (currentMainLightDirection - shadowState.LastMainLightDirection).sqrMagnitude > 1e-6f;
+            bool nonConsecutiveFrame = !shadowState.HasDirectionalHistoryState
+                                       || (shadowState.LastHistoryFrameCount + 1) != _rendererData.FrameCount;
+            bool invalidByFrame = _rendererData.IsFirstFrame || _rendererData.ResetPostProcessingHistory || nonConsecutiveFrame;
 
             if (lightDirectionChanged || invalidByFrame)
             {
                 historyValidity = 0.0f;
             }
 
-            _lastMainLightDirection = currentMainLightDirection;
-            _lastHistoryFrameCount = _rendererData.FrameCount;
-            _hasDirectionalHistoryState = true;
+            shadowState.LastMainLightDirection = currentMainLightDirection;
+            shadowState.LastHistoryFrameCount = _rendererData.FrameCount;
+            shadowState.HasDirectionalHistoryState = true;
             return historyValidity;
         }
 

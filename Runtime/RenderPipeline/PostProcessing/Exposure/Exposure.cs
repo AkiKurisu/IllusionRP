@@ -131,6 +131,13 @@ namespace Illusion.Rendering.PostProcessing
         [Tooltip("Sets the desired Mid gray level used by the auto exposure (i.e. to what grey value the auto exposure system maps the average scene luminance).")]
         public TargetMidGrayParameter targetMidGray = new(TargetMidGray.Grey125);
 
+        /// <summary>
+        /// Uses a fixed exposure fallback for Scene View cameras when histogram exposure would otherwise run.
+        /// </summary>
+        [Header("Scene View")]
+        [Tooltip("Uses a fixed exposure fallback for Scene View cameras when histogram exposure would otherwise run.")]
+        public BoolParameter sceneViewPreferFixedExposure = new(false);
+
         // /// <summary>
         // /// Sets whether the procedural metering mask is centered around the exposure target (to be set on the camera)
         // /// </summary>

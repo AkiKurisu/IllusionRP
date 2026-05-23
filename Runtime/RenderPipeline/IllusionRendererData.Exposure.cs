@@ -9,7 +9,7 @@ namespace Illusion.Rendering
     {
         private static void SetExposureTextureToEmpty(RTHandle exposureTexture)
         {
-            var tex = new Texture2D(1, 1, GraphicsFormat.R16G16_SFloat, TextureCreationFlags.None);
+            var tex = new Texture2D(1, 1, ExposureFormat, TextureCreationFlags.None);
             tex.SetPixel(0, 0, new Color(1f, ColorUtils.ConvertExposureToEV100(1f), 0f, 0f));
             tex.Apply();
             Graphics.Blit(tex, exposureTexture);
@@ -66,12 +66,49 @@ namespace Illusion.Rendering
         public bool IsExposureFixed()
         {
             if (_exposure == null) return true;
-            return _exposure.mode.value == ExposureMode.Fixed;
+            return _exposure.mode.value == ExposureMode.Fixed || UseSceneViewFixedExposureFallback();
             // || _automaticExposure.mode.value == ExposureMode.UsePhysicalCamera;
         }
         
         public bool CanRunFixedExposurePass() => IsExposureFixed()
                                                  && CurrentExposureTextures.Current != null;
+
+        public RTHandle GetFixedExposureOutputTexture()
+        {
+            return CurrentExposureTextures.Current;
+        }
+
+        public void GetFixedExposureParameters(out Vector4 exposureParams, out Vector4 exposureParams2)
+        {
+            float fixedExposure = 0.0f;
+            float compensation = 0.0f;
+
+            if (_exposure != null)
+            {
+                fixedExposure = _exposure.fixedExposure.value;
+                compensation = _exposure.compensation.value;
+
+                if (_exposure.mode.value != ExposureMode.Fixed && UseSceneViewFixedExposureFallback())
+                {
+                    fixedExposure = (_exposure.limitMin.value + _exposure.limitMax.value) * 0.5f;
+                }
+            }
+
+            exposureParams = new Vector4(compensation, fixedExposure, 0.0f, 0.0f);
+            exposureParams2 = new Vector4(0.0f, 0.0f, ColorUtils.lensImperfectionExposureScale,
+                ColorUtils.s_LightMeterCalibrationConstant);
+        }
+
+        private bool UseSceneViewFixedExposureFallback()
+        {
+            if (_camera == null || _camera.cameraType != CameraType.SceneView || _exposure == null)
+                return false;
+
+            if (_exposure.sceneViewPreferFixedExposure.overrideState)
+                return _exposure.sceneViewPreferFixedExposure.value;
+
+            return IllusionRuntimeRenderingConfig.Get().SceneViewPreferFixedExposure;
+        }
 
         /// <summary>
         /// Get RTHandle wrapper for Texture2D.whiteTexture (lazy initialization)
@@ -122,9 +159,7 @@ namespace Illusion.Rendering
             }
         }
 
-        private ExposureTextures _exposureTextures = new() {Current = null, Previous = null };
-
-        private ExposureTextures CurrentExposureTextures => _exposureTextures;
+        private ExposureTextures CurrentExposureTextures => _currentCameraState?.ExposureTextures ?? default;
 
         private void SetupExposureTextures()
         {
@@ -146,8 +181,11 @@ namespace Illusion.Rendering
 
             // One frame delay + history RTs being flipped at the beginning of the frame means we
             // have to grab the exposure marked as "previous"
-            _exposureTextures.Current = GetPreviousFrameRT((int)IllusionFrameHistoryType.Exposure);
-            _exposureTextures.Previous = currentTexture;
+            _currentCameraState.ExposureTextures = new ExposureTextures
+            {
+                Current = GetPreviousFrameRT((int)IllusionFrameHistoryType.Exposure),
+                Previous = currentTexture
+            };
         }
     }
 }

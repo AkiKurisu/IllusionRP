@@ -75,18 +75,6 @@ namespace Illusion.Rendering
 
         private bool _halfResolution;
 
-        private float _historyResolutionScale0;
-
-        private float _historyResolutionScale1;
-
-        private bool _hasSsgiHistory0State;
-
-        private bool _hasSsgiHistory1State;
-
-        private uint _lastSsgiHistory0FrameCount;
-
-        private uint _lastSsgiHistory1FrameCount;
-
         private readonly GraphicsBuffer _pointDistribution;
 
         private bool _denoiserInitialized;
@@ -851,7 +839,7 @@ namespace Illusion.Rendering
             
             // Get previous frame color pyramid
             var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(frameData, out bool isNewFrame);
-            if (!preFrameColorRT.IsValid())
+            if (preFrameColorRT == null || !preFrameColorRT.IsValid())
                 return;
             bool hasPreviousColor = isNewFrame;
             
@@ -859,7 +847,7 @@ namespace Illusion.Rendering
             
             // Get history depth texture
             var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
-            bool hasHistoryDepth = historyDepthRT.IsValid();
+            bool hasHistoryDepth = historyDepthRT != null && historyDepthRT.IsValid();
             Vector4 historySizeAndScale = hasHistoryDepth
                 ? _rendererData.EvaluateRayTracingHistorySizeAndScale(historyDepthRT)
                 : Vector4.one;
@@ -870,7 +858,7 @@ namespace Illusion.Rendering
             var historyDepthTexture = renderGraph.ImportTexture(historyDepthRT);
 
             var historyNormalRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Normal);
-            bool hasHistoryNormal = historyNormalRT.IsValid();
+            bool hasHistoryNormal = historyNormalRT != null && historyNormalRT.IsValid();
             
             // Get motion vector texture
             var motionVectorTexture = resource.motionVectorColor;
@@ -894,6 +882,8 @@ namespace Illusion.Rendering
             // Execute denoising pipeline if enabled
             if (_needDenoise)
             {
+                ref var ssgiState = ref _rendererData.CurrentSsgiHistoryState;
+
                 // Initialize denoiser if needed (only once)
                 if (!_denoiserInitialized)
                 {
@@ -911,7 +901,7 @@ namespace Illusion.Rendering
                 // Allocate first history buffer
                 float scaleFactor = _halfResolution ? 0.5f : 1.0f;
                 var historyBuffer1 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
-                bool history0Reallocated = !Mathf.Approximately(scaleFactor, _historyResolutionScale0) || historyBuffer1 == null;
+                bool history0Reallocated = !Mathf.Approximately(scaleFactor, ssgiState.HistoryResolutionScale0) || historyBuffer1 == null;
                 if (history0Reallocated)
                 {
                     _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination);
@@ -924,15 +914,15 @@ namespace Illusion.Rendering
                 }
                 var historyTexture1 = renderGraph.ImportTexture(historyBuffer1);
                 float historyValidity0 = EvaluateSignalHistoryValidity(commonHistoryValidity, history0Reallocated,
-                    _hasSsgiHistory0State, _lastSsgiHistory0FrameCount);
+                    ssgiState.HasHistory0State, ssgiState.LastHistory0FrameCount);
                 
                 float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
                 var temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                     giTexture, historyTexture1, depthPyramidTexture, validationTexture,
                     motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, historyValidity0);
-                _hasSsgiHistory0State = true;
-                _lastSsgiHistory0FrameCount = _rendererData.FrameCount;
-                _historyResolutionScale0 = scaleFactor;
+                ssgiState.HasHistory0State = true;
+                ssgiState.LastHistory0FrameCount = _rendererData.FrameCount;
+                ssgiState.HistoryResolutionScale0 = scaleFactor;
                 
                 // First spatial denoise pass
                 bool halfResFilter = volume.halfResolutionDenoiser.value;
@@ -946,7 +936,7 @@ namespace Illusion.Rendering
                 if (volume.secondDenoiserPass.value)
                 {
                     var historyBuffer2 = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
-                    bool history1Reallocated = !Mathf.Approximately(scaleFactor, _historyResolutionScale1) || historyBuffer2 == null;
+                    bool history1Reallocated = !Mathf.Approximately(scaleFactor, ssgiState.HistoryResolutionScale1) || historyBuffer2 == null;
                     if (history1Reallocated)
                     {
                         _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceGlobalIllumination2);
@@ -959,14 +949,14 @@ namespace Illusion.Rendering
                     }
                     var historyTexture2 = renderGraph.ImportTexture(historyBuffer2);
                     float historyValidity1 = EvaluateSignalHistoryValidity(commonHistoryValidity, history1Reallocated,
-                        _hasSsgiHistory1State, _lastSsgiHistory1FrameCount);
+                        ssgiState.HasHistory1State, ssgiState.LastHistory1FrameCount);
                     
                     temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                         giTexture, historyTexture2, depthPyramidTexture, validationTexture,
                         motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, historyValidity1);
-                    _hasSsgiHistory1State = true;
-                    _lastSsgiHistory1FrameCount = _rendererData.FrameCount;
-                    _historyResolutionScale1 = scaleFactor;
+                    ssgiState.HasHistory1State = true;
+                    ssgiState.LastHistory1FrameCount = _rendererData.FrameCount;
+                    ssgiState.HistoryResolutionScale1 = scaleFactor;
                     
                     spatialOutput = RenderSpatialDenoisePass(renderGraph, cameraData,
                         temporalOutput, depthPyramidTexture, normalTexture,

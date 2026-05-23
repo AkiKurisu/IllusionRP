@@ -28,7 +28,7 @@ CBUFFER_END
 #define G_MATRIX_I_VP    _GlobalInvViewProjMatrix
 #define G_MATRIX_V       _GlobalViewMatrix
 
-// Exposure texture - 1x1 RG16F (r: exposure mult, g: exposure EV100)
+// Exposure texture - 1x1 RGFloat (r: exposure mult, g: exposure EV100)
 TEXTURE2D(_ExposureTexture);
 TEXTURE2D(_PrevExposureTexture);
 
@@ -67,7 +67,7 @@ float2 ClampAndScaleUVForPoint(float2 UV)
 
 #define GetCurrentExposureMultiplier IllusionGetCurrentExposureMultiplier
 
-#define GetPreviousExposureMultiplier IllusionGetCurrentExposureMultiplier
+#define GetPreviousExposureMultiplier IllusionGetPreviousExposureMultiplier
 
 float IllusionGetCurrentExposureMultiplier()
 {

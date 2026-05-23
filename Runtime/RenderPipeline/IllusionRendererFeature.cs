@@ -502,7 +502,7 @@ namespace Illusion.Rendering
             }
             else
             {
-                _rendererData.ColorPyramidHistoryMipCount = 1;
+                _rendererData.SetColorPyramidHistoryMipCount(renderingData.cameraData.camera, 1);
             }
 
             // BeforeRenderingPostProcessing

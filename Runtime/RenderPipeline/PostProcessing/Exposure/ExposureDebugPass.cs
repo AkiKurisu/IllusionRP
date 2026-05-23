@@ -21,8 +21,6 @@ namespace Illusion.Rendering.PostProcessing
         private Exposure _exposure;
 
         private readonly LazyMaterial _debugExposureMaterial = new(IllusionShaders.DebugExposure);
-        
-        private ComputeBuffer _histogramBuffer;
 
         private readonly IllusionRendererData _rendererData;
         
@@ -31,12 +29,15 @@ namespace Illusion.Rendering.PostProcessing
         
         private RTHandle _debugFontTexRTHandle;
 
+        private Texture _cachedWeightTextureMask;
+
         private class DebugHistogramPassData
         {
             internal ComputeShader DebugImageHistogramCs;
             internal int DebugImageHistogramKernel;
             internal TextureHandle SourceTexture;
             internal ComputeBuffer HistogramBuffer;
+            internal int[] EmptyHistogram;
             internal int CameraWidth;
             internal int CameraHeight;
         }
@@ -84,7 +85,6 @@ namespace Illusion.Rendering.PostProcessing
         {
             _exposure = VolumeManager.instance.stack.GetComponent<Exposure>();
             IllusionRenderingUtils.ValidateComputeBuffer(ref _rendererData.DebugImageHistogram, DebugImageHistogramBins, 4 * sizeof(uint));
-            _rendererData.DebugImageHistogram.SetData(_emptyDebugImageHistogram);    // Clear the histogram
             
             var descriptor = cameraData.cameraTargetDescriptor;
             descriptor.depthBufferBits = (int)DepthBits.None;
@@ -102,6 +102,8 @@ namespace Illusion.Rendering.PostProcessing
 
             // Import textures
             var colorBeforePostProcess = _rendererData.GetPreviousFrameColorRT(frameData, out _);
+            if (colorBeforePostProcess == null || !colorBeforePostProcess.IsValid())
+                colorBeforePostProcess = _rendererData.GetBlackTextureRT();
             TextureHandle sourceBeforePostProcess = renderGraph.ImportTexture(colorBeforePostProcess);
             TextureHandle colorTarget = resource.cameraColor;
             TextureHandle debugOutputTexture = renderGraph.ImportTexture(_rendererData.DebugExposureTexture);
@@ -113,6 +115,7 @@ namespace Illusion.Rendering.PostProcessing
                 data.DebugImageHistogramCs = _debugImageHistogramCs;
                 data.DebugImageHistogramKernel = _debugImageHistogramKernel;
                 data.HistogramBuffer = _rendererData.DebugImageHistogram;
+                data.EmptyHistogram = _emptyDebugImageHistogram;
                 data.CameraWidth = cameraData.camera.pixelWidth;
                 data.CameraHeight = cameraData.camera.pixelHeight;
 
@@ -135,6 +138,11 @@ namespace Illusion.Rendering.PostProcessing
                 
                 builder.UseTexture(colorTarget);
                 data.SourceTexture = colorTarget;
+                builder.UseTexture(data.CurrentExposure);
+                builder.UseTexture(data.PreviousExposure);
+                builder.UseTexture(data.ExposureDebugData);
+                builder.UseTexture(data.WeightTextureMask);
+                builder.UseTexture(data.DebugFontTex);
                 
                 builder.SetRenderAttachment(debugOutputTexture, 0);
 
@@ -187,7 +195,7 @@ namespace Illusion.Rendering.PostProcessing
             
             // Import Texture2D resources as TextureHandle with cached RTHandle wrappers
             var currentWeightMask = _exposure.weightTextureMask.value;
-            if (_weightTextureMaskRTHandle == null || currentWeightMask == null)
+            if (_weightTextureMaskRTHandle == null || _cachedWeightTextureMask != currentWeightMask)
             {
                 // Release old RTHandle if texture changed
                 if (_weightTextureMaskRTHandle != null)
@@ -201,6 +209,7 @@ namespace Illusion.Rendering.PostProcessing
                 {
                     _weightTextureMaskRTHandle = RTHandles.Alloc(currentWeightMask);
                 }
+                _cachedWeightTextureMask = currentWeightMask;
             }
             
             RTHandle weightMaskHandle = _weightTextureMaskRTHandle ?? _rendererData.GetWhiteTextureRT();
@@ -259,6 +268,7 @@ namespace Illusion.Rendering.PostProcessing
 
         private static void DoGenerateDebugImageHistogram(DebugHistogramPassData data, ComputeCommandBuffer cmd)
         {
+            cmd.SetBufferData(data.HistogramBuffer, data.EmptyHistogram);
             cmd.SetComputeTextureParam(data.DebugImageHistogramCs, data.DebugImageHistogramKernel, 
                 ExposureShaderIDs._SourceTexture, data.SourceTexture);
             cmd.SetComputeBufferParam(data.DebugImageHistogramCs, data.DebugImageHistogramKernel, 
@@ -313,6 +323,7 @@ namespace Illusion.Rendering.PostProcessing
             RTHandles.Release(_debugFontTexRTHandle);
             _weightTextureMaskRTHandle = null;
             _debugFontTexRTHandle = null;
+            _cachedWeightTextureMask = null;
         }
     }
 }

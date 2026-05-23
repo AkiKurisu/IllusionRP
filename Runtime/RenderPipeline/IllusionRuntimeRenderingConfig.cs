@@ -63,6 +63,12 @@ namespace Illusion.Rendering
         public bool EnableConvolutionBloom { get; set; } = true;
 
         /// <summary>
+        /// When the Exposure volume does not override Scene View behavior, Scene View cameras use fixed exposure fallback instead of histogram auto exposure.
+        /// </summary>
+        [ConfigVariable("r.sceneview.exposure.fixedfallback", IsEditor = true)]
+        public bool SceneViewPreferFixedExposure { get; set; } = true;
+
+        /// <summary>
         /// Whether enable Async Compute.
         /// </summary>
         // [ConfigVariable("r.asynccompute")]

@@ -63,11 +63,7 @@ namespace Illusion.Rendering
 
         private bool _needAccumulate; // usePBRAlgo
 
-        private float _screenSpaceAccumulationResolutionScale;
-        
         private bool _previousAccumNeedClear;
-
-        private ScreenSpaceReflectionAlgorithm _currentSSRAlgorithm;
 
         // PARAMETERS DECLARATION GUIDELINES:
         // All data is aligned on Vector4 size, arrays elements included.
@@ -139,8 +135,12 @@ namespace Illusion.Rendering
             _needAccumulate = _reprojectInCS && renderingData.cameraData.cameraType == CameraType.Game
                                              && volume.usedAlgorithm.value == ScreenSpaceReflectionAlgorithm.PBRAccumulation;
             
-            _previousAccumNeedClear = _needAccumulate && (_currentSSRAlgorithm == ScreenSpaceReflectionAlgorithm.Approximation || _rendererData.IsFirstFrame || _rendererData.ResetPostProcessingHistory);
-            _currentSSRAlgorithm = volume.usedAlgorithm.value; // Store for next frame comparison
+            ref var ssrState = ref _rendererData.CurrentScreenSpaceReflectionHistoryState;
+            _previousAccumNeedClear = _needAccumulate
+                                      && (ssrState.CurrentAlgorithm == ScreenSpaceReflectionAlgorithm.Approximation
+                                          || _rendererData.IsFirstFrame
+                                          || _rendererData.ResetPostProcessingHistory);
+            ssrState.CurrentAlgorithm = volume.usedAlgorithm.value; // Store for next frame comparison
 
             // ================================ Allocation ================================ //
             _targetDescriptor = renderingData.cameraData.cameraTargetDescriptor;
@@ -243,14 +243,16 @@ namespace Illusion.Rendering
 
         private void AllocateScreenSpaceAccumulationHistoryBuffer(float scaleFactor)
         {
-            if (scaleFactor != _screenSpaceAccumulationResolutionScale || _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation) == null)
+            ref var ssrState = ref _rendererData.CurrentScreenSpaceReflectionHistoryState;
+            if (!Mathf.Approximately(scaleFactor, ssrState.AccumulationResolutionScale)
+                || _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation) == null)
             {
                 _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation);
 
                 var ssrAlloc = new IllusionRendererData.CustomHistoryAllocator(new Vector2(scaleFactor, scaleFactor), GraphicsFormat.R16G16B16A16_SFloat, "SSR_Accum Packed history");
                 _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation, ssrAlloc.Allocator, 2);
 
-                _screenSpaceAccumulationResolutionScale = scaleFactor;
+                ssrState.AccumulationResolutionScale = scaleFactor;
             }
         }
 
@@ -268,7 +270,7 @@ namespace Illusion.Rendering
             // The first color pyramid of the frame is generated after the SSR transparent, so we have no choice but to use the previous
             // frame color pyramid (that includes transparents from the previous frame).
             var preFrameColorRT = _rendererData.GetPreviousFrameColorRT(frameData, out _);
-            if (preFrameColorRT == null)
+            if (preFrameColorRT == null || !preFrameColorRT.IsValid())
             {
                 return false;
             }
