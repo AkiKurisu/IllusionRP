@@ -154,6 +154,8 @@ namespace Illusion.Rendering
         {
             internal RendererListHandle RendererListHdl;
             internal Color[] BackGroundColors;
+            internal TextureHandle SceneDepthTexture;
+            internal bool BindSceneDepthTexture;
         }
 
         private class ScatteringComputePassData
@@ -163,6 +165,7 @@ namespace Illusion.Rendering
             internal TextureHandle DiffuseTexture;
             internal TextureHandle AlbedoTexture;
             internal TextureHandle LightingTexture;
+            internal TextureHandle SceneDepthTexture;
             internal int SampleBudget;
             internal int Width;
             internal int Height;
@@ -174,6 +177,7 @@ namespace Illusion.Rendering
             internal TextureHandle DiffuseTexture;
             internal TextureHandle AlbedoTexture;
             internal TextureHandle LightingTexture;
+            internal TextureHandle SceneDepthTexture;
         }
 
         private class SetGlobalPassData
@@ -187,19 +191,24 @@ namespace Illusion.Rendering
         }
 
         private void RenderSplitLighting(RenderGraph renderGraph, TextureHandle diffuseHandle, TextureHandle albedoHandle, 
-            TextureHandle depthHandle, ContextContainer frameData)
+            TextureHandle depthAttachment, TextureHandle depthTexture, ContextContainer frameData)
         {
             UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
             UniversalLightData lightData = frameData.Get<UniversalLightData>();
+            bool bindSceneDepthTexture = depthTexture.IsValid() && !depthTexture.Equals(depthAttachment);
             using (var builder = renderGraph.AddRasterRenderPass<SplitLightingPassData>("SSS Split Lighting", out var passData))
             {
                 // Setup MRT: diffuse (attachment 0) + albedo (attachment 1)
                 builder.SetRenderAttachment(diffuseHandle, 0);
                 builder.SetRenderAttachment(albedoHandle, 1);
-                builder.SetRenderAttachmentDepth(depthHandle);
+                builder.SetRenderAttachmentDepth(depthAttachment, AccessFlags.ReadWrite);
+                if (bindSceneDepthTexture)
+                    builder.UseTexture(depthTexture);
 
                 passData.BackGroundColors = _backGroundColors;
+                passData.SceneDepthTexture = depthTexture;
+                passData.BindSceneDepthTexture = bindSceneDepthTexture;
 
                 // Create renderer list with SubsurfaceDiffuse shader tag
                 var drawingSettings = CreateDrawingSettings(SubsurfaceDiffuseShaderTagId, renderingData, cameraData, lightData, SortingCriteria.None);
@@ -208,9 +217,13 @@ namespace Illusion.Rendering
                 builder.UseRendererList(passData.RendererListHdl);
 
                 builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
 
                 builder.SetRenderFunc(static (SplitLightingPassData data, RasterGraphContext context) =>
                 {
+                    if (data.BindSceneDepthTexture)
+                        context.cmd.SetGlobalTexture(IllusionShaderProperties._CameraDepthTexture, data.SceneDepthTexture);
+
                     // Clear render targets
                     context.cmd.ClearRenderTarget(RTClearFlags.Color0 | RTClearFlags.Color1, data.BackGroundColors, 1, 0);
                     
@@ -221,7 +234,7 @@ namespace Illusion.Rendering
         }
 
         private void RenderScatteringCompute(RenderGraph renderGraph, TextureHandle diffuseHandle, 
-            TextureHandle albedoHandle, TextureHandle lightingHandle)
+            TextureHandle albedoHandle, TextureHandle lightingHandle, TextureHandle sceneDepthTexture, TextureHandle restoreDepthTexture)
         {
             using (var builder = renderGraph.AddComputePass<ScatteringComputePassData>("SSS Scattering (Compute)", out var passData))
             {
@@ -233,16 +246,23 @@ namespace Illusion.Rendering
                 passData.AlbedoTexture = albedoHandle;
                 builder.UseTexture(lightingHandle, AccessFlags.Write);
                 passData.LightingTexture = lightingHandle;
+                builder.UseTexture(sceneDepthTexture);
+                passData.SceneDepthTexture = sceneDepthTexture;
+                builder.UseTexture(restoreDepthTexture);
                 passData.SampleBudget = _sampleBudget;
                 passData.Width = _width;
                 passData.Height = _height;
 
                 builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
 
                 builder.SetGlobalTextureAfterPass(lightingHandle, ShaderIDs._SubsurfaceLighting);
+                builder.SetGlobalTextureAfterPass(restoreDepthTexture, IllusionShaderProperties._CameraDepthTexture);
                 
                 builder.SetRenderFunc(static (ScatteringComputePassData data, ComputeGraphContext context) =>
                 {
+                    context.cmd.SetGlobalTexture(IllusionShaderProperties._CameraDepthTexture, data.SceneDepthTexture);
+
                     // Set compute shader parameters
                     context.cmd.SetComputeIntParam(data.ComputeShader, ShaderIDs._SssSampleBudget, data.SampleBudget);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.SubsurfaceScatteringKernel, 
@@ -251,6 +271,8 @@ namespace Illusion.Rendering
                         ShaderIDs._SubsurfaceAlbedo, data.AlbedoTexture);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.SubsurfaceScatteringKernel, 
                         ShaderIDs._SubsurfaceLighting, data.LightingTexture);
+                    context.cmd.SetComputeTextureParam(data.ComputeShader, data.SubsurfaceScatteringKernel,
+                        IllusionShaderProperties._CameraDepthTexture, data.SceneDepthTexture);
 
                     var numTilesX = (data.Width + 15) / 16;
                     var numTilesY = (data.Height + 15) / 16;
@@ -264,7 +286,7 @@ namespace Illusion.Rendering
         }
 
         private void RenderScatteringRaster(RenderGraph renderGraph, TextureHandle diffuseHandle, 
-            TextureHandle albedoHandle, TextureHandle lightingHandle)
+            TextureHandle albedoHandle, TextureHandle lightingHandle, TextureHandle sceneDepthTexture, TextureHandle restoreDepthTexture)
         {
             using (var builder = renderGraph.AddRasterRenderPass<ScatteringRasterPassData>("SSS Scattering (Raster)", out var passData))
             {
@@ -275,13 +297,20 @@ namespace Illusion.Rendering
                 passData.AlbedoTexture = albedoHandle;
                 builder.SetRenderAttachment(lightingHandle, 0);
                 passData.LightingTexture = lightingHandle;
+                builder.UseTexture(sceneDepthTexture);
+                passData.SceneDepthTexture = sceneDepthTexture;
+                builder.UseTexture(restoreDepthTexture);
 
                 builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
 
                 builder.SetGlobalTextureAfterPass(lightingHandle, ShaderIDs._SubsurfaceLighting);
+                builder.SetGlobalTextureAfterPass(restoreDepthTexture, IllusionShaderProperties._CameraDepthTexture);
                 
                 builder.SetRenderFunc(static (ScatteringRasterPassData data, RasterGraphContext context) =>
                 {
+                    context.cmd.SetGlobalTexture(IllusionShaderProperties._CameraDepthTexture, data.SceneDepthTexture);
+
                     // Disable native render pass keyword
                     data.ScatteringMaterial.DisableKeyword(IllusionShaderKeywords._ILLUSION_RENDER_PASS_ENABLED);
                     
@@ -330,16 +359,16 @@ namespace Illusion.Rendering
             TextureHandle albedoHandle = renderGraph.ImportTexture(_diffuseRT[1]);
             TextureHandle lightingHandle = renderGraph.ImportTexture(_diffuseRT[2]);
 
-            // Get depth texture
-            TextureHandle depthHandle;
-            var preDepthTexture = _rendererData.CameraPreDepthTextureRT;
-            if (!preDepthTexture.IsValid() || cameraData.cameraType == CameraType.Preview)
+            // Keep sampling on the pre-transparent depth texture, but attach a real depth buffer for raster draws.
+            TextureHandle sceneDepthTexture = resource.cameraDepthTexture;
+            TextureHandle depthAttachmentHandle = frameData.GetDepthWriteTextureHandle();
+            if (cameraData.cameraType != CameraType.Preview && frameData.Contains<TransparentDepthData>())
             {
-                depthHandle = resource.cameraDepthTexture;
-            }
-            else
-            {
-                depthHandle = renderGraph.ImportTexture(preDepthTexture);
+                var transparentDepthData = frameData.Get<TransparentDepthData>();
+                if (transparentDepthData.PreDepthTexture.IsValid())
+                {
+                    sceneDepthTexture = transparentDepthData.PreDepthTexture;
+                }
             }
 
             // Check if SSS is enabled
@@ -364,8 +393,8 @@ namespace Illusion.Rendering
                 setupPassData.Width = _width;
                 setupPassData.Height = _height;
 
-                builder.AllowGlobalStateModification(true);
                 builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
 
                 builder.SetRenderFunc((SetGlobalPassData data, ComputeGraphContext context) =>
                 {
@@ -382,16 +411,16 @@ namespace Illusion.Rendering
             }
 
             // Pass 2: Split lighting rendering (RasterPass with MRT)
-            RenderSplitLighting(renderGraph, diffuseHandle, albedoHandle, depthHandle, frameData);
+            RenderSplitLighting(renderGraph, diffuseHandle, albedoHandle, depthAttachmentHandle, sceneDepthTexture, frameData);
 
             // Pass 3: Subsurface scattering (Compute or Raster)
             if (_scatteringInCS)
             {
-                RenderScatteringCompute(renderGraph, diffuseHandle, albedoHandle, lightingHandle);
+                RenderScatteringCompute(renderGraph, diffuseHandle, albedoHandle, lightingHandle, sceneDepthTexture, resource.cameraDepthTexture);
             }
             else
             {
-                RenderScatteringRaster(renderGraph, diffuseHandle, albedoHandle, lightingHandle);
+                RenderScatteringRaster(renderGraph, diffuseHandle, albedoHandle, lightingHandle, sceneDepthTexture, resource.cameraDepthTexture);
             }
         }
 

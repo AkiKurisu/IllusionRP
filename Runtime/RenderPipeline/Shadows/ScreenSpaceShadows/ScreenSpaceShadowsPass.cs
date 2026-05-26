@@ -133,10 +133,11 @@ namespace Illusion.Rendering.Shadows
             TextureHandle screenSpaceShadowsTexture = renderGraph.ImportTexture(_rendererData.ScreenSpaceShadowsRT);
             
             TextureHandle preDepthTexture = resource.cameraDepthTexture;
-            var preDepthRT = _rendererData.CameraPreDepthTextureRT;
-            if (preDepthRT.IsValid())
+            if (frameData.Contains<TransparentDepthData>())
             {
-                preDepthTexture = renderGraph.ImportTexture(preDepthRT);
+                var transparentDepthData = frameData.Get<TransparentDepthData>();
+                if (transparentDepthData.PreDepthTexture.IsValid())
+                    preDepthTexture = transparentDepthData.PreDepthTexture;
             }
 
             // PCSS Penumbra Pass - Use UnsafePass for multiple render target switching

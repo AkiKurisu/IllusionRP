@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
 using UnityEditor;
-using UnityEditor.Rendering.Universal;
 using UnityEngine;
 
 namespace Illusion.Rendering.Editor
@@ -14,7 +12,7 @@ namespace Illusion.Rendering.Editor
                 "For each pixel, the Compare function compares this value with the value in the Stencil buffer. The function writes this value to the buffer if the Pass property is set to Replace.");
 
             public static readonly GUIContent StencilReadMask = EditorGUIUtility.TrTextContent("Read Mask",
-                "For each pixel, the Compare function use this mask to compare the value with the value in the Stencil buffer.");
+                "For each pixel, the Compare function uses this mask to compare the value with the value in the Stencil buffer.");
 
             public static readonly GUIContent StencilFunction = EditorGUIUtility.TrTextContent("Compare Function",
                 "For each pixel, Unity uses this function to compare the value in the Value property with the value in the Stencil buffer.");
@@ -29,82 +27,67 @@ namespace Illusion.Rendering.Editor
                 EditorGUIUtility.TrTextContent("Z Fail", "What happens to the stencil value when failing Z testing.");
         }
 
-        //Stencil rendering
         private const int StencilBits = 4;
         private const int MinStencilValue = 0;
         private const int MaxStencilValue = (1 << StencilBits) - 1;
 
-        //Stencil props
-        private SerializedProperty _overrideStencil;
-        private SerializedProperty _stencilIndex;
-        private SerializedProperty _stencilReadMask;
-        private SerializedProperty _stencilFunction;
-        private SerializedProperty _stencilPass;
-        private SerializedProperty _stencilFail;
-        private SerializedProperty _stencilZFail;
-        private readonly List<SerializedObject> _properties = new();
-
-        private void Init(SerializedProperty property)
-        {
-            //Stencil
-            _overrideStencil = property.FindPropertyRelative("overrideStencilState");
-            _stencilIndex = property.FindPropertyRelative("stencilReference");
-            _stencilReadMask = property.FindPropertyRelative("stencilReadMask");
-            _stencilFunction = property.FindPropertyRelative("stencilCompareFunction");
-            _stencilPass = property.FindPropertyRelative("passOperation");
-            _stencilFail = property.FindPropertyRelative("failOperation");
-            _stencilZFail = property.FindPropertyRelative("zFailOperation");
-
-            _properties.Add(property.serializedObject);
-        }
+        private static float LineSpace => EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
 
         public override void OnGUI(Rect rect, SerializedProperty property, GUIContent label)
         {
-            if (!_properties.Contains(property.serializedObject))
-                Init(property);
+            var overrideStencil = property.FindPropertyRelative("overrideStencilState");
+            var stencilIndex = property.FindPropertyRelative("stencilReference");
+            var stencilReadMask = property.FindPropertyRelative("stencilReadMask");
+            var stencilFunction = property.FindPropertyRelative("stencilCompareFunction");
+            var stencilPass = property.FindPropertyRelative("passOperation");
+            var stencilFail = property.FindPropertyRelative("failOperation");
+            var stencilZFail = property.FindPropertyRelative("zFailOperation");
 
-            rect.height = EditorGUIUtility.singleLineHeight;
-
-            EditorGUI.PropertyField(rect, _overrideStencil, label);
-            if (_overrideStencil.boolValue)
+            using (new EditorGUI.PropertyScope(rect, label, property))
             {
+                rect.height = EditorGUIUtility.singleLineHeight;
+
+                EditorGUI.PropertyField(rect, overrideStencil, label);
+                if (!overrideStencil.boolValue)
+                    return;
+
                 EditorGUI.indentLevel++;
-                rect.y += EditorUtils.Styles.defaultLineSpace;
-                //Stencil value
-                EditorGUI.BeginChangeCheck();
-                var stencilVal = _stencilIndex.intValue;
-                stencilVal = EditorGUI.IntSlider(rect, Styles.StencilValue, stencilVal, MinStencilValue, MaxStencilValue);
-                if (EditorGUI.EndChangeCheck())
-                    _stencilIndex.intValue = stencilVal;
-                rect.y += EditorUtils.Styles.defaultLineSpace;
-                stencilVal = _stencilReadMask.intValue;
-                stencilVal = EditorGUI.IntSlider(rect, Styles.StencilReadMask, stencilVal, MinStencilValue, MaxStencilValue);
-                if (EditorGUI.EndChangeCheck())
-                    _stencilReadMask.intValue = stencilVal;
-                rect.y += EditorUtils.Styles.defaultLineSpace;
-                //Stencil compare options
-                EditorGUI.PropertyField(rect, _stencilFunction, Styles.StencilFunction);
-                rect.y += EditorUtils.Styles.defaultLineSpace;
+                rect.y += LineSpace;
+
+                DrawIntSlider(rect, stencilIndex, Styles.StencilValue);
+                rect.y += LineSpace;
+
+                DrawIntSlider(rect, stencilReadMask, Styles.StencilReadMask);
+                rect.y += LineSpace;
+
+                EditorGUI.PropertyField(rect, stencilFunction, Styles.StencilFunction);
+                rect.y += LineSpace;
+
                 EditorGUI.indentLevel++;
-                EditorGUI.PropertyField(rect, _stencilPass, Styles.StencilPass);
-                rect.y += EditorUtils.Styles.defaultLineSpace;
-                EditorGUI.PropertyField(rect, _stencilFail, Styles.StencilFail);
-                rect.y += EditorUtils.Styles.defaultLineSpace;
+                EditorGUI.PropertyField(rect, stencilPass, Styles.StencilPass);
+                rect.y += LineSpace;
+
+                EditorGUI.PropertyField(rect, stencilFail, Styles.StencilFail);
+                rect.y += LineSpace;
                 EditorGUI.indentLevel--;
-                //Stencil compare options
-                EditorGUI.PropertyField(rect, _stencilZFail, Styles.StencilZFail);
+
+                EditorGUI.PropertyField(rect, stencilZFail, Styles.StencilZFail);
                 EditorGUI.indentLevel--;
             }
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
-            if (_properties.Contains(property.serializedObject))
-            {
-                if (_overrideStencil != null && _overrideStencil.boolValue)
-                    return EditorUtils.Styles.defaultLineSpace * 7;
-            }
-            return EditorUtils.Styles.defaultLineSpace * 1;
+            var overrideStencil = property.FindPropertyRelative("overrideStencilState");
+            return overrideStencil != null && overrideStencil.boolValue ? LineSpace * 7 : LineSpace;
+        }
+
+        private static void DrawIntSlider(Rect rect, SerializedProperty property, GUIContent label)
+        {
+            EditorGUI.BeginChangeCheck();
+            int value = EditorGUI.IntSlider(rect, label, property.intValue, MinStencilValue, MaxStencilValue);
+            if (EditorGUI.EndChangeCheck())
+                property.intValue = value;
         }
     }
 }

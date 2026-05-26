@@ -288,7 +288,7 @@ namespace Illusion.Rendering
             _weightedBlendedOitPass = new WeightedBlendedOITPass(oitFilterLayer);
             _transparentOverdrawPass = TransparentOverdrawPass.Create(oitOverrideStencil);
             _transparentDepthOnlyPass = new TransparentDepthOnlyPostPass(_rendererData);
-            _transparentCopyPreDepthPass = new TransparentCopyPreDepthPass(_rendererData);
+            _transparentCopyPreDepthPass = new TransparentCopyPreDepthPass();
             _transparentCopyPostDepthPass = new TransparentCopyPostDepthPass();
 
             _screenSpaceReflectionPass = new ScreenSpaceReflectionPass(_rendererData);

@@ -1,6 +1,5 @@
 ﻿using System;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
@@ -13,15 +12,10 @@ namespace Illusion.Rendering
     /// </summary>
     public class TransparentCopyPreDepthPass :  ScriptableRenderPass, IDisposable
     {
-        private readonly Material _copyDepthMaterial;
-
-        private readonly IllusionRendererData _rendererData;
-
         private readonly CopyDepthPass _copyDepthPass;
 
-        public TransparentCopyPreDepthPass(IllusionRendererData rendererData)
+        public TransparentCopyPreDepthPass()
         {
-            _rendererData = rendererData;
             Shader copyDephPS = null;
             if (GraphicsSettings.TryGetRenderPipelineSettings<UniversalRendererResources>(out var universalRendererShaders))
             {
@@ -30,37 +24,48 @@ namespace Illusion.Rendering
             profilingSampler = new ProfilingSampler("CopyPreDepth");
             renderPassEvent = IllusionRenderPassEvent.TransparentCopyPreDepthPass;
             _copyDepthPass = new CopyDepthPass(renderPassEvent, copyDephPS, true, false, RenderingUtils.MultisampleDepthResolveSupported())
-                {
-                    profilingSampler = profilingSampler
-                };
+            {
+                profilingSampler = profilingSampler
+            };
             ConfigureInput(ScriptableRenderPassInput.Depth);
         }
-        
+         
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             var universalRenderer = (UniversalRenderer)cameraData.renderer;
             TextureHandle source = resource.cameraDepthTexture;
-            
-            // Allocate pre-depth texture
-            var depthDescriptor = cameraData.cameraTargetDescriptor;
-            depthDescriptor.graphicsFormat = GraphicsFormat.None;
-            depthDescriptor.depthStencilFormat = universalRenderer.cameraDepthTextureFormat;
-            depthDescriptor.msaaSamples = 1; // Depth-Only pass don't use MSAA
+            if (!source.IsValid())
+                return;
+             
+            var transparentDepthData = frameData.GetOrCreate<TransparentDepthData>();
+            transparentDepthData.PreDepthTexture = source;
 
-            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.CameraPreDepthTextureRT, depthDescriptor, 
-                wrapMode: TextureWrapMode.Clamp, name: "_CameraPreDepthTexture");
-            
-            TextureHandle destination = renderGraph.ImportTexture(_rendererData.CameraPreDepthTextureRT);
+            var postDepthDesc = renderGraph.GetTextureDesc(source);
+            postDepthDesc.name = "_CameraTransparentPostDepthTexture";
+            postDepthDesc.format = universalRenderer.cameraDepthTextureFormat;
+            postDepthDesc.msaaSamples = MSAASamples.None;
+            postDepthDesc.bindTextureMS = false;
+            postDepthDesc.useMipMap = false;
+            postDepthDesc.autoGenerateMips = false;
+            postDepthDesc.enableRandomWrite = false;
+            postDepthDesc.clearBuffer = true;
+            postDepthDesc.clearColor = Color.clear;
+            postDepthDesc.filterMode = FilterMode.Point;
+            postDepthDesc.wrapMode = TextureWrapMode.Clamp;
+
+            TextureHandle destination = renderGraph.CreateTexture(postDepthDesc);
+            transparentDepthData.PostDepthTexture = destination;
 
             _copyDepthPass.CopyToDepth = true;
-            _copyDepthPass.Render(renderGraph, destination, source, resource, cameraData, bindAsCameraDepth: false, passName: "Copy Pre Depth");
+            _copyDepthPass.Render(renderGraph, destination, source, resource, cameraData,
+                bindAsCameraDepth: false, passName: "Prepare Transparent Post Depth");
         }
 
         public void Dispose()
         {
-            CoreUtils.Destroy(_copyDepthMaterial);
+            _copyDepthPass?.Dispose();
         }
     }
 }

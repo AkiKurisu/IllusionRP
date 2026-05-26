@@ -88,6 +88,19 @@ namespace Illusion.Rendering
             ShadingRateImage = TextureHandle.nullHandle;
         }
     }   
+
+    public class TransparentDepthData : ContextItem
+    {
+        public TextureHandle PreDepthTexture;
+
+        public TextureHandle PostDepthTexture;
+
+        public override void Reset()
+        {
+            PreDepthTexture = TextureHandle.nullHandle;
+            PostDepthTexture = TextureHandle.nullHandle;
+        }
+    }
     
     /// <summary>
     /// IllusionRP renderer shared data
@@ -146,11 +159,6 @@ namespace Illusion.Rendering
 
         // Not support VR yet
         public const int MaxViewCount = 1;
-
-        /// <summary>
-        /// Depth texture after transparent depth normal but before transparent depth only.
-        /// </summary>
-        public RTHandle CameraPreDepthTextureRT;
 
         public RTHandle ContactShadowsRT;
 
@@ -392,13 +400,10 @@ namespace Illusion.Rendering
             PreIntegratedFGD = new PreIntegratedFGD(renderPipelineResources);
             DepthPyramidMipLevelOffsetsBuffer = new ComputeBuffer(15, sizeof(int) * 2);
             MipGenerator = new MipGenerator(this);
-            // Setup a default exposure textures and clear it to neutral values so that the exposure
-            // multiplier is 1 and thus has no effect
-            // Beware that 0 in EV100 maps to a multiplier of 0.833 so the EV100 value in this
-            // neutral exposure texture isn't 0
+            // Do not clear this texture in the renderer feature constructor. A constructor-time
+            // Graphics.Blit can run in scenes without cameras and disturb Overlay Canvas sizing.
             _emptyExposureTexture = RTHandles.Alloc(1, 1, colorFormat: ExposureFormat,
                 enableRandomWrite: true, name: "Empty EV100 Exposure");
-            SetExposureTextureToEmpty(_emptyExposureTexture);
 
             _debugExposureData = RTHandles.Alloc(1, 1, colorFormat: ExposureFormat,
                 enableRandomWrite: true, name: "Debug Exposure Info");
@@ -442,7 +447,6 @@ namespace Illusion.Rendering
             _cameraStates.Clear();
             _staleCameraStateKeys.Clear();
             _currentCameraState = null;
-            CameraPreDepthTextureRT?.Release();
             CameraPreviousColorTextureRT?.Release();
             DepthPyramidMipLevelOffsetsBuffer?.Release();
             ScreenSpaceShadowsRT?.Release();

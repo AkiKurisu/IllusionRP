@@ -47,7 +47,11 @@ namespace Illusion.Rendering
                 return;
 #endif
 
-            TextureHandle depthTexture = resource.cameraDepthTexture;
+            if (!frameData.Contains<TransparentDepthData>())
+                return;
+
+            var transparentDepthData = frameData.Get<TransparentDepthData>();
+            TextureHandle depthTexture = transparentDepthData.PostDepthTexture;
             if (!depthTexture.IsValid())
                 return;
 
@@ -56,7 +60,7 @@ namespace Illusion.Rendering
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))
             {
                 builder.SetRenderAttachment(forwardGBufferHandle, 0);
-                builder.SetRenderAttachmentDepth(depthTexture);
+                builder.SetRenderAttachmentDepth(depthTexture, AccessFlags.ReadWrite);
 
                 var drawSettings = UniversalRenderingUtility.CreateDrawingSettings(ShaderTagIds, frameData, cameraData.defaultOpaqueSortFlags);
                 var rendererListParams = new RendererListParams(renderingData.cullResults, drawSettings, _filteringSettings);
@@ -67,12 +71,15 @@ namespace Illusion.Rendering
                 builder.AllowGlobalStateModification(true);
 
                 builder.SetGlobalTextureAfterPass(forwardGBufferHandle, IllusionShaderProperties._ForwardGBuffer);
+                builder.SetGlobalTextureAfterPass(depthTexture, IllusionShaderProperties._CameraDepthTexture);
 
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
                     context.cmd.DrawRendererList(data.RendererList);
                 });
             }
+
+            resource.cameraDepthTexture = depthTexture;
         }
 
         public void Dispose()
