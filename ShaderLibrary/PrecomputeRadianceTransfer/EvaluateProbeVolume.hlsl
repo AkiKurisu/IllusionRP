@@ -126,8 +126,8 @@ real3 EvaluateProbeVolumeSH(
         DecodeSHCoefficientFromVoxel3D(c, coefficientVoxel3D, neighborProbeCoord);
         Lo[i] = IrradianceSH9(c, normal.xzy);
         
-        // Load and unpack validity + intensity
-        int3 validityCoord = int3(neighborCoord.x, neighborCoord.z, neighborCoord.y);
+        // Load validity from the same toroidal probe slot as the SH coefficients.
+        int3 validityCoord = int3(neighborProbeCoord.x, neighborProbeCoord.z, neighborProbeCoord.y);
         float packedData = validityVoxel3D.Load(int4(validityCoord, 0));
         UnpackIntensityValidity(packedData, intensity[i], validity[i]);
     }
