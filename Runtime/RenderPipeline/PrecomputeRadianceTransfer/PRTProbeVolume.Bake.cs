@@ -87,12 +87,7 @@ namespace Illusion.Rendering.PRTGI
         internal void ClearBakedData()
         {
             asset.Clear();
-            ReleaseProbes();
-            _coefficientVoxelRT?.Release();
-            _coefficientVoxelRT = null;
-            _globalSurfelBuffer?.Release();
-            _globalSurfelBuffer = null;
-            _isDataInitialized = false;
+            ReleaseRuntimeData();
         }
         
         /// <summary>

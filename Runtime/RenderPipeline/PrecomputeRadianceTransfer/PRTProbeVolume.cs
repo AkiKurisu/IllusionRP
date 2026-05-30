@@ -11,7 +11,8 @@ namespace Illusion.Rendering.PRTGI
         None = 0,
         ProbeGrid = 1,
         ProbeGridWithVirtualOffset = 2,
-        ProbeRadiance = 3
+        ProbeRadiance = 3,
+        ShadowCache = 4
     }
 
     public enum ProbeDebugMode
@@ -22,6 +23,18 @@ namespace Illusion.Rendering.PRTGI
         Surfel = 3,
         SurfelBrickGrid = 4
     }
+
+#if UNITY_EDITOR
+    internal enum ShadowCacheDebugStatus : uint
+    {
+        Unknown = 0,
+        FreshHit = 1,
+        Sampled = 2,
+        FallbackFromCache = 3,
+        UncoveredNoCache = 4,
+        BrickCacheHit = 5
+    }
+#endif
 
 #if UNITY_EDITOR
     [ExecuteAlways]
@@ -104,6 +117,29 @@ namespace Illusion.Rendering.PRTGI
         public bool enableRelightShadow = true;
 
         /// <summary>
+        /// Maximum frame age for cached PRT relight shadows.
+        /// </summary>
+        [Min(1)]
+        public int shadowCacheMaxAge = 30;
+
+        /// <summary>
+        /// Brick shadow variance threshold below which the brick cache can be reused.
+        /// </summary>
+        [Range(0f, 1f)]
+        public float shadowCacheVarianceThreshold = 0.02f;
+
+        /// <summary>
+        /// Read back PRT shadow cache counters for profiling and debugging.
+        /// </summary>
+        public bool enableShadowCacheStats;
+
+        /// <summary>
+        /// Frames between full shadow cache snapshot readbacks.
+        /// </summary>
+        [Min(1)]
+        public int shadowCacheStatsReadbackInterval = 10;
+
+        /// <summary>
         /// Number of probes to update per frame
         /// </summary>
         [Range(1, 100)]
@@ -115,6 +151,12 @@ namespace Illusion.Rendering.PRTGI
         /// </summary>
         [Range(3, 9)]
         public int localProbeCount = 6;
+
+        /// <summary>
+        /// Stop relighting after every probe in the current window has been updated once.
+        /// Relight starts again when lighting, shadow, ambient, asset, volume transform, or window inputs change.
+        /// </summary>
+        public bool relightOnceUntilDirty = true;
 
         // Voxel texture const probe size
         public Vector3Int voxelProbeSize = new(10, 5, 10);
@@ -147,6 +189,8 @@ namespace Illusion.Rendering.PRTGI
 
         private bool _isDataInitialized;
 
+        private bool _hasStarted;
+
         // Probe update rotation
         private int _currentProbeUpdateIndex;
 
@@ -178,6 +222,16 @@ namespace Illusion.Rendering.PRTGI
         // Priority queue for high-priority probe updates (new probes, local probes)
         private readonly Queue<PRTProbe> _priorityProbeQueue = new();
 
+        private readonly HashSet<int> _relitProbeIndicesInWindow = new();
+
+        private bool _relightWindowCycleComplete;
+
+        private int _lastRelightInputHash;
+
+        private bool _hasRelightInputHash;
+
+        private bool ShouldStopRelightAfterWindowCycle => relightOnceUntilDirty;
+
         /// <summary>
         /// 3D Texture to store SH coefficients
         /// </summary>
@@ -203,6 +257,18 @@ namespace Illusion.Rendering.PRTGI
         /// </summary>
         public Grid CurrentVoxelGrid { get; private set; }
 
+        public bool RelightWindowCycleComplete => _relightWindowCycleComplete;
+
+        public int RelitProbeCountInWindow => _relitProbeIndicesInWindow.Count;
+
+        public int ProbeCountInWindow => _probesInBoundingBox.Count;
+
+        public int CurrentProbeUpdateIndex => _currentProbeUpdateIndex;
+
+        public bool HasRelightInputHash => _hasRelightInputHash;
+
+        public int LastRelightInputHash => _lastRelightInputHash;
+
         /// <summary>
         /// Get global surfel buffer
         /// </summary>
@@ -215,12 +281,785 @@ namespace Illusion.Rendering.PRTGI
         /// </summary>
         internal static bool IsFeatureEnabled { get; private set; }
 
+        public readonly struct ShadowCacheStats
+        {
+            public readonly bool valid;
+
+            public readonly uint evaluated;
+
+            public readonly uint cacheHits;
+
+            public readonly uint cacheMisses;
+
+            public readonly uint invalidByEpoch;
+
+            public readonly uint invalidByAge;
+
+            public readonly uint shadowmapSamples;
+
+            public readonly uint fallbackFromCache;
+
+            public readonly uint uncoveredNoCache;
+
+            public ShadowCacheStats(uint evaluated, uint cacheHits, uint cacheMisses,
+                uint invalidByEpoch, uint invalidByAge, uint shadowmapSamples,
+                uint fallbackFromCache, uint uncoveredNoCache)
+            {
+                valid = true;
+                this.evaluated = evaluated;
+                this.cacheHits = cacheHits;
+                this.cacheMisses = cacheMisses;
+                this.invalidByEpoch = invalidByEpoch;
+                this.invalidByAge = invalidByAge;
+                this.shadowmapSamples = shadowmapSamples;
+                this.fallbackFromCache = fallbackFromCache;
+                this.uncoveredNoCache = uncoveredNoCache;
+            }
+        }
+
+        public ShadowCacheStats LatestShadowCacheStats { get; private set; }
+
+        internal struct ShadowCacheSnapshotEntry
+        {
+            public float shadow;
+
+            public uint epoch;
+
+            public uint lastUpdateFrame;
+
+            public uint valid;
+        }
+
+        internal struct BrickShadowCacheSnapshotEntry
+        {
+            public float meanShadow;
+
+            public float variance;
+
+            public uint epoch;
+
+            public uint lastUpdateFrame;
+        }
+
+        public readonly struct ShadowCacheGlobalStats
+        {
+            public readonly bool valid;
+
+            public readonly uint epoch;
+
+            public readonly uint frameIndex;
+
+            public readonly uint surfelCount;
+
+            public readonly uint surfelReady;
+
+            public readonly uint surfelFresh;
+
+            public readonly uint surfelStale;
+
+            public readonly uint surfelInvalidEpoch;
+
+            public readonly uint surfelUninitialized;
+
+            public readonly float surfelMeanShadow;
+
+            public readonly uint brickCount;
+
+            public readonly uint brickReady;
+
+            public readonly uint brickFresh;
+
+            public readonly uint brickStale;
+
+            public readonly uint brickHighVariance;
+
+            public readonly uint brickInvalidEpoch;
+
+            public readonly uint brickUninitialized;
+
+            public readonly float brickMeanShadow;
+
+            public ShadowCacheGlobalStats(
+                uint epoch, uint frameIndex,
+                uint surfelCount, uint surfelReady, uint surfelFresh, uint surfelStale,
+                uint surfelInvalidEpoch, uint surfelUninitialized, float surfelMeanShadow,
+                uint brickCount, uint brickReady, uint brickFresh, uint brickStale,
+                uint brickHighVariance, uint brickInvalidEpoch, uint brickUninitialized,
+                float brickMeanShadow)
+            {
+                valid = true;
+                this.epoch = epoch;
+                this.frameIndex = frameIndex;
+                this.surfelCount = surfelCount;
+                this.surfelReady = surfelReady;
+                this.surfelFresh = surfelFresh;
+                this.surfelStale = surfelStale;
+                this.surfelInvalidEpoch = surfelInvalidEpoch;
+                this.surfelUninitialized = surfelUninitialized;
+                this.surfelMeanShadow = surfelMeanShadow;
+                this.brickCount = brickCount;
+                this.brickReady = brickReady;
+                this.brickFresh = brickFresh;
+                this.brickStale = brickStale;
+                this.brickHighVariance = brickHighVariance;
+                this.brickInvalidEpoch = brickInvalidEpoch;
+                this.brickUninitialized = brickUninitialized;
+                this.brickMeanShadow = brickMeanShadow;
+            }
+        }
+
+        public ShadowCacheGlobalStats LatestShadowCacheGlobalStats { get; private set; }
+
+        public ShadowCacheGlobalStats LatestShadowCacheWindowStats { get; private set; }
+
+        private bool _shadowCacheGlobalStatsReadbackPending;
+
+        private int _shadowCacheGlobalStatsPendingReadbacks;
+
+        private bool _hasLastShadowCacheGlobalStatsReadbackFrame;
+
+        private uint _lastShadowCacheGlobalStatsReadbackFrame;
+
+        private uint _pendingShadowCacheGlobalStatsEpoch;
+
+        private uint _pendingShadowCacheGlobalStatsFrameIndex;
+
+        private int _pendingShadowCacheGlobalStatsMaxAge;
+
+        private float _pendingShadowCacheGlobalStatsVarianceThreshold;
+
+        private ShadowCacheSnapshotEntry[] _pendingShadowCacheGlobalStatsEntries;
+
+        private BrickShadowCacheSnapshotEntry[] _pendingBrickShadowCacheGlobalStatsEntries;
+
+        internal void UpdateShadowCacheStats(AsyncGPUReadbackRequest request)
+        {
+            if (request.hasError)
+            {
+                return;
+            }
+
+            var data = request.GetData<uint>();
+            if (data.Length < 8)
+            {
+                return;
+            }
+
+            LatestShadowCacheStats = new ShadowCacheStats(
+                data[0],
+                data[1],
+                data[2],
+                data[3],
+                data[4],
+                data[5],
+                data[6],
+                data[7]);
+        }
+
+        internal bool ShouldRequestShadowCacheGlobalStatsReadback(uint frameIndex)
+        {
+            if (!enableShadowCacheStats || _shadowCacheGlobalStatsReadbackPending)
+            {
+                return false;
+            }
+
+            int interval = Mathf.Max(1, shadowCacheStatsReadbackInterval);
+            return !_hasLastShadowCacheGlobalStatsReadbackFrame ||
+                   frameIndex - _lastShadowCacheGlobalStatsReadbackFrame >= interval;
+        }
+
+        internal void BeginShadowCacheGlobalStatsReadback(uint epoch, uint frameIndex,
+            int maxAge, float varianceThreshold)
+        {
+            _shadowCacheGlobalStatsReadbackPending = true;
+            _shadowCacheGlobalStatsPendingReadbacks = 2;
+            _pendingShadowCacheGlobalStatsEpoch = epoch;
+            _pendingShadowCacheGlobalStatsFrameIndex = frameIndex;
+            _pendingShadowCacheGlobalStatsMaxAge = Mathf.Max(1, maxAge);
+            _pendingShadowCacheGlobalStatsVarianceThreshold = Mathf.Max(0f, varianceThreshold);
+            _pendingShadowCacheGlobalStatsEntries = null;
+            _pendingBrickShadowCacheGlobalStatsEntries = null;
+            _lastShadowCacheGlobalStatsReadbackFrame = frameIndex;
+            _hasLastShadowCacheGlobalStatsReadbackFrame = true;
+        }
+
+        internal void UpdateShadowCacheGlobalStatsEntries(AsyncGPUReadbackRequest request)
+        {
+            if (!_shadowCacheGlobalStatsReadbackPending)
+            {
+                return;
+            }
+
+            if (!request.hasError)
+            {
+                var data = request.GetData<ShadowCacheSnapshotEntry>();
+                _pendingShadowCacheGlobalStatsEntries = new ShadowCacheSnapshotEntry[data.Length];
+                data.CopyTo(_pendingShadowCacheGlobalStatsEntries);
+            }
+
+            CompleteShadowCacheGlobalStatsReadback();
+        }
+
+        internal void UpdateBrickShadowCacheGlobalStatsEntries(AsyncGPUReadbackRequest request)
+        {
+            if (!_shadowCacheGlobalStatsReadbackPending)
+            {
+                return;
+            }
+
+            if (!request.hasError)
+            {
+                var data = request.GetData<BrickShadowCacheSnapshotEntry>();
+                _pendingBrickShadowCacheGlobalStatsEntries = new BrickShadowCacheSnapshotEntry[data.Length];
+                data.CopyTo(_pendingBrickShadowCacheGlobalStatsEntries);
+            }
+
+            CompleteShadowCacheGlobalStatsReadback();
+        }
+
+        internal void ClearShadowCacheGlobalStats()
+        {
+            _shadowCacheGlobalStatsReadbackPending = false;
+            _shadowCacheGlobalStatsPendingReadbacks = 0;
+            _hasLastShadowCacheGlobalStatsReadbackFrame = false;
+            _lastShadowCacheGlobalStatsReadbackFrame = 0;
+            _pendingShadowCacheGlobalStatsEntries = null;
+            _pendingBrickShadowCacheGlobalStatsEntries = null;
+            LatestShadowCacheGlobalStats = default;
+            LatestShadowCacheWindowStats = default;
+        }
+
+        private void CompleteShadowCacheGlobalStatsReadback()
+        {
+            if (!_shadowCacheGlobalStatsReadbackPending)
+            {
+                return;
+            }
+
+            _shadowCacheGlobalStatsPendingReadbacks =
+                Mathf.Max(0, _shadowCacheGlobalStatsPendingReadbacks - 1);
+            if (_shadowCacheGlobalStatsPendingReadbacks > 0)
+            {
+                return;
+            }
+
+            _shadowCacheGlobalStatsReadbackPending = false;
+            if (_pendingShadowCacheGlobalStatsEntries == null ||
+                _pendingBrickShadowCacheGlobalStatsEntries == null)
+            {
+                return;
+            }
+
+            LatestShadowCacheGlobalStats = BuildShadowCacheStats(
+                _pendingShadowCacheGlobalStatsEntries,
+                _pendingBrickShadowCacheGlobalStatsEntries,
+                null,
+                null);
+
+            BuildCurrentWindowShadowCacheIndices(out var windowSurfels, out var windowBricks);
+            LatestShadowCacheWindowStats = BuildShadowCacheStats(
+                _pendingShadowCacheGlobalStatsEntries,
+                _pendingBrickShadowCacheGlobalStatsEntries,
+                windowSurfels,
+                windowBricks);
+        }
+
+        private ShadowCacheGlobalStats BuildShadowCacheStats(
+            ShadowCacheSnapshotEntry[] surfelEntries,
+            BrickShadowCacheSnapshotEntry[] brickEntries,
+            HashSet<int> surfelIndices,
+            HashSet<int> brickIndices)
+        {
+            uint surfelReady = 0;
+            uint surfelFresh = 0;
+            uint surfelStale = 0;
+            uint surfelInvalidEpoch = 0;
+            uint surfelUninitialized = 0;
+            float surfelShadowSum = 0f;
+
+            int surfelTotal = surfelIndices?.Count ?? surfelEntries.Length;
+            if (surfelIndices != null)
+            {
+                foreach (int surfelIndex in surfelIndices)
+                {
+                    if (surfelIndex >= 0 && surfelIndex < surfelEntries.Length)
+                    {
+                        AccumulateSurfel(surfelEntries[surfelIndex]);
+                    }
+                    else
+                    {
+                        surfelUninitialized++;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < surfelEntries.Length; i++)
+                {
+                    AccumulateSurfel(surfelEntries[i]);
+                }
+            }
+
+            uint brickReady = 0;
+            uint brickFresh = 0;
+            uint brickStale = 0;
+            uint brickHighVariance = 0;
+            uint brickInvalidEpoch = 0;
+            uint brickUninitialized = 0;
+            float brickShadowSum = 0f;
+
+            int brickTotal = brickIndices?.Count ?? brickEntries.Length;
+            if (brickIndices != null)
+            {
+                foreach (int brickIndex in brickIndices)
+                {
+                    if (brickIndex >= 0 && brickIndex < brickEntries.Length)
+                    {
+                        AccumulateBrick(brickEntries[brickIndex]);
+                    }
+                    else
+                    {
+                        brickUninitialized++;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < brickEntries.Length; i++)
+                {
+                    AccumulateBrick(brickEntries[i]);
+                }
+            }
+
+            return new ShadowCacheGlobalStats(
+                _pendingShadowCacheGlobalStatsEpoch,
+                _pendingShadowCacheGlobalStatsFrameIndex,
+                (uint)surfelTotal,
+                surfelReady,
+                surfelFresh,
+                surfelStale,
+                surfelInvalidEpoch,
+                surfelUninitialized,
+                surfelReady > 0 ? surfelShadowSum / surfelReady : 1f,
+                (uint)brickTotal,
+                brickReady,
+                brickFresh,
+                brickStale,
+                brickHighVariance,
+                brickInvalidEpoch,
+                brickUninitialized,
+                brickReady > 0 ? brickShadowSum / brickReady : 1f);
+
+            void AccumulateSurfel(ShadowCacheSnapshotEntry entry)
+            {
+                if (entry.valid == 0)
+                {
+                    surfelUninitialized++;
+                    return;
+                }
+
+                if (entry.epoch != _pendingShadowCacheGlobalStatsEpoch)
+                {
+                    surfelInvalidEpoch++;
+                    return;
+                }
+
+                surfelReady++;
+                surfelShadowSum += Mathf.Clamp01(entry.shadow);
+                if (ShadowCacheAge(_pendingShadowCacheGlobalStatsFrameIndex, entry.lastUpdateFrame) >
+                    _pendingShadowCacheGlobalStatsMaxAge)
+                {
+                    surfelStale++;
+                }
+                else
+                {
+                    surfelFresh++;
+                }
+            }
+
+            void AccumulateBrick(BrickShadowCacheSnapshotEntry entry)
+            {
+                if (entry.epoch == 0)
+                {
+                    brickUninitialized++;
+                    return;
+                }
+
+                if (entry.epoch != _pendingShadowCacheGlobalStatsEpoch)
+                {
+                    brickInvalidEpoch++;
+                    return;
+                }
+
+                if (entry.variance > _pendingShadowCacheGlobalStatsVarianceThreshold)
+                {
+                    brickHighVariance++;
+                    return;
+                }
+
+                brickReady++;
+                brickShadowSum += Mathf.Clamp01(entry.meanShadow);
+                if (ShadowCacheAge(_pendingShadowCacheGlobalStatsFrameIndex, entry.lastUpdateFrame) >
+                    _pendingShadowCacheGlobalStatsMaxAge)
+                {
+                    brickStale++;
+                }
+                else
+                {
+                    brickFresh++;
+                }
+            }
+        }
+
+        private void BuildCurrentWindowShadowCacheIndices(out HashSet<int> surfelIndices, out HashSet<int> brickIndices)
+        {
+            surfelIndices = new HashSet<int>();
+            brickIndices = new HashSet<int>();
+
+            if (_probesInBoundingBox.Count == 0 ||
+                _allProbes == null ||
+                _allFactors == null ||
+                _allBricks == null)
+            {
+                return;
+            }
+
+            for (int probeIndex = 0; probeIndex < _probesInBoundingBox.Count; probeIndex++)
+            {
+                var probe = _probesInBoundingBox[probeIndex];
+                if (probe == null || probe.Index < 0 || probe.Index >= _allProbes.Length)
+                {
+                    continue;
+                }
+
+                var factorIndices = _allProbes[probe.Index];
+                for (int factorIndex = factorIndices.start; factorIndex <= factorIndices.end; factorIndex++)
+                {
+                    if (factorIndex < 0 || factorIndex >= _allFactors.Length)
+                    {
+                        continue;
+                    }
+
+                    int brickIndex = _allFactors[factorIndex].brickIndex;
+                    if (brickIndex < 0 || brickIndex >= _allBricks.Length)
+                    {
+                        continue;
+                    }
+
+                    if (!brickIndices.Add(brickIndex))
+                    {
+                        continue;
+                    }
+
+                    var brick = _allBricks[brickIndex];
+                    int end = brick.start + brick.count;
+                    for (int surfelIndex = brick.start; surfelIndex < end; surfelIndex++)
+                    {
+                        surfelIndices.Add(surfelIndex);
+                    }
+                }
+            }
+        }
+
+        private static uint ShadowCacheAge(uint frameIndex, uint lastUpdateFrame)
+        {
+            return frameIndex >= lastUpdateFrame ? frameIndex - lastUpdateFrame : 0;
+        }
+
+#if UNITY_EDITOR
+        internal struct ShadowCacheDebugEntry
+        {
+            public float shadow;
+
+            public uint status;
+
+            public uint age;
+
+            public uint epoch;
+        }
+
+        internal struct BrickShadowCacheDebugEntry
+        {
+            public float meanShadow;
+
+            public float variance;
+
+            public uint epoch;
+
+            public uint lastUpdateFrame;
+        }
+
+        internal struct ShadowCacheProbeDebugSummary
+        {
+            public bool valid;
+
+            public ShadowCacheDebugStatus status;
+
+            public float meanShadow;
+
+            public uint unknownCount;
+
+            public uint freshHitCount;
+
+            public uint sampledCount;
+
+            public uint fallbackCount;
+
+            public uint uncoveredCount;
+
+            public uint brickHitCount;
+        }
+
+        private bool _shadowCacheDebugReadbackPending;
+
+        private int _shadowCacheDebugPendingReadbacks;
+
+        private bool _hasLastShadowCacheDebugReadbackFrame;
+
+        private uint _lastShadowCacheDebugReadbackFrame;
+
+        private uint _pendingShadowCacheDebugEpoch;
+
+        private uint _pendingShadowCacheDebugFrameIndex;
+
+        private ShadowCacheDebugEntry[] _pendingShadowCacheDebugEntries;
+
+        private BrickShadowCacheDebugEntry[] _pendingBrickShadowCacheDebugEntries;
+
+        internal ShadowCacheDebugEntry[] LatestShadowCacheDebugEntries { get; private set; }
+
+        internal BrickShadowCacheDebugEntry[] LatestBrickShadowCacheDebugEntries { get; private set; }
+
+        internal ShadowCacheProbeDebugSummary[] LatestShadowCacheProbeSummaries { get; private set; }
+
+        internal bool HasShadowCacheDebugSnapshot { get; private set; }
+
+        internal uint LatestShadowCacheDebugEpoch { get; private set; }
+
+        internal uint LatestShadowCacheDebugFrameIndex { get; private set; }
+
+        internal double LatestShadowCacheDebugTime { get; private set; }
+
+        internal bool IsShadowCacheDebugActive => debugMode == ProbeVolumeDebugMode.ShadowCache;
+
+        internal bool ShouldRequestShadowCacheDebugReadback(uint frameIndex)
+        {
+            if (!IsShadowCacheDebugActive || _shadowCacheDebugReadbackPending)
+            {
+                return false;
+            }
+
+            int interval = Mathf.Max(1, shadowCacheDebugReadbackInterval);
+            return !_hasLastShadowCacheDebugReadbackFrame ||
+                   frameIndex - _lastShadowCacheDebugReadbackFrame >= interval;
+        }
+
+        internal void BeginShadowCacheDebugReadback(uint epoch, uint frameIndex)
+        {
+            _shadowCacheDebugReadbackPending = true;
+            _shadowCacheDebugPendingReadbacks = 2;
+            _pendingShadowCacheDebugEpoch = epoch;
+            _pendingShadowCacheDebugFrameIndex = frameIndex;
+            _pendingShadowCacheDebugEntries = null;
+            _pendingBrickShadowCacheDebugEntries = null;
+            _lastShadowCacheDebugReadbackFrame = frameIndex;
+            _hasLastShadowCacheDebugReadbackFrame = true;
+        }
+
+        internal void UpdateShadowCacheDebugEntries(AsyncGPUReadbackRequest request)
+        {
+            if (!_shadowCacheDebugReadbackPending)
+            {
+                return;
+            }
+
+            if (!request.hasError)
+            {
+                var data = request.GetData<ShadowCacheDebugEntry>();
+                _pendingShadowCacheDebugEntries = new ShadowCacheDebugEntry[data.Length];
+                data.CopyTo(_pendingShadowCacheDebugEntries);
+            }
+
+            CompleteShadowCacheDebugReadback();
+        }
+
+        internal void UpdateBrickShadowCacheDebugEntries(AsyncGPUReadbackRequest request)
+        {
+            if (!_shadowCacheDebugReadbackPending)
+            {
+                return;
+            }
+
+            if (!request.hasError)
+            {
+                var data = request.GetData<BrickShadowCacheDebugEntry>();
+                _pendingBrickShadowCacheDebugEntries = new BrickShadowCacheDebugEntry[data.Length];
+                data.CopyTo(_pendingBrickShadowCacheDebugEntries);
+            }
+
+            CompleteShadowCacheDebugReadback();
+        }
+
+        internal void ClearShadowCacheDebugSnapshot()
+        {
+            _shadowCacheDebugReadbackPending = false;
+            _shadowCacheDebugPendingReadbacks = 0;
+            _hasLastShadowCacheDebugReadbackFrame = false;
+            _lastShadowCacheDebugReadbackFrame = 0;
+            _pendingShadowCacheDebugEntries = null;
+            _pendingBrickShadowCacheDebugEntries = null;
+            LatestShadowCacheDebugEntries = null;
+            LatestBrickShadowCacheDebugEntries = null;
+            LatestShadowCacheProbeSummaries = null;
+            HasShadowCacheDebugSnapshot = false;
+            LatestShadowCacheDebugEpoch = 0;
+            LatestShadowCacheDebugFrameIndex = 0;
+            LatestShadowCacheDebugTime = 0;
+        }
+
+        private void CompleteShadowCacheDebugReadback()
+        {
+            if (!_shadowCacheDebugReadbackPending)
+            {
+                return;
+            }
+
+            _shadowCacheDebugPendingReadbacks = Mathf.Max(0, _shadowCacheDebugPendingReadbacks - 1);
+            if (_shadowCacheDebugPendingReadbacks > 0)
+            {
+                return;
+            }
+
+            _shadowCacheDebugReadbackPending = false;
+            if (_pendingShadowCacheDebugEntries == null || _pendingBrickShadowCacheDebugEntries == null)
+            {
+                return;
+            }
+
+            LatestShadowCacheDebugEntries = _pendingShadowCacheDebugEntries;
+            LatestBrickShadowCacheDebugEntries = _pendingBrickShadowCacheDebugEntries;
+            LatestShadowCacheDebugEpoch = _pendingShadowCacheDebugEpoch;
+            LatestShadowCacheDebugFrameIndex = _pendingShadowCacheDebugFrameIndex;
+            LatestShadowCacheDebugTime = Time.realtimeSinceStartupAsDouble;
+            HasShadowCacheDebugSnapshot = true;
+            RebuildShadowCacheProbeSummaries();
+        }
+
+        private void RebuildShadowCacheProbeSummaries()
+        {
+            if (_probeDebugData == null || LatestShadowCacheDebugEntries == null)
+            {
+                LatestShadowCacheProbeSummaries = null;
+                return;
+            }
+
+            var summaries = new ShadowCacheProbeDebugSummary[_probeDebugData.Length];
+            for (int probeIndex = 0; probeIndex < _probeDebugData.Length; probeIndex++)
+            {
+                var debugData = _probeDebugData[probeIndex];
+                var localSurfelIndices = debugData?.LocalSurfelIndices;
+                if (localSurfelIndices == null || localSurfelIndices.Length == 0)
+                {
+                    continue;
+                }
+
+                uint unknownCount = 0;
+                uint freshHitCount = 0;
+                uint sampledCount = 0;
+                uint fallbackCount = 0;
+                uint uncoveredCount = 0;
+                uint brickHitCount = 0;
+                uint validEntryCount = 0;
+                float shadowSum = 0f;
+
+                for (int i = 0; i < localSurfelIndices.Length; i++)
+                {
+                    int surfelIndex = localSurfelIndices[i];
+                    if (surfelIndex < 0 || surfelIndex >= LatestShadowCacheDebugEntries.Length)
+                    {
+                        unknownCount++;
+                        continue;
+                    }
+
+                    var entry = LatestShadowCacheDebugEntries[surfelIndex];
+                    shadowSum += Mathf.Clamp01(entry.shadow);
+                    validEntryCount++;
+
+                    switch ((ShadowCacheDebugStatus)entry.status)
+                    {
+                        case ShadowCacheDebugStatus.FreshHit:
+                            freshHitCount++;
+                            break;
+                        case ShadowCacheDebugStatus.Sampled:
+                            sampledCount++;
+                            break;
+                        case ShadowCacheDebugStatus.FallbackFromCache:
+                            fallbackCount++;
+                            break;
+                        case ShadowCacheDebugStatus.UncoveredNoCache:
+                            uncoveredCount++;
+                            break;
+                        case ShadowCacheDebugStatus.BrickCacheHit:
+                            brickHitCount++;
+                            break;
+                        default:
+                            unknownCount++;
+                            break;
+                    }
+                }
+
+                summaries[probeIndex] = new ShadowCacheProbeDebugSummary
+                {
+                    valid = validEntryCount > 0,
+                    status = SelectShadowCacheProbeStatus(
+                        unknownCount, freshHitCount, sampledCount, fallbackCount, uncoveredCount, brickHitCount),
+                    meanShadow = validEntryCount > 0 ? shadowSum / validEntryCount : 1f,
+                    unknownCount = unknownCount,
+                    freshHitCount = freshHitCount,
+                    sampledCount = sampledCount,
+                    fallbackCount = fallbackCount,
+                    uncoveredCount = uncoveredCount,
+                    brickHitCount = brickHitCount
+                };
+            }
+
+            LatestShadowCacheProbeSummaries = summaries;
+        }
+
+        private static ShadowCacheDebugStatus SelectShadowCacheProbeStatus(
+            uint unknownCount, uint freshHitCount, uint sampledCount,
+            uint fallbackCount, uint uncoveredCount, uint brickHitCount)
+        {
+            var status = ShadowCacheDebugStatus.Unknown;
+            uint bestCount = unknownCount;
+            int bestPriority = 0;
+
+            Select(freshHitCount, ShadowCacheDebugStatus.FreshHit, 1);
+            Select(brickHitCount, ShadowCacheDebugStatus.BrickCacheHit, 2);
+            Select(sampledCount, ShadowCacheDebugStatus.Sampled, 3);
+            Select(fallbackCount, ShadowCacheDebugStatus.FallbackFromCache, 4);
+            Select(uncoveredCount, ShadowCacheDebugStatus.UncoveredNoCache, 5);
+            return status;
+
+            void Select(uint count, ShadowCacheDebugStatus candidate, int priority)
+            {
+                if (count > bestCount || count == bestCount && priority > bestPriority)
+                {
+                    bestCount = count;
+                    bestPriority = priority;
+                    status = candidate;
+                }
+            }
+        }
+#endif
+
         private void Start()
         {
 #if UNITY_EDITOR
             if (!gameObject.scene.IsValid()) return;
 #endif
             if (!IsFeatureEnabled) return;
+            _hasStarted = true;
             AllocateProbes();
             TryLoadAsset(asset);
 
@@ -238,12 +1077,18 @@ namespace Illusion.Rendering.PRTGI
             if (!IsFeatureEnabled) return;
             PRTVolumeManager.RegisterProbeVolume(this);
             ResetProbeUpdateRotation();
+
+            if (Application.isPlaying && _hasStarted && !IsProbeValid())
+            {
+                AllocateProbes();
+                TryLoadAsset(asset);
+            }
         }
 
         private void OnDisable()
         {
-            if (!IsFeatureEnabled) return;
             PRTVolumeManager.UnregisterProbeVolume(this);
+            ReleaseRuntimeData();
         }
 
 #if UNITY_EDITOR
@@ -292,24 +1137,29 @@ namespace Illusion.Rendering.PRTGI
 #endif
         private void OnDestroy()
         {
-#if UNITY_EDITOR
-            if (!gameObject.scene.IsValid()) return;
-#endif
-            ReleaseProbes();
-            if (_coefficientVoxelRT)
-            {
-                _coefficientVoxelRT.Release();
-                _coefficientVoxelRT = null;
-            }
+            ReleaseRuntimeData();
+        }
 
-            if (_validityVoxelRT)
-            {
-                _validityVoxelRT?.Release();
-                _validityVoxelRT = null;
-            }
+        private void ReleaseRuntimeData()
+        {
+            ClearShadowCacheGlobalStats();
+            ReleaseProbes();
+            ReleaseRenderTexture(ref _coefficientVoxelRT);
+            ReleaseRenderTexture(ref _validityVoxelRT);
 
             _globalSurfelBuffer?.Release();
             _globalSurfelBuffer = null;
+            _isDataInitialized = false;
+        }
+
+        private static void ReleaseRenderTexture(ref RenderTexture texture)
+        {
+            if (texture)
+            {
+                texture.Release();
+            }
+
+            texture = null;
         }
 
         private Grid CalculateVoxelGrid()
@@ -374,6 +1224,9 @@ namespace Illusion.Rendering.PRTGI
             _globalSurfelBuffer?.Release();
             _globalSurfelBuffer = null;
             _isDataInitialized = false;
+#if UNITY_EDITOR
+            ReleaseProbeDebugData();
+#endif
 
             if (!volumeAsset || !volumeAsset.HasValidData)
             {
@@ -411,6 +1264,24 @@ namespace Illusion.Rendering.PRTGI
             _isDataInitialized = true;
         }
 
+#if UNITY_EDITOR
+        private void ReleaseProbeDebugData()
+        {
+            ClearShadowCacheDebugSnapshot();
+
+            if (_probeDebugData == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _probeDebugData.Length; i++)
+            {
+                _probeDebugData[i]?.Dispose();
+                _probeDebugData[i] = null;
+            }
+        }
+#endif
+
         private void ReleaseProbes()
         {
             if (Probes != null)
@@ -427,14 +1298,7 @@ namespace Illusion.Rendering.PRTGI
             _priorityProbeQueue.Clear();
 #if UNITY_EDITOR
             _cachedVirtualOffsetPositions.Clear();
-            if (_probeDebugData != null)
-            {
-                for (int i = 0; i < _probeDebugData.Length; i++)
-                {
-                    _probeDebugData[i]?.Dispose();
-                    _probeDebugData[i] = null;
-                }
-            }
+            ReleaseProbeDebugData();
 #endif
         }
 
@@ -481,10 +1345,7 @@ namespace Illusion.Rendering.PRTGI
 
         private void InitializeVoxelTexture(int width, int height, int depth)
         {
-            if (_coefficientVoxelRT)
-            {
-                _coefficientVoxelRT.Release();
-            }
+            ReleaseRenderTexture(ref _coefficientVoxelRT);
             // Layout: float3[_grid.X, _grid.Z, _grid.Y * 9]
             // Each depth slice corresponds to one RGB component of SH coefficient
             _coefficientVoxelRT = new RenderTexture(width, height, 0, Texture3DFormat)
@@ -499,7 +1360,7 @@ namespace Illusion.Rendering.PRTGI
             _coefficientVoxelRT.Create();
 
             // Create validity texture (packed 32-bit float: intensity + validity per probe)
-            _validityVoxelRT?.Release();
+            ReleaseRenderTexture(ref _validityVoxelRT);
             _validityVoxelRT = new RenderTexture(width, height, 0, RenderTextureFormat.RFloat)
             {
                 dimension = TextureDimension.Tex3D,
@@ -515,6 +1376,28 @@ namespace Illusion.Rendering.PRTGI
         private bool EnableMultiFrameRelight()
         {
             return multiFrameRelight;
+        }
+
+        public void PrepareRelightCycle(int inputHash)
+        {
+            if (!relightOnceUntilDirty)
+            {
+                _hasRelightInputHash = false;
+                _lastRelightInputHash = 0;
+                return;
+            }
+
+            if (_hasRelightInputHash && _lastRelightInputHash == inputHash)
+            {
+                return;
+            }
+
+            _hasRelightInputHash = true;
+            _lastRelightInputHash = inputHash;
+            _relitProbeIndicesInWindow.Clear();
+            _relightWindowCycleComplete = false;
+            _currentProbeUpdateIndex = 0;
+            _lastRoundRobinProbeCount = 0;
         }
 
         public Vector3 GetVoxelMinCorner()
@@ -572,10 +1455,21 @@ namespace Illusion.Rendering.PRTGI
                 }
             }
 
+            if (!ShouldStopRelightAfterWindowCycle)
+            {
+                _relitProbeIndicesInWindow.Clear();
+                _relightWindowCycleComplete = false;
+            }
+            else if (_relightWindowCycleComplete)
+            {
+                return;
+            }
+
             // If multi-frame relight is not needed, relight all probes in bounding box
             if (!EnableMultiFrameRelight())
             {
                 probes.AddRange(_probesInBoundingBox);
+                TrackRelightWindowCoverage(probes);
                 return;
             }
 
@@ -644,6 +1538,28 @@ namespace Illusion.Rendering.PRTGI
                     _lastRoundRobinProbeCount = addedFromRoundRobin;
                 }
             }
+
+            TrackRelightWindowCoverage(probes);
+        }
+
+        private void TrackRelightWindowCoverage(List<PRTProbe> probes)
+        {
+            if (!ShouldStopRelightAfterWindowCycle || probes == null || probes.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < probes.Count; i++)
+            {
+                var probe = probes[i];
+                if (probe != null && _probesInBoundingBox.Contains(probe))
+                {
+                    _relitProbeIndicesInWindow.Add(probe.Index);
+                }
+            }
+
+            _relightWindowCycleComplete = _probesInBoundingBox.Count > 0 &&
+                                          _relitProbeIndicesInWindow.Count >= _probesInBoundingBox.Count;
         }
 
         /// <summary>
@@ -684,6 +1600,11 @@ namespace Illusion.Rendering.PRTGI
         {
             if (EnableMultiFrameRelight())
             {
+                if (ShouldStopRelightAfterWindowCycle && _relightWindowCycleComplete)
+                {
+                    return;
+                }
+
                 // Advance the update index for next frame based on actual probes added from round-robin
                 // This ensures we don't skip probes when priority queue or local probes consume budget
                 if (_lastRoundRobinProbeCount > 0)
@@ -725,6 +1646,10 @@ namespace Illusion.Rendering.PRTGI
             _currentProbeUpdateIndex = 0;
             _lastRoundRobinProbeCount = 0;
             _probesToUpdateCount = Probes != null ? CalculateProbesPerFrameUpdate(_probesInBoundingBox.Count, probesPerFrameUpdate) : 0;
+            _relitProbeIndicesInWindow.Clear();
+            _relightWindowCycleComplete = false;
+            _lastRelightInputHash = 0;
+            _hasRelightInputHash = false;
         }
 
         /// <summary>
@@ -869,6 +1794,8 @@ namespace Illusion.Rendering.PRTGI
         private void GetProbesInBoundingBox()
         {
             _probesInBoundingBox.Clear();
+            _relitProbeIndicesInWindow.Clear();
+            _relightWindowCycleComplete = false;
 
             for (int x = _boundingBoxMin.x; x < _boundingBoxMin.x + CurrentVoxelGrid.X; x++)
             {
