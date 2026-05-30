@@ -96,13 +96,7 @@ namespace Illusion.Rendering.Editor
                     material.SetShaderPassEnabled("ForwardGBuffer", true);
                 }
             }
-
-
-            if (material.HasProperty(IllusionShaderProperties.CastPerObjectShadow))
-            {
-                material.SetShaderPassEnabled("ShadowCaster", true);
-            }
-
+            
             int stencilRefDepth = 0;
             int stencilWriteMaskDepth = (int)IllusionStencilUsage.ForwardGBufferWriteMask;
 
