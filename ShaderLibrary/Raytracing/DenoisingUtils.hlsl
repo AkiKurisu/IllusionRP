@@ -8,8 +8,13 @@
 float ComputeMaxReprojectionWorldRadius(float3 positionWS, float3 normalWS, float pixelSpreadAngleTangent,
     float maxDistance, float pixelTolerance)
 {
-    const float3 viewWS = GetWorldSpaceNormalizeViewDir(positionWS);
-    float parallelPixelFootPrint = pixelSpreadAngleTangent * length(positionWS);
+    // HDRP:
+    // const float3 viewWS = GetWorldSpaceNormalizeViewDir(positionWS);
+    // float parallelPixelFootPrint = pixelSpreadAngleTangent * length(positionWS);
+    // @IllusionRP: URP uses absolute world space here, so use camera-to-pixel distance for a stable validation radius.
+    const float3 viewVectorWS = GetWorldSpaceViewDir(positionWS);
+    const float3 viewWS = normalize(viewVectorWS);
+    float parallelPixelFootPrint = pixelSpreadAngleTangent * length(viewVectorWS);
     float realPixelFootPrint = parallelPixelFootPrint / max(abs(dot(normalWS, viewWS)), PROJECTION_EPSILON);
     return max(maxDistance, realPixelFootPrint * pixelTolerance);
 }

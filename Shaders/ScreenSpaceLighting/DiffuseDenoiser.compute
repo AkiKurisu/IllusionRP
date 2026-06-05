@@ -57,10 +57,12 @@ void GeneratePointDistribution(uint3 dispatchThreadId : SV_DispatchThreadID)
     _PointDistributionRW[dispatchThreadId.x] = SampleDiskCubic(GetLDSequenceSampleFloat(dispatchThreadId.x, 0), GetLDSequenceSampleFloat(dispatchThreadId.x, 1));
 }
 
-float ComputeMaxDenoisingRadius(float3 positionRWS)
+// HDRP: float ComputeMaxDenoisingRadius(float3 positionRWS)
+float ComputeMaxDenoisingRadius(float3 positionWS)
 {
-    // Compute the distance to the pixel
-    float distanceToPoint = length(positionRWS);
+    // HDRP: float distanceToPoint = length(positionRWS);
+    // @IllusionRP: center.position is absolute world space in URP, so base the kernel radius on view distance.
+    float distanceToPoint = length(GetWorldSpaceViewDir(positionWS));
     // This is purely empirical, values were obtained  while experimenting with various scenes and these valuesgive good visual results.
     // The world space radius for sample picking goes from distance/10.0 to distance/50.0 linearly until reaching 500.0 meters away from the camera
     // and it is always 20.0f (or two pixels if subpixel.
@@ -178,7 +180,7 @@ void BILATERAL_FILTER(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 groupT
         #endif
         wSum += 1.0;
     }
-    
+
     // Normalize the result
 #if SINGLE_CHANNEL
     _DenoiseOutputTextureRW[COORD_TEXTURE2D_X(currentCoord)] = colorSum / wSum;
@@ -202,7 +204,7 @@ void FillGatherDataLDS(uint groupIndex, uint2 pixelCoord)
     float3 lighting = LOAD_TEXTURE2D_X(_DenoiseInputTexture, sampleCoord).xyz;
     gs_cacheLighting[groupIndex] = PackToR11G11B10f(lighting);
 #endif
-    
+
     float depthValue = LOAD_TEXTURE2D_X(_DepthTexture, sampleCoord * _DenoiserResolutionMultiplierVals.y).x;
     gs_cacheDepth[groupIndex] = depthValue;
 }
