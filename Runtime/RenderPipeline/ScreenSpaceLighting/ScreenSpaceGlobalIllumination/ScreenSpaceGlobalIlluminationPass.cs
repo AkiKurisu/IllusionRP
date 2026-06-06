@@ -264,6 +264,7 @@ namespace Illusion.Rendering
             public int ViewCount;
             
             public TextureHandle LowResolutionTexture;
+            public TextureHandle DepthPyramidTexture;
             public TextureHandle OutputTexture;
         }
         
@@ -749,7 +750,7 @@ namespace Illusion.Rendering
             }
         }
         
-        private TextureHandle RenderUpsamplePass(RenderGraph renderGraph, TextureHandle lowResInput)
+        private TextureHandle RenderUpsamplePass(RenderGraph renderGraph, TextureHandle lowResInput, TextureHandle depthPyramidTexture)
         {
             using (var builder = renderGraph.AddComputePass<UpsamplePassData>("SSGI Upsample", out var passData))
             {
@@ -792,6 +793,8 @@ namespace Illusion.Rendering
                 
                 builder.UseTexture(lowResInput);
                 passData.LowResolutionTexture = lowResInput;
+                builder.UseTexture(depthPyramidTexture, AccessFlags.Read);
+                passData.DepthPyramidTexture = depthPyramidTexture;
                 
                 builder.AllowPassCulling(false);
                 
@@ -801,6 +804,8 @@ namespace Illusion.Rendering
                     
                     context.cmd.SetComputeTextureParam(data.BilateralUpsampleCS, data.UpsampleKernel,
                         Properties.LowResolutionTexture, data.LowResolutionTexture);
+                    context.cmd.SetComputeTextureParam(data.BilateralUpsampleCS, data.UpsampleKernel,
+                        IllusionShaderProperties._DepthPyramid, data.DepthPyramidTexture);
                     context.cmd.SetComputeVectorParam(data.BilateralUpsampleCS, Properties.HalfScreenSize, data.HalfScreenSize);
                     context.cmd.SetComputeTextureParam(data.BilateralUpsampleCS, data.UpsampleKernel,
                         Properties.OutputUpscaledTexture, data.OutputTexture);
@@ -969,7 +974,7 @@ namespace Illusion.Rendering
             // Upsample if half resolution
             if (_halfResolution)
             {
-                giTexture = RenderUpsamplePass(renderGraph, giTexture);
+                giTexture = RenderUpsamplePass(renderGraph, giTexture, depthPyramidTexture);
             }
             
             // Set global texture
