@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        id: tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error title=Invalid release tag::Expected a tag like v1.2.3, got ${tag}."
+            exit 1
+          fi
+          target_sha="$(git rev-list -n 1 "$tag")"
+
+          git fetch --no-tags origin +refs/heads/*:refs/remotes/origin/*
+
+          on_release_branch=false
+          if git show-ref --verify --quiet refs/remotes/origin/master &&
+             git merge-base --is-ancestor "$target_sha" origin/master; then
+            on_release_branch=true
+          fi
+          if git show-ref --verify --quiet refs/remotes/origin/main &&
+             git merge-base --is-ancestor "$target_sha" origin/main; then
+            on_release_branch=true
+          fi
+
+          if [[ "$on_release_branch" != "true" ]]; then
+            echo "::error title=Tag is not on the release branch::${tag} must point to a commit contained in master or main."
+            exit 1
+          fi
+
+          {
+            echo "tag=${tag}"
+            echo "version=${tag#v}"
+            echo "target_sha=${target_sha}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.version }}
+        shell: python
+        run: |
+          import json
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["RELEASE_VERSION"]
+          changelog = pathlib.Path("CHANGELOG.md")
+          text = changelog.read_text(encoding="utf-8")
+          match = re.search(
+              rf"^## \[{re.escape(version)}\](?: - [^\n]+)?\s*\n(?P<body>.*?)(?=^## \[|\Z)",
+              text,
+              re.MULTILINE | re.DOTALL,
+          )
+          if not match:
+              raise SystemExit(f"Could not find CHANGELOG.md section for {version}.")
+
+          body = match.group("body").strip()
+          if not body:
+              raise SystemExit(f"CHANGELOG.md section for {version} is empty.")
+
+          package_json = pathlib.Path("package.json")
+          if package_json.exists():
+              package_version = json.loads(package_json.read_text(encoding="utf-8")).get("version")
+              if package_version and package_version != version:
+                  print(
+                      f"::warning title=Version mismatch::package.json is {package_version}, "
+                      f"but release tag is v{version}."
+                  )
+
+          pathlib.Path("release_notes.md").write_text(body + "\n", encoding="utf-8")
+
+      - name: Ensure release does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error title=Release already exists::Release ${{ steps.tag.outputs.tag }} already exists."
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --title "${{ steps.tag.outputs.tag }}" \
+            --notes-file release_notes.md
