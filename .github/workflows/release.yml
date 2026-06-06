@@ -81,7 +81,9 @@ jobs:
           if package_json.exists():
               package_version = json.loads(package_json.read_text(encoding="utf-8")).get("version")
               if package_version and package_version != version:
-                  print(
+                  raise SystemExit(
+                      f"package.json is {package_version}, but release tag is v{version}."
+                  )
                       f"::warning title=Version mismatch::package.json is {package_version}, "
                       f"but release tag is v{version}."
                   )
