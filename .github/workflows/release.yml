@@ -84,11 +84,6 @@ jobs:
                   raise SystemExit(
                       f"package.json is {package_version}, but release tag is v{version}."
                   )
-                  raise SystemExit(
-                      f"package.json is {package_version}, but release tag is v{version}."
-                  )
-                      f"but release tag is v{version}."
-                  )
 
           pathlib.Path("release_notes.md").write_text(body + "\n", encoding="utf-8")
 
