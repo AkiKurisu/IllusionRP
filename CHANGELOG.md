@@ -5,6 +5,30 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-6-6
+
+### Added
+
+- Add temporal accumulation and denoising for screen-space shadows.
+
+### Changed
+
+- Streamline ForwardGBuffer depth-normal handling.
+- Align exposure and temporal history with per-camera state.
+- Improve SSGI half-resolution history and validation handling.
+- Improve PRT probe volume rolling relight updates.
+
+### Fixed
+
+- Fix hair Marschner specular scaling and gating.
+- Fix SSGI validation errors at half resolution.
+- Fix screen-space shadow history resolution multiplier.
+- Fix transparent post-depth handling under URP depth priming.
+- Fix per-object shadow caster pass handling.
+- Fix PRT relight rolling update issues.
+- Fix SSGI denoising radius for absolute world-space signals.
+- Fix SSGI half-resolution edge history rejection flicker.
+
 ## [1.2.2] - 2026-2-2
 
 ### Fixed

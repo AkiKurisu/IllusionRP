@@ -152,6 +152,30 @@ void ValidateHistory(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 groupTh
 
 // Validation buffer that tells us if the history should be ignored for a given pixel.
 TEXTURE2D_X_UINT(_ValidationBuffer);
+
+bool IsHistoryRejected(uint validationFlags)
+{
+    uint mask = _ReceiverMotionRejection ? HISTORYREJECTIONFLAGS_COMBINED : HISTORYREJECTIONFLAGS_COMBINED_NO_MOTION;
+    return (validationFlags & mask) != 0u;
+}
+
+bool IsHalfResHistoryRejected(uint2 sourceCoord)
+{
+    uint2 maxCoord = (uint2)_ScreenSize.xy - 1u;
+    uint2 blockOrigin = min(sourceCoord, maxCoord);
+    uint2 blockX = min(blockOrigin + uint2(1u, 0u), maxCoord);
+    uint2 blockY = min(blockOrigin + uint2(0u, 1u), maxCoord);
+    uint2 blockXY = min(blockOrigin + uint2(1u, 1u), maxCoord);
+
+    bool rejected0 = IsHistoryRejected(LOAD_TEXTURE2D_X(_ValidationBuffer, blockOrigin).x);
+    bool rejected1 = IsHistoryRejected(LOAD_TEXTURE2D_X(_ValidationBuffer, blockX).x);
+    bool rejected2 = IsHistoryRejected(LOAD_TEXTURE2D_X(_ValidationBuffer, blockY).x);
+    bool rejected3 = IsHistoryRejected(LOAD_TEXTURE2D_X(_ValidationBuffer, blockXY).x);
+
+    // @IllusionRP: Half-res SSGI represents a 2x2 full-res block; require the whole block to reject history to avoid edge representative flicker.
+    return rejected0 && rejected1 && rejected2 && rejected3;
+}
+
 #ifdef HISTORY_IS_ARRAY
 // This buffer holds the previously accumualted signal
 TEXTURE2D_ARRAY(_HistoryBuffer);
@@ -246,7 +270,10 @@ void TEMPORAL_ACCUMULATION(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 g
     float accumulationFactor = 0.0;
 
     // Evaluate our validation mask
-    float validationMask = (_ReceiverMotionRejection ? (LOAD_TEXTURE2D_X(_ValidationBuffer, sourceCoord).x) : (LOAD_TEXTURE2D_X(_ValidationBuffer, sourceCoord).x & (~HISTORYREJECTIONFLAGS_MOTION))) != 0 ? 0.0f : 1.0f;
+    bool rejectedHistory = _DenoiserResolutionMultiplierVals.x < 1.0f
+        ? IsHalfResHistoryRejected(sourceCoord)
+        : IsHistoryRejected(LOAD_TEXTURE2D_X(_ValidationBuffer, sourceCoord).x);
+    float validationMask = rejectedHistory ? 0.0f : 1.0f;
 
     // Combine the validation mask with the history validity
     bool historyInvalid = ((float)validationMask * _HistoryValidity) < 1.0f;
