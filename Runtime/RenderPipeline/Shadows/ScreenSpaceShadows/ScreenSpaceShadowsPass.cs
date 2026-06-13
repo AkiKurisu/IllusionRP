@@ -86,6 +86,7 @@ namespace Illusion.Rendering.Shadows
             internal IllusionRendererData RendererData;
             internal Material ShadowMaterial;
             internal TextureHandle DepthTexture;
+            internal bool IncludeContactShadow;
         }
 
         private void SetupPenumbraMask(RenderTextureDescriptor cameraTargetDesc)
@@ -189,6 +190,7 @@ namespace Illusion.Rendering.Shadows
 
                 var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
                 bool useShadowTemporalAccumulation = _rendererData.PCSSShadowSampling && pcssParams.shadowTemporalAccumulation.value;
+                passData.IncludeContactShadow = !useShadowTemporalAccumulation;
                 if (!useShadowTemporalAccumulation)
                 {
                     builder.SetGlobalTextureAfterPass(screenSpaceShadowsTexture, IllusionShaderProperties.ScreenSpaceShadowmapTexture);
@@ -226,11 +228,12 @@ namespace Illusion.Rendering.Shadows
                 var contactShadowRT = contactShadowParam.shadowDenoiser.value == ShadowDenoiser.Spatial
                     ? rendererData.ContactShadowsDenoisedRT
                     : rendererData.ContactShadowsRT;
-                if (contactShadowRT.IsValid())
+                if (contactShadowRT != null && contactShadowRT.IsValid())
                 {
                     material.SetTexture(IllusionShaderProperties._ContactShadowMap, contactShadowRT);
                 }
             }
+            material.SetFloat(ShaderProperties.IncludeContactShadow, data.IncludeContactShadow ? 1.0f : 0.0f);
             CoreUtils.SetKeyword(cmd, IllusionShaderKeywords._CONTACT_SHADOWS, rendererData.ContactShadowsSampling);
             
             // Handle PCSS keyword
@@ -349,6 +352,8 @@ namespace Illusion.Rendering.Shadows
             public static readonly int FindBlockerSampleCount = Shader.PropertyToID("_FindBlockerSampleCount");
 
             public static readonly int PcfSampleCount = Shader.PropertyToID("_PcfSampleCount");
+
+            public static readonly int IncludeContactShadow = Shader.PropertyToID("_IncludeContactShadow");
         }
     }
 }

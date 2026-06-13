@@ -6,6 +6,7 @@
 #pragma kernel TemporalAccumulationColorArray                   TEMPORAL_ACCUMULATION=TemporalAccumulationColorArray HISTORY_IS_ARRAY
 
 #pragma kernel CopyHistory
+#pragma kernel CompositeContactShadow
 
 #pragma kernel BlendHistorySingleArray                          BLEND_HISTORY_ARRAY=BlendHistorySingleArray SINGLE_CHANNEL OUTPUT_IS_ARRAY
 #pragma kernel BlendHistorySingleArrayNoValidity                BLEND_HISTORY_ARRAY=BlendHistorySingleArrayNoValidity SINGLE_CHANNEL OUTPUT_IS_ARRAY NO_VALIDITY
@@ -187,6 +188,7 @@ TEXTURE2D_X(_HistoryBuffer);
 #endif
 // Noisy Input Buffer from the current rame
 TEXTURE2D_X(_DenoiseInputTexture);
+TEXTURE2D_X(_ContactShadowMap);
 // In the case of an array signal, this tells us which slice of the array we should be fetching
 int _DenoisingHistorySlice;
 // This value tells us which channels hold the value
@@ -314,6 +316,19 @@ void CopyHistory(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;  // Out of bounds, discard
 
     _DenoiseOutputTextureRW[COORD_TEXTURE2D_X(dispatchThreadId.xy)] = LOAD_TEXTURE2D_X(_DenoiseInputTexture, dispatchThreadId.xy);
+}
+
+[numthreads(TEMPORAL_FILTER_TILE_SIZE, TEMPORAL_FILTER_TILE_SIZE, 1)]
+void CompositeContactShadow(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    // UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
+
+    if (any(dispatchThreadId.xy > (uint2)round((float2)_ScreenSize.xy * _DenoiserResolutionMultiplierVals.xx)))
+        return;  // Out of bounds, discard
+
+    float screenSpaceShadow = LOAD_TEXTURE2D_X(_DenoiseInputTexture, dispatchThreadId.xy).x;
+    float contactShadow = 1.0 - LOAD_TEXTURE2D_X(_ContactShadowMap, dispatchThreadId.xy).r;
+    _DenoiseOutputTextureRW[COORD_TEXTURE2D_X(dispatchThreadId.xy)] = float4(min(screenSpaceShadow, contactShadow), 0.0, 0.0, 1.0);
 }
 
 // Output is array textures

@@ -63,6 +63,7 @@ Shader "Hidden/ScreenSpaceShadows"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
 
             TEXTURE2D(_ContactShadowMap);
+            float _IncludeContactShadow;
             
             half4 Fragment(Varyings input) : SV_Target
             {
@@ -92,7 +93,7 @@ Shader "Hidden/ScreenSpaceShadows"
 #ifdef _CONTACT_SHADOWS
 				float screenSpaceShadow = min(realtimeShadow, perObjShadow);
 				float contactShadow = 1 - LOAD_TEXTURE2D_X(_ContactShadowMap, input.positionCS.xy).r;
-            	float finalShadow = min(contactShadow, screenSpaceShadow);
+            	float finalShadow = _IncludeContactShadow != 0.0 ? min(contactShadow, screenSpaceShadow) : screenSpaceShadow;
 #else
                 float finalShadow = min(realtimeShadow, perObjShadow);
 #endif
