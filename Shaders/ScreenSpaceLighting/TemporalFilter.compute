@@ -323,7 +323,7 @@ void CompositeContactShadow(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     // UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
 
-    if (any(dispatchThreadId.xy > (uint2)round((float2)_ScreenSize.xy * _DenoiserResolutionMultiplierVals.xx)))
+    if (any(dispatchThreadId.xy >= (uint2)round((float2)_ScreenSize.xy * _DenoiserResolutionMultiplierVals.xx)))
         return;  // Out of bounds, discard
 
     float screenSpaceShadow = LOAD_TEXTURE2D_X(_DenoiseInputTexture, dispatchThreadId.xy).x;
