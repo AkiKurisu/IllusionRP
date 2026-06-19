@@ -47,52 +47,58 @@ float PerObjectPCF(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 
 float SamplePerObjectShadowmapPCSS(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 shadowCoord,
     ShadowSamplingData samplingData, float2 screenCoord, int shadowIndex, float4 shadowMapRect)
 {
-    float penumbraMask = SAMPLE_TEXTURE2D(_PenumbraMaskTex, sampler_LinearClamp, screenCoord).r;
     float4 shadowMapSize = samplingData.shadowmapSize;
     UNITY_BRANCH
-    if (penumbraMask > Eps_float())
+    if (_UsePenumbraMask > 0.5)
     {
-        float receiverDepth = shadowCoord.z;
-
-        float2 minCoord = float2(shadowMapRect.x, shadowMapRect.z);
-        float2 maxCoord = float2(shadowMapRect.y, shadowMapRect.w);
-        float2 shadowmapInAtlasScale = maxCoord - minCoord;
-        float texelSize = shadowMapSize.x / shadowmapInAtlasScale.x;
-    
-        // Use per-object shadow PCSS parameters
-        float4 pcssParams0 = _PerObjShadowPcssParams0[shadowIndex];
-        float4 pcssParams1 = _PerObjShadowPcssParams1[shadowIndex];
-        float4 pcssProjs = _PerObjShadowPcssProjs[shadowIndex];
-    
-        float depth2RadialScale = pcssParams0.x;
-        float maxBlokcerDistance = pcssParams0.z;
-        float maxSamplingDistance = pcssParams0.w;
-        float minFilterRadius = texelSize * pcssParams1.x;
-        float minFilterRadial2DepthScale = pcssParams1.y;
-        float blockerRadial2DepthScale = pcssParams1.z;
-        float maxPcssOffset = maxSamplingDistance * abs(pcssProjs.z);
-        float maxSampleZDistance = maxBlokcerDistance * abs(pcssProjs.z);
-        float2 posSS = screenCoord * _ScreenSize.xy;
-        float2 sampleJitter = ComputePcfSampleJitter(posSS, (uint)_TaaFrameInfo.z);
-    
-        float blockerSearchRadius = BlockerSearchRadius(receiverDepth, depth2RadialScale, maxSamplingDistance, minFilterRadius);
-        float avgBlockerDepth = FindBlocker(TEXTURE2D_ARGS(ShadowMap, sampler_LinearClamp), shadowCoord.xy,
-            receiverDepth, blockerSearchRadius,
-            minCoord, maxCoord, _FindBlockerSampleCount,
-            shadowmapInAtlasScale, sampleJitter, minFilterRadius, minFilterRadial2DepthScale,
-            blockerRadial2DepthScale);
-
-        float filterSize, blockerDistance;
-        float samplingFilterSize = EstimatePenumbra(receiverDepth, avgBlockerDepth, depth2RadialScale, maxSampleZDistance,
-            minFilterRadius, filterSize, blockerDistance);
-        maxPcssOffset = min(maxPcssOffset, blockerDistance * 0.25f);
-
-        return PerObjectPCF(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingFilterSize, _PcfSampleCount,
-            shadowmapInAtlasScale, sampleJitter, minCoord, maxCoord,
-            minFilterRadial2DepthScale, filterSize, maxPcssOffset);
+        // Keep per-object shadows on the same conservative mask gate as the main light path.
+        float penumbraMask = SAMPLE_TEXTURE2D(_PenumbraMaskTex, sampler_LinearClamp, screenCoord).r;
+        if (penumbraMask <= Eps_float())
+            return SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz);
     }
 
-    return SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz);
+    float receiverDepth = shadowCoord.z;
+
+    float2 minCoord = float2(shadowMapRect.x, shadowMapRect.z);
+    float2 maxCoord = float2(shadowMapRect.y, shadowMapRect.w);
+    float2 shadowmapInAtlasScale = maxCoord - minCoord;
+    float texelSize = shadowMapSize.x / shadowmapInAtlasScale.x;
+
+    // Use per-object shadow PCSS parameters
+    float4 pcssParams0 = _PerObjShadowPcssParams0[shadowIndex];
+    float4 pcssParams1 = _PerObjShadowPcssParams1[shadowIndex];
+    float4 pcssProjs = _PerObjShadowPcssProjs[shadowIndex];
+
+    float depth2RadialScale = pcssParams0.x;
+    float maxBlokcerDistance = pcssParams0.z;
+    float maxSamplingDistance = pcssParams0.w;
+    float minFilterRadius = texelSize * pcssParams1.x;
+    float minFilterRadial2DepthScale = pcssParams1.y;
+    float blockerRadial2DepthScale = pcssParams1.z;
+    float maxPcssOffset = maxSamplingDistance * abs(pcssProjs.z);
+    float maxSampleZDistance = maxBlokcerDistance * abs(pcssProjs.z);
+    float2 posSS = screenCoord * _ScreenSize.xy;
+    float2 sampleJitter = ComputePcfSampleJitter(posSS, (uint)_TaaFrameInfo.z);
+
+    float blockerSearchRadius = BlockerSearchRadius(receiverDepth, depth2RadialScale, maxSampleZDistance, minFilterRadius);
+    float avgBlockerDepth = FindBlocker(TEXTURE2D_ARGS(ShadowMap, sampler_LinearClamp), shadowCoord.xy,
+        receiverDepth, blockerSearchRadius,
+        minCoord, maxCoord, _FindBlockerSampleCount,
+        shadowmapInAtlasScale, sampleJitter, minFilterRadius, minFilterRadial2DepthScale,
+        blockerRadial2DepthScale);
+
+    float filterSize, blockerDistance;
+    float samplingFilterSize = EstimatePenumbra(receiverDepth, avgBlockerDepth, depth2RadialScale, maxSampleZDistance,
+        minFilterRadius, filterSize, blockerDistance);
+    if (samplingFilterSize <= Eps_float())
+        // Match HDRP directional PCSS: no blocker means the receiver is fully lit.
+        return 1.0;
+
+    maxPcssOffset = min(maxPcssOffset, blockerDistance * 0.25f);
+
+    return PerObjectPCF(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingFilterSize, _PcfSampleCount,
+        shadowmapInAtlasScale, sampleJitter, minCoord, maxCoord,
+        minFilterRadial2DepthScale, filterSize, maxPcssOffset);
 }
 
 real SamplePerObjectShadowmap(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap),

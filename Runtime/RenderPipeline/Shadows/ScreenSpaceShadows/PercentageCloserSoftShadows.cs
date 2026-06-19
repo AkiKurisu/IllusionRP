@@ -69,6 +69,41 @@ namespace Illusion.Rendering.Shadows
         public ClampedIntParameter penumbraMaskScale = new(4, 1, 32);
 
         /// <summary>
+        /// Conservative dilation radius for the penumbra mask in mask texels.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Conservative dilation radius for the penumbra mask in mask texels. Larger values avoid PCSS edge artifacts at the cost of running PCSS on more pixels.")]
+        public ClampedIntParameter penumbraMaskDilation = new(16, 0, 16);
+
+        /// <summary>
+        /// Minimum conservative dilation radius for distant penumbra mask pixels.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Minimum conservative dilation radius for distant penumbra mask pixels.")]
+        public ClampedIntParameter penumbraMaskMinDilation = new(4, 0, 16);
+
+        /// <summary>
+        /// Camera-space distance where penumbra mask dilation starts fading down.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Camera-space distance where penumbra mask dilation starts fading down from the maximum value.")]
+        public ClampedFloatParameter penumbraMaskDilationFadeStart = new(8.0f, 0.0f, 200.0f);
+
+        /// <summary>
+        /// Camera-space distance where penumbra mask dilation reaches the minimum value.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Camera-space distance where penumbra mask dilation reaches the minimum value.")]
+        public ClampedFloatParameter penumbraMaskDilationFadeEnd = new(30.0f, 0.0f, 500.0f);
+
+        /// <summary>
+        /// Use the screen-space penumbra mask to skip PCSS work outside detected shadow edges.
+        /// </summary>
+        [AdditionalProperty]
+        [Tooltip("Use the screen-space penumbra mask to skip PCSS work outside detected shadow edges. Disable this to match HDRP directional PCSS more closely.")]
+        public BoolParameter usePenumbraMask = new(true);
+
+        /// <summary>
         /// Enable temporal accumulation for screen-space PCSS shadows.
         /// </summary>
         [Header("Denoiser")]
@@ -91,4 +126,3 @@ namespace Illusion.Rendering.Shadows
         public ClampedIntParameter shadowDenoiseKernelSize = new(4, 1, 16);
     }
 }
-

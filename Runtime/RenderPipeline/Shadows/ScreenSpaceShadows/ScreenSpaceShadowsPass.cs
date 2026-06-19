@@ -78,6 +78,7 @@ namespace Illusion.Rendering.Shadows
             internal Vector4[] CascadeOffsetScales;
             internal Vector4[] DirLightPcssParams0;
             internal Vector4[] DirLightPcssParams1;
+            internal bool UsePenumbraMask;
         }
 
         private class ShadowPassData
@@ -89,8 +90,16 @@ namespace Illusion.Rendering.Shadows
             internal bool IncludeContactShadow;
         }
 
-        private void SetupPenumbraMask(RenderTextureDescriptor cameraTargetDesc)
+        private void SetupPenumbraMask(RenderTextureDescriptor cameraTargetDesc, bool usePenumbraMask)
         {
+            _colorAttachmentWidth = cameraTargetDesc.width;
+            _colorAttachmentHeight = cameraTargetDesc.height;
+
+            if (!usePenumbraMask)
+            {
+                return;
+            }
+
             var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
             _penumbraMaskDesc = cameraTargetDesc;
             _penumbraMaskDesc.colorFormat = RenderTextureFormat.R8;
@@ -101,8 +110,6 @@ namespace Illusion.Rendering.Shadows
             _penumbraMaskDesc.msaaSamples = 1;
             _penumbraMaskDesc.width = Mathf.CeilToInt((float)cameraTargetDesc.width / pcssParams.penumbraMaskScale.value);
             _penumbraMaskDesc.height = Mathf.CeilToInt((float)cameraTargetDesc.height / pcssParams.penumbraMaskScale.value);
-            _colorAttachmentWidth = cameraTargetDesc.width;
-            _colorAttachmentHeight = cameraTargetDesc.height;
 
             RenderingUtils.ReAllocateHandleIfNeeded(ref _penumbraMaskTex, _penumbraMaskDesc,
                 wrapMode: TextureWrapMode.Clamp, filterMode: FilterMode.Bilinear,
@@ -119,7 +126,9 @@ namespace Illusion.Rendering.Shadows
             var cameraData = frameData.Get<UniversalCameraData>();
             var shadowData = frameData.Get<UniversalShadowData>();
             var descriptor = cameraData.cameraTargetDescriptor;
-            SetupPenumbraMask(descriptor);
+            var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
+            bool usePenumbraMask = _rendererData.PCSSShadowSampling && pcssParams.usePenumbraMask.value;
+            SetupPenumbraMask(descriptor, usePenumbraMask);
             
             descriptor.depthBufferBits = 0;
             descriptor.msaaSamples = 1;
@@ -141,29 +150,35 @@ namespace Illusion.Rendering.Shadows
                     preDepthTexture = transparentDepthData.PreDepthTexture;
             }
 
-            // PCSS Penumbra Pass - Use UnsafePass for multiple render target switching
+            // This pass always uploads PCSS globals; with the mask enabled it also renders
+            // the conservative penumbra mask used as an early-out in the shadow shader.
             if (_rendererData.PCSSShadowSampling)
             {
-                TextureHandle penumbraMaskTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _penumbraMaskDesc, "_PenumbraMaskTex", false);
-                TextureHandle penumbraMaskBlurTempTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _penumbraMaskDesc, "_PenumbraMaskBlurTempTex", false);
-
                 using (var builder = renderGraph.AddUnsafePass<PenumbraPassData>("PCSS Penumbra Pass", out var passData, _pcssPenumbraSampler))
                 {
-                    builder.UseTexture(penumbraMaskTexture, AccessFlags.Write);
-                    passData.PenumbraMaskTexture = penumbraMaskTexture;
-                    builder.UseTexture(penumbraMaskBlurTempTexture, AccessFlags.Write);
-                    passData.PenumbraMaskBlurTempTexture = penumbraMaskBlurTempTexture;
                     builder.UseTexture(preDepthTexture);
                     passData.DepthTexture = preDepthTexture;
                     passData.RendererData = _rendererData;
-                    passData.PenumbraMaskMaterial = _penumbraMaskMat.Value;
-                    passData.PenumbraMaskDesc = _penumbraMaskDesc;
                     passData.ColorAttachmentWidth = _colorAttachmentWidth;
                     passData.ColorAttachmentHeight = _colorAttachmentHeight;
                     passData.CascadeOffsetScales = _cascadeOffsetScales;
                     passData.DirLightPcssParams0 = _dirLightPcssParams0;
                     passData.DirLightPcssParams1 = _dirLightPcssParams1;
                     passData.ShadowData = shadowData;
+                    passData.UsePenumbraMask = usePenumbraMask;
+
+                    if (usePenumbraMask)
+                    {
+                        TextureHandle penumbraMaskTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _penumbraMaskDesc, "_PenumbraMaskTex", false);
+                        TextureHandle penumbraMaskBlurTempTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _penumbraMaskDesc, "_PenumbraMaskBlurTempTex", false);
+
+                        passData.PenumbraMaskMaterial = _penumbraMaskMat.Value;
+                        passData.PenumbraMaskDesc = _penumbraMaskDesc;
+                        builder.UseTexture(penumbraMaskTexture, AccessFlags.Write);
+                        passData.PenumbraMaskTexture = penumbraMaskTexture;
+                        builder.UseTexture(penumbraMaskBlurTempTexture, AccessFlags.Write);
+                        passData.PenumbraMaskBlurTempTexture = penumbraMaskBlurTempTexture;
+                    }
 
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
@@ -188,7 +203,6 @@ namespace Illusion.Rendering.Shadows
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
 
-                var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
                 bool useShadowTemporalAccumulation = _rendererData.PCSSShadowSampling && pcssParams.shadowTemporalAccumulation.value;
                 passData.IncludeContactShadow = !useShadowTemporalAccumulation;
                 if (!useShadowTemporalAccumulation)
@@ -207,7 +221,11 @@ namespace Illusion.Rendering.Shadows
         {
             cmd.EnableShaderKeyword(IllusionShaderKeywords._PCSS_SHADOWS);
             PackDirLightParamsRenderGraph(cmd, data);
-            RenderPenumbraMaskRenderGraph(cmd, data);
+
+            if (data.UsePenumbraMask)
+            {
+                RenderPenumbraMaskRenderGraph(cmd, data);
+            }
         }
 
         private static void ExecuteShadowPass(RasterCommandBuffer cmd, ShadowPassData data)
@@ -304,6 +322,15 @@ namespace Illusion.Rendering.Shadows
 
             cmd.SetGlobalFloat(ShaderProperties.FindBlockerSampleCount, pcssParams.findBlockerSampleCount.value);
             cmd.SetGlobalFloat(ShaderProperties.PcfSampleCount, pcssParams.pcfSampleCount.value);
+            cmd.SetGlobalFloat(ShaderProperties.UsePenumbraMask, pcssParams.usePenumbraMask.value ? 1.0f : 0.0f);
+
+            float minMaskDilation = Mathf.Min(pcssParams.penumbraMaskMinDilation.value, pcssParams.penumbraMaskDilation.value);
+            float maxMaskDilation = Mathf.Max(pcssParams.penumbraMaskMinDilation.value, pcssParams.penumbraMaskDilation.value);
+            float dilationFadeStart = pcssParams.penumbraMaskDilationFadeStart.value;
+            float dilationFadeEnd = Mathf.Max(dilationFadeStart + 0.001f, pcssParams.penumbraMaskDilationFadeEnd.value);
+            // x/y are min/max mask dilation in mask texels; z/w define the eye-depth fade range.
+            cmd.SetGlobalVector(ShaderProperties.PenumbraMaskDilationParams,
+                new Vector4(minMaskDilation, maxMaskDilation, dilationFadeStart, 1.0f / (dilationFadeEnd - dilationFadeStart)));
 
             float lightAngularDiameter = pcssParams.angularDiameter.value;
             float dirlightDepth2Radius = Mathf.Tan(0.5f * Mathf.Deg2Rad * lightAngularDiameter);
@@ -352,6 +379,10 @@ namespace Illusion.Rendering.Shadows
             public static readonly int FindBlockerSampleCount = Shader.PropertyToID("_FindBlockerSampleCount");
 
             public static readonly int PcfSampleCount = Shader.PropertyToID("_PcfSampleCount");
+
+            public static readonly int UsePenumbraMask = Shader.PropertyToID("_UsePenumbraMask");
+
+            public static readonly int PenumbraMaskDilationParams = Shader.PropertyToID("_PenumbraMaskDilationParams");
 
             public static readonly int IncludeContactShadow = Shader.PropertyToID("_IncludeContactShadow");
         }

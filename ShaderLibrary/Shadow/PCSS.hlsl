@@ -108,14 +108,11 @@ float BlockerSearchRadius(float receiverDepth, float depth2RadialScale, float ma
 #endif
 }
 
-// Samples denser near the center - important for blocker search
+// Samples linearly from center to edge - HDRP directional PCSS default blocker search distribution.
 real2 ComputeFibonacciSpiralDiskSampleClumped(const in int sampleIndex, const in real sampleCountInverse, out real sampleDistNorm)
 {
     // Samples not biased away from the center - sample 0 at (0, 0) is important for blocker search near shadow contact points.
     sampleDistNorm = (real)sampleIndex * sampleCountInverse;
-
-    // Third power chosen arbitrarily - center area is really that much more important
-    sampleDistNorm = sampleDistNorm * sampleDistNorm * sampleDistNorm;
 
     return fibonacciSpiralDirection[sampleIndex] * sampleDistNorm;
 }

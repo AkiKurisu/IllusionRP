@@ -11,6 +11,8 @@ float4 _DirLightPcssProjs[4];
 float4 _CascadeOffsetScales[4];
 float _FindBlockerSampleCount;
 float _PcfSampleCount;
+float _UsePenumbraMask;
+float4 _PenumbraMaskDilationParams;
 
 // Penumbra Mask Optimization
 float4 _PenumbraMaskTexelSize;

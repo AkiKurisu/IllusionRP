@@ -27,62 +27,67 @@ float PCF(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 shadowCoo
         float3 sampleCoord = shadowCoord.xyz + float3(offset, zOffset);
         
         // Only sample if sampleCoord is within the tile bounds
-        if(!(any(sampleCoord < minCoord) || any(sampleCoord > maxCoord)))
+        if(!(any(sampleCoord.xy < minCoord) || any(sampleCoord.xy > maxCoord)))
         {
             shadowAttenuationSum += SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, sampleCoord.xyz);
             sampleSum += 1.0;
         }
     }
 
-    return shadowAttenuationSum / sampleSum;
+    return shadowAttenuationSum / max(sampleSum, 1.0);
 }
 
 float SampleShadowmapPCSS(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 shadowCoord,
     float4 shadowMapSize, float2 screenCoord)
 {
-    float penumbraMask = SAMPLE_TEXTURE2D(_PenumbraMaskTex, sampler_LinearClamp, screenCoord).r;
-
     UNITY_BRANCH
-    if (penumbraMask > Eps_float())
+    if (_UsePenumbraMask > 0.5)
     {
-        int cascadeIndex = (int)shadowCoord.w;
-        float receiverDepth = shadowCoord.z;
-        
-
-        float2 shadowmapInAtlasOffset = _CascadeOffsetScales[cascadeIndex].xy;
-        float2 shadowmapInAtlasScale = _CascadeOffsetScales[cascadeIndex].zw;
-        float2 minCoord = shadowmapInAtlasOffset;
-        float2 maxCoord = shadowmapInAtlasOffset + shadowmapInAtlasScale;
-        float texelSize = shadowMapSize.x / shadowmapInAtlasScale.x;
-        
-        float depth2RadialScale = _DirLightPcssParams0[cascadeIndex].x;
-        float maxBlokcerDistance = _DirLightPcssParams0[cascadeIndex].z;
-        float maxSamplingDistance = _DirLightPcssParams0[cascadeIndex].w;
-        float minFilterRadius = texelSize * _DirLightPcssParams1[cascadeIndex].x;
-        float minFilterRadial2DepthScale = _DirLightPcssParams1[cascadeIndex].y;
-        float blockerRadial2DepthScale = _DirLightPcssParams1[cascadeIndex].z;
-        float maxPcssOffset = maxSamplingDistance * abs(_DirLightPcssProjs[cascadeIndex].z);
-        float maxSampleZDistance = maxBlokcerDistance * abs(_DirLightPcssProjs[cascadeIndex].z);
-        float2 posSS = screenCoord * _ScreenSize.xy;
-        float2 sampleJitter = ComputePcfSampleJitter(posSS, (uint)_TaaFrameInfo.z);
-        
-        float blockerSearchRadius = BlockerSearchRadius(receiverDepth, depth2RadialScale, maxSamplingDistance, minFilterRadius);
-        float avgBlockerDepth = FindBlocker(TEXTURE2D_ARGS(ShadowMap, sampler_LinearClamp), shadowCoord.xy,
-            receiverDepth, blockerSearchRadius,
-            minCoord, maxCoord, _FindBlockerSampleCount,
-            shadowmapInAtlasScale, sampleJitter, minFilterRadius, minFilterRadial2DepthScale,
-            blockerRadial2DepthScale);
-
-        float filterSize, blockerDistance;
-        float samplingFilterSize = EstimatePenumbra(receiverDepth, avgBlockerDepth, depth2RadialScale, maxSampleZDistance,
-            minFilterRadius, filterSize, blockerDistance);
-        maxPcssOffset = min(maxPcssOffset, blockerDistance * 0.25f);
-
-        return PCF(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingFilterSize, _PcfSampleCount,
-            shadowmapInAtlasScale, sampleJitter, minCoord, maxCoord,
-            minFilterRadial2DepthScale, filterSize, maxPcssOffset);
+        // Conservative early-out only: pixels outside the mask keep the hard shadow result,
+        // while masked pixels still run the same PCSS path as the ungated HDRP-style variant.
+        float penumbraMask = SAMPLE_TEXTURE2D(_PenumbraMaskTex, sampler_LinearClamp, screenCoord).r;
+        if (penumbraMask <= Eps_float())
+            return SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz);
     }
-    
-    return SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz);
+
+    int cascadeIndex = (int)shadowCoord.w;
+    float receiverDepth = shadowCoord.z;
+
+    float2 shadowmapInAtlasOffset = _CascadeOffsetScales[cascadeIndex].xy;
+    float2 shadowmapInAtlasScale = _CascadeOffsetScales[cascadeIndex].zw;
+    float2 minCoord = shadowmapInAtlasOffset;
+    float2 maxCoord = shadowmapInAtlasOffset + shadowmapInAtlasScale;
+    float texelSize = shadowMapSize.x / shadowmapInAtlasScale.x;
+
+    float depth2RadialScale = _DirLightPcssParams0[cascadeIndex].x;
+    float maxBlokcerDistance = _DirLightPcssParams0[cascadeIndex].z;
+    float maxSamplingDistance = _DirLightPcssParams0[cascadeIndex].w;
+    float minFilterRadius = texelSize * _DirLightPcssParams1[cascadeIndex].x;
+    float minFilterRadial2DepthScale = _DirLightPcssParams1[cascadeIndex].y;
+    float blockerRadial2DepthScale = _DirLightPcssParams1[cascadeIndex].z;
+    float maxPcssOffset = maxSamplingDistance * abs(_DirLightPcssProjs[cascadeIndex].z);
+    float maxSampleZDistance = maxBlokcerDistance * abs(_DirLightPcssProjs[cascadeIndex].z);
+    float2 posSS = screenCoord * _ScreenSize.xy;
+    float2 sampleJitter = ComputePcfSampleJitter(posSS, (uint)_TaaFrameInfo.z);
+
+    float blockerSearchRadius = BlockerSearchRadius(receiverDepth, depth2RadialScale, maxSampleZDistance, minFilterRadius);
+    float avgBlockerDepth = FindBlocker(TEXTURE2D_ARGS(ShadowMap, sampler_LinearClamp), shadowCoord.xy,
+        receiverDepth, blockerSearchRadius,
+        minCoord, maxCoord, _FindBlockerSampleCount,
+        shadowmapInAtlasScale, sampleJitter, minFilterRadius, minFilterRadial2DepthScale,
+        blockerRadial2DepthScale);
+
+    float filterSize, blockerDistance;
+    float samplingFilterSize = EstimatePenumbra(receiverDepth, avgBlockerDepth, depth2RadialScale, maxSampleZDistance,
+        minFilterRadius, filterSize, blockerDistance);
+    if (samplingFilterSize <= Eps_float())
+        // Match HDRP directional PCSS: no blocker means the receiver is fully lit.
+        return 1.0;
+
+    maxPcssOffset = min(maxPcssOffset, blockerDistance * 0.25f);
+
+    return PCF(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingFilterSize, _PcfSampleCount,
+        shadowmapInAtlasScale, sampleJitter, minCoord, maxCoord,
+        minFilterRadial2DepthScale, filterSize, maxPcssOffset);
 }
 #endif
