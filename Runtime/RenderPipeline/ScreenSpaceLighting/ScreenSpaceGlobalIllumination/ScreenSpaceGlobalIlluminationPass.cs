@@ -838,12 +838,6 @@ namespace Illusion.Rendering
             // Prepare shader variables
             PrepareVariables(cameraData);
 
-            // Screenshot capture warmup waits on these flags before reading the hidden camera target.
-            ref var captureSsgiState = ref _rendererData.CurrentSsgiHistoryState;
-            captureSsgiState.ActiveThisFrame = true;
-            captureSsgiState.DenoiseActiveThisFrame = _needDenoise;
-            captureSsgiState.SecondHistoryActiveThisFrame = _needDenoise && volume.secondDenoiserPass.value;
-
             // Import external textures
             var depthPyramidTexture = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
             var normalTexture = resource.cameraNormalsTexture;
@@ -855,6 +849,12 @@ namespace Illusion.Rendering
             bool hasPreviousColor = isNewFrame;
             
             var colorPyramidTexture = renderGraph.ImportTexture(preFrameColorRT);
+
+            // Screenshot capture warmup waits on these flags before reading the hidden camera target.
+            ref var captureSsgiState = ref _rendererData.CurrentSsgiHistoryState;
+            captureSsgiState.ActiveThisFrame = true;
+            captureSsgiState.DenoiseActiveThisFrame = _needDenoise;
+            captureSsgiState.SecondHistoryActiveThisFrame = _needDenoise && volume.secondDenoiserPass.value;
             
             // Get history depth texture
             var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
