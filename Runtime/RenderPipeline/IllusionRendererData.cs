@@ -64,7 +64,60 @@ namespace Illusion.Rendering
         RayTraced,
         Mixed
     }
-            
+
+    /// <summary>
+    /// Reasons a camera is not ready for a stable offline capture.
+    /// </summary>
+    [Flags]
+    public enum IllusionTemporalCaptureBlockers
+    {
+        None = 0,
+        NoCameraState = 1 << 0,
+        WarmingUp = 1 << 1,
+        PostProcessingHistoryReset = 1 << 2,
+        TemporalAAHistoryReset = 1 << 3,
+        ScreenSpaceGlobalIlluminationHistory = 1 << 4,
+        ScreenSpaceReflectionHistory = 1 << 5,
+        ScreenSpaceShadowHistory = 1 << 6
+    }
+
+    /// <summary>
+    /// Per-camera temporal history readiness used by screenshot tools that render hidden warmup cameras.
+    /// </summary>
+    public readonly struct IllusionTemporalCaptureStatus
+    {
+        public readonly bool HasCameraState;
+        public readonly uint FrameCount;
+        public readonly int RecommendedWarmupFrames;
+        public readonly bool TemporalAARequested;
+        public readonly bool ScreenSpaceGlobalIlluminationActive;
+        public readonly bool ScreenSpaceReflectionAccumulationActive;
+        public readonly bool ScreenSpaceShadowTemporalActive;
+        public readonly IllusionTemporalCaptureBlockers Blockers;
+
+        public bool IsReady => HasCameraState && Blockers == IllusionTemporalCaptureBlockers.None;
+
+        public IllusionTemporalCaptureStatus(
+            bool hasCameraState,
+            uint frameCount,
+            int recommendedWarmupFrames,
+            bool temporalAARequested,
+            bool screenSpaceGlobalIlluminationActive,
+            bool screenSpaceReflectionAccumulationActive,
+            bool screenSpaceShadowTemporalActive,
+            IllusionTemporalCaptureBlockers blockers)
+        {
+            HasCameraState = hasCameraState;
+            FrameCount = frameCount;
+            RecommendedWarmupFrames = recommendedWarmupFrames;
+            TemporalAARequested = temporalAARequested;
+            ScreenSpaceGlobalIlluminationActive = screenSpaceGlobalIlluminationActive;
+            ScreenSpaceReflectionAccumulationActive = screenSpaceReflectionAccumulationActive;
+            ScreenSpaceShadowTemporalActive = screenSpaceShadowTemporalActive;
+            Blockers = blockers;
+        }
+    }
+
     public struct DitheredTextureHandleSet
     {
         public TextureHandle owenScrambled256Tex;
@@ -293,6 +346,8 @@ namespace Illusion.Rendering
 
         private const int StaleCameraStateFrameThreshold = 600;
 
+        // These pass-owned flags expose only the readiness bits needed by capture tools.
+        // Persistent history fields remain owned by each feature pass.
         internal struct SsgiHistoryState
         {
             public float HistoryResolutionScale0;
@@ -301,6 +356,11 @@ namespace Illusion.Rendering
             public bool HasHistory1State;
             public uint LastHistory0FrameCount;
             public uint LastHistory1FrameCount;
+            public bool ActiveThisFrame;
+            public bool DenoiseActiveThisFrame;
+            public bool SecondHistoryActiveThisFrame;
+            public bool History0ValidThisFrame;
+            public bool History1ValidThisFrame;
         }
 
         internal struct ScreenSpaceShadowTemporalState
@@ -308,12 +368,18 @@ namespace Illusion.Rendering
             public bool HasDirectionalHistoryState;
             public Vector3 LastMainLightDirection;
             public uint LastHistoryFrameCount;
+            public bool ActiveThisFrame;
+            public bool HistoryValidThisFrame;
         }
 
         internal struct ScreenSpaceReflectionHistoryState
         {
             public float AccumulationResolutionScale;
             public ScreenSpaceReflectionAlgorithm CurrentAlgorithm;
+            public bool ActiveThisFrame;
+            public bool AccumulationActiveThisFrame;
+            public bool HistoryValidThisFrame;
+            public bool HistoryReallocatedThisFrame;
         }
 
         private sealed class CameraRenderState
@@ -332,6 +398,24 @@ namespace Illusion.Rendering
             public ScreenSpaceShadowTemporalState ScreenSpaceShadowTemporal;
             public ScreenSpaceReflectionHistoryState ScreenSpaceReflection =
                 new ScreenSpaceReflectionHistoryState { CurrentAlgorithm = ScreenSpaceReflectionAlgorithm.Approximation };
+
+            public void BeginFrame()
+            {
+                // Reset per-frame capture readiness; history lifetime and reprojection state are preserved.
+                SsgiHistory.ActiveThisFrame = false;
+                SsgiHistory.DenoiseActiveThisFrame = false;
+                SsgiHistory.SecondHistoryActiveThisFrame = false;
+                SsgiHistory.History0ValidThisFrame = false;
+                SsgiHistory.History1ValidThisFrame = false;
+
+                ScreenSpaceShadowTemporal.ActiveThisFrame = false;
+                ScreenSpaceShadowTemporal.HistoryValidThisFrame = false;
+
+                ScreenSpaceReflection.ActiveThisFrame = false;
+                ScreenSpaceReflection.AccumulationActiveThisFrame = false;
+                ScreenSpaceReflection.HistoryValidThisFrame = false;
+                ScreenSpaceReflection.HistoryReallocatedThisFrame = false;
+            }
 
             public void Dispose()
             {
@@ -423,6 +507,7 @@ namespace Illusion.Rendering
             UpdateCameraData(cameraData);
             _currentCameraState = GetOrCreateCameraState(_camera);
             _currentCameraState.FrameCount++;
+            _currentCameraState.BeginFrame();
             _currentCameraState.IsFirstFrame = false;
             PruneStaleCameraStates();
             UpdateLightData(lightData);
@@ -647,6 +732,103 @@ namespace Illusion.Rendering
         internal void SetColorPyramidHistoryMipCount(Camera camera, int mipCount)
         {
             GetOrCreateCameraState(camera).ColorPyramidHistoryMipCount = mipCount;
+        }
+
+        /// <summary>
+        /// Reports whether a camera has enough temporal history for a stable high-resolution capture.
+        /// </summary>
+        /// <remarks>
+        /// External screenshot tools use this to warm up isolated cameras without relying on a fixed delay.
+        /// </remarks>
+        public bool TryGetTemporalCaptureStatus(Camera camera, out IllusionTemporalCaptureStatus status)
+        {
+            if (!camera || !_cameraStates.TryGetValue(camera, out var cameraState))
+            {
+                status = new IllusionTemporalCaptureStatus(
+                    false,
+                    0,
+                    1,
+                    false,
+                    false,
+                    false,
+                    false,
+                    IllusionTemporalCaptureBlockers.NoCameraState);
+                return false;
+            }
+
+            var blockers = IllusionTemporalCaptureBlockers.None;
+            int recommendedWarmupFrames = 1;
+            bool temporalAARequested = false;
+
+            if (camera.TryGetComponent(out UniversalAdditionalCameraData additionalCameraData))
+            {
+                temporalAARequested = additionalCameraData.antialiasing == AntialiasingMode.TemporalAntiAliasing
+                                      && additionalCameraData.renderPostProcessing;
+                if (temporalAARequested)
+                {
+                    recommendedWarmupFrames = Mathf.Max(recommendedWarmupFrames, 8);
+                    if (additionalCameraData.resetHistory)
+                    {
+                        blockers |= IllusionTemporalCaptureBlockers.TemporalAAHistoryReset;
+                    }
+                }
+            }
+
+            if (cameraState.ResetPostProcessingHistory || cameraState.DidResetPostProcessingHistoryInLastFrame)
+            {
+                blockers |= IllusionTemporalCaptureBlockers.PostProcessingHistoryReset;
+            }
+
+            bool ssgiActive = cameraState.SsgiHistory.ActiveThisFrame;
+            if (ssgiActive)
+            {
+                recommendedWarmupFrames = Mathf.Max(recommendedWarmupFrames, 16);
+                bool ssgiReady = !cameraState.SsgiHistory.DenoiseActiveThisFrame
+                                 || (cameraState.SsgiHistory.History0ValidThisFrame
+                                     && (!cameraState.SsgiHistory.SecondHistoryActiveThisFrame
+                                         || cameraState.SsgiHistory.History1ValidThisFrame));
+                if (!ssgiReady)
+                {
+                    blockers |= IllusionTemporalCaptureBlockers.ScreenSpaceGlobalIlluminationHistory;
+                }
+            }
+
+            bool ssrAccumulationActive = cameraState.ScreenSpaceReflection.ActiveThisFrame
+                                         && cameraState.ScreenSpaceReflection.AccumulationActiveThisFrame;
+            if (ssrAccumulationActive)
+            {
+                recommendedWarmupFrames = Mathf.Max(recommendedWarmupFrames, 16);
+                if (!cameraState.ScreenSpaceReflection.HistoryValidThisFrame)
+                {
+                    blockers |= IllusionTemporalCaptureBlockers.ScreenSpaceReflectionHistory;
+                }
+            }
+
+            bool screenSpaceShadowTemporalActive = cameraState.ScreenSpaceShadowTemporal.ActiveThisFrame;
+            if (screenSpaceShadowTemporalActive)
+            {
+                recommendedWarmupFrames = Mathf.Max(recommendedWarmupFrames, 8);
+                if (!cameraState.ScreenSpaceShadowTemporal.HistoryValidThisFrame)
+                {
+                    blockers |= IllusionTemporalCaptureBlockers.ScreenSpaceShadowHistory;
+                }
+            }
+
+            if (cameraState.FrameCount < recommendedWarmupFrames)
+            {
+                blockers |= IllusionTemporalCaptureBlockers.WarmingUp;
+            }
+
+            status = new IllusionTemporalCaptureStatus(
+                true,
+                cameraState.FrameCount,
+                recommendedWarmupFrames,
+                temporalAARequested,
+                ssgiActive,
+                ssrAccumulationActive,
+                screenSpaceShadowTemporalActive,
+                blockers);
+            return true;
         }
 
         private void PruneStaleCameraStates()

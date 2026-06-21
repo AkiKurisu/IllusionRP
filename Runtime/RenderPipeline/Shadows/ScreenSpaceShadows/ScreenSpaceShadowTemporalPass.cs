@@ -138,6 +138,10 @@ namespace Illusion.Rendering.Shadows
             int viewCount = IllusionRendererData.MaxViewCount;
 
             float historyValidity = EvaluateHistoryValidity(lightData, hasHistoryDepth, hasHistoryNormal, shadowHistoryReallocated);
+            // Screenshot capture warmup needs one valid temporal shadow history before readback.
+            ref var captureShadowState = ref _rendererData.CurrentScreenSpaceShadowTemporalState;
+            captureShadowState.ActiveThisFrame = true;
+            captureShadowState.HistoryValidThisFrame = historyValidity > 0.0f;
             float pixelSpreadAngleTangent = GetPixelSpreadTangent(cameraData.camera.fieldOfView, width, height);
             Vector4 resolutionMultiplier = Vector4.one;
             TextureHandle motionVectorTexture = resource.motionVectorColor;

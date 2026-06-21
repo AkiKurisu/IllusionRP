@@ -153,7 +153,9 @@ namespace Illusion.Rendering
             
             if (_needAccumulate || useRenderGraph)
             {
-                AllocateScreenSpaceAccumulationHistoryBuffer(_isDownsampling ? 0.5f : 1.0f);
+                bool accumulationHistoryReallocated =
+                    AllocateScreenSpaceAccumulationHistoryBuffer(_isDownsampling ? 0.5f : 1.0f);
+                _previousAccumNeedClear |= accumulationHistoryReallocated;
             }
             // ================================ Allocation ================================ //
         }
@@ -241,7 +243,7 @@ namespace Illusion.Rendering
             propertyBlock.SetMatrix(Properties.SsrProjectionMatrix, variables.ProjectionMatrix);
         }
 
-        private void AllocateScreenSpaceAccumulationHistoryBuffer(float scaleFactor)
+        private bool AllocateScreenSpaceAccumulationHistoryBuffer(float scaleFactor)
         {
             ref var ssrState = ref _rendererData.CurrentScreenSpaceReflectionHistoryState;
             if (!Mathf.Approximately(scaleFactor, ssrState.AccumulationResolutionScale)
@@ -253,7 +255,12 @@ namespace Illusion.Rendering
                 _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceReflectionAccumulation, ssrAlloc.Allocator, 2);
 
                 ssrState.AccumulationResolutionScale = scaleFactor;
+                ssrState.HistoryReallocatedThisFrame = true;
+                return true;
             }
+
+            ssrState.HistoryReallocatedThisFrame = false;
+            return false;
         }
 
         private bool IsSSREnabled(ContextContainer frameData)
@@ -781,6 +788,15 @@ namespace Illusion.Rendering
             // Prepare SSR data
             PrepareSSRData(ref renderingData, true);
             PrepareVariables(ref renderingData.cameraData);
+
+            // Screenshot capture warmup waits until accumulation history survives a frame without reset.
+            ref var captureSsrState = ref _rendererData.CurrentScreenSpaceReflectionHistoryState;
+            captureSsrState.ActiveThisFrame = true;
+            captureSsrState.AccumulationActiveThisFrame = _needAccumulate;
+            captureSsrState.HistoryValidThisFrame = !_needAccumulate
+                                                    || (!_previousAccumNeedClear
+                                                        && !captureSsrState.HistoryReallocatedThisFrame
+                                                        && _rendererData.FrameCount > 3);
 
             // Determine async compute usage
             bool useAsyncCompute = _reprojectInCS && _tracingInCS && _needAccumulate 

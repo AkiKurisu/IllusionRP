@@ -849,6 +849,12 @@ namespace Illusion.Rendering
             bool hasPreviousColor = isNewFrame;
             
             var colorPyramidTexture = renderGraph.ImportTexture(preFrameColorRT);
+
+            // Screenshot capture warmup waits on these flags before reading the hidden camera target.
+            ref var captureSsgiState = ref _rendererData.CurrentSsgiHistoryState;
+            captureSsgiState.ActiveThisFrame = true;
+            captureSsgiState.DenoiseActiveThisFrame = _needDenoise;
+            captureSsgiState.SecondHistoryActiveThisFrame = _needDenoise && volume.secondDenoiserPass.value;
             
             // Get history depth texture
             var historyDepthRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.Depth);
@@ -920,7 +926,9 @@ namespace Illusion.Rendering
                 var historyTexture1 = renderGraph.ImportTexture(historyBuffer1);
                 float historyValidity0 = EvaluateSignalHistoryValidity(commonHistoryValidity, history0Reallocated,
                     ssgiState.HasHistory0State, ssgiState.LastHistory0FrameCount);
-                
+                // A positive validity means reprojection can reuse the previous denoiser history.
+                ssgiState.History0ValidThisFrame = historyValidity0 > 0.0f;
+
                 float resolutionMultiplier = _halfResolution ? 0.5f : 1.0f;
                 var temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                     giTexture, historyTexture1, depthPyramidTexture, validationTexture,
@@ -955,7 +963,9 @@ namespace Illusion.Rendering
                     var historyTexture2 = renderGraph.ImportTexture(historyBuffer2);
                     float historyValidity1 = EvaluateSignalHistoryValidity(commonHistoryValidity, history1Reallocated,
                         ssgiState.HasHistory1State, ssgiState.LastHistory1FrameCount);
-                    
+                    // The second denoiser pass has its own history, so capture readiness tracks it separately.
+                    ssgiState.History1ValidThisFrame = historyValidity1 > 0.0f;
+
                     temporalOutput = RenderTemporalDenoisePass(renderGraph, cameraData,
                         giTexture, historyTexture2, depthPyramidTexture, validationTexture,
                         motionVectorTexture, exposureTexture, prevExposureTexture, resolutionMultiplier, historyValidity1);

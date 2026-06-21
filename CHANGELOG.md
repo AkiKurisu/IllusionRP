@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.2.4] - 2026-6-13
 
+### Added
+
+- Add temporal capture readiness reporting for screenshot warmup across TAA, SSGI, SSR, and screen-space shadows.
+
 ### Changed
 
 - Improve PCSS penumbra mask generation, sampling, and screen-space shadow integration.
