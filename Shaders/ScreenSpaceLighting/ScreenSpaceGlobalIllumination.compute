@@ -48,6 +48,8 @@ CBUFFER_START(UnityScreenSpaceGlobalIllumination)
 
     int _RayMarchingFallbackHierarchy;
     int _IndirectDiffuseFrameIndex;
+    float _RayMarchingLowResPercentageInv;
+    int _RayMarchingLowResPadding;
 CBUFFER_END
 
 #define RAYMARCHINGFALLBACKHIERARCHY_REFLECTION_PROBES_AND_SKY (3)
@@ -57,6 +59,11 @@ CBUFFER_END
 
 // Output texture that holds the hit point NDC coordinates
 RW_TEXTURE2D_X(float2, _IndirectDiffuseHitPointTextureRW);
+
+uint2 GetLowResCoord(uint2 inputCoord)
+{
+    return min((uint2)round((float2)(inputCoord + 0.5f) * _RayMarchingLowResPercentageInv), (uint2)_ScreenSize.xy - 1u);
+}
 
 // Epslon value used for the computation
 #define RAY_TRACE_EPS 0.00024414
@@ -220,7 +227,7 @@ void TRACE_GLOBAL_ILLUMINATION(uint3 dispatchThreadId : SV_DispatchThreadID, uin
 
 #if HALF_RES
     // Compute the full resolution pixel for the inputs that do not have a pyramid
-    inputCoord = inputCoord * 2;
+    inputCoord = GetLowResCoord(inputCoord);
 #endif
 
     // Read the depth value as early as possible
@@ -292,7 +299,7 @@ void REPROJECT_GLOBAL_ILLUMINATION(uint3 dispatchThreadId : SV_DispatchThreadID,
     uint2 currentCoord = dispatchThreadId.xy;
 #if HALF_RES
     // Compute the full resolution pixel for the inputs that do not have a pyramid
-    inputCoord = inputCoord * 2;
+    inputCoord = GetLowResCoord(inputCoord);
 #endif
 
     // Read the depth and compute the position
