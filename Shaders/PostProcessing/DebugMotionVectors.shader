@@ -53,6 +53,8 @@
             HLSLPROGRAM
             half4 Frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
                 if (_DebugMotionVectorValid < 0.5f)
                     return half4(0.8, 0.0, 0.8, 1.0);
 
