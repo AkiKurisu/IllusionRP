@@ -2281,7 +2281,7 @@
 				/*ase_frag_code:input=PackedVaryings*/
 
 				float Alpha = /*ase_frag_out:Alpha;Float;6;-1;_Alpha*/1/*end*/;
-				float AlphaClipThreshold = /*ase_frag_out:Alpha Clip Threshold;Float;7;-1;_AlphaClip*/0.5/*end*/;
+				float AlphaClipThreshold = _TransparentAlphaCutoff;
 
 				#if defined( ASE_DEPTH_WRITE_ON )
 					float DeviceDepth = /*ase_frag_out:Depth;Float;17;-1;_DepthValue*/input.positionCS.z/*end*/;
