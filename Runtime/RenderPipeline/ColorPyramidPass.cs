@@ -82,7 +82,7 @@ namespace Illusion.Rendering
             var colorPyramidRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ColorBufferMipChain);
             TextureHandle colorPyramidHandle = renderGraph.ImportTexture(colorPyramidRT);
 
-            Vector2Int pyramidSize = new Vector2Int(cameraData.camera.pixelWidth, cameraData.camera.pixelHeight);
+            Vector2Int pyramidSize = new Vector2Int(cameraData.cameraTargetDescriptor.width, cameraData.cameraTargetDescriptor.height);
 
             // Calculate scale and bias for DRS (Dynamic Resolution Scaling)
             bool isHardwareDrsOn = DynamicResolutionHandler.instance.HardwareDynamicResIsEnabled();

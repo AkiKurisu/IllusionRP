@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix screen-space shadow temporal accumulation artifacts by improving history validation and aligning reprojection behavior with HDRP.
 - Fix skin transmission lighting to preserve the raw light-facing term for backlit evaluation.
 - Fix skin Fresnel F0 storage to preserve RGB values when metallic or color-tinted F0 expressions are used.
+- Fix SSGI half-resolution ray tracing and reprojection coordinate mapping by using the same representative low-resolution pixel mapping as HDRP.
+- Fix color pyramid render target sizing under render scale and dynamic resolution by using the camera target descriptor size.
+- Fix Motion Vectors Debug output under URP RenderGraph by rendering through a temporary debug texture before the final camera-color blit.
+- Fix `_TaaFrameInfo` channel ordering so SSR blue-noise sampling uses the frame count while PCSS and per-object shadow jitter use the TAA frame index.
 
 ## [1.2.3] - 2026-6-6
 

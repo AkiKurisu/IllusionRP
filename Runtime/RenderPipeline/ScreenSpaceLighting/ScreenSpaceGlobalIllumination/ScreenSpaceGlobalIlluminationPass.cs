@@ -91,6 +91,8 @@ namespace Illusion.Rendering
 
             public int RayMarchingFallbackHierarchy;
             public int IndirectDiffuseFrameIndex;
+            public float RayMarchingLowResPercentageInv;
+            public int RayMarchingLowResPadding;
         }
 
         public ScreenSpaceGlobalIlluminationPass(IllusionRendererData rendererData)
@@ -298,6 +300,8 @@ namespace Illusion.Rendering
 
             // Frame index for temporal sampling
             _giVariables.IndirectDiffuseFrameIndex = (int)(_rendererData.FrameCount % 16);
+            _giVariables.RayMarchingLowResPercentageInv = _halfResolution ? 2.0f : 1.0f;
+            _giVariables.RayMarchingLowResPadding = 0;
         }
 
         private static float GetPixelSpreadTangent(float fov, int width, int height)

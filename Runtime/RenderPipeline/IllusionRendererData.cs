@@ -592,7 +592,7 @@ namespace Illusion.Rendering
             const int kMaxSampleCount = 8;
             if (++cameraState.TaaFrameIndex >= kMaxSampleCount)
                 cameraState.TaaFrameIndex = 0;
-            _shaderVariablesGlobal.TaaFrameInfo = new Vector4(0, cameraState.TaaFrameIndex, FrameCount, useTAA ? 1 : 0);
+            _shaderVariablesGlobal.TaaFrameInfo = new Vector4(0, FrameCount, cameraState.TaaFrameIndex, useTAA ? 1 : 0);
             _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame
                 = IllusionRenderingUtils.ComputeViewportScaleAndLimit(historyRTSystem.rtHandleProperties.previousViewportSize,
                     historyRTSystem.rtHandleProperties.previousRenderTargetSize);
