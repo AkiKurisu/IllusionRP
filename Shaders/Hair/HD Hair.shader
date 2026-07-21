@@ -1956,7 +1956,7 @@ Shader "Universal Render Pipeline/HD Hair"
 				
 
 				float Alpha = FinalAlpha47_g2;
-				float AlphaClipThreshold = _AlphaCutoff;
+				float AlphaClipThreshold = _TransparentAlphaCutoff;
 
 				#if defined( ASE_DEPTH_WRITE_ON )
 					float DeviceDepth = input.positionCS.z;
