@@ -56,6 +56,16 @@ namespace Illusion.Rendering
         public bool transparentDepthPostPass = true;
 
         /// <summary>
+        /// Enable the opaque color copy used by screen-space refraction.
+        /// </summary>
+        public bool screenSpaceRefraction = true;
+
+        /// <summary>
+        /// Enable screen space reflections for supported transparent surfaces.
+        /// </summary>
+        public bool transparentScreenSpaceReflection = true;
+
+        /// <summary>
         /// Enable to overdraw universal transparent objects after rendering OIT objects, used to fix background color bleed-through.
         /// </summary>
         public bool oitTransparentOverdrawPass;
@@ -182,6 +192,12 @@ namespace Illusion.Rendering
 
         private ScreenSpaceReflectionPass _screenSpaceReflectionPass;
 
+        private ScreenSpaceReflectionPass _transparentScreenSpaceReflectionPass;
+
+        private CopyPreRefractionColorPass _copyPreRefractionColorPass;
+
+        private WaterSSRDataPass _waterSSRDataPass;
+
         private SyncGraphicsFencePass _screenSpaceReflectionSyncFencePass;
 
         private SetKeywordPass _enableScreenSpaceReflectionPass;
@@ -236,6 +252,8 @@ namespace Illusion.Rendering
         private MotionVectorsDebugPass _motionVectorsDebugPass;
                         
         private StencilVRSDebugPass _stencilVRSDebugPass;
+
+        private TransparentSSRDebugPass _transparentSSRDebugPass;
 #endif
 
         public override void Create()
@@ -296,6 +314,9 @@ namespace Illusion.Rendering
             _transparentCopyPostDepthPass = new TransparentCopyPostDepthPass();
 
             _screenSpaceReflectionPass = new ScreenSpaceReflectionPass(_rendererData);
+            _transparentScreenSpaceReflectionPass = new ScreenSpaceReflectionPass(_rendererData, true);
+            _copyPreRefractionColorPass = new CopyPreRefractionColorPass(_rendererData);
+            _waterSSRDataPass = new WaterSSRDataPass(_rendererData);
             _screenSpaceReflectionSyncFencePass = new SyncGraphicsFencePass(RenderPassEvent.BeforeRenderingOpaques, IllusionGraphicsFenceEvent.ScreenSpaceReflection, _rendererData);
             _enableScreenSpaceReflectionPass = new SetKeywordPass(IllusionShaderKeywords._SCREEN_SPACE_REFLECTION, true, RenderPassEvent.BeforeRendering);
             _disableScreenSpaceReflectionPass = new SetKeywordPass(IllusionShaderKeywords._SCREEN_SPACE_REFLECTION, false, RenderPassEvent.BeforeRendering);
@@ -332,6 +353,7 @@ namespace Illusion.Rendering
             _exposureDebugPass = new ExposureDebugPass(_rendererData);
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
             _stencilVRSDebugPass = new StencilVRSDebugPass();
+            _transparentSSRDebugPass = new TransparentSSRDebugPass(_rendererData);
 #endif
         }
 
@@ -351,6 +373,8 @@ namespace Illusion.Rendering
             bool enableSceneShadow = !isPreviewCamera;
             bool isPostProcessEnabled = renderingData.postProcessingEnabled && renderingData.cameraData.postProcessEnabled;
             var isDeferred = UniversalRenderingUtility.GetRenderingModeActual(renderer) == RenderingMode.Deferred;
+            bool supportsTransparentSSRCompute = SystemInfo.supportsComputeShaders
+                                                 && SystemInfo.graphicsDeviceType is not GraphicsDeviceType.OpenGLES3;
 
             var contactShadowParam = VolumeManager.instance.stack.GetComponent<ContactShadows>();
             bool useContactShadows = config.EnableContactShadows
@@ -372,6 +396,10 @@ namespace Illusion.Rendering
             bool useScreenSpaceReflection = config.EnableScreenSpaceReflection
                                             && screenSpaceReflection && !isPreviewCamera
                                             && screenSpaceReflectionParam.enable.value;
+            bool useTransparentScreenSpaceReflection = useScreenSpaceReflection
+                                                        && transparentScreenSpaceReflection
+                                                        && config.EnableTransparentScreenSpaceReflection
+                                                        && supportsTransparentSSRCompute;
 
             var screenSpaceGlobalIlluminationParam = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
             bool useScreenSpaceGlobalIllumination = config.EnableScreenSpaceGlobalIllumination 
@@ -401,7 +429,8 @@ namespace Illusion.Rendering
             _rendererData.SampleProbeVolumes = usePrecomputedRadianceTransfer && hasValidVolume;
 
             bool useForwardGBuffer = !isDeferred; // Replace DepthNormal with ForwardGBuffer in Forward/Forward+.
-            bool useDepthPyramid = useAmbientOcclusion || useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
+            bool useDepthPyramid = useAmbientOcclusion || useScreenSpaceReflection
+                                   || useTransparentScreenSpaceReflection || useScreenSpaceGlobalIllumination;
             bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
             bool needHistoryColor = requireHistoryColor && !useTAA;
             bool useColorPyramid = useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
@@ -500,6 +529,22 @@ namespace Illusion.Rendering
             // AfterRenderingOpaques
             renderer.EnqueuePass(_screenSpaceShadowsPostPass);
 
+            bool useScreenSpaceRefraction = screenSpaceRefraction
+                                            && config.EnableScreenSpaceRefraction
+                                            && !isPreviewCamera
+                                            && !isOffscreenDepth;
+            _copyPreRefractionColorPass.Setup(useScreenSpaceRefraction);
+            renderer.EnqueuePass(_copyPreRefractionColorPass);
+
+            if (!isPreviewCamera && !isOffscreenDepth)
+            {
+                if (useTransparentScreenSpaceReflection)
+                    renderer.EnqueuePass(_waterSSRDataPass);
+
+                // Clear the transparent reflection texture when screen space reflections are disabled.
+                renderer.EnqueuePass(_transparentScreenSpaceReflectionPass);
+            }
+
             // AfterRenderingTransparents
             if (orderIndependentTransparency)
             {
@@ -557,6 +602,10 @@ namespace Illusion.Rendering
             {
                 renderer.EnqueuePass(_stencilVRSDebugPass);
             }
+            if (config.EnableTransparentScreenSpaceReflectionDebug)
+            {
+                renderer.EnqueuePass(_transparentSSRDebugPass);
+            }
 #endif
             // AfterRenderingPostProcessing
             renderer.EnqueuePass(_processingPostPass);
@@ -565,6 +614,7 @@ namespace Illusion.Rendering
         private void PerformSetup(ContextContainer frameData, IllusionRendererData rendererData)
         {
             UpdateRenderDataSettings();
+            rendererData.TransparentScreenSpaceReflectionTexture = default;
             var cameraData = frameData.Get<UniversalCameraData>();
             var lightData = frameData.Get<UniversalLightData>();
             var shadowData = frameData.Get<UniversalShadowData>();
@@ -596,6 +646,11 @@ namespace Illusion.Rendering
                                             && screenSpaceReflection && !isPreviewOrReflectCamera
                                             && screenSpaceReflectionParam.enable.value;
             rendererData.SampleScreenSpaceReflection = useScreenSpaceReflection;
+            rendererData.SampleTransparentScreenSpaceReflection = useScreenSpaceReflection
+                                                                   && transparentScreenSpaceReflection
+                                                                   && config.EnableTransparentScreenSpaceReflection
+                                                                   && SystemInfo.supportsComputeShaders
+                                                                   && SystemInfo.graphicsDeviceType is not GraphicsDeviceType.OpenGLES3;
             rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination || useShadowTemporalAccumulation;
 
             var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
@@ -643,6 +698,9 @@ namespace Illusion.Rendering
             SafeDispose(ref _transparentCopyPreDepthPass);
             SafeDispose(ref _transparentCopyPostDepthPass);
             SafeDispose(ref _screenSpaceReflectionPass);
+            SafeDispose(ref _transparentScreenSpaceReflectionPass);
+            SafeDispose(ref _copyPreRefractionColorPass);
+            SafeDispose(ref _waterSSRDataPass);
             SafeDispose(ref _screenSpaceGlobalIlluminationPass);
             SafeDispose(ref _forwardGBufferPass);
             SafeDispose(ref _transparentStencilVRSPass);
@@ -661,6 +719,7 @@ namespace Illusion.Rendering
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             SafeDispose(ref _stencilVRSDebugPass);
+            SafeDispose(ref _transparentSSRDebugPass);
             SafeDispose(ref _motionVectorsDebugPass);
             SafeDispose(ref _exposureDebugPass);
 #endif

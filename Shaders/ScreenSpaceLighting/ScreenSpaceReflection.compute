@@ -30,6 +30,8 @@
 #pragma multi_compile _ _GBUFFER_NORMALS_OCT
 #pragma multi_compile _ _DEFERRED_RENDERING_PATH
 #pragma multi_compile _ SSR_APPROX
+#pragma multi_compile _ DEPTH_SOURCE_NOT_FROM_MIP_CHAIN
+#pragma multi_compile _ TRANSPARENT_SSR
 
 #if defined(SSR_REPROJECT) || defined(SSR_ACCUMULATE)
     #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareMotionVectorTexture.hlsl"
@@ -71,7 +73,7 @@ void MAIN_ACC(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint2 positionSS = dispatchThreadId.xy;
     float3 N;
     float perceptualRoughness0;
-    GetNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness0);
+    GetSSRNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness0);
 
     // Compute the actual roughness
     float roughness = PerceptualRoughnessToRoughness(perceptualRoughness0);

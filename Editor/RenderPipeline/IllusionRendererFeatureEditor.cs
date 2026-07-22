@@ -17,6 +17,8 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _oitFilterLayer;
         private SerializedProperty _oitOverrideStencil;
         private SerializedProperty _transparentDepthPostPass;
+        private SerializedProperty _screenSpaceRefraction;
+        private SerializedProperty _transparentScreenSpaceReflection;
         private SerializedProperty _oitTransparentOverdrawPass;
 
         // Character Rendering Settings
@@ -56,6 +58,8 @@ namespace Illusion.Rendering.Editor
             _oitFilterLayer = Properties.Find(feature => feature.oitFilterLayer);
             _oitOverrideStencil = Properties.Find(feature => feature.oitOverrideStencil);
             _transparentDepthPostPass = Properties.Find(feature => feature.transparentDepthPostPass);
+            _screenSpaceRefraction = Properties.Find(feature => feature.screenSpaceRefraction);
+            _transparentScreenSpaceReflection = Properties.Find(feature => feature.transparentScreenSpaceReflection);
             _oitTransparentOverdrawPass = Properties.Find(feature => feature.oitTransparentOverdrawPass);
 
             // Character Rendering Settings
@@ -129,6 +133,8 @@ namespace Illusion.Rendering.Editor
             if (Foldout("Transparency", true))
             {
                 EditorGUILayout.PropertyField(_transparentDepthPostPass, Styles.TransparentDepthPostPassLabel);
+                EditorGUILayout.PropertyField(_screenSpaceRefraction, Styles.ScreenSpaceRefractionLabel);
+                EditorGUILayout.PropertyField(_transparentScreenSpaceReflection, Styles.TransparentScreenSpaceReflectionLabel);
                 EditorGUILayout.PropertyField(_orderIndependentTransparency, Styles.OrderIndependentTransparencyLabel);
                 if (_orderIndependentTransparency.boolValue)
                 {
@@ -217,6 +223,10 @@ namespace Illusion.Rendering.Editor
                 "Override the stencil state for the transparent overdraw pass.");
             public static readonly GUIContent TransparentDepthPostPassLabel = new("Transparent Depth Post Pass",
                 "Enable to write transparent depth after depth prepass.");
+            public static readonly GUIContent ScreenSpaceRefractionLabel = new("Screen Space Refraction",
+                "Copy opaque scene color for supported refractive shaders.");
+            public static readonly GUIContent TransparentScreenSpaceReflectionLabel = new("Transparent Screen Space Reflection",
+                "Enable screen space reflections for supported transparent surfaces.");
             public static readonly GUIContent OitTransparentOverdrawPassLabel = new("OIT Transparent Overdraw Pass",
                 "Enable to overdraw universal transparent objects after rendering OIT objects.");
 

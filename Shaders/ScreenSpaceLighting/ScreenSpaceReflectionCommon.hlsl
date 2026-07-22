@@ -22,6 +22,14 @@
 TEXTURE2D_X(_CameraDepthTexture); // Not used in Hiz version
 TEXTURE2D_X_UINT2(_StencilTexture);
 
+#ifdef DEPTH_SOURCE_NOT_FROM_MIP_CHAIN
+TEXTURE2D_X(_DepthTexture);
+#endif
+
+#ifdef TRANSPARENT_SSR
+TEXTURE2D_X(_WaterSSRNormalTexture);
+#endif
+
 #ifdef SSR_REPROJECT
     TEXTURE2D_X(_SsrHitPointTexture);
     TEXTURE2D_X(_ColorPyramidTexture);
@@ -46,7 +54,6 @@ static half dither[16] = {
 
 /// ================== Hiz ================= //
 #define SSR_STEPS                   _Steps
-#define _SsrReflectsSky             1            // Should disable in transparent objects
 #ifndef SSR_APPROX
     #define SAMPLES_VNDF            1
 #endif
@@ -69,7 +76,22 @@ static half dither[16] = {
 
 float GetDepthSample(float2 positionSS)
 {
+#ifdef DEPTH_SOURCE_NOT_FROM_MIP_CHAIN
+    return LOAD_TEXTURE2D_X(_DepthTexture, positionSS).r;
+#else
     return LOAD_TEXTURE2D_X(_DepthPyramid, positionSS).r;
+#endif
+}
+
+void GetSSRNormalAndPerceptualRoughness(uint2 positionSS, out float3 normalWS, out float perceptualRoughness)
+{
+#ifdef TRANSPARENT_SSR
+    float4 waterData = LOAD_TEXTURE2D_X(_WaterSSRNormalTexture, positionSS);
+    normalWS = normalize(waterData.xyz);
+    perceptualRoughness = 1.0 - saturate(waterData.w);
+#else
+    GetNormalAndPerceptualRoughness(positionSS, normalWS, perceptualRoughness);
+#endif
 }
 
 float4 TransformViewToHScreen(float3 vpos, float2 screenSize)
@@ -415,7 +437,7 @@ void GetHitInfos(uint2 positionSS, out float srcPerceptualRoughness, out float3 
     Xi.y = GetBNDSequenceSample(positionSS, _FrameCount, 1);
     
     float perceptualRoughness;
-    GetNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness);
+    GetSSRNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness);
 
     srcPerceptualRoughness = perceptualRoughness;
 
@@ -458,7 +480,7 @@ void GetHitInfos(uint2 positionSS, out float srcPerceptualRoughness, out float3 
 half4 ScreenSpaceReflection(uint2 positionSS)
 {
     // TODO: Add stencil prepass in deferred rendering path
-#ifndef _DEFERRED_RENDERING_PATH
+#if !defined(_DEFERRED_RENDERING_PATH) || defined(TRANSPARENT_SSR)
     bool doesntReceiveSSR = false;
     uint stencilValue = GetStencilValue(LOAD_TEXTURE2D_X(_StencilTexture, positionSS.xy));
     doesntReceiveSSR = (stencilValue & STENCIL_USAGE_IS_SSR) == 0;
@@ -473,7 +495,7 @@ half4 ScreenSpaceReflection(uint2 positionSS)
 #ifdef SSR_APPROX
     float3 N;
     float perceptualRoughness;
-    GetNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness);
+    GetSSRNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness);
     float2 positionNDC = positionSS * _ScreenSize.zw + (0.5 * _ScreenSize.zw); // Should we precompute the half-texel bias? We seem to use it a lot.
     float3 positionWS = ComputeWorldSpacePosition(positionNDC, deviceDepth, SSR_MATRIX_I_VP); // Jittered
     float3 V = GetWorldSpaceNormalizeViewDir(positionWS);
@@ -720,7 +742,7 @@ float2 GetSampleInfo(uint2 positionSS, out float3 color, out float weight, out f
 
     float3 N;
     float perceptualRoughness;
-    GetNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness);
+    GetSSRNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness);
 
     float roughness = PerceptualRoughnessToRoughness(perceptualRoughness);
 
@@ -737,7 +759,7 @@ float4 ScreenSpaceReflectionReprojection(uint2 positionSS0)
 {
     float3 N;
     float perceptualRoughness;
-    GetNormalAndPerceptualRoughness(positionSS0, N, perceptualRoughness);
+    GetSSRNormalAndPerceptualRoughness(positionSS0, N, perceptualRoughness);
 
     // Compute the actual roughness
     // float roughness = PerceptualRoughnessToRoughness(perceptualRoughness);

@@ -19,6 +19,19 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.ssr")]
         public bool EnableScreenSpaceReflection { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Screen Space Reflection for transparent surfaces.
+        /// Requires Screen Space Reflection to be enabled.
+        /// </summary>
+        [ConfigVariable("r.ssr.transparent")]
+        public bool EnableTransparentScreenSpaceReflection { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Screen Space Refraction.
+        /// </summary>
+        [ConfigVariable("r.refraction")]
+        public bool EnableScreenSpaceRefraction { get; set; } = true;
         
         /// <summary>
         /// Whether enable Screen Space Reflection.
@@ -93,6 +106,9 @@ namespace Illusion.Rendering
         
         [ConfigVariable("r.debug.ssr", IsEditor = true)]
         public bool EnableScreenSpaceReflectionDebug { get; set; }
+
+        [ConfigVariable("r.debug.ssr.transparent", IsEditor = true)]
+        public bool EnableTransparentScreenSpaceReflectionDebug { get; set; }
         
         /// <summary>
         /// Exposure debug mode.
