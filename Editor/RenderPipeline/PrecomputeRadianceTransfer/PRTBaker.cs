@@ -332,6 +332,50 @@ namespace Illusion.Rendering.Editor
 
         private static bool ContributesGI(GameObject go) => (GameObjectUtility.GetStaticEditorFlags(go) & StaticEditorFlags.ContributeGI) != 0;
 
+        internal static Renderer[] SelectHighestDetailLodRenderers(Renderer[] renderers, LODGroup[] lodGroups)
+        {
+            var lodRenderers = new HashSet<Renderer>();
+            var highestDetailRenderers = new HashSet<Renderer>();
+
+            foreach (var lodGroup in lodGroups)
+            {
+                if (!lodGroup)
+                {
+                    continue;
+                }
+
+                var lods = lodGroup.GetLODs();
+                foreach (var lod in lods)
+                {
+                    foreach (var renderer in lod.renderers)
+                    {
+                        if (renderer)
+                        {
+                            lodRenderers.Add(renderer);
+                        }
+                    }
+                }
+
+                if (lods.Length == 0)
+                {
+                    continue;
+                }
+
+                foreach (var renderer in lods[0].renderers)
+                {
+                    if (renderer)
+                    {
+                        highestDetailRenderers.Add(renderer);
+                    }
+                }
+            }
+
+            return renderers
+                .Where(renderer => renderer &&
+                                   (!lodRenderers.Contains(renderer) || highestDetailRenderers.Contains(renderer)))
+                .ToArray();
+        }
+
         public async Task BakeVolume(PRTProbeVolume volume, CancellationToken cancellationToken = default)
         {
             if (!IsInitialized())
@@ -343,6 +387,10 @@ namespace Illusion.Rendering.Editor
             Renderer[] renderers = UObject.FindObjectsByType(typeof(Renderer), FindObjectsSortMode.None)
                 .OfType<Renderer>().Where(r => ContributesGI(r.gameObject))
                 .ToArray();
+            LODGroup[] lodGroups = UObject.FindObjectsByType(typeof(LODGroup))
+                .OfType<LODGroup>()
+                .ToArray();
+            renderers = SelectHighestDetailLodRenderers(renderers, lodGroups);
             var captureShader = Shader.Find(IllusionShaders.ProbeGBuffer);
             CreateCaptureDrawItems(renderers, captureShader);
             _cubemapCamera = CreateCubemapCamera();
