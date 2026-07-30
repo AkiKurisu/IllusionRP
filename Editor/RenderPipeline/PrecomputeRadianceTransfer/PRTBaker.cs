@@ -384,11 +384,10 @@ namespace Illusion.Rendering.Editor
                 return;
             }
 
-            Renderer[] renderers = UObject.FindObjectsByType(typeof(Renderer), FindObjectsSortMode.None)
-                .OfType<Renderer>().Where(r => ContributesGI(r.gameObject))
+            Renderer[] renderers = UObject.FindObjectsByType<Renderer>(FindObjectsSortMode.None)
+                .Where(r => ContributesGI(r.gameObject))
                 .ToArray();
-            LODGroup[] lodGroups = UObject.FindObjectsByType(typeof(LODGroup))
-                .OfType<LODGroup>()
+            LODGroup[] lodGroups = UObject.FindObjectsByType<LODGroup>(FindObjectsSortMode.None)
                 .ToArray();
             renderers = SelectHighestDetailLodRenderers(renderers, lodGroups);
             var captureShader = Shader.Find(IllusionShaders.ProbeGBuffer);
