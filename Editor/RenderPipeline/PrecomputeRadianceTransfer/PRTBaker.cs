@@ -119,6 +119,41 @@ namespace Illusion.Rendering.Editor
             OnProgressUpdate?.Invoke(status, progress);
         }
 
+        private static void CopyTextureProperty(Material sourceMaterial, Material captureMaterial, string sourceProperty)
+        {
+            if (!sourceMaterial.HasProperty(sourceProperty))
+            {
+                return;
+            }
+
+            var texture = sourceMaterial.GetTexture(sourceProperty);
+            if (!texture)
+            {
+                return;
+            }
+
+            captureMaterial.SetTexture("_MainTex", texture);
+            captureMaterial.SetTextureScale("_MainTex", sourceMaterial.GetTextureScale(sourceProperty));
+            captureMaterial.SetTextureOffset("_MainTex", sourceMaterial.GetTextureOffset(sourceProperty));
+        }
+
+        private static void CopyColorProperty(Material sourceMaterial, Material captureMaterial, string sourceProperty)
+        {
+            if (sourceMaterial.HasProperty(sourceProperty))
+            {
+                captureMaterial.SetColor("_Color", sourceMaterial.GetColor(sourceProperty));
+            }
+        }
+
+        private static void CopyAlbedoProperties(Material sourceMaterial, Material captureMaterial)
+        {
+            CopyTextureProperty(sourceMaterial, captureMaterial, "_MainTex");
+            CopyTextureProperty(sourceMaterial, captureMaterial, "_BaseMap");
+            CopyTextureProperty(sourceMaterial, captureMaterial, "_BaseColorMap");
+            CopyColorProperty(sourceMaterial, captureMaterial, "_Color");
+            CopyColorProperty(sourceMaterial, captureMaterial, "_BaseColor");
+        }
+
         private void CreateCaptureDrawItems(Renderer[] renderers, Shader captureShader)
         {
             var drawItems = new List<PRTGBufferCaptureDrawItem>();
@@ -143,6 +178,7 @@ namespace Illusion.Rendering.Editor
                         shader = captureShader,
                         hideFlags = HideFlags.HideAndDontSave
                     };
+                    CopyAlbedoProperties(sourceMaterial, captureMaterial);
                     _captureMaterials.Add(captureMaterial);
                     drawItems.Add(new PRTGBufferCaptureDrawItem(renderer, captureMaterial, submeshIndex));
                 }
