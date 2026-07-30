@@ -50,12 +50,11 @@ namespace Illusion.Rendering.Editor
 
         private bool _disposed;
 
-        private Renderer[] _renderers;
-
-        // Dictionary to store original shaders for restoration
-        private readonly Dictionary<Material, Shader> _originalShaders = new();
-
         private Camera _cubemapCamera;
+
+        private PRTGBufferCaptureDrawItem[] _captureDrawItems;
+
+        private readonly List<Material> _captureMaterials = new();
 
         private readonly ComputeShader _surfelSampleCS;
 
@@ -120,57 +119,83 @@ namespace Illusion.Rendering.Editor
             OnProgressUpdate?.Invoke(status, progress);
         }
 
-        /// <summary>
-        /// Batch set shader for all game objects in the scene and record original shaders
-        /// </summary>
-        /// <param name="renderers">Array of renderer to modify</param>
-        /// <param name="shader">Shader to apply</param>
-        private void RecordAndSetShaders(Renderer[] renderers, Shader shader)
+        private static void CopyTextureProperty(Material sourceMaterial, Material captureMaterial, string sourceProperty)
         {
-            // Record
-            foreach (var renderer in renderers)
+            if (!sourceMaterial.HasProperty(sourceProperty))
             {
-                var materials = renderer.sharedMaterials;
-                if (renderer && materials.Length > 0)
-                {
-                    foreach (var material in materials)
-                    {
-                        _originalShaders[material] = renderer.sharedMaterial.shader;
-                    }
-                }
+                return;
             }
 
-            // Set
-            foreach (var renderer in renderers)
+            var texture = sourceMaterial.GetTexture(sourceProperty);
+            if (!texture)
             {
-                var materials = renderer.sharedMaterials;
-                if (renderer && materials.Length > 0)
-                {
-                    foreach (var material in materials)
-                    {
-                        material.shader = shader;
-                    }
-                }
+                return;
+            }
+
+            captureMaterial.SetTexture("_MainTex", texture);
+            captureMaterial.SetTextureScale("_MainTex", sourceMaterial.GetTextureScale(sourceProperty));
+            captureMaterial.SetTextureOffset("_MainTex", sourceMaterial.GetTextureOffset(sourceProperty));
+        }
+
+        private static void CopyColorProperty(Material sourceMaterial, Material captureMaterial, string sourceProperty)
+        {
+            if (sourceMaterial.HasProperty(sourceProperty))
+            {
+                captureMaterial.SetColor("_Color", sourceMaterial.GetColor(sourceProperty));
             }
         }
 
-        /// <summary>
-        /// Restore original shaders for all materials
-        /// </summary>
-        private void RestoreOriginalShaders()
+        private static void CopyAlbedoProperties(Material sourceMaterial, Material captureMaterial)
         {
-            foreach (var kvp in _originalShaders)
-            {
-                var material = kvp.Key;
-                var originalShader = kvp.Value;
+            CopyTextureProperty(sourceMaterial, captureMaterial, "_MainTex");
+            CopyTextureProperty(sourceMaterial, captureMaterial, "_BaseMap");
+            CopyTextureProperty(sourceMaterial, captureMaterial, "_BaseColorMap");
+            CopyColorProperty(sourceMaterial, captureMaterial, "_Color");
+            CopyColorProperty(sourceMaterial, captureMaterial, "_BaseColor");
+        }
 
-                if (material && originalShader)
+        private void CreateCaptureDrawItems(Renderer[] renderers, Shader captureShader)
+        {
+            var drawItems = new List<PRTGBufferCaptureDrawItem>();
+            foreach (var renderer in renderers)
+            {
+                if (!renderer || !renderer.enabled || renderer.forceRenderingOff || !renderer.gameObject.activeInHierarchy)
                 {
-                    material.shader = originalShader;
+                    continue;
+                }
+
+                var materials = renderer.sharedMaterials;
+                for (int submeshIndex = 0; submeshIndex < materials.Length; submeshIndex++)
+                {
+                    var sourceMaterial = materials[submeshIndex];
+                    if (!sourceMaterial)
+                    {
+                        continue;
+                    }
+
+                    var captureMaterial = new Material(sourceMaterial)
+                    {
+                        shader = captureShader,
+                        hideFlags = HideFlags.HideAndDontSave
+                    };
+                    CopyAlbedoProperties(sourceMaterial, captureMaterial);
+                    _captureMaterials.Add(captureMaterial);
+                    drawItems.Add(new PRTGBufferCaptureDrawItem(renderer, captureMaterial, submeshIndex));
                 }
             }
 
-            _originalShaders.Clear();
+            _captureDrawItems = drawItems.ToArray();
+        }
+
+        private void DestroyCaptureDrawItems()
+        {
+            foreach (var material in _captureMaterials)
+            {
+                UObject.DestroyImmediate(material);
+            }
+
+            _captureMaterials.Clear();
+            _captureDrawItems = null;
         }
 
         /// <summary>
@@ -224,17 +249,26 @@ namespace Illusion.Rendering.Editor
         private void CaptureGbufferCubemaps(Vector3 position)
         {
             _cubemapCamera.transform.SetPositionAndRotation(position, Quaternion.identity);
+            int originalCullingMask = _cubemapCamera.cullingMask;
+            _cubemapCamera.cullingMask = 0;
 
-            // Capture GBuffers
-            SetGlobalGBufferCaptureMode(GBufferCaptureMode.WorldPosition);
-            _cubemapCamera.RenderToCubemap(_worldPosRT, -1, StaticEditorFlags.ContributeGI);
-            SetGlobalGBufferCaptureMode(GBufferCaptureMode.Normal);
-            _cubemapCamera.RenderToCubemap(_normalRT, -1, StaticEditorFlags.ContributeGI);
-            SetGlobalGBufferCaptureMode(GBufferCaptureMode.Albedo);
-            _cubemapCamera.RenderToCubemap(_albedoRT, -1, StaticEditorFlags.ContributeGI);
-
-            // Clean up global keywords after capture
-            ClearGlobalGBufferKeywords();
+            try
+            {
+                using (PRTGBufferCaptureBridge.Begin(_cubemapCamera, _captureDrawItems))
+                {
+                    SetGlobalGBufferCaptureMode(GBufferCaptureMode.WorldPosition);
+                    _cubemapCamera.RenderToCubemap(_worldPosRT, -1, StaticEditorFlags.ContributeGI);
+                    SetGlobalGBufferCaptureMode(GBufferCaptureMode.Normal);
+                    _cubemapCamera.RenderToCubemap(_normalRT, -1, StaticEditorFlags.ContributeGI);
+                    SetGlobalGBufferCaptureMode(GBufferCaptureMode.Albedo);
+                    _cubemapCamera.RenderToCubemap(_albedoRT, -1, StaticEditorFlags.ContributeGI);
+                }
+            }
+            finally
+            {
+                ClearGlobalGBufferKeywords();
+                _cubemapCamera.cullingMask = originalCullingMask;
+            }
 
             // Force GPU to flush and release temporary resources
             GL.Flush();
@@ -334,6 +368,50 @@ namespace Illusion.Rendering.Editor
 
         private static bool ContributesGI(GameObject go) => (GameObjectUtility.GetStaticEditorFlags(go) & StaticEditorFlags.ContributeGI) != 0;
 
+        internal static Renderer[] SelectHighestDetailLodRenderers(Renderer[] renderers, LODGroup[] lodGroups)
+        {
+            var lodRenderers = new HashSet<Renderer>();
+            var highestDetailRenderers = new HashSet<Renderer>();
+
+            foreach (var lodGroup in lodGroups)
+            {
+                if (!lodGroup)
+                {
+                    continue;
+                }
+
+                var lods = lodGroup.GetLODs();
+                foreach (var lod in lods)
+                {
+                    foreach (var renderer in lod.renderers)
+                    {
+                        if (renderer)
+                        {
+                            lodRenderers.Add(renderer);
+                        }
+                    }
+                }
+
+                if (lods.Length == 0)
+                {
+                    continue;
+                }
+
+                foreach (var renderer in lods[0].renderers)
+                {
+                    if (renderer)
+                    {
+                        highestDetailRenderers.Add(renderer);
+                    }
+                }
+            }
+
+            return renderers
+                .Where(renderer => renderer &&
+                                   (!lodRenderers.Contains(renderer) || highestDetailRenderers.Contains(renderer)))
+                .ToArray();
+        }
+
         public async Task BakeVolume(PRTProbeVolume volume, CancellationToken cancellationToken = default)
         {
             if (!IsInitialized())
@@ -342,11 +420,14 @@ namespace Illusion.Rendering.Editor
                 return;
             }
 
-            Renderer[] renderers = UObject.FindObjectsByType(typeof(Renderer), FindObjectsSortMode.None)
-                .OfType<Renderer>().Where(r => ContributesGI(r.gameObject))
+            Renderer[] renderers = UObject.FindObjectsByType<Renderer>(FindObjectsSortMode.None)
+                .Where(r => ContributesGI(r.gameObject))
                 .ToArray();
+            LODGroup[] lodGroups = UObject.FindObjectsByType<LODGroup>(FindObjectsSortMode.None)
+                .ToArray();
+            renderers = SelectHighestDetailLodRenderers(renderers, lodGroups);
             var captureShader = Shader.Find(IllusionShaders.ProbeGBuffer);
-            RecordAndSetShaders(renderers, captureShader);
+            CreateCaptureDrawItems(renderers, captureShader);
             _cubemapCamera = CreateCubemapCamera();
             try
             {
@@ -354,8 +435,7 @@ namespace Illusion.Rendering.Editor
             }
             finally
             {
-                RestoreOriginalShaders();
-                // Clean up temporary camera
+                DestroyCaptureDrawItems();
                 UObject.DestroyImmediate(_cubemapCamera.gameObject);
                 _cubemapCamera = null;
             }
