@@ -141,6 +141,8 @@ namespace Illusion.Rendering
         public static readonly int SsrLightingTexture = Shader.PropertyToID("_SsrLightingTexture");
         
         public static readonly int ScreenSpaceReflections = Shader.PropertyToID("_ScreenSpaceReflections");
+
+        public static readonly int WaterReflectionMode = Shader.PropertyToID("_WaterReflectionMode");
         
         public static readonly int ScreenSpaceOcclusionTexture = Shader.PropertyToID("_ScreenSpaceOcclusionTexture");
 
