@@ -46,9 +46,9 @@ Shader "Universal Render Pipeline/Water"
 		//[ToggleUI] _ReceiveShadows("Receive Shadows", Float) = 1.0
 		[WaterReflectionMode] _WaterReflectionMode("Water Reflection Mode", Float) = 0
         
-        // WaterSSRData
+        // Depth passes
         [HideInInspector] _StencilRefDepth("_StencilRefDepth", Int) = 4 // IllusionStencilUsage.TraceReflectionRay
-        [HideInInspector] _StencilWriteMaskDepth("_StencilWriteMaskDepth", Int) = 5 // IllusionStencilUsage.WaterSSRDataWriteMask
+        [HideInInspector] _StencilWriteMaskDepth("_StencilWriteMaskDepth", Int) = 5 // IllusionStencilUsage.ForwardGBufferWriteMask
 		
 		[HideInInspector] _QueueOffset("_QueueOffset", Float) = 0
         [HideInInspector] _QueueControl("_QueueControl", Float) = -1
@@ -275,6 +275,7 @@ Shader "Universal Render Pipeline/Water"
 			#endif
 
 			#define SHADERPASS SHADERPASS_FORWARD
+			#define ILLUSION_WATER_FORWARD_PASS 1
 
 			#include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
 			#include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
@@ -959,17 +960,6 @@ Shader "Universal Render Pipeline/Water"
 			ZTest LEqual
 			Blend One Zero
 			ColorMask RGBA
-
-			Stencil
-			{
-				Ref 4
-				ReadMask 4
-				WriteMask 4
-				Comp Always
-				Pass Replace
-				Fail Keep
-				ZFail Keep
-			}
 
 			HLSLPROGRAM
 			#pragma target 3.5

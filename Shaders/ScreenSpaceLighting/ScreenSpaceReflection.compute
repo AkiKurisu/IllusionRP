@@ -74,6 +74,13 @@ void MAIN_ACC(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 N;
     float perceptualRoughness0;
     GetSSRNormalAndPerceptualRoughness(positionSS, N, perceptualRoughness0);
+#ifdef TRANSPARENT_SSR
+    if (dot(N, N) <= 1e-4f)
+    {
+        _SsrAccumTexture[COORD_TEXTURE2D_X(positionSS)] = 0;
+        return;
+    }
+#endif
 
     // Compute the actual roughness
     float roughness = PerceptualRoughnessToRoughness(perceptualRoughness0);

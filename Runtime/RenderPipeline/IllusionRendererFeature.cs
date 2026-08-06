@@ -439,6 +439,8 @@ namespace Illusion.Rendering
             bool useTransparentOverdrawPass = orderIndependentTransparency && oitTransparentOverdrawPass && !isPreviewCamera;
 
             bool isOffscreenDepth = UniversalRenderingUtility.IsOffscreenDepthTexture(in renderingData.cameraData);
+            bool prepareTransparentDepth = useDepthPostPass
+                                           || (useTransparentScreenSpaceReflection && !isOffscreenDepth);
             bool useVrs = enableStencilVrs && ShadingRateInfo.supportsPerImageTile && config.EnableVrs;
 
             // Setup pass must run first
@@ -459,9 +461,13 @@ namespace Illusion.Rendering
             // BeforeRenderingPrePasses
             renderer.EnqueuePass(_advancedTonemappingPass);
 
-            if (useDepthPostPass)
+            if (prepareTransparentDepth)
             {
                 renderer.EnqueuePass(_transparentCopyPreDepthPass);
+            }
+
+            if (useDepthPostPass)
+            {
                 renderer.EnqueuePass(_transparentDepthOnlyPass);
             }
 

@@ -20,7 +20,9 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/NormalBuffer.hlsl"
 
 TEXTURE2D_X(_CameraDepthTexture); // Not used in Hiz version
+#ifndef TRANSPARENT_SSR
 TEXTURE2D_X_UINT2(_StencilTexture);
+#endif
 
 #ifdef DEPTH_SOURCE_NOT_FROM_MIP_CHAIN
 TEXTURE2D_X(_DepthTexture);
@@ -28,6 +30,12 @@ TEXTURE2D_X(_DepthTexture);
 
 #ifdef TRANSPARENT_SSR
 TEXTURE2D_X(_WaterSSRNormalTexture);
+
+bool IsTransparentSSRSurface(uint2 positionSS)
+{
+    float3 waterNormal = LOAD_TEXTURE2D_X(_WaterSSRNormalTexture, positionSS).xyz;
+    return dot(waterNormal, waterNormal) > 1e-4f;
+}
 #endif
 
 #ifdef SSR_REPROJECT
@@ -87,6 +95,12 @@ void GetSSRNormalAndPerceptualRoughness(uint2 positionSS, out float3 normalWS, o
 {
 #ifdef TRANSPARENT_SSR
     float4 waterData = LOAD_TEXTURE2D_X(_WaterSSRNormalTexture, positionSS);
+    if (dot(waterData.xyz, waterData.xyz) <= 1e-4f)
+    {
+        normalWS = 0;
+        perceptualRoughness = 1;
+        return;
+    }
     normalWS = normalize(waterData.xyz);
     perceptualRoughness = 1.0 - saturate(waterData.w);
 #else
@@ -479,8 +493,12 @@ void GetHitInfos(uint2 positionSS, out float srcPerceptualRoughness, out float3 
 // Ported from HDRP
 half4 ScreenSpaceReflection(uint2 positionSS)
 {
+#ifdef TRANSPARENT_SSR
+    if (!IsTransparentSSRSurface(positionSS))
+        return half4(0, 0, 0, 0);
+#else
     // TODO: Add stencil prepass in deferred rendering path
-#if !defined(_DEFERRED_RENDERING_PATH) || defined(TRANSPARENT_SSR)
+#if !defined(_DEFERRED_RENDERING_PATH)
     bool doesntReceiveSSR = false;
     uint stencilValue = GetStencilValue(LOAD_TEXTURE2D_X(_StencilTexture, positionSS.xy));
     doesntReceiveSSR = (stencilValue & STENCIL_USAGE_IS_SSR) == 0;
@@ -488,6 +506,7 @@ half4 ScreenSpaceReflection(uint2 positionSS)
     {
         return half4(0, 0, 0, 0);
     }
+#endif
 #endif
 
     float deviceDepth = GetDepthSample(positionSS);
@@ -760,6 +779,10 @@ float4 ScreenSpaceReflectionReprojection(uint2 positionSS0)
     float3 N;
     float perceptualRoughness;
     GetSSRNormalAndPerceptualRoughness(positionSS0, N, perceptualRoughness);
+#ifdef TRANSPARENT_SSR
+    if (dot(N, N) <= 1e-4f)
+        return 0;
+#endif
 
     // Compute the actual roughness
     // float roughness = PerceptualRoughnessToRoughness(perceptualRoughness);

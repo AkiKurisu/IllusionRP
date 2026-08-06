@@ -39,6 +39,20 @@ namespace Illusion.Rendering
         {
             var resources = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
+
+            TextureHandle preWaterDepth = resources.cameraDepthTexture;
+            if (frameData.Contains<TransparentDepthData>())
+            {
+                var transparentDepthData = frameData.Get<TransparentDepthData>();
+                if (transparentDepthData.PreDepthTexture.IsValid())
+                    preWaterDepth = transparentDepthData.PreDepthTexture;
+            }
+            if (preWaterDepth.IsValid())
+            {
+                RenderGraphUtils.SetGlobalTexture(renderGraph,
+                    IllusionShaderProperties._WaterPreDepthTexture, preWaterDepth);
+            }
+
             TextureHandle source = resources.activeColorTexture;
             if (!_enabled || !source.IsValid() || !_copyMaterial)
             {

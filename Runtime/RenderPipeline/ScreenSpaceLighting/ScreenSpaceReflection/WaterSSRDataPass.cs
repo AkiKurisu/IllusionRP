@@ -30,20 +30,9 @@ namespace Illusion.Rendering
             profilingSampler = new ProfilingSampler("Water SSR Data");
             ConfigureInput(ScriptableRenderPassInput.Depth);
 
-            var stencilState = StencilState.defaultValue;
-            stencilState.enabled = true;
-            stencilState.readMask = (byte)IllusionStencilUsage.TraceReflectionRay;
-            stencilState.writeMask = (byte)IllusionStencilUsage.TraceReflectionRay;
-            stencilState.SetCompareFunction(CompareFunction.Always);
-            stencilState.SetPassOperation(StencilOp.Replace);
-            stencilState.SetFailOperation(StencilOp.Keep);
-            stencilState.SetZFailOperation(StencilOp.Keep);
-
-            _renderStateBlock = new RenderStateBlock(RenderStateMask.Depth | RenderStateMask.Stencil)
+            _renderStateBlock = new RenderStateBlock(RenderStateMask.Depth)
             {
-                depthState = new DepthState(true, CompareFunction.LessEqual),
-                stencilReference = (int)IllusionStencilUsage.TraceReflectionRay,
-                stencilState = stencilState
+                depthState = new DepthState(true, CompareFunction.LessEqual)
             };
         }
 
@@ -51,9 +40,7 @@ namespace Illusion.Rendering
         {
             var cameraData = frameData.Get<UniversalCameraData>();
             var renderingData = frameData.Get<UniversalRenderingData>();
-            var resources = frameData.Get<UniversalResourceData>();
-            if (!resources.activeDepthTexture.IsValid())
-                return;
+            var transparentDepthData = frameData.GetOrCreate<TransparentDepthData>();
 
             var colorDescriptor = cameraData.cameraTargetDescriptor;
             colorDescriptor.msaaSamples = 1;
@@ -72,6 +59,7 @@ namespace Illusion.Rendering
                        "Clear Water SSR Data", out var clearData, profilingSampler))
             {
                 builder.SetRenderAttachment(normal, 0, AccessFlags.Write);
+                builder.SetGlobalTextureAfterPass(normal, IllusionShaderProperties._WaterSSRNormalTexture);
                 builder.AllowPassCulling(false);
                 builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {
@@ -79,11 +67,15 @@ namespace Illusion.Rendering
                 });
             }
 
+            TextureHandle waterDepth = transparentDepthData.PostDepthTexture;
+            if (!waterDepth.IsValid())
+                return;
+
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(
                        "Water SSR Data", out var passData, profilingSampler))
             {
                 builder.SetRenderAttachment(normal, 0, AccessFlags.Write);
-                builder.SetRenderAttachmentDepth(resources.activeDepthTexture, AccessFlags.ReadWrite);
+                builder.SetRenderAttachmentDepth(waterDepth, AccessFlags.ReadWrite);
 
                 SortingCriteria sorting = SortingCriteria.CommonTransparent;
                 DrawingSettings drawingSettings = UniversalRenderingUtility.CreateDrawingSettings(

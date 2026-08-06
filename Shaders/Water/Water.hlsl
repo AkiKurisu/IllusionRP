@@ -5,6 +5,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
 TEXTURE2D_X(_PreRefractionColorTexture);
+TEXTURE2D_X_FLOAT(_WaterPreDepthTexture);
 
 #if defined(_WATER_REFLECTION_LEGACY)
     #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareMotionVectorTexture.hlsl"
@@ -40,6 +41,17 @@ float2 WaterScreenTextureUV(float2 normalizedScreenSpaceUV)
     return UnityStereoTransformScreenSpaceTex(normalizedScreenSpaceUV) * _RTHandleScale.xy;
 }
 
+float SampleWaterSceneDepth(float2 normalizedScreenSpaceUV)
+{
+#if defined(_WATER_REFLECTION_LEGACY)
+    return SampleSceneDepth(normalizedScreenSpaceUV);
+#else
+    return SAMPLE_TEXTURE2D_X_LOD(
+        _WaterPreDepthTexture, sampler_PointClamp,
+        WaterScreenTextureUV(normalizedScreenSpaceUV), 0).r;
+#endif
+}
+
 half3 SamplePreRefractionColor(float2 normalizedScreenSpaceUV)
 {
     bool inBounds = all(normalizedScreenSpaceUV >= 0.0) && all(normalizedScreenSpaceUV <= 1.0);
@@ -61,7 +73,8 @@ half3 SamplePreRefractionColorDistorted(
     if (!distortedInBounds)
         return SamplePreRefractionColor(currentUV);
 
-    float refractedEyeDepth = LinearEyeDepth(SampleSceneDepth(distortedUV), _ZBufferParams);
+    float refractedDeviceDepth = SampleWaterSceneDepth(distortedUV);
+    float refractedEyeDepth = LinearEyeDepth(refractedDeviceDepth, _ZBufferParams);
     float2 safeUV = refractedEyeDepth <= surfaceEyeDepth ? currentUV : distortedUV;
     return SamplePreRefractionColor(safeUV);
 }

@@ -26,7 +26,7 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 		[ToggleUI] _ReceiveShadows("Receive Shadows", Float) = 1.0
 		[WaterReflectionMode] _WaterReflectionMode("Water Reflection Mode", Float) = 0
 
-        // WaterSSRData
+        // Depth passes
         [HideInInspector] _StencilRefDepth("_StencilRefDepth", Int) = 4 // IllusionStencilUsage.TraceReflectionRay
 		[HideInInspector] _StencilWriteMaskDepth("_StencilWriteMaskDepth", Int) = 5 // IllusionStencilUsage.ForwardGBufferWriteMask
 
@@ -646,6 +646,7 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			#endif
 
 			#define SHADERPASS SHADERPASS_FORWARD
+			#define ILLUSION_WATER_FORWARD_PASS 1
 
 			#include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
 			#include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
@@ -3042,14 +3043,6 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			ZWrite On
             Cull[_Cull]
             ZTest LEqual
-
-			Stencil
-            {
-                WriteMask 4
-                Ref 4
-                Comp Always
-                Pass Replace
-            }
 
 			HLSLPROGRAM
 

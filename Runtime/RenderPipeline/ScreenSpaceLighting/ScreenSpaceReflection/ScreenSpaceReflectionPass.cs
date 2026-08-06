@@ -413,8 +413,11 @@ namespace Illusion.Rendering
                 
                 builder.SetRenderAttachment(hitPointTexture, 0);
                 passData.HitPointTexture = hitPointTexture;
-                builder.UseTexture(depthStencilTexture);
-                passData.DepthStencilTexture = depthStencilTexture;
+                if (!_transparent)
+                {
+                    builder.UseTexture(depthStencilTexture);
+                    passData.DepthStencilTexture = depthStencilTexture;
+                }
                 builder.UseTexture(normalTexture);
                 passData.NormalTexture = normalTexture;
                 builder.UseTexture(depthPyramidTexture);
@@ -668,8 +671,11 @@ namespace Illusion.Rendering
                 // Texture handles
                 builder.UseTexture(hitPointTexture, AccessFlags.ReadWrite);
                 passData.HitPointTexture = hitPointTexture;
-                builder.UseTexture(depthStencilTexture);
-                passData.DepthStencilTexture = depthStencilTexture;
+                if (!_transparent)
+                {
+                    builder.UseTexture(depthStencilTexture);
+                    passData.DepthStencilTexture = depthStencilTexture;
+                }
                 builder.UseTexture(sourceDepthTexture);
                 passData.SourceDepthTexture = sourceDepthTexture;
                 builder.UseTexture(normalTexture);
@@ -734,8 +740,11 @@ namespace Illusion.Rendering
                     {
                         ctx.cmd.SetComputeBufferParam(cs, data.TracingKernel,
                             IllusionShaderProperties._DepthPyramidMipLevelOffsets, data.OffsetBuffer);
-                        ctx.cmd.SetComputeTextureParam(cs, data.TracingKernel, IllusionShaderProperties._StencilTexture,
-                            data.DepthStencilTexture, 0, RenderTextureSubElement.Stencil);
+                        if (!data.Transparent)
+                        {
+                            ctx.cmd.SetComputeTextureParam(cs, data.TracingKernel, IllusionShaderProperties._StencilTexture,
+                                data.DepthStencilTexture, 0, RenderTextureSubElement.Stencil);
+                        }
                         ctx.cmd.SetComputeTextureParam(cs, data.TracingKernel,
                             IllusionShaderProperties._CameraNormalsTexture, data.NormalTexture);
                         if (data.Transparent)
@@ -945,14 +954,22 @@ namespace Illusion.Rendering
             }
 
             var renderingData = new RenderingData(frameData);
-            var resources = frameData.Get<UniversalResourceData>();
-            if (!resources.activeDepthTexture.IsValid())
+            if (!frameData.Contains<TransparentDepthData>())
             {
                 var black = renderGraph.ImportTexture(_rendererData.GetBlackTextureRT());
                 _rendererData.TransparentScreenSpaceReflectionTexture = black;
                 RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties.SsrLightingTexture, black);
                 return;
             }
+            var transparentDepthData = frameData.Get<TransparentDepthData>();
+            if (!transparentDepthData.PostDepthTexture.IsValid())
+            {
+                var black = renderGraph.ImportTexture(_rendererData.GetBlackTextureRT());
+                _rendererData.TransparentScreenSpaceReflectionTexture = black;
+                RenderGraphUtils.SetGlobalTexture(renderGraph, IllusionShaderProperties.SsrLightingTexture, black);
+                return;
+            }
+            var resources = frameData.Get<UniversalResourceData>();
             PrepareSSRData(ref renderingData, true);
             PrepareVariables(ref renderingData.cameraData);
 
@@ -965,7 +982,7 @@ namespace Illusion.Rendering
                 return;
             }
 
-            TextureHandle sourceDepth = resources.activeDepthTexture;
+            TextureHandle sourceDepth = transparentDepthData.PostDepthTexture;
             TextureHandle waterNormal = renderGraph.ImportTexture(_rendererData.WaterSSRNormalRT);
             TextureHandle depthPyramid = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
             TextureHandle previousColor = renderGraph.ImportTexture(previousColorRT);
@@ -990,7 +1007,7 @@ namespace Illusion.Rendering
                 name = "Transparent_SSR_Lighting_Texture"
             });
 
-            TextureHandle result = RenderSSRComputePass(renderGraph, hitPoint, sourceDepth, sourceDepth,
+            TextureHandle result = RenderSSRComputePass(renderGraph, hitPoint, default, sourceDepth,
                 waterNormal, depthPyramid, previousColor, motionVectors, lighting, default,
                 false, colorHistoryValid);
 
