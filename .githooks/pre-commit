@@ -1,0 +1,15 @@
+#!/bin/sh
+
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+checker="$hook_dir/check-line-endings.ps1"
+
+if command -v pwsh >/dev/null 2>&1; then
+    exec pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$checker"
+fi
+
+if command -v powershell.exe >/dev/null 2>&1; then
+    exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$checker"
+fi
+
+echo "pre-commit: PowerShell is required to check line endings." >&2
+exit 1

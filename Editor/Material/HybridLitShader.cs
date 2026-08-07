@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.Rendering;
 using UnityEditor.Rendering.Universal.ShaderGUI;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Illusion.Rendering.Editor
 {
@@ -184,6 +185,58 @@ namespace Illusion.Rendering.Editor
                     DrawQueueOffsetField();
             }
             materialEditor.EnableInstancingField();
+        }
+    }
+
+    internal static class WaterReflectionModeMaterialState
+    {
+        private const string LegacyKeyword = "_WATER_REFLECTION_LEGACY";
+        private const string WaterSsrDataPass = "WaterSSRData";
+
+        internal static void Synchronize(Material material)
+        {
+            if (material == null || !material.HasProperty(IllusionShaderProperties.WaterReflectionMode))
+                return;
+
+            bool useLegacyReflection = material.GetFloat(IllusionShaderProperties.WaterReflectionMode) > 0.5f;
+            if (material.IsKeywordEnabled(LegacyKeyword) != useLegacyReflection)
+                CoreUtils.SetKeyword(material, LegacyKeyword, useLegacyReflection);
+
+            bool enableWaterSsrData = !useLegacyReflection;
+            if (material.GetShaderPassEnabled(WaterSsrDataPass) != enableWaterSsrData)
+                material.SetShaderPassEnabled(WaterSsrDataPass, enableWaterSsrData);
+        }
+    }
+
+    internal sealed class WaterReflectionModeDrawer : MaterialPropertyDrawer
+    {
+        private static readonly string[] ModeNames = { "Screen Space", "Legacy" };
+
+        private static readonly GUIContent Label = new(
+            "Water Reflection Mode",
+            "Uses the reflection implementation provided by the Water shader.");
+
+        public override void OnGUI(Rect position, MaterialProperty prop, string label, MaterialEditor editor)
+        {
+            int mode = Mathf.Clamp(Mathf.RoundToInt(prop.floatValue), 0, ModeNames.Length - 1);
+
+            EditorGUI.BeginChangeCheck();
+            EditorGUI.showMixedValue = prop.hasMixedValue;
+            Rect popupPosition = EditorGUI.PrefixLabel(position, Label);
+            mode = EditorGUI.Popup(popupPosition, mode, ModeNames);
+            EditorGUI.showMixedValue = false;
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                editor.RegisterPropertyChangeUndo(Label.text);
+                prop.floatValue = mode;
+            }
+
+            foreach (UnityEngine.Object target in editor.targets)
+            {
+                if (target is Material material)
+                    WaterReflectionModeMaterialState.Synchronize(material);
+            }
         }
     }
 }

@@ -1,9 +1,16 @@
-﻿#ifndef WATER_LIGHTING_INCLUDED
+#ifndef WATER_LIGHTING_INCLUDED
 #define WATER_LIGHTING_INCLUDED
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareMotionVectorTexture.hlsl"
+
+TEXTURE2D_X(_PreRefractionColorTexture);
+TEXTURE2D_X_FLOAT(_WaterPreDepthTexture);
+
+#if defined(_WATER_REFLECTION_LEGACY)
+    #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/DeclareMotionVectorTexture.hlsl"
+    TEXTURE2D_X(_HistoryColorTexture);
+#endif
 
 #ifdef _SHADOW_SAMPLES_LOW
     #define SHADOW_ITERATIONS 1
@@ -29,7 +36,69 @@
     #define SSR_ITERATIONS 4
 #endif
 
-TEXTURE2D_X(_HistoryColorTexture);
+float2 WaterScreenTextureUV(float2 normalizedScreenSpaceUV)
+{
+    return UnityStereoTransformScreenSpaceTex(normalizedScreenSpaceUV) * _RTHandleScale.xy;
+}
+
+float SampleWaterSceneDepth(float2 normalizedScreenSpaceUV)
+{
+#if defined(_WATER_REFLECTION_LEGACY)
+    return SampleSceneDepth(normalizedScreenSpaceUV);
+#else
+    return SAMPLE_TEXTURE2D_X_LOD(
+        _WaterPreDepthTexture, sampler_PointClamp,
+        WaterScreenTextureUV(normalizedScreenSpaceUV), 0).r;
+#endif
+}
+
+half3 SamplePreRefractionColor(float2 normalizedScreenSpaceUV)
+{
+    bool inBounds = all(normalizedScreenSpaceUV >= 0.0) && all(normalizedScreenSpaceUV <= 1.0);
+    if (!inBounds)
+        return 0.0;
+
+    half4 sceneColor = SAMPLE_TEXTURE2D_X_LOD(
+        _PreRefractionColorTexture, sampler_LinearClamp,
+        WaterScreenTextureUV(normalizedScreenSpaceUV), 0);
+    return all(isfinite(sceneColor)) ? sceneColor.rgb : 0.0;
+}
+
+half3 SamplePreRefractionColorDistorted(
+    float2 currentUV,
+    float2 distortedUV,
+    float surfaceEyeDepth)
+{
+    bool distortedInBounds = all(distortedUV >= 0.0) && all(distortedUV <= 1.0);
+    if (!distortedInBounds)
+        return SamplePreRefractionColor(currentUV);
+
+    float refractedDeviceDepth = SampleWaterSceneDepth(distortedUV);
+    float refractedEyeDepth = LinearEyeDepth(refractedDeviceDepth, _ZBufferParams);
+    float2 safeUV = refractedEyeDepth <= surfaceEyeDepth ? currentUV : distortedUV;
+    return SamplePreRefractionColor(safeUV);
+}
+
+half4 SampleTransparentScreenSpaceReflection(float2 normalizedScreenSpaceUV)
+{
+    bool inBounds = all(normalizedScreenSpaceUV >= 0.0) && all(normalizedScreenSpaceUV <= 1.0);
+    if (!inBounds)
+        return 0.0;
+
+    half4 reflection = SAMPLE_TEXTURE2D_X_LOD(
+        _SsrLightingTexture, sampler_LinearClamp,
+        WaterScreenTextureUV(normalizedScreenSpaceUV), 0);
+    if (!all(isfinite(reflection)))
+        return 0.0;
+
+    reflection.a = saturate(reflection.a);
+    reflection.rgb *= GetInverseCurrentExposureMultiplier();
+
+    // The pipeline stores SSR lighting premultiplied by confidence, while the
+    // existing Water graph expects a straight color and applies confidence in its lerp.
+    reflection.rgb = reflection.a > 1e-4h ? reflection.rgb / reflection.a : 0.0h;
+    return reflection;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //                           Reflection Modes                                //
@@ -60,55 +129,50 @@ half OutOfBoundsFade(half2 uv)
     return fade.x * fade.y;
 }
 
-// Sample reflection from base pass raymarching
+// Compatibility entry point used by the existing ASE graph. Transparent SSR
+// tracing is owned by IllusionRP; this function only resolves the current
+// water pixel and forwards the pipeline confidence to the graph.
 void Raymarch_half(float3 origin, float3 direction, half steps, half stepSize, half thickness, out half2 sampleUV, out half valid, out half outOfBounds, out half debug)
 {
+#if defined(_WATER_REFLECTION_LEGACY)
     sampleUV = 0;
     valid = 0;
     outOfBounds = 0;
     debug = 0;
 
-    float3 baseOrigin = origin;
-    
     direction *= stepSize;
-    const half rcpStepCount = rcp(steps);
-    
+
     [loop]
-    for(int i = 0; i < steps; i++)
+    for (int i = 0; i < steps; i++)
     {
         debug++;
-        //if(valid == 0)
+        origin += direction;
+        direction *= 1.5;
+        sampleUV = ViewSpacePosToUV(origin);
+        outOfBounds = OutOfBoundsFade(sampleUV);
+
+        if (sampleUV.x > 1 || sampleUV.x < 0 || sampleUV.y > 1 || sampleUV.y < 0)
+            return;
+
+        float deviceDepth = SampleSceneDepth(sampleUV);
+        float3 samplePos = ViewPosFromDepth(sampleUV, deviceDepth);
+
+        if (distance(samplePos.z, origin.z) > length(direction) * thickness)
+            continue;
+
+        if (samplePos.z > origin.z)
         {
-            origin += direction;
-            direction *= 1.5;
-            sampleUV = ViewSpacePosToUV(origin);
-
-            outOfBounds = OutOfBoundsFade(sampleUV);
-            
-            //return;
-            
-            if(!(sampleUV.x > 1 || sampleUV.x < 0 || sampleUV.y > 1 || sampleUV.y < 0))
-            {
-                float deviceDepth = SampleSceneDepth(sampleUV);
-                float3 samplePos = ViewPosFromDepth(sampleUV, deviceDepth);
-
-                if(distance(samplePos.z, origin.z) > length(direction) * thickness) continue;
-
-                
-        
-                if(samplePos.z > origin.z)
-                {
-                    valid = 1;
-                    return;
-                }
-                
-            } else
-            {
-                //outOfBounds = OutOfBoundsFade(sampleUV);
-                return;
-            }
+            valid = 1;
+            return;
         }
     }
+#else
+    sampleUV = ViewSpacePosToUV(origin);
+    half4 reflection = SampleTransparentScreenSpaceReflection(sampleUV);
+    valid = reflection.a;
+    outOfBounds = 1.0;
+    debug = 0;
+#endif
 }
 
 struct WaveParams
@@ -185,44 +249,24 @@ void RadialGerstnerWaves_half(float3 worldPos, half time, out half displacement)
     //displacement /= summedAmplitude;
 }
 
-/*
-half3 SampleReflections(float3 normalWS, float3 positionWS, float3 viewDirectionWS, half2 screenUV)
-{
-    half3 reflection = 0;
-    half2 refOffset = 0;
-    
-    float2 uv = float2(0, 0);
-    half valid = 1;
-
-    float3 positionVS = TransformWorldToView(positionWS);
-    float3 normalVS = TransformWorldToViewDir(normalWS);
-
-    float3 positionVSnorm = normalize(positionVS);
-    float3 pivot = reflect(positionVS, normalVS);
-    half debug;
-    RayMarch(positionVS, pivot, uv, valid, debug);
-    half3 ssr = SAMPLE_TEXTURE2D(_CameraOpaqueTexture, sampler_ScreenTextures_linear_clamp, uv).rgb;
-
-    half3 backup = CubemapReflection(viewDirectionWS, positionWS, normalWS);
-    reflection = lerp(backup, ssr, valid);
-    //do backup
-    return reflection;
-}
-*/
-
 half4 SampleSceneColor_half(half2 screenUV)
 {
+#if defined(_WATER_REFLECTION_LEGACY)
     float2 forwardMotionVector;
-    DecodeMotionVector(SAMPLE_TEXTURE2D_X_LOD(_MotionVectorTexture, sampler_LinearClamp, screenUV, 0), forwardMotionVector);
-    float2 prevFrameUV = screenUV - forwardMotionVector; // backward
-    float2 limit = float2(1, 1);
-    if (any(prevFrameUV < float2(0.0,0.0)) || any(prevFrameUV > limit))
-    {
-        // Off-Screen.
-        return 0;
-    }
-    half4 preFrameColor = half4(SAMPLE_TEXTURE2D_X_LOD(_HistoryColorTexture, sampler_PointClamp, prevFrameUV, 0));
-    return half4(preFrameColor.rgb, 1.0);
+    DecodeMotionVector(
+        SAMPLE_TEXTURE2D_X_LOD(_MotionVectorTexture, sampler_LinearClamp, screenUV, 0),
+        forwardMotionVector);
+
+    float2 prevFrameUV = screenUV - forwardMotionVector;
+    if (any(prevFrameUV < 0.0) || any(prevFrameUV > 1.0))
+        return 0.0;
+
+    half3 previousColor = SAMPLE_TEXTURE2D_X_LOD(
+        _HistoryColorTexture, sampler_PointClamp, prevFrameUV, 0).rgb;
+    return half4(previousColor, 1.0);
+#else
+    return SampleTransparentScreenSpaceReflection(screenUV);
+#endif
 }
 
 

@@ -103,6 +103,12 @@ namespace Illusion.Rendering
 
         public static readonly int _CameraDepthTexture = MemberNameHelpers.ShaderPropertyID();
 
+        public static readonly int _DepthTexture = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _PreRefractionColorTexture = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _WaterSSRNormalTexture = MemberNameHelpers.ShaderPropertyID();
+
         public static readonly int _ContactShadowMap = MemberNameHelpers.ShaderPropertyID();
 
         public static readonly int ScreenSpaceShadowmapTexture = Shader.PropertyToID("_ScreenSpaceShadowmapTexture");
@@ -135,6 +141,10 @@ namespace Illusion.Rendering
         public static readonly int SsrLightingTexture = Shader.PropertyToID("_SsrLightingTexture");
         
         public static readonly int ScreenSpaceReflections = Shader.PropertyToID("_ScreenSpaceReflections");
+
+        public static readonly int WaterReflectionMode = Shader.PropertyToID("_WaterReflectionMode");
+
+        public static readonly int _WaterPreDepthTexture = MemberNameHelpers.ShaderPropertyID();
         
         public static readonly int ScreenSpaceOcclusionTexture = Shader.PropertyToID("_ScreenSpaceOcclusionTexture");
 
@@ -289,6 +299,15 @@ namespace Illusion.Rendering
         public const RenderPassEvent SubsurfaceScatteringPass = RenderPassEvent.BeforeRenderingOpaques;
 
         public const RenderPassEvent ScreenSpaceShadowsPostPass = RenderPassEvent.AfterRenderingOpaques;
+
+        // Copy the opaque scene color for screen-space refraction.
+        public const RenderPassEvent CopyPreRefractionColorPass = RenderPassEvent.AfterRenderingOpaques + 1;
+
+        // Render water surface data for screen space reflections.
+        public const RenderPassEvent WaterSSRDataPass = RenderPassEvent.AfterRenderingOpaques + 2;
+
+        // Render screen space reflections for transparent surfaces.
+        public const RenderPassEvent TransparentScreenSpaceReflectionPass = RenderPassEvent.AfterRenderingOpaques + 3;
 
         // ==================================== Transparency =============================================== //
         public const RenderPassEvent OrderIndependentTransparentPass = RenderPassEvent.AfterRenderingTransparents + 1;

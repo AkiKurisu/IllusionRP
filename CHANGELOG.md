@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add temporal capture readiness reporting for screenshot warmup across TAA, SSGI, SSR, and screen-space shadows.
+- Add transparent screen-space reflections for water surfaces, including water surface data rendering and debug visualization.
+- Add a pre-refraction scene color copy for forward screen-space refraction.
 
 ### Changed
 

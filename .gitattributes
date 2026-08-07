@@ -1,2 +1,16 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+.gitattributes text eol=lf
+
+# Unity shader sources use CRLF in this Windows-first repository. Keeping the
+# checkout format explicit prevents editors and patch tools from mixing LF and
+# CRLF inside the same source file.
+*.shader text eol=crlf
+*.hlsl text eol=crlf
+*.compute text eol=crlf
+*.cginc text eol=crlf
+
+# Git invokes this entry point through its POSIX shell, so its shebang must
+# remain LF even when core.autocrlf is enabled.
+.githooks/pre-commit text eol=lf
+.githooks/*.ps1 text eol=crlf

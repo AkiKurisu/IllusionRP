@@ -235,11 +235,23 @@ namespace Illusion.Rendering
         public RTHandle DepthPyramidRT;
 
         /// <summary>
+        /// Opaque scene color for screen-space refraction.
+        /// </summary>
+        public RTHandle PreRefractionColorRT;
+
+        /// <summary>
+        /// Normal and smoothness texture for water surface screen space reflections.
+        /// </summary>
+        public RTHandle WaterSSRNormalRT;
+
+        /// <summary>
         /// Get renderer camera <see cref="UniversalAdditionalCameraData"/>.
         /// </summary>
         public UniversalAdditionalCameraData AdditionalCameraData => _additionalCameraData;
 
         public TextureHandle ScreenSpaceReflectionTexture;
+
+        public TextureHandle TransparentScreenSpaceReflectionTexture;
 
         /// <summary>
         /// Get current camera frame count.
@@ -270,6 +282,11 @@ namespace Illusion.Rendering
         /// Get whether the renderer can sample screen space reflection texture.
         /// </summary>
         public bool SampleScreenSpaceReflection { get; internal set; } = true;
+
+        /// <summary>
+        /// Get whether the renderer can sample screen space reflections for transparent surfaces.
+        /// </summary>
+        public bool SampleTransparentScreenSpaceReflection { get; internal set; }
         
         /// <summary>
         /// Whether the renderer should copy depth and normal texture for next frame usage.
@@ -540,6 +557,8 @@ namespace Illusion.Rendering
             ForwardGBufferRT?.Release();
             DebugExposureTexture?.Release();
             DepthPyramidRT?.Release();
+            PreRefractionColorRT?.Release();
+            WaterSSRNormalRT?.Release();
             CoreUtils.SafeRelease(HistogramBuffer);
             HistogramBuffer = null;
             CoreUtils.SafeRelease(_ambientProbeBuffer);

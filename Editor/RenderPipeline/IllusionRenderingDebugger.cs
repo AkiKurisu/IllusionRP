@@ -57,6 +57,14 @@ namespace Illusion.Rendering.Editor
                 new GUIContent("Screen Space Reflection", "Enable/Disable SSR"),
                 _config.EnableScreenSpaceReflection);
 
+            _config.EnableTransparentScreenSpaceReflection = EditorGUILayout.ToggleLeft(
+                new GUIContent("Transparent Screen Space Reflection", "Enable screen space reflections for supported transparent water shaders"),
+                _config.EnableTransparentScreenSpaceReflection);
+
+            _config.EnableScreenSpaceRefraction = EditorGUILayout.ToggleLeft(
+                new GUIContent("Screen Space Refraction", "Copy opaque scene color for supported refractive shaders"),
+                _config.EnableScreenSpaceRefraction);
+
             _config.EnableScreenSpaceGlobalIllumination = EditorGUILayout.ToggleLeft(
                 new GUIContent("Screen Space Global Illumination", "Enable/Disable SSGI"),
                 _config.EnableScreenSpaceGlobalIllumination);
@@ -109,6 +117,10 @@ namespace Illusion.Rendering.Editor
             _config.EnableScreenSpaceReflectionDebug = EditorGUILayout.ToggleLeft(
                 new GUIContent("SSR Debug", "Visualize screen space reflection"),
                 _config.EnableScreenSpaceReflectionDebug);
+
+            _config.EnableTransparentScreenSpaceReflectionDebug = EditorGUILayout.ToggleLeft(
+                new GUIContent("Transparent SSR Debug", "Visualize screen space reflections for transparent water"),
+                _config.EnableTransparentScreenSpaceReflectionDebug);
 
             _config.EnablePerObjectShadowDebug = EditorGUILayout.ToggleLeft(
                 new GUIContent("Per Object Shadow Debug", "Visualize per-object shadows"),
@@ -191,6 +203,8 @@ namespace Illusion.Rendering.Editor
         private void ResetAllFeatures()
         {
             _config.EnableScreenSpaceReflection = true;
+            _config.EnableTransparentScreenSpaceReflection = true;
+            _config.EnableScreenSpaceRefraction = true;
             _config.EnableScreenSpaceGlobalIllumination = true;
             _config.EnableContactShadows = true;
             _config.EnablePercentageCloserSoftShadows = true;
@@ -206,6 +220,7 @@ namespace Illusion.Rendering.Editor
         {
             _config.EnableMotionVectorsDebug = false;
             _config.EnableScreenSpaceReflectionDebug = false;
+            _config.EnableTransparentScreenSpaceReflectionDebug = false;
             _config.ExposureDebugMode = ExposureDebugMode.None;
             _config.ScreenSpaceShadowDebugMode = ScreenSpaceShadowDebugMode.None;
             _config.EnablePerObjectShadowDebug = false;
