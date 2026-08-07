@@ -6,6 +6,23 @@
 
 TEXTURE2D(_PreIntegratedFGD_GGXDisneyDiffuse);
 
+#ifndef ILLUSION_GGX_ENV_ENERGY_COMPENSATION
+#define ILLUSION_GGX_ENV_ENERGY_COMPENSATION 1
+#endif
+
+// Compensate the energy lost by a single-scattering GGX BRDF.
+// `reflectivity` is Integral(BSDF_GGX / F) from the pre-integrated FGD LUT.
+float3 ApplyGGXEnvironmentEnergyCompensation(float3 singleScatteringSpecular, float3 fresnel0,
+    float3 reflectivity)
+{
+#if ILLUSION_GGX_ENV_ENERGY_COMPENSATION
+    float3 energyCompensation = rcp(max(reflectivity, 1e-4f)) - 1.0f;
+    return singleScatteringSpecular * (1.0f + fresnel0 * energyCompensation);
+#else
+    return singleScatteringSpecular;
+#endif
+}
+
 // HDRP.PreIntegratedFGD
 void GetPreIntegratedFGDGGXAndDisneyDiffuse(float NdotV, float perceptualRoughness, float3 fresnel0,
     out float3 specularFGD, out float3 diffuseFGD, out float3 reflectivity)

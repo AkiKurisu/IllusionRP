@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Add temporal capture readiness reporting for screenshot warmup across TAA, SSGI, SSR, and screen-space shadows.
 - Add transparent screen-space reflections for water surfaces, including water surface data rendering and debug visualization.
 - Add a pre-refraction scene color copy for forward screen-space refraction.
+- Add GGX environment energy compensation for Lit and Skin reflections.
 
 ### Changed
 
@@ -32,6 +33,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix `_TaaFrameInfo` channel ordering so SSR blue-noise sampling uses the frame count while PCSS and per-object shadow jitter use the TAA frame index.
 - Fix hair transparent overdraw depth coverage by aligning the post-depth cutoff with the OIT cutoff.
 - Fix PRT GBuffer capture on Unity 6, including LOD0 selection and albedo preservation.
+- Fix invalid SSR GGX samples continuing into ray tracing.
+- Fix Skin pre-integrated FGD input to avoid applying view Fresnel twice.
 
 ## [1.2.3] - 2026-6-6
 

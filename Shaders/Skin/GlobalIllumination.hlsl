@@ -145,11 +145,13 @@ half3 SkinIBLSpecular(BRDFData brdfData, half3 occlusion, InputData inputData, h
         iblSpecular *= horizon * horizon * normalizationFactor;
         indirectSpecular += iblSpecular;
     }
-    half fresnelTerm = Pow4(1.0 - clampedNdotV);
-    GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, perceptualRoughness, brdfData.specular * fresnelTerm,
+    GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, perceptualRoughness, brdfData.specular,
         specularFGD, diffuseFGD, reflectivity);
 
-    half3 result = indirectSpecular * specularFGD;
+    half3 result = ApplyGGXEnvironmentEnergyCompensation(
+        indirectSpecular * specularFGD,
+        brdfData.specular,
+        reflectivity);
     
     if (IsOnlyAOLightingFeatureEnabled())
     {

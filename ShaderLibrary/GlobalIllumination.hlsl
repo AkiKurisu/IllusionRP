@@ -56,7 +56,10 @@ half3 HybridGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, fl
         diffuseFGD = 1;
     #endif
     indirectDiffuse = indirectDiffuse * diffuseFGD * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
-    indirectSpecular = indirectSpecular * specularFGD * aoFactor.indirectSpecularOcclusion;
+    indirectSpecular = ApplyGGXEnvironmentEnergyCompensation(
+        indirectSpecular * specularFGD,
+        brdfData.specular,
+        reflectivity) * aoFactor.indirectSpecularOcclusion;
 #else
     indirectDiffuse = indirectDiffuse * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
     // Reference: BRDF.hlsl EnvironmentBRDF
