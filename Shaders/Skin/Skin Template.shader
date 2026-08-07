@@ -956,20 +956,22 @@
 				half Lobe1Smoothness;
 				half Lobe2Smoothness;
 				DualLobeSmoothness(Smoothness, _Smoothness1, _Smoothness2, Lobe1Smoothness, Lobe2Smoothness);
+				half metallic = saturate(Metallic);
 
 				half3 albedo =  BaseColor;
 #ifdef _SPECULAR_SETUP
-				albedo = ComputeDiffuseColor(albedo, saturate(Metallic));
+				albedo = ComputeDiffuseColor(albedo, metallic);
 #else
 				albedo = BaseColor;
 #endif		
+				half3 diffuseAlbedo = albedo;
 				albedo = PreModifySubsurfaceScatteringAlbedo(albedo, SubsurfaceAlbedo);
 				
 				SurfaceData surfaceData;
 				surfaceData.albedo              = albedo;
-				surfaceData.metallic            = saturate(Metallic);
+				surfaceData.metallic            = metallic;
 #ifdef _SPECULAR_SETUP
-				surfaceData.specular            = lerp(Specular, albedo, saturate(Metallic));
+				surfaceData.specular            = lerp(Specular, BaseColor, metallic);
 #else
 				surfaceData.specular            = Specular;
 #endif
@@ -999,10 +1001,12 @@
 				skinData.PerceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(skinData.Smoothness);
 				skinData.PerceptualRoughnessMix = lerp(PerceptualSmoothnessToPerceptualRoughness(surfaceData.smoothness), skinData.PerceptualRoughness, _LobeWeight);
 				skinData.Wet = Wet;
-#ifdef _SPECULAR_SETUP
-				skinData.F0 = lerp(_TransmissionTintsAndFresnel0[DiffusionIndex].a, albedo, Metallic);
-#else
+				// The diffusion profile owns the dielectric boundary Fresnel used by
+				// subsurface diffuse. The metallic input extends it towards the base color,
+				// while surfaceData.specular remains the F0 for the surface GGX lobes.
 				skinData.F0 = _TransmissionTintsAndFresnel0[DiffusionIndex].a;
+#ifdef _SPECULAR_SETUP
+				skinData.F0 = lerp(skinData.F0, BaseColor, metallic);
 #endif
 				skinData.DiffusionProfileIndex = DiffusionIndex;
 				skinData.GeomNormal = normalize(NormalWS);
@@ -1023,7 +1027,7 @@
 
 				ouputColor = color; // SSS albedo
 				SSSData sssData = (SSSData)0;
-				sssData.diffuseColor = PostModifySubsurfaceScatteringAlbedo(BaseColor); // Original albedo
+				sssData.diffuseColor = PostModifySubsurfaceScatteringAlbedo(diffuseAlbedo);
 				sssData.diffusionProfileIndex = DiffusionIndex;
 				EncodeIntoSSSBuffer(sssData, ouputAlbedo);
 			}
@@ -1500,16 +1504,17 @@
 				half Lobe1Smoothness;
 				half Lobe2Smoothness;
 				DualLobeSmoothness(Smoothness, _Smoothness1, _Smoothness2, Lobe1Smoothness, Lobe2Smoothness);
+				half metallic = saturate(Metallic);
 				
 				SurfaceData surfaceData;
 #ifdef _SPECULAR_SETUP
-				surfaceData.albedo              = ComputeDiffuseColor(BaseColor, saturate(Metallic));
+				surfaceData.albedo              = ComputeDiffuseColor(BaseColor, metallic);
 #else
 				surfaceData.albedo              = BaseColor;
 #endif
-				surfaceData.metallic            = saturate(Metallic);
+				surfaceData.metallic            = metallic;
 #ifdef _SPECULAR_SETUP
-				surfaceData.specular            = lerp(Specular, BaseColor, saturate(Metallic));
+				surfaceData.specular            = lerp(Specular, BaseColor, metallic);
 #else
 				surfaceData.specular            = Specular;
 #endif
@@ -1544,10 +1549,11 @@
 				skinData.PerceptualRoughness = PerceptualSmoothnessToPerceptualRoughness(skinData.Smoothness);
 				skinData.PerceptualRoughnessMix = lerp(PerceptualSmoothnessToPerceptualRoughness(surfaceData.smoothness), skinData.PerceptualRoughness, _LobeWeight);
 				skinData.Wet = Wet;
-#ifdef _SPECULAR_SETUP
-				skinData.F0 = lerp(_TransmissionTintsAndFresnel0[DiffusionIndex].a, BaseColor, Metallic);
-#else
+				// Match the SubsurfaceDiffuse pass: profile IOR controls the dielectric
+				// diffuse boundary and metallic extends it towards the base color.
 				skinData.F0 = _TransmissionTintsAndFresnel0[DiffusionIndex].a;
+#ifdef _SPECULAR_SETUP
+				skinData.F0 = lerp(skinData.F0, BaseColor, metallic);
 #endif
 				skinData.DiffusionProfileIndex = DiffusionIndex;
 
@@ -1560,12 +1566,12 @@
 					#endif
 				#else
 					SurfaceData diffuseSurface = surfaceData;
-					diffuseSurface.albedo = PreModifySubsurfaceScatteringAlbedo(BaseColor, SubsurfaceAlbedo);
+					diffuseSurface.albedo = PreModifySubsurfaceScatteringAlbedo(surfaceData.albedo, SubsurfaceAlbedo);
 					diffuseSurface.smoothness = saturate(Smoothness);
 					SkinData diffuseSkinData = skinData;
 					diffuseSkinData.PerceptualRoughness = 0;
 					half4 diffuse = SkinDiffuse(inputData, diffuseSurface, diffuseSkinData);
-					diffuse.rgb *= PostModifySubsurfaceScatteringAlbedo(BaseColor);
+					diffuse.rgb *= PostModifySubsurfaceScatteringAlbedo(surfaceData.albedo);
 				#endif
 				half4 specular = SkinSpecular(inputData, surfaceData, skinData);
 				half4 color = CompositeSkinLighting(diffuse, specular);
@@ -3635,4 +3641,3 @@
 	CustomEditor "AmplifyShaderEditor.MaterialInspector"
 	FallBack ""
 }
-

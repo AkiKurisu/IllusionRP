@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix PRT GBuffer capture on Unity 6, including LOD0 selection and albedo preservation.
 - Fix invalid SSR GGX samples continuing into ray tracing.
 - Fix Skin pre-integrated FGD input to avoid applying view Fresnel twice.
+- Fix Skin metallic F0 handling while preserving diffusion-profile Fresnel for subsurface lighting.
+- Fix Skin SSS diffuse albedo attenuation when using the Specular workflow.
 - Fix PRT reflection normalization max factor upload.
 - Fix water environment reflection fallback normalization.
 
