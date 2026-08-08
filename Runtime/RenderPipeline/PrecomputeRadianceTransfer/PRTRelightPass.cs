@@ -297,7 +297,7 @@ namespace Illusion.Rendering.PRTGI
                 {
                     passData.ReflectionNormalizationFactor = new Vector4(
                         reflectionNormalization.minNormalizationFactor.value,
-                        reflectionNormalization.minNormalizationFactor.value,
+                        reflectionNormalization.maxNormalizationFactor.value,
                         0, reflectionNormalization.probeVolumeWeight.value);
                 }
                 else
