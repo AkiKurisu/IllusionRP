@@ -530,7 +530,7 @@ half4 ScreenSpaceReflection(uint2 positionSS)
 
     if (NdotL < 0.001f || weight < 0.001f)
     {
-        float4(0, 0, 0, 0);
+        return float4(0, 0, 0, 0);
     }
 #endif
 
