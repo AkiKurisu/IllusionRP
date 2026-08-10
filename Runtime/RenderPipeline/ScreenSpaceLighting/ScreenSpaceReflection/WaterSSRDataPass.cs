@@ -14,7 +14,7 @@ namespace Illusion.Rendering
     public sealed class WaterSSRDataPass : ScriptableRenderPass, IDisposable
     {
         private readonly IllusionRendererData _rendererData;
-        private readonly List<ShaderTagId> _shaderTagIds = new() { new ShaderTagId("WaterSSRData") };
+        private readonly List<ShaderTagId> _shaderTagIds = new() { new ShaderTagId(IllusionShaderPasses.WaterSSRData) };
         private readonly FilteringSettings _filteringSettings = new(RenderQueueRange.transparent);
         private readonly RenderStateBlock _renderStateBlock;
 

@@ -9,16 +9,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Add target-renderer-aware keyword prefiltering and IllusionRP-specific pass stripping.
 - Add temporal capture readiness reporting for screenshot warmup across TAA, SSGI, SSR, and screen-space shadows.
 - Add transparent screen-space reflections for water surfaces, including water surface data rendering and debug visualization.
 - Add a pre-refraction scene color copy for forward screen-space refraction.
 
 ### Changed
 
+- Run IllusionRP pass rules after the URP shader preprocessor so both stripping stages can remove independently unreachable inputs.
 - Improve PCSS penumbra mask generation, sampling, and screen-space shadow integration.
 
 ### Fixed
 
+- Fix unused-variant setting evaluation and restore safe keyword prefiltering when custom stripping is disabled.
+- Fix OIT pass stripping by distinguishing the `OITTransparent` Pass Name from the `OIT` LightMode.
 - Fix screen-space shadow temporal accumulation artifacts by improving history validation and aligning reprojection behavior with HDRP.
 - Fix skin transmission lighting to preserve the raw light-facing term for backlit evaluation.
 - Fix skin Fresnel F0 storage to preserve RGB values when metallic or color-tinted F0 expressions are used.

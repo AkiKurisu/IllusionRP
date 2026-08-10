@@ -76,7 +76,13 @@ namespace Illusion.Rendering
     {
         public const string SubsurfaceDiffuse = "SubsurfaceDiffuse";
 
+        public const string OITPassName = "OITTransparent";
+
         public const string OIT = "OIT";
+
+        public const string WaterSSRData = "WaterSSRData";
+
+        public const string PostDepthOnly = "PostDepthOnly";
     }
 
     public static class IllusionShaderProperties

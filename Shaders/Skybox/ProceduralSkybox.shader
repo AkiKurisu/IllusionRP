@@ -22,6 +22,7 @@ Shader "Universal Render Pipeline/Procedural Skybox"
             "Queue"="Background"
             "RenderType"="Background"
             "PreviewType"="Skybox"
+            "RenderPipeline"="UniversalPipeline"
         }
         Cull Off
         ZWrite Off

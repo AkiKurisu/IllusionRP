@@ -2,6 +2,8 @@ Shader "Hidden/WeightedBlendedOITComposite"
 {
 	SubShader
 	{
+		Tags { "RenderPipeline"="UniversalPipeline" }
+
 		Pass
 		{
 			Name "Blend Color"

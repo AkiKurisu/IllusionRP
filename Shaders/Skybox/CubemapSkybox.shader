@@ -16,6 +16,7 @@ Shader "Universal Render Pipeline/Cubemap Skybox"
 			"PreviewType" = "Skybox"
 			"Queue" = "Background"
 			"RenderType" = "Background"
+			"RenderPipeline" = "UniversalPipeline"
 		}
 		
 		ZWrite Off

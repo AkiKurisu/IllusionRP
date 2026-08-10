@@ -24,10 +24,14 @@ namespace Illusion.Rendering
         [SelectIf(true, overridePriority: true, keywordNames: ShaderKeywordStrings.MainLightShadowScreen)]
         private const bool RequiresScreenSpaceShadowsKeyword = true;
         
-        // ReSharper disable once UnusedMember.Local
-        // Override priority in UniversalRenderPipelinePrefitering first, then filter it in ShaderVariantStripper
-        [SelectIf(true, overridePriority: true, keywordNames: new [] {ShaderKeywordStrings.ScreenSpaceOcclusion})]
-        private const bool ScreenSpaceOcclusionPrefilterMode = true;
+        // Screen-space occlusion can be toggled by runtime graphics settings.
+        // Keep both keyword states whenever the renderer supports the feature.
+        // ReSharper disable once NotAccessedField.Global
+        [SelectIf(PrefilterMode.Remove, overridePriority: true, keywordNames: "")]
+        [SelectIf(PrefilterMode.Select, overridePriority: true, keywordNames: new [] {"", ShaderKeywordStrings.ScreenSpaceOcclusion})]
+        [SelectIf(PrefilterMode.SelectOnly, overridePriority: true, keywordNames: ShaderKeywordStrings.ScreenSpaceOcclusion)]
+        [SerializeField]
+        internal PrefilterMode screenSpaceOcclusionPrefilterMode = PrefilterMode.Select;
         
         // ReSharper disable once UnusedMember.Local
         // Override priority in UniversalRenderPipelinePrefitering
@@ -42,7 +46,7 @@ namespace Illusion.Rendering
         // ReSharper disable once UnusedMember.Local
         [RemoveIf(true, keywordNames: IllusionShaderKeywords._DEBUG_SCREEN_SPACE_SHADOW_MAINLIGHT)]
         private const bool StripScreenSpaceShadowMainLightDebug = true;
-        
+
         // ReSharper disable once UnusedMember.Local
         [RemoveIf(true, keywordNames: IllusionShaderKeywords._DEBUG_SCREEN_SPACE_SHADOW_CONTACT)]
         private const bool StripScreenSpaceShadowContactDebug = true;

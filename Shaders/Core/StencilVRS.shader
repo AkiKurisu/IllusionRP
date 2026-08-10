@@ -8,6 +8,8 @@
 	}
 	SubShader
 	{
+		Tags { "RenderPipeline"="UniversalPipeline" }
+
 		Pass
 		{
 			HLSLPROGRAM
