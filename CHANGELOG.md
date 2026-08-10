@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix Motion Vectors Debug output under URP RenderGraph by rendering through a temporary debug texture before the final camera-color blit.
 - Fix `_TaaFrameInfo` channel ordering so SSR blue-noise sampling uses the frame count while PCSS and per-object shadow jitter use the TAA frame index.
 - Fix hair transparent overdraw depth coverage by aligning the post-depth cutoff with the OIT cutoff.
+- Fix PRT GBuffer capture on Unity 6, including LOD0 selection and albedo preservation.
 
 ## [1.2.3] - 2026-6-6
 
