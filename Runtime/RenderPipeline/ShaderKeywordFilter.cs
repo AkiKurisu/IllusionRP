@@ -24,14 +24,10 @@ namespace Illusion.Rendering
         [SelectIf(true, overridePriority: true, keywordNames: ShaderKeywordStrings.MainLightShadowScreen)]
         private const bool RequiresScreenSpaceShadowsKeyword = true;
         
-        // Screen-space occlusion can be toggled by runtime graphics settings.
-        // Keep both keyword states whenever the renderer supports the feature.
-        // ReSharper disable once NotAccessedField.Global
-        [SelectIf(PrefilterMode.Remove, overridePriority: true, keywordNames: "")]
-        [SelectIf(PrefilterMode.Select, overridePriority: true, keywordNames: new [] {"", ShaderKeywordStrings.ScreenSpaceOcclusion})]
-        [SelectIf(PrefilterMode.SelectOnly, overridePriority: true, keywordNames: ShaderKeywordStrings.ScreenSpaceOcclusion)]
-        [SerializeField]
-        internal PrefilterMode screenSpaceOcclusionPrefilterMode = PrefilterMode.Select;
+        // ReSharper disable once UnusedMember.Local
+        // Override priority in UniversalRenderPipelinePrefitering first, then filter it in ShaderVariantStripper
+        [SelectIf(true, overridePriority: true, keywordNames: new [] {ShaderKeywordStrings.ScreenSpaceOcclusion})]
+        private const bool ScreenSpaceOcclusionPrefilterMode = true;
         
         // ReSharper disable once UnusedMember.Local
         // Override priority in UniversalRenderPipelinePrefitering

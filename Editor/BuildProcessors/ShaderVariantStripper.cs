@@ -9,19 +9,67 @@ using ShaderKeywordStrings = UnityEngine.Rendering.Universal.ShaderKeywordString
 
 namespace Illusion.Rendering.Editor
 {
+    internal struct ShaderStrippingData
+    {
+        internal ShaderFeatures ShaderFeatures { get; set; }
+
+        internal ShaderSnippetData PassData { get; set; }
+
+        internal ShaderCompilerData VariantData { get; set; }
+
+        internal bool StripUnusedVariants { get; set; }
+
+        internal Shader Shader { get; set; }
+
+        internal bool IsKeywordEnabled(LocalKeyword keyword)
+        {
+            return VariantData.shaderKeywordSet.IsEnabled(keyword);
+        }
+
+        internal bool IsShaderFeatureEnabled(ShaderFeatures feature)
+        {
+            return (ShaderFeatures & feature) != 0;
+        }
+
+        internal bool PassHasKeyword(LocalKeyword keyword)
+        {
+            return ShaderUtil.PassHasKeyword(
+                Shader,
+                PassData.pass,
+                keyword,
+                PassData.shaderType,
+                VariantData.shaderCompilerPlatform);
+        }
+    }
+
     /// <summary>
-    /// Protects shared URP keyword variants required by IllusionRP renderer features.
+    /// Preserves the established IllusionRP keyword stripping rules for every target renderer.
     /// </summary>
     internal sealed class ShaderVariantStripper : IShaderVariantStripper, IShaderVariantStripperScope
     {
         private LocalKeyword _mainLightShadowsScreen;
+        private LocalKeyword _surfaceTypeTransparent;
+        private LocalKeyword _screenSpaceReflection;
         private LocalKeyword _screenSpaceOcclusion;
+        private LocalKeyword _screenSpaceGlobalIllumination;
+        private LocalKeyword _precomputedRadianceTransferGI;
+        private LocalKeyword _transparentPerObjectShadow;
+        private LocalKeyword _fragmentShadowBias;
 
         public ShaderVariantStripper()
         {
         }
 
-        public bool active => true;
+        public bool active
+        {
+            get
+            {
+                IllusionShaderBuildData buildData = ShaderBuildPreprocessor.CurrentData;
+                return buildData != null
+                    && buildData.IsValid
+                    && buildData.StripUnusedVariants;
+            }
+        }
 
         public bool CanRemoveVariant(
             Shader shader,
@@ -29,33 +77,142 @@ namespace Illusion.Rendering.Editor
             ShaderCompilerData variantData)
         {
             IllusionShaderBuildData buildData = ShaderBuildPreprocessor.CurrentData;
-            if (buildData == null || !buildData.IsValid)
-                return false;
+            if (buildData == null || !buildData.IsValid || !buildData.StripUnusedVariants)
+                return true;
 
-            // URP does not discover IllusionRP renderer features, so it would otherwise strip their shared ON variants.
-            if (buildData.AnyRendererSupports(ShaderFeatures.ScreenSpaceOcclusion)
-                && _screenSpaceOcclusion.isValid
-                && variantData.shaderKeywordSet.IsEnabled(_screenSpaceOcclusion))
+            ShaderStrippingData strippingData = new()
             {
-                return false;
-            }
+                Shader = shader,
+                PassData = passData,
+                VariantData = variantData,
+                StripUnusedVariants = buildData.StripUnusedVariants,
+            };
 
-            if (buildData.AnyRendererSupports(ShaderFeatures.MainLightShadowsScreen)
-                && _mainLightShadowsScreen.isValid
-                && variantData.shaderKeywordSet.IsEnabled(_mainLightShadowsScreen))
+            IReadOnlyList<ShaderFeatures> rendererFeatures = buildData.RendererFeatures;
+            for (int i = 0; i < rendererFeatures.Count; i++)
             {
+                strippingData.ShaderFeatures = rendererFeatures[i];
+                if (StripUnusedFeatures(ref strippingData))
+                    continue;
                 return false;
             }
 
             return true;
         }
 
+        private bool StripUnusedFeatures(ref ShaderStrippingData strippingData)
+        {
+            ShaderStripTool<ShaderFeatures> stripTool = new(
+                strippingData.ShaderFeatures,
+                ref strippingData);
+
+            if (StripScreenSpaceReflection(ref strippingData, ref stripTool))
+                return true;
+            if (stripTool.StripMultiCompile(
+                    _screenSpaceGlobalIllumination,
+                    ShaderFeatures.ScreenSpaceGlobalIllumination))
+                return true;
+            if (StripScreenSpaceOcclusion(ref strippingData, ref stripTool))
+                return true;
+            if (StripMainLightShadowsScreen(ref strippingData, ref stripTool))
+                return true;
+            if (stripTool.StripMultiCompile(
+                    _precomputedRadianceTransferGI,
+                    ShaderFeatures.PrecomputedRadianceTransferGI))
+                return true;
+            if (stripTool.StripMultiCompile(
+                    _transparentPerObjectShadow,
+                    ShaderFeatures.TransparentPerObjectShadow))
+                return true;
+            return stripTool.StripMultiCompile(
+                _fragmentShadowBias,
+                ShaderFeatures.FragmentShadowBias);
+        }
+
+        private bool StripScreenSpaceReflection(
+            ref ShaderStrippingData strippingData,
+            ref ShaderStripTool<ShaderFeatures> stripTool)
+        {
+            if (strippingData.IsShaderFeatureEnabled(ShaderFeatures.ScreenSpaceReflection))
+            {
+                if (strippingData.IsKeywordEnabled(_surfaceTypeTransparent)
+                    && strippingData.IsKeywordEnabled(_screenSpaceReflection))
+                {
+                    return true;
+                }
+
+                return stripTool.StripMultiCompileKeepOffVariant(
+                    _screenSpaceReflection,
+                    ShaderFeatures.ScreenSpaceReflection);
+            }
+
+            return stripTool.StripMultiCompile(
+                _screenSpaceReflection,
+                ShaderFeatures.ScreenSpaceReflection);
+        }
+
+        private bool StripScreenSpaceOcclusion(
+            ref ShaderStrippingData strippingData,
+            ref ShaderStripTool<ShaderFeatures> stripTool)
+        {
+            if (strippingData.IsShaderFeatureEnabled(ShaderFeatures.ScreenSpaceOcclusion))
+            {
+                if (strippingData.IsKeywordEnabled(_surfaceTypeTransparent)
+                    && strippingData.IsKeywordEnabled(_screenSpaceOcclusion))
+                {
+                    return true;
+                }
+
+                return stripTool.StripMultiCompileKeepOffVariant(
+                    _screenSpaceOcclusion,
+                    ShaderFeatures.ScreenSpaceOcclusion);
+            }
+
+            return stripTool.StripMultiCompile(
+                _screenSpaceOcclusion,
+                ShaderFeatures.ScreenSpaceOcclusion);
+        }
+
+        private bool StripMainLightShadowsScreen(
+            ref ShaderStrippingData strippingData,
+            ref ShaderStripTool<ShaderFeatures> stripTool)
+        {
+            if (strippingData.IsShaderFeatureEnabled(ShaderFeatures.MainLightShadowsScreen))
+            {
+                if (strippingData.IsKeywordEnabled(_surfaceTypeTransparent)
+                    && strippingData.IsKeywordEnabled(_mainLightShadowsScreen))
+                {
+                    return true;
+                }
+
+                return stripTool.StripMultiCompileKeepOffVariant(
+                    _mainLightShadowsScreen,
+                    ShaderFeatures.MainLightShadowsScreen);
+            }
+
+            return stripTool.StripMultiCompile(
+                _mainLightShadowsScreen,
+                ShaderFeatures.MainLightShadowsScreen);
+        }
+
         public void BeforeShaderStripping(Shader shader)
         {
+            _surfaceTypeTransparent = shader.keywordSpace.FindKeyword(
+                ShaderKeywordStrings._SURFACE_TYPE_TRANSPARENT);
             _mainLightShadowsScreen = shader.keywordSpace.FindKeyword(
                 ShaderKeywordStrings.MainLightShadowScreen);
             _screenSpaceOcclusion = shader.keywordSpace.FindKeyword(
                 ShaderKeywordStrings.ScreenSpaceOcclusion);
+            _screenSpaceReflection = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords._SCREEN_SPACE_REFLECTION);
+            _screenSpaceGlobalIllumination = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords._SCREEN_SPACE_GLOBAL_ILLUMINATION);
+            _precomputedRadianceTransferGI = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION);
+            _transparentPerObjectShadow = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords._TRANSPARENT_PER_OBJECT_SHADOWS);
+            _fragmentShadowBias = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords._SHADOW_BIAS_FRAGMENT);
         }
 
         public void AfterShaderStripping(Shader shader)

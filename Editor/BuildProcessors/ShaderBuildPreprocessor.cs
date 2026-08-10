@@ -54,6 +54,8 @@ namespace Illusion.Rendering.Editor
 
         internal bool StripUnusedVariants { get; }
 
+        internal IReadOnlyList<ShaderFeatures> RendererFeatures => _rendererFeatures;
+
         internal bool AnyRendererSupports(ShaderFeatures required, bool requireAll = false)
         {
             for (int i = 0; i < _rendererFeatures.Length; i++)
@@ -100,7 +102,6 @@ namespace Illusion.Rendering.Editor
     internal static class ShaderBuildPreprocessor
     {
         private static IllusionShaderBuildData s_CurrentData;
-        private static string s_LastWarning;
 
         internal static IllusionShaderBuildData CurrentData
         {
@@ -119,20 +120,13 @@ namespace Illusion.Rendering.Editor
             {
                 GatherCore(target);
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                ApplyPrefilterModes(
-                    Resources.FindObjectsOfTypeAll<IllusionRendererFeature>(),
-                    Array.Empty<ShaderFeatures>(),
-                    enabled: false);
                 s_CurrentData = new IllusionShaderBuildData(
                     target,
                     isValid: false,
                     stripUnusedVariants: false,
                     Array.Empty<ShaderFeatures>());
-                WarnOnce(
-                    $"IllusionRP shader stripping is disabled for this compilation: "
-                    + $"{exception.GetType().Name}: {exception.Message}.");
             }
         }
 
@@ -141,14 +135,12 @@ namespace Illusion.Rendering.Editor
             var rendererFeatures = new List<ShaderFeatures>();
             var featureAssets = new HashSet<IllusionRendererFeature>();
             bool valid = true;
-            string failureReason = null;
 
             using (UnityEngine.Pool.ListPool<UniversalRenderPipelineAsset>.Get(out var assets))
             {
                 if (!target.TryGetRenderPipelineAssets(assets) || assets.Count == 0)
                 {
                     valid = false;
-                    failureReason = "no target Universal Render Pipeline assets were found";
                 }
                 else
                 {
@@ -158,7 +150,6 @@ namespace Illusion.Rendering.Editor
                         if (!asset || asset.m_RendererDataList == null)
                         {
                             valid = false;
-                            failureReason = "a target URP asset has no readable renderer data";
                             continue;
                         }
 
@@ -167,7 +158,6 @@ namespace Illusion.Rendering.Editor
                             if (!rendererData)
                             {
                                 valid = false;
-                                failureReason = "a target URP asset contains a null renderer";
                                 continue;
                             }
 
@@ -176,7 +166,6 @@ namespace Illusion.Rendering.Editor
                             if (rendererData.rendererFeatures == null)
                             {
                                 valid = false;
-                                failureReason = "a target renderer has no readable feature list";
                                 rendererFeatures.Add(ShaderFeatures.None);
                                 continue;
                             }
@@ -193,13 +182,12 @@ namespace Illusion.Rendering.Editor
                             if (featureCount > 1)
                             {
                                 valid = false;
-                                failureReason = "a target renderer contains multiple IllusionRendererFeature instances";
                                 rendererFeatures.Add(ShaderFeatures.None);
                                 continue;
                             }
 
                             rendererFeatures.Add(
-                                illusionFeature
+                                illusionFeature && illusionFeature.isActive
                                     ? GetFeatures(illusionFeature)
                                     : ShaderFeatures.None);
                         }
@@ -208,18 +196,18 @@ namespace Illusion.Rendering.Editor
             }
 
             if (rendererFeatures.Count == 0)
-            {
                 valid = false;
-                failureReason ??= "the target renderer set is empty";
-            }
 
             IllusionRenderPipelineSettings settings = IllusionRenderPipelineSettings.instance;
             bool stripUnusedVariants = valid && settings.stripUnusedVariants;
 
-            ApplyPrefilterModes(
-                featureAssets,
-                rendererFeatures,
-                stripUnusedVariants);
+            if (valid)
+            {
+                ApplyPrefilterModes(
+                    featureAssets,
+                    rendererFeatures,
+                    stripUnusedVariants);
+            }
 
             s_CurrentData = new IllusionShaderBuildData(
                 target,
@@ -227,10 +215,6 @@ namespace Illusion.Rendering.Editor
                 stripUnusedVariants,
                 rendererFeatures.ToArray());
 
-            if (!valid)
-                WarnOnce($"IllusionRP shader stripping is disabled for this compilation: {failureReason}.");
-            else
-                s_LastWarning = null;
         }
 
         private static ShaderFeatures GetFeatures(IllusionRendererFeature feature)
@@ -271,9 +255,6 @@ namespace Illusion.Rendering.Editor
             bool enabled)
         {
             PrefilterMode safe = PrefilterMode.Select;
-            PrefilterMode screenOcclusion = enabled
-                ? RuntimeToggleMode(rendererFeatures, ShaderFeatures.ScreenSpaceOcclusion)
-                : safe;
             PrefilterMode subsurface = enabled
                 ? AggregateMode(rendererFeatures, ShaderFeatures.ScreenSpaceSubsurfaceScattering)
                 : safe;
@@ -305,7 +286,6 @@ namespace Illusion.Rendering.Editor
                     continue;
 
                 bool changed = false;
-                changed |= SetMode(ref feature.screenSpaceOcclusionPrefilterMode, screenOcclusion);
                 changed |= SetMode(ref feature.screenSpaceSubsurfaceScatteringPrefilterMode, subsurface);
                 changed |= SetMode(ref feature.contactShadowPrefilterMode, contact);
                 changed |= SetMode(ref feature.percentageCloserSoftShadowsPrefilterMode, pcss);
@@ -360,12 +340,5 @@ namespace Illusion.Rendering.Editor
             return true;
         }
 
-        private static void WarnOnce(string message)
-        {
-            if (string.Equals(s_LastWarning, message, StringComparison.Ordinal))
-                return;
-            s_LastWarning = message;
-            Debug.LogWarning(message);
-        }
     }
 }
