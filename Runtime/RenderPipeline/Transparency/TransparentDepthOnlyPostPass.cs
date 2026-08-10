@@ -20,7 +20,7 @@ namespace Illusion.Rendering
 
         private static readonly List<ShaderTagId> ShaderTagIds = new()
         {
-            new ShaderTagId("PostDepthOnly")
+            new ShaderTagId(IllusionShaderPasses.PostDepthOnly)
         };
 
         public TransparentDepthOnlyPostPass(IllusionRendererData rendererData)

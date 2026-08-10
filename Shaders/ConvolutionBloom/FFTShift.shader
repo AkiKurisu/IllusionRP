@@ -7,7 +7,7 @@ Shader "Hidden/ConvolutionBloom/FFTShift"
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
+        Tags { "RenderType"="Opaque" "RenderPipeline"="UniversalPipeline" }
         LOD 100
 
         Pass
