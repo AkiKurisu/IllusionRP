@@ -36,7 +36,7 @@ namespace Illusion.Rendering.Shadows
         [Tooltip("Controls the length of the rays IllusionRP uses to calculate Contact Shadows. " +
                  "It is in meters, but it gets scaled by a factor depending on Distance Scale Factor " +
                  "and the depth of the point from where the contact shadow ray is traced.")]
-        public ClampedFloatParameter length = new(0.15f, 0.0f, 1.0f);
+        public ClampedFloatParameter length = new(0.15f, 0.0f, 10.0f);
 
         // /// <summary>
         // /// Controls the opacity of the contact shadows.

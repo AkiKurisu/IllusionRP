@@ -58,7 +58,8 @@ bool ScreenSpaceShadowRayCast(float3 positionWS, float3 rayDirWS, float rayLengt
     float ditherBias = 0.5f;
     float dither = InterleavedGradientNoise(positionSS, _FrameCountMod8) - ditherBias;
 
-    float3 rayStartWS = positionWS - positionWS * _ContactShadowBias;
+    // @IllusionRP: Unlike HDRP's camera-relative positionWS, URP positionWS is absolute world space.
+    float3 rayStartWS = positionWS - (positionWS - GetCameraPositionWS()) * _ContactShadowBias;
     float3 rayEndWS = rayStartWS + rayDirWS * rayLength;
 
     float4 rayStartCS = GTransformWorldToHClip(rayStartWS);
