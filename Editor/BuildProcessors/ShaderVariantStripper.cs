@@ -30,7 +30,7 @@ namespace Illusion.Rendering.Editor
         {
             IllusionShaderBuildData buildData = ShaderBuildPreprocessor.CurrentData;
             if (buildData == null || !buildData.IsValid)
-                return true;
+                return false;
 
             // URP does not discover IllusionRP renderer features, so it would otherwise strip their shared ON variants.
             if (buildData.AnyRendererSupports(ShaderFeatures.ScreenSpaceOcclusion)
