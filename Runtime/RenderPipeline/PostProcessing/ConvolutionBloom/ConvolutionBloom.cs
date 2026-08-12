@@ -53,6 +53,7 @@ namespace Illusion.Rendering.PostProcessing
         [Header("FFT")]
         public Vector2Parameter fftExtend = new(new Vector2(0.1f, 0.1f));
         
+        [Tooltip("Force the optical transfer function to be regenerated every frame. Normally it updates automatically when its source settings or GPU resource change.")]
         public BoolParameter updateOTF = new(false);
         
         public BoolParameter generatePSF = new(false);

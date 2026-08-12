@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Restore the established keyword stripping rules while retaining target-renderer-aware pass stripping.
 - Ignore inactive Illusion renderer features when gathering shader capabilities.
+- Fix Convolution Bloom producing invalid output after Editor startup or GPU resource recreation by rebuilding stale OTF data and preserving its RenderGraph dependencies.
+- Fix optimized high-quality convolution relying on compute shader keyword state leaked by a preceding OTF update.
 
 ## [1.2.4] - 2026-6-13
 
