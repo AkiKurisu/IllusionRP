@@ -118,7 +118,7 @@ namespace Illusion.Rendering.PostProcessing
 
         private void InternalFFT(CommandBuffer cmd, RTHandle texture, bool highQuality)
         {
-            _fftShader.EnableKeyword(_keywordInoutTarget);
+            cmd.EnableKeyword(_fftShader, _keywordInoutTarget);
             cmd.SetComputeTextureParam(_fftShader, _fftKernel, ShaderIds.Target, texture);
             UpdateSize(texture.rt.width, texture.rt.height);
 
@@ -135,6 +135,8 @@ namespace Illusion.Rendering.PostProcessing
             cmd.EnableKeyword(_fftShader, _keywordVertical);
             cmd.DispatchCompute(_fftShader, _fftKernel, 1, _sizeX, 1);
             cmd.DisableKeyword(_fftShader, _keywordVertical);
+            cmd.DisableKeyword(_fftShader, _keywordHighQuality);
+            cmd.DisableKeyword(_fftShader, _keywordInoutTarget);
         }
 
         public void FFT(CommandBuffer cmd, RTHandle texture, bool highQuality)
@@ -176,6 +178,19 @@ namespace Illusion.Rendering.PostProcessing
             Vector2Int verticalRange,
             Vector2Int offset)
         {
+            ConvolveOpt(cmd, texture, filter, size, horizontalRange, verticalRange, offset,
+                size.x == (int)FFTSize.Size1024);
+        }
+
+        public void ConvolveOpt(CommandBuffer cmd,
+            RTHandle texture,
+            RTHandle filter,
+            Vector2Int size,
+            Vector2Int horizontalRange,
+            Vector2Int verticalRange,
+            Vector2Int offset,
+            bool highQuality)
+        {
             int rwRangeBeginX = horizontalRange[0];
             int rwRangeEndX = horizontalRange[1];
             int rwRangeBeginY = verticalRange[0];
@@ -185,6 +200,14 @@ namespace Illusion.Rendering.PostProcessing
             bool verticalOffset = offset.y != 0;
 
             cmd.EnableKeyword(_fftShader, _keywordInoutTarget);
+            if (highQuality)
+            {
+                cmd.EnableKeyword(_fftShader, _keywordHighQuality);
+            }
+            else
+            {
+                cmd.DisableKeyword(_fftShader, _keywordHighQuality);
+            }
             cmd.SetComputeTextureParam(_fftShader, _fftKernel, ShaderIds.Target, texture);
             UpdateSize(size.x, size.y);
 
@@ -267,6 +290,9 @@ namespace Illusion.Rendering.PostProcessing
                     cmd.DisableKeyword(_fftShader, _keywordWriteBlock);
                 }
             }
+
+            cmd.DisableKeyword(_fftShader, _keywordHighQuality);
+            cmd.DisableKeyword(_fftShader, _keywordInoutTarget);
         }
                 
         public void FFT(ComputeCommandBuffer cmd, TextureHandle texture, bool highQuality)
@@ -285,7 +311,7 @@ namespace Illusion.Rendering.PostProcessing
         
         private void InternalFFT(ComputeCommandBuffer cmd, TextureHandle texture, bool highQuality)
         {
-            _fftShader.EnableKeyword(_keywordInoutTarget);
+            cmd.EnableKeyword(_fftShader, _keywordInoutTarget);
             cmd.SetComputeTextureParam(_fftShader, _fftKernel, ShaderIds.Target, texture);
             RTHandle rt = texture;
             UpdateSize(rt.rt.width, rt.rt.height);
@@ -303,6 +329,8 @@ namespace Illusion.Rendering.PostProcessing
             cmd.EnableKeyword(_fftShader, _keywordVertical);
             cmd.DispatchCompute(_fftShader, _fftKernel, 1, _sizeX, 1);
             cmd.DisableKeyword(_fftShader, _keywordVertical);
+            cmd.DisableKeyword(_fftShader, _keywordHighQuality);
+            cmd.DisableKeyword(_fftShader, _keywordInoutTarget);
         }
                 
         public void Convolve(ComputeCommandBuffer cmd, TextureHandle texture, TextureHandle filter, bool highQuality)
@@ -330,6 +358,19 @@ namespace Illusion.Rendering.PostProcessing
             Vector2Int verticalRange,
             Vector2Int offset)
         {
+            ConvolveOpt(cmd, texture, filter, size, horizontalRange, verticalRange, offset,
+                size.x == (int)FFTSize.Size1024);
+        }
+
+        public void ConvolveOpt(ComputeCommandBuffer cmd,
+            TextureHandle texture,
+            TextureHandle filter,
+            Vector2Int size,
+            Vector2Int horizontalRange,
+            Vector2Int verticalRange,
+            Vector2Int offset,
+            bool highQuality)
+        {
             int rwRangeBeginX = horizontalRange[0];
             int rwRangeEndX = horizontalRange[1];
             int rwRangeBeginY = verticalRange[0];
@@ -339,6 +380,14 @@ namespace Illusion.Rendering.PostProcessing
             bool verticalOffset = offset.y != 0;
 
             cmd.EnableKeyword(_fftShader, _keywordInoutTarget);
+            if (highQuality)
+            {
+                cmd.EnableKeyword(_fftShader, _keywordHighQuality);
+            }
+            else
+            {
+                cmd.DisableKeyword(_fftShader, _keywordHighQuality);
+            }
             cmd.SetComputeTextureParam(_fftShader, _fftKernel, ShaderIds.Target, texture);
             UpdateSize(size.x, size.y);
 
@@ -422,6 +471,9 @@ namespace Illusion.Rendering.PostProcessing
                     cmd.DisableKeyword(_fftShader, _keywordWriteBlock);
                 }
             }
+
+            cmd.DisableKeyword(_fftShader, _keywordHighQuality);
+            cmd.DisableKeyword(_fftShader, _keywordInoutTarget);
         }
         
         private static class ShaderIds

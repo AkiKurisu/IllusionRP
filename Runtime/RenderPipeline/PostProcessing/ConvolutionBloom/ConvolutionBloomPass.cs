@@ -18,11 +18,11 @@ namespace Illusion.Rendering.PostProcessing
 
         private RTHandle _fftTarget;
 
-        private RTHandle _psf;
-
         private RTHandle _otf;
         
         private RTHandle _imagePsfRTHandle;
+
+        private Texture _imagePsfTexture;
 
         private readonly LazyMaterial _brightMaskMaterial;
 
@@ -42,7 +42,7 @@ namespace Illusion.Rendering.PostProcessing
         
         private readonly ProfilingSampler _otfFftSampler = new("Convolution Bloom OTF FFT");
 
-        private bool _psfInitialized;
+        private readonly ConvolutionBloomOtfState _otfState = new();
 
         public ConvolutionBloomPass(IllusionRendererData rendererData)
         {
@@ -57,7 +57,7 @@ namespace Illusion.Rendering.PostProcessing
             ConfigureInput(ScriptableRenderPassInput.Color);
         }
 
-        private void UpdateRenderTextureSize(ConvolutionBloom bloomParam)
+        private bool UpdateRenderTextureSize(ConvolutionBloom bloomParam)
         {
             FFTKernel.FFTSize sizeX;
             FFTKernel.FFTSize sizeY;
@@ -88,7 +88,7 @@ namespace Illusion.Rendering.PostProcessing
                 enableRandomWrite = true,
                 useMipMap = false
             };
-            RenderingUtils.ReAllocateHandleIfNeeded(ref _otf, otfDesc, name: "ConvolutionBloom_OTF");
+            bool otfReallocated = RenderingUtils.ReAllocateHandleIfNeeded(ref _otf, otfDesc, name: "ConvolutionBloom_OTF");
 
             // Allocate FFT target texture
             var fftTargetDesc = new RenderTextureDescriptor(width, targetTexHeight, format, 0)
@@ -98,25 +98,19 @@ namespace Illusion.Rendering.PostProcessing
             };
             RenderingUtils.ReAllocateHandleIfNeeded(ref _fftTarget, fftTargetDesc, wrapMode: TextureWrapMode.Clamp, name: "ConvolutionBloom_FFTTarget");
 
-            // Allocate PSF texture
-            var psfDesc = new RenderTextureDescriptor(width, height, format, 0)
-            {
-                enableRandomWrite = true,
-                useMipMap = false
-            };
-            RenderingUtils.ReAllocateHandleIfNeeded(ref _psf, psfDesc, name: "ConvolutionBloom_PSF");
+            return otfReallocated;
         }
 
         public void Dispose()
         {
-            _psf?.Release();
-            _psf = null;
             _otf?.Release();
             _otf = null;
             _fftTarget?.Release();
             _fftTarget = null;
             _imagePsfRTHandle?.Release();
             _imagePsfRTHandle = null;
+            _imagePsfTexture = null;
+            _otfState.Reset();
             
             _brightMaskMaterial.DestroyCache();
             _bloomBlendMaterial.DestroyCache();
@@ -159,10 +153,18 @@ namespace Illusion.Rendering.PostProcessing
         {
             internal Material PsfRemapMaterial;
             internal Material PsfGeneratorMaterial;
+            internal Vector2 FftExtend;
+            internal float ImagePsfScale;
+            internal float ImagePsfMinClamp;
+            internal float ImagePsfMaxClamp;
+            internal float ImagePsfPow;
             internal bool HighQuality;
             internal FFTKernel FFTKernel;
             internal TextureHandle OtfTextureHandle;
             internal TextureHandle ImagePsfTexture;
+            internal ConvolutionBloomOtfState OtfState;
+            internal ConvolutionBloomOtfSettings OtfSettings;
+            internal uint ScheduledVersion;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -178,21 +180,29 @@ namespace Illusion.Rendering.PostProcessing
             bool highQuality = bloomParams.quality.value == ConvolutionBloomQuality.High;
             if (!bloomParams.disableReadWriteOptimization.value) fftExtend.y = 0;
             
-            UpdateRenderTextureSize(bloomParams);
+            var otfSettings = ConvolutionBloomOtfSettings.From(bloomParams);
+            bool otfReallocated = UpdateRenderTextureSize(bloomParams);
+            bool otfResourceCreated = _otf?.rt != null && _otf.rt.IsCreated();
 
             var resource = frameData.Get<UniversalResourceData>();
             TextureHandle colorTexture = resource.activeColorTexture;
+
+            // Import the OTF exactly once so RenderGraph can track PSF -> FFT -> convolution dependencies.
+            TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
             
-            // Update OTF if parameters changed
-            if (bloomParams.IsParamUpdated() || !_psfInitialized)
+            bool updateOtf = _otfState.RequiresUpdate(
+                otfSettings,
+                otfReallocated,
+                otfResourceCreated,
+                bloomParams.IsParamUpdated());
+            if (updateOtf)
             {
-                _psfInitialized = true;
-                RenderOTFUpdatePass(renderGraph, bloomParams, highQuality);
+                uint scheduledVersion = _otfState.ScheduleUpdate();
+                RenderOTFUpdatePass(renderGraph, otfHandle, otfSettings, highQuality, scheduledVersion);
             }
             
-            // Import RTHandles as TextureHandles
+            // Import the per-frame FFT target.
             TextureHandle fftTargetHandle = renderGraph.ImportTexture(_fftTarget);
-            TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
 
             // Pass 1: Bright mask extraction
             fftTargetHandle = RenderBrightMaskPass(renderGraph, colorTexture, fftTargetHandle, threshold, thresholdKnee, clampMax, fftExtend);
@@ -252,7 +262,7 @@ namespace Illusion.Rendering.PostProcessing
 
                 // Mark textures as used in the pass
                 builder.UseTexture(fftTarget, AccessFlags.ReadWrite);
-                builder.UseTexture(ortFilter, AccessFlags.ReadWrite);
+                builder.UseTexture(ortFilter, AccessFlags.Read);
 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -273,7 +283,8 @@ namespace Illusion.Rendering.PostProcessing
                             verticalRange = new Vector2Int(0, ((RTHandle)data.Target).rt.height);
                             offset = new Vector2Int(0, -paddingY);
                         }
-                        data.FFTKernel.ConvolveOpt(context.cmd, data.Target, data.Filter, data.Size, Vector2Int.zero, verticalRange, offset);
+                        data.FFTKernel.ConvolveOpt(context.cmd, data.Target, data.Filter, data.Size,
+                            Vector2Int.zero, verticalRange, offset, data.HighQuality);
                     }
                 });
 
@@ -306,49 +317,54 @@ namespace Illusion.Rendering.PostProcessing
             }
         }
 
-        private void RenderOTFUpdatePass(RenderGraph renderGraph, ConvolutionBloom param, bool highQuality)
+        private void RenderOTFUpdatePass(RenderGraph renderGraph, TextureHandle otfHandle,
+            in ConvolutionBloomOtfSettings settings, bool highQuality, uint scheduledVersion)
         {
-            TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
-            
             // PSF Remap/Generation Pass (Raster)
             using (var builder = renderGraph.AddRasterRenderPass<OTFUpdatePassData>("Convolution Bloom OTF PSF", out var passData, _otfPsfSampler))
             {
                 passData.PsfRemapMaterial = _psfRemapMaterial.Value;
                 passData.PsfGeneratorMaterial = _psfGeneratorMaterial.Value;
+                passData.FftExtend = settings.FftExtend;
+                passData.ImagePsfScale = settings.ImagePsfScale;
+                passData.ImagePsfMinClamp = settings.ImagePsfMinClamp;
+                passData.ImagePsfMaxClamp = settings.ImagePsfMaxClamp;
+                passData.ImagePsfPow = settings.ImagePsfPow;
                 builder.SetRenderAttachment(otfHandle, 0);
                 passData.OtfTextureHandle = otfHandle;
                 
                 builder.AllowPassCulling(false);
                 
-                if (!param.generatePSF.value && param.imagePSF.value)
+                if (!settings.GeneratePsf && settings.ImagePsf)
                 {
                     // Cache RTHandle for imagePSF texture
-                    if (_imagePsfRTHandle == null || _imagePsfRTHandle.rt != param.imagePSF.value)
+                    if (_imagePsfRTHandle == null || !ReferenceEquals(_imagePsfTexture, settings.ImagePsf))
                     {
                         _imagePsfRTHandle?.Release();
-                        _imagePsfRTHandle = RTHandles.Alloc(param.imagePSF.value);
+                        _imagePsfTexture = settings.ImagePsf;
+                        _imagePsfRTHandle = RTHandles.Alloc(settings.ImagePsf);
                     }
 
                     var psf = renderGraph.ImportTexture(_imagePsfRTHandle);
                     builder.UseTexture(psf);
                     passData.ImagePsfTexture = psf;
-                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.MaxClamp, param.imagePSFMaxClamp.value);
-                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.MinClamp, param.imagePSFMinClamp.value);
-                    passData.PsfRemapMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
-                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.KernelPow, param.imagePSFPow.value);
-                    passData.PsfRemapMaterial.SetFloat(ShaderProperties.KernelScaler, param.imagePSFScale.value);
-                    passData.PsfRemapMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                     builder.SetRenderFunc(static (OTFUpdatePassData data, RasterGraphContext context) =>
                     {
+                        data.PsfRemapMaterial.SetFloat(ShaderProperties.MaxClamp, data.ImagePsfMaxClamp);
+                        data.PsfRemapMaterial.SetFloat(ShaderProperties.MinClamp, data.ImagePsfMinClamp);
+                        data.PsfRemapMaterial.SetVector(ShaderProperties.FFTExtend, data.FftExtend);
+                        data.PsfRemapMaterial.SetFloat(ShaderProperties.KernelPow, data.ImagePsfPow);
+                        data.PsfRemapMaterial.SetFloat(ShaderProperties.KernelScaler, data.ImagePsfScale);
+                        data.PsfRemapMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                         Blitter.BlitTexture(context.cmd, data.ImagePsfTexture, Vector2.one, data.PsfRemapMaterial, 0);
                     });
                 }
                 else
                 {
-                    passData.PsfGeneratorMaterial.SetVector(ShaderProperties.FFTExtend, param.fftExtend.value);
-                    passData.PsfGeneratorMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                     builder.SetRenderFunc(static (OTFUpdatePassData data, RasterGraphContext context) =>
                     {
+                        data.PsfGeneratorMaterial.SetVector(ShaderProperties.FFTExtend, data.FftExtend);
+                        data.PsfGeneratorMaterial.SetInt(ShaderProperties.EnableRemap, 1);
                         Blitter.BlitTexture(context.cmd, Vector2.one, data.PsfGeneratorMaterial, 0);
                     });
                 }
@@ -359,6 +375,9 @@ namespace Illusion.Rendering.PostProcessing
             {
                 passData.FFTKernel = _fftKernel;
                 passData.HighQuality = highQuality;
+                passData.OtfState = _otfState;
+                passData.OtfSettings = settings;
+                passData.ScheduledVersion = scheduledVersion;
                 builder.UseTexture(otfHandle, AccessFlags.ReadWrite);
                 passData.OtfTextureHandle = otfHandle;
 
@@ -368,6 +387,7 @@ namespace Illusion.Rendering.PostProcessing
                 builder.SetRenderFunc(static (OTFUpdatePassData data, ComputeGraphContext context) =>
                 {
                     data.FFTKernel.FFT(context.cmd, data.OtfTextureHandle, data.HighQuality);
+                    data.OtfState.MarkUpdated(data.OtfSettings, data.ScheduledVersion);
                 });
             }
         }
