@@ -1,5 +1,5 @@
-﻿#if CHRIS_INSTALL
-using Chris.Configs;
+#if CERES_INSTALL
+using Ceres.Configs;
 #endif
 
 namespace Illusion.Rendering
@@ -7,7 +7,7 @@ namespace Illusion.Rendering
     /// <summary>
     /// Runtime rendering config allow you to toggle illusion rendering features above renderer feature settings.
     /// </summary>
-#if CHRIS_INSTALL
+#if CERES_INSTALL
     [ConfigPath("Graphics.IllusionRP")] // Not mark serializable as a runtime only config.
     public class IllusionRuntimeRenderingConfig : Config<IllusionRuntimeRenderingConfig>
 #else
@@ -159,7 +159,7 @@ namespace Illusion.Rendering
         public bool DisplayMaskOnly { get; set; }
         // =================================== Debug ========================================= //
 
-#if !CHRIS_INSTALL
+#if !CERES_INSTALL
         private static IllusionRuntimeRenderingConfig _instance;
 
         public static IllusionRuntimeRenderingConfig Get()

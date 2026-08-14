@@ -26,9 +26,9 @@
             "define": "URP_INSTALL"
         },
         {
-            "name": "com.kurisu.chris",
-            "expression": "1.6.0",
-            "define": "CHRIS_INSTALL"
+            "name": "com.kurisu.ceres",
+            "expression": "1.0.0",
+            "define": "CERES_INSTALL"
         }
     ],
     "noEngineReferences": false

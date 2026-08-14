@@ -219,13 +219,13 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 
 # Debugging
 
-Recommended to install [Chris](https://github.com/AkiKurisu/Chris) to use Unreal-like console variables for debugging rendering features.
+Recommended to install [Ceres](https://github.com/AkiKurisu/Ceres) to use Unreal-like console variables for debugging rendering features.
 
-> Install from git url `https://github.com/AkiKurisu/Chris`
+> Install from git url `https://github.com/AkiKurisu/Ceres`
 
 ![Console Variable](./Documentation~/images/console_variables.png)
 
-`Chris` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
+`Ceres` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
 
 ![Dynamic Volume](./Documentation~/images/dynamic_volume.png)
 
