@@ -104,4 +104,5 @@ jobs:
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" \
             --title "${{ steps.tag.outputs.tag }}" \
-            --notes-file release_notes.md
+            --notes "$(cat release_notes.md)" \
+            --generate-notes
