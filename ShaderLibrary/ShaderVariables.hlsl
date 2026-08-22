@@ -16,6 +16,7 @@ GLOBAL_CBUFFER_START(ShaderVariablesGlobal, b1)
     float4 _RTHandleScaleHistory;
     float4 _TaaFrameInfo;
     float4 _ColorPyramidUvScaleAndLimitPrevFrame;
+    float4 _WorldScaleParams; // x: world scale, y: inverse, z: squared, w: inverse squared
 
     float _MicroShadowOpacity;
     int _IndirectDiffuseMode;

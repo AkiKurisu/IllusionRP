@@ -116,13 +116,6 @@ uint ShadowCacheAge(uint lastUpdateFrame)
     return _shadowCacheFrameIndex >= lastUpdateFrame ? _shadowCacheFrameIndex - lastUpdateFrame : 0;
 }
 
-bool IsSurfelShadowCacheFresh(ShadowCacheEntry entry, out bool invalidByEpoch, out bool invalidByAge)
-{
-    invalidByEpoch = entry.valid == 0 || entry.epoch != _shadowCacheEpoch;
-    invalidByAge = !invalidByEpoch && ShadowCacheAge(entry.lastUpdateFrame) > _shadowCacheMaxAge;
-    return !invalidByEpoch && !invalidByAge;
-}
-
 bool IsInsideShadowAtlas(float2 shadowUv)
 {
     return all(shadowUv >= 0.0) && all(shadowUv <= 1.0);
@@ -147,10 +140,14 @@ float SampleMainLightShadow(Surfel surfel, uint surfelGlobalIndex, bool useBrick
 {
     sampledShadowmap = 0;
     ShadowCacheEntry entry = _shadowCache[surfelGlobalIndex];
-    bool invalidByEpoch;
-    bool invalidByAge;
+    // @IllusionRP: Keep cache validity local to this function. D3D11's data-flow
+    // analysis reports a false uninitialized-value warning when these states are
+    // returned through out parameters from an inlined helper.
+    bool invalidByEpoch = entry.valid == 0 || entry.epoch != _shadowCacheEpoch;
+    bool invalidByAge = !invalidByEpoch && ShadowCacheAge(entry.lastUpdateFrame) > _shadowCacheMaxAge;
+    bool cacheIsFresh = !invalidByEpoch && !invalidByAge;
 
-    if (IsSurfelShadowCacheFresh(entry, invalidByEpoch, invalidByAge))
+    if (cacheIsFresh)
     {
         AddShadowCacheStat(SHADOW_STAT_HIT, 1);
         WriteShadowCacheDebug(surfelGlobalIndex, SHADOW_CACHE_DEBUG_FRESH_HIT,
@@ -174,7 +171,6 @@ float SampleMainLightShadow(Surfel surfel, uint surfelGlobalIndex, bool useBrick
         float shadow = VolumetricSampleShadowmap(
             TEXTURE2D_ARGS(_MainLightShadowmapTexture, sampler_MainLightShadowmapTexture), 
             shadowCoord, 
-            GetMainLightShadowSamplingData(), 
             GetMainLightShadowParams(), 
             false
         );

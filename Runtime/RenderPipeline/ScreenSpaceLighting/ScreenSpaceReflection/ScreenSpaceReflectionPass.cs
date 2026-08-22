@@ -205,7 +205,7 @@ namespace Illusion.Rendering
             _variables.ThicknessScale = scale;
             _variables.ThicknessBias = bias;
             _variables.Steps = volume.steps.value;
-            _variables.StepSize = volume.stepSize.value;
+            _variables.StepSize = _rendererData.ScaleWorldDistance(volume.stepSize.value);
             _variables.RoughnessFadeEnd = roughnessFadeEnd;
             _variables.RoughnessFadeRcpLength = roughnessFadeRcpLength;
             _variables.RoughnessFadeEndTimesRcpLength = roughnessFadeEndTimesRcpLength;
@@ -220,7 +220,9 @@ namespace Illusion.Rendering
             // PBR properties only be used in compute shader mode
             _variables.PBRBias = volume.biasFactor.value;
             _variables.PBRSpeedRejection = Mathf.Clamp01(volume.speedRejectionParam.value);
-            _variables.PBRSpeedRejectionScalerFactor = Mathf.Pow(volume.speedRejectionScalerFactor.value * 0.1f, 2.0f);
+            // @IllusionRP: The final PBR rejection threshold is compared with a world-space motion length and therefore scales linearly.
+            _variables.PBRSpeedRejectionScalerFactor = _rendererData.ScaleWorldDistance(
+                Mathf.Pow(volume.speedRejectionScalerFactor.value * 0.1f, 2.0f));
             if (_rendererData.FrameCount <= 3)
             {
                 _variables.AccumulationAmount = 1.0f;

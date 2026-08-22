@@ -30,6 +30,12 @@ namespace Illusion.Rendering
         [SerializeField]
         internal bool enableStencilVrs = true;
 
+        /// <summary>
+        /// Number of Unity world units represented by one logical world unit used by IllusionRP settings.
+        /// </summary>
+        [SerializeField, Min(0.001f)]
+        internal float worldScale = 1.0f;
+
         #endregion General
 
         #region Transparency
@@ -673,6 +679,7 @@ namespace Illusion.Rendering
         {
             var config = IllusionRuntimeRenderingConfig.Get();
             _rendererData.PerObjectShadowRenderingLayer = perObjectShadowRenderingLayer;
+            _rendererData.WorldScale = Mathf.Max(0.001f, worldScale);
             // We should check compute shaders are supported whether we should fall back to fragment shader.
             // But currently IllusionRP only supports platforms that support compute shader.
             _rendererData.PreferComputeShader = preferComputeShader 

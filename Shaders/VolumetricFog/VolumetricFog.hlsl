@@ -236,7 +236,8 @@ half4 VolumetricFog(float2 uv, float2 positionCS) // positionCS is actually posi
         
         // TODO: Additional contributions? Reflection probes, etc...
         half3 stepColor = apvColor + mainLightColor + additionalLightsColor;
-        volumetricFogColor += (stepColor * (transmittance * stepLength));
+        // @IllusionRP: Step length is in scaled Unity units; inverse world scale keeps logical in-scattering energy invariant.
+        volumetricFogColor += (stepColor * (transmittance * stepLength * _WorldScaleParams.y));
         
         // Early exit: break out when transmittance reaches low threshold
         UNITY_BRANCH

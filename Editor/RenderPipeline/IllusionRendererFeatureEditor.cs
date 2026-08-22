@@ -11,6 +11,7 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _requireHistoryColor;
         private SerializedProperty _preferComputeShader;
         private SerializedProperty _enableStencilVrs;
+        private SerializedProperty _worldScale;
 
         // Transparency Settings
         private SerializedProperty _orderIndependentTransparency;
@@ -52,6 +53,7 @@ namespace Illusion.Rendering.Editor
             _requireHistoryColor = Properties.Find(feature => feature.requireHistoryColor);
             _preferComputeShader = Properties.Find(feature => feature.preferComputeShader);
             _enableStencilVrs = Properties.Find(feature => feature.enableStencilVrs);
+            _worldScale = Properties.Find(feature => feature.worldScale);
 
             // Transparency Settings
             _orderIndependentTransparency = Properties.Find(feature => feature.orderIndependentTransparency);
@@ -123,6 +125,7 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.PropertyField(_requireHistoryColor, Styles.RequireHistoryColorLabel);
                 EditorGUILayout.PropertyField(_preferComputeShader, Styles.PreferComputeShaderLabel);
                 EditorGUILayout.PropertyField(_enableStencilVrs, Styles.EnableStencilVrsLabel);
+                EditorGUILayout.PropertyField(_worldScale, Styles.WorldScaleLabel);
             }
 
             EditorGUILayout.Space();
@@ -213,6 +216,8 @@ namespace Illusion.Rendering.Editor
                 "Whether prefer to calculating effects in compute shader if possible.");
             public static readonly GUIContent EnableStencilVrsLabel = new("Enable Stencil VRS",
                 "Whether enable using stencil to control the rasterization and pixel shading rate.");
+            public static readonly GUIContent WorldScaleLabel = new("World Scale",
+                "Unity world units per logical world unit. A value of 10 means one logical meter is represented by ten Unity units.");
 
             // Transparency Settings
             public static readonly GUIContent OrderIndependentTransparencyLabel = new("Order Independent Transparency",

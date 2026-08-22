@@ -135,7 +135,17 @@ namespace Illusion.Rendering
                 {
                     cb.ShapeParamsAndMaxScatterDists[i * 4 + c] = _sssShapeParamsAndMaxScatterDists[i][c];
                     cb.TransmissionTintsAndFresnel0[i * 4 + c] = _sssTransmissionTintsAndFresnel0[i][c];
-                    cb.WorldScalesAndFilterRadiiAndThicknessRemaps[i * 4 + c] = _sssWorldScalesAndFilterRadiiAndThicknessRemaps[i][c];
+                    if (c == 0)
+                    {
+                        // @IllusionRP: Diffusion Profile world scale is meters per logical unit, so divide by renderer world scale for meters per Unity unit.
+                        cb.WorldScalesAndFilterRadiiAndThicknessRemaps[i * 4 + c]
+                            = _rendererData.ScaleInverseWorldDistance(_sssWorldScalesAndFilterRadiiAndThicknessRemaps[i][c]);
+                    }
+                    else
+                    {
+                        cb.WorldScalesAndFilterRadiiAndThicknessRemaps[i * 4 + c]
+                            = _sssWorldScalesAndFilterRadiiAndThicknessRemaps[i][c];
+                    }
                 }
 
                 cb.DiffusionProfileHashTable[i * 4] = _sssDiffusionProfileHashes[i];

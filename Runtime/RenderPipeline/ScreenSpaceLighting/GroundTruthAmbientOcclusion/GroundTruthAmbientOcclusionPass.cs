@@ -205,16 +205,17 @@ namespace Illusion.Rendering
 
             // Update properties
             int frameCount = (int)_rendererData.FrameCount;
+            float radius = _rendererData.ScaleWorldDistance(settings.radius.value);
             var aoParams0 = new Vector4(
                 Mathf.Clamp(settings.thickness.value * settings.thickness.value, 0.0f, 0.99f),
                 _aoPassDescriptor.height * invHalfTanFov * 0.25f,
-                settings.radius.value,
+                radius,
                 settings.stepCount.value
             );
 
             var aoParams1 = new Vector4(
                 settings.intensity.value,
-                1.0f / (settings.radius.value * settings.radius.value),
+                1.0f / (radius * radius),
                 (frameCount / 6) % 4,
                 (frameCount % 6)
             );
@@ -266,7 +267,8 @@ namespace Illusion.Rendering
                 0,
                 upperNudgeFactor,
                 minUpperNudgeLimit,
-                settings.spatialBilateralAggressiveness.value * 15.0f
+                // @IllusionRP: Spatial bilateral aggressiveness multiplies linear eye-depth delta, so its inverse-distance coefficient divides by world scale.
+                _rendererData.ScaleInverseWorldDistance(settings.spatialBilateralAggressiveness.value * 15.0f)
             );
 
             var depthMipInfo = _rendererData.DepthMipChainInfo;

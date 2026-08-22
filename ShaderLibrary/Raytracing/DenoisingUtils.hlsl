@@ -1,7 +1,10 @@
 #ifndef UNITY_DENOISING_UTILS_INCLUDED
 #define UNITY_DENOISING_UTILS_INCLUDED
 
-#define MAX_REPROJECTION_DISTANCE 0.1
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
+
+// Temporal reprojection uses an absolute world-distance tolerance.
+#define MAX_REPROJECTION_DISTANCE (0.1 * _WorldScaleParams.x)
 #define MAX_PIXEL_TOLERANCE 4
 #define PROJECTION_EPSILON 0.000001
 

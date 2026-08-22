@@ -269,6 +269,28 @@ namespace Illusion.Rendering
         public bool PreferComputeShader { get; internal set; }
 
         /// <summary>
+        /// Number of Unity world units represented by one logical world unit.
+        /// </summary>
+        internal float WorldScale { get; set; } = 1.0f;
+
+        internal float InverseWorldScale => 1.0f / WorldScale;
+
+        internal float ScaleWorldDistance(float logicalDistance)
+        {
+            return logicalDistance * WorldScale;
+        }
+
+        internal float ScaleInverseWorldDistance(float logicalInverseDistance)
+        {
+            return logicalInverseDistance * InverseWorldScale;
+        }
+
+        internal float ScaleSquaredWorldDistance(float logicalSquaredDistance)
+        {
+            return logicalSquaredDistance * WorldScale * WorldScale;
+        }
+
+        /// <summary>
         /// Get whether the renderer can sample probe volumes (PRTGI).
         /// </summary>
         public bool SampleProbeVolumes { get; internal set; } = true;
@@ -484,6 +506,8 @@ namespace Illusion.Rendering
 
             public Vector4 ColorPyramidUvScaleAndLimitPrevFrame;
 
+            public Vector4 WorldScaleParams; // { worldScale, inverseWorldScale, worldScaleSquared, inverseWorldScaleSquared }
+
             public float MicroShadowOpacity;
             public int IndirectDiffuseMode;
             public float IndirectDiffuseLightingMultiplier;
@@ -615,6 +639,8 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.ColorPyramidUvScaleAndLimitPrevFrame
                 = IllusionRenderingUtils.ComputeViewportScaleAndLimit(historyRTSystem.rtHandleProperties.previousViewportSize,
                     historyRTSystem.rtHandleProperties.previousRenderTargetSize);
+            _shaderVariablesGlobal.WorldScaleParams = new Vector4(WorldScale, InverseWorldScale,
+                WorldScale * WorldScale, InverseWorldScale * InverseWorldScale);
             
             MicroShadows microShadowingSettings = VolumeManager.instance.stack.GetComponent<MicroShadows>();
             _shaderVariablesGlobal.MicroShadowOpacity = microShadowingSettings.enable.value ? microShadowingSettings.opacity.value : 0.0f;

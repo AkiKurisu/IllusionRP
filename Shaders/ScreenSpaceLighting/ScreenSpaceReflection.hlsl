@@ -108,7 +108,8 @@ half4 FragSSRLinearSS(Varyings input) : SV_Target
     uint index = (uint(ditherUV.x) % 4) * 4 + uint(ditherUV.y) % 4;
     float jitter = 1 + (1 - dither[index]);
     // 64 - 512
-    float traceDistance = 200;
+    // Legacy linear SSR trace distance is expressed in logical world units.
+    float traceDistance = 200.0 * _WorldScaleParams.x;
     float3 hitPointVS = rayOrigin;
     float2 reflectUV = 0; // ComputeNormalizedDeviceCoordinates(positionWS, UNITY_MATRIX_VP);
     float stepCount = 0;

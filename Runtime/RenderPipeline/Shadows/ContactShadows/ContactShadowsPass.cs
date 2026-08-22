@@ -44,14 +44,22 @@ namespace Illusion.Rendering.Shadows
         {
             var contactShadows = VolumeManager.instance.stack.GetComponent<ContactShadows>();
 
-            float contactShadowRange = Mathf.Clamp(contactShadows.fadeDistance.value, 0.0f, contactShadows.maxDistance.value);
-            float contactShadowFadeEnd = contactShadows.maxDistance.value;
-            float contactShadowOneOverFadeRange = 1.0f / Mathf.Max(1e-6f, contactShadowRange);
+            // Convert logical reach and fade controls after Volume blending.
+            float contactShadowLength = _rendererData.ScaleWorldDistance(contactShadows.length.value);
+            float contactShadowFadeEnd = _rendererData.ScaleWorldDistance(contactShadows.maxDistance.value);
+            float contactShadowRange = Mathf.Clamp(
+                _rendererData.ScaleWorldDistance(contactShadows.fadeDistance.value), 0.0f, contactShadowFadeEnd);
+            float metricEpsilon = _rendererData.ScaleWorldDistance(1e-6f);
+            float contactShadowOneOverFadeRange = 1.0f / Mathf.Max(metricEpsilon, contactShadowRange);
 
-            float contactShadowMinDist = Mathf.Min(contactShadows.minDistance.value, contactShadowFadeEnd);
-            float contactShadowFadeIn = Mathf.Clamp(contactShadows.fadeInDistance.value, 1e-6f, contactShadowFadeEnd);
+            float contactShadowMinDist = Mathf.Min(
+                _rendererData.ScaleWorldDistance(contactShadows.minDistance.value), contactShadowFadeEnd);
+            float contactShadowFadeIn = Mathf.Clamp(
+                _rendererData.ScaleWorldDistance(contactShadows.fadeInDistance.value), metricEpsilon, contactShadowFadeEnd);
 
-            params1 = new Vector4(contactShadows.length.value, contactShadows.distanceScaleFactor.value, contactShadowFadeEnd, contactShadowOneOverFadeRange);
+            // @IllusionRP: HDRP's distance scale is an inverse-length term, so it must divide by World Scale while ray length multiplies it.
+            float distanceScaleFactor = _rendererData.ScaleInverseWorldDistance(contactShadows.distanceScaleFactor.value);
+            params1 = new Vector4(contactShadowLength, distanceScaleFactor, contactShadowFadeEnd, contactShadowOneOverFadeRange);
             params2 = new Vector4(0, contactShadowMinDist, contactShadowFadeIn, contactShadows.rayBias.value * 0.01f);
             params3 = new Vector4(contactShadows.sampleCount.value, contactShadows.thicknessScale.value * 10.0f, Time.renderedFrameCount % 8, 0);
         }

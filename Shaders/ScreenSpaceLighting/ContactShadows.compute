@@ -162,7 +162,8 @@ void ContactShadowMap(uint2 dispatchThreadId  : SV_DispatchThreadID)
     PositionInputs posInput = GetPositionInput(pixelCoord.xy, _ScreenSize.zw, depth, G_MATRIX_I_VP, G_MATRIX_V);
 	
     // discard the shadow if we're on the sky or outside the contact shadow range
-    if (depth == UNITY_RAW_FAR_CLIP_VALUE || posInput.linearDepth - _ContactShadowFadeEnd > 1 || posInput.linearDepth < _ContactShadowMinDistance)
+    // The off-range slack is an absolute logical world distance.
+    if (depth == UNITY_RAW_FAR_CLIP_VALUE || posInput.linearDepth - _ContactShadowFadeEnd > _WorldScaleParams.x || posInput.linearDepth < _ContactShadowMinDistance)
     {
         _ContactShadowTextureUAV[COORD_TEXTURE2D_X(pixelCoord)] = 0;
     }
