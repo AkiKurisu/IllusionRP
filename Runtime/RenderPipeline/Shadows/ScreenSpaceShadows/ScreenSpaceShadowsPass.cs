@@ -326,8 +326,11 @@ namespace Illusion.Rendering.Shadows
 
             float minMaskDilation = Mathf.Min(pcssParams.penumbraMaskMinDilation.value, pcssParams.penumbraMaskDilation.value);
             float maxMaskDilation = Mathf.Max(pcssParams.penumbraMaskMinDilation.value, pcssParams.penumbraMaskDilation.value);
-            float dilationFadeStart = pcssParams.penumbraMaskDilationFadeStart.value;
-            float dilationFadeEnd = Mathf.Max(dilationFadeStart + 0.001f, pcssParams.penumbraMaskDilationFadeEnd.value);
+            // Penumbra-mask fades are compared against metric eye depth.
+            float dilationFadeStart = rendererData.ScaleWorldDistance(pcssParams.penumbraMaskDilationFadeStart.value);
+            float dilationFadeEnd = Mathf.Max(
+                dilationFadeStart + rendererData.ScaleWorldDistance(0.001f),
+                rendererData.ScaleWorldDistance(pcssParams.penumbraMaskDilationFadeEnd.value));
             // x/y are min/max mask dilation in mask texels; z/w define the eye-depth fade range.
             cmd.SetGlobalVector(ShaderProperties.PenumbraMaskDilationParams,
                 new Vector4(minMaskDilation, maxMaskDilation, dilationFadeStart, 1.0f / (dilationFadeEnd - dilationFadeStart)));
@@ -345,8 +348,10 @@ namespace Illusion.Rendering.Shadows
                 // Reuse arrays from data
                 data.DirLightPcssParams0[i].x = dirlightDepth2Radius * shadowmapDepth2RadialScale;
                 data.DirLightPcssParams0[i].y = 1.0f / data.DirLightPcssParams0[i].x;
-                data.DirLightPcssParams0[i].z = pcssParams.maxPenumbraSize.value / (2.0f * halfMinFilterAngularDiameterTangent);
-                data.DirLightPcssParams0[i].w = pcssParams.maxSamplingDistance.value;
+                // Scale metric caps while leaving angular and texel terms unchanged.
+                data.DirLightPcssParams0[i].z = rendererData.ScaleWorldDistance(pcssParams.maxPenumbraSize.value)
+                                                    / (2.0f * halfMinFilterAngularDiameterTangent);
+                data.DirLightPcssParams0[i].w = rendererData.ScaleWorldDistance(pcssParams.maxSamplingDistance.value);
 
                 data.DirLightPcssParams1[i].x = pcssParams.minFilterSizeTexels.value;
                 data.DirLightPcssParams1[i].y = 1.0f / (halfMinFilterAngularDiameterTangent * shadowmapDepth2RadialScale);

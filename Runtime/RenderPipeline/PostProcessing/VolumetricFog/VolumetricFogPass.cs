@@ -249,21 +249,24 @@ namespace Illusion.Rendering.PostProcessing
 			else
 				volumetricFogMaterial.EnableKeyword("_ADDITIONAL_LIGHTS_CONTRIBUTION_DISABLED");
 
-			UpdateLightsParameters(volumetricFogMaterial,
+			UpdateLightsParameters(volumetricFogMaterial, _rendererData,
 				fogVolume, enableMainLightContribution,
 				enableAdditionalLightsContribution, mainLightIndex, visibleLights);
 
 			volumetricFogMaterial.SetInteger(ShaderIDs.FrameCountId, Time.renderedFrameCount % 64);
 			volumetricFogMaterial.SetInteger(ShaderIDs.CustomAdditionalLightsCountId, additionalLightsCount);
-			volumetricFogMaterial.SetFloat(ShaderIDs.DistanceId, fogVolume.distance.value);
-			volumetricFogMaterial.SetFloat(ShaderIDs.BaseHeightId, fogVolume.baseHeight.value);
-			volumetricFogMaterial.SetFloat(ShaderIDs.MaximumHeightId, fogVolume.maximumHeight.value);
+			// Fog reach and vertical bounds are logical world distances converted after Volume blending.
+			volumetricFogMaterial.SetFloat(ShaderIDs.DistanceId, _rendererData.ScaleWorldDistance(fogVolume.distance.value));
+			volumetricFogMaterial.SetFloat(ShaderIDs.BaseHeightId, _rendererData.ScaleWorldDistance(fogVolume.baseHeight.value));
+			volumetricFogMaterial.SetFloat(ShaderIDs.MaximumHeightId, _rendererData.ScaleWorldDistance(fogVolume.maximumHeight.value));
 			volumetricFogMaterial.SetFloat(ShaderIDs.GroundHeightId,
 				(fogVolume.enableGround.overrideState && fogVolume.enableGround.value)
-					? fogVolume.groundHeight.value
+					? _rendererData.ScaleWorldDistance(fogVolume.groundHeight.value)
 					: float.MinValue);
 			volumetricFogMaterial.SetFloat(ShaderIDs.DensityId, fogVolume.density.value);
-			volumetricFogMaterial.SetFloat(ShaderIDs.AbsortionId, 1.0f / fogVolume.attenuationDistance.value);
+			// Derive absorption after scaling the logical attenuation distance.
+			volumetricFogMaterial.SetFloat(ShaderIDs.AbsortionId,
+				1.0f / _rendererData.ScaleWorldDistance(fogVolume.attenuationDistance.value));
 			volumetricFogMaterial.SetFloat(ShaderIDs.ProbeVolumeContributionWeigthId, fogVolume.enableProbeVolumeContribution.value ? fogVolume.probeVolumeContributionWeight.value : 0.0f);
 			volumetricFogMaterial.SetColor(ShaderIDs.TintId, fogVolume.tint.value);
 			volumetricFogMaterial.SetInteger(ShaderIDs.MaxStepsId, fogVolume.maxSteps.value);
@@ -310,22 +313,25 @@ namespace Illusion.Rendering.PostProcessing
 			else
 				volumetricFogCS.DisableKeyword("_PROBE_VOLUME_CONTRIBUTION_ENABLED");
 
-			UpdateLightsParametersCS(cmd, volumetricFogCS,
+			UpdateLightsParametersCS(cmd, volumetricFogCS, rendererData,
 				fogVolume, enableMainLightContribution,
 				enableAdditionalLightsContribution, mainLightIndex, visibleLights);
 
 			// Set compute shader parameters
 			cmd.SetComputeIntParam(volumetricFogCS, ShaderIDs.FrameCountId, Time.renderedFrameCount % 64);
 			cmd.SetComputeIntParam(volumetricFogCS, ShaderIDs.CustomAdditionalLightsCountId, additionalLightsCount);
-			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.DistanceId, fogVolume.distance.value);
-			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.BaseHeightId, fogVolume.baseHeight.value);
-			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.MaximumHeightId, fogVolume.maximumHeight.value);
+			// Compute fog uses the same scaled bounds as the raster path.
+			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.DistanceId, rendererData.ScaleWorldDistance(fogVolume.distance.value));
+			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.BaseHeightId, rendererData.ScaleWorldDistance(fogVolume.baseHeight.value));
+			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.MaximumHeightId, rendererData.ScaleWorldDistance(fogVolume.maximumHeight.value));
 			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.GroundHeightId,
 				(fogVolume.enableGround.overrideState && fogVolume.enableGround.value)
-					? fogVolume.groundHeight.value
+					? rendererData.ScaleWorldDistance(fogVolume.groundHeight.value)
 					: float.MinValue);
 			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.DensityId, fogVolume.density.value);
-			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.AbsortionId, 1.0f / fogVolume.attenuationDistance.value);
+			// Derive absorption after scaling the logical attenuation distance.
+			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.AbsortionId,
+				1.0f / rendererData.ScaleWorldDistance(fogVolume.attenuationDistance.value));
 			cmd.SetComputeFloatParam(volumetricFogCS, ShaderIDs.ProbeVolumeContributionWeigthId, fogVolume.enableProbeVolumeContribution.value ? fogVolume.probeVolumeContributionWeight.value : 0.0f);
 			cmd.SetComputeVectorParam(volumetricFogCS, ShaderIDs.TintId, fogVolume.tint.value);
 			cmd.SetComputeIntParam(volumetricFogCS, ShaderIDs.MaxStepsId, fogVolume.maxSteps.value);
@@ -341,7 +347,8 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="enableAdditionalLightsContribution"></param>
 		/// <param name="mainLightIndex"></param>
 		/// <param name="visibleLights"></param>
-		private static void UpdateLightsParameters(Material volumetricFogMaterial, VolumetricFog fogVolume, 
+		private static void UpdateLightsParameters(Material volumetricFogMaterial, IllusionRendererData rendererData,
+			VolumetricFog fogVolume,
 			bool enableMainLightContribution, bool enableAdditionalLightsContribution,
 			int mainLightIndex, NativeArray<VisibleLight> visibleLights)
 		{
@@ -370,7 +377,8 @@ namespace Illusion.Rendering.PostProcessing
 						{
 							anisotropy = volumetricLight.Anisotropy;
 							scattering = volumetricLight.Scattering;
-							radius = volumetricLight.Radius;
+							// Convert the logical falloff radius before squaring it.
+							radius = rendererData.ScaleWorldDistance(volumetricLight.Radius);
 						}
 					}
 
@@ -398,7 +406,8 @@ namespace Illusion.Rendering.PostProcessing
 		/// <param name="enableAdditionalLightsContribution"></param>
 		/// <param name="mainLightIndex"></param>
 		/// <param name="visibleLights"></param>
-		private static void UpdateLightsParametersCS(ComputeCommandBuffer cmd, ComputeShader volumetricFogCS, VolumetricFog fogVolume, 
+		private static void UpdateLightsParametersCS(ComputeCommandBuffer cmd, ComputeShader volumetricFogCS,
+			IllusionRendererData rendererData, VolumetricFog fogVolume,
 			bool enableMainLightContribution,
 			bool enableAdditionalLightsContribution,
 			int mainLightIndex, NativeArray<VisibleLight> visibleLights)
@@ -433,7 +442,8 @@ namespace Illusion.Rendering.PostProcessing
 						{
 							anisotropy = volumetricLight.Anisotropy;
 							scattering = volumetricLight.Scattering;
-							radius = volumetricLight.Radius;
+							// Match the scaled falloff radius used by the raster path.
+							radius = rendererData.ScaleWorldDistance(volumetricLight.Radius);
 						}
 					}
 

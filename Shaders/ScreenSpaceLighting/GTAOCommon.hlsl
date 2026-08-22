@@ -3,6 +3,7 @@
 
 // Includes
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/GlobalSamplers.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
@@ -354,7 +355,8 @@ float HorizonLoop(float3 positionVS, float3 V, float2 rayStart, float2 rayDir, f
         float3 deltaPos = samplePosVS - positionVS;
         float deltaLenSq = dot(deltaPos, deltaPos);
 
-        float currHorizon = dot(deltaPos, V) * rsqrt(deltaLenSq + 0.0001f);
+        // Preserve the logical squared-distance floor across world scales.
+        float currHorizon = dot(deltaPos, V) * rsqrt(deltaLenSq + 0.0001f * _WorldScaleParams.z);
         maxHorizon = UpdateHorizon(maxHorizon, currHorizon, deltaLenSq);
 
         t += rayStep;

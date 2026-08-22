@@ -50,7 +50,8 @@ bool IsTransparentSSRSurface(uint2 positionSS)
 /// ================ Legacy ================ //
 #define BinaryStepCount 5
 #define LINEAR_TRACE_DEPTH_BIAS 0.05
-#define LINEAR_TRACE_2D_THICKNESS 0.1
+// Legacy linear SSR compares this thickness against view-space metric depth.
+#define LINEAR_TRACE_2D_THICKNESS (0.1 * _WorldScaleParams.x)
 
 static half dither[16] = {
     0.0, 0.5, 0.125, 0.625,
@@ -179,7 +180,8 @@ bool Linear2D_Trace(Texture2D frontDepth,
     half2 invSize = half2(1 / csZBufferSize.x, 1 / csZBufferSize.y);
     hitPixel = half2(-1, -1);
 
-    half nearPlaneZ = -0.01;
+    // The artificial near plane is a metric offset independent of the camera near plane.
+    half nearPlaneZ = -0.01 * _WorldScaleParams.x;
     half rayLength = ((csOrigin.z + csDirection.z * traceDistance) > nearPlaneZ)
                          ? ((nearPlaneZ - csOrigin.z) / csDirection.z)
                          : traceDistance;

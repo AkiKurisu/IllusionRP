@@ -286,8 +286,10 @@ namespace Illusion.Rendering.Shadows
                     // PCSS Parameters 0
                     data.PerObjShadowPcssParams0[i].x = dirlightDepth2Radius * shadowmapDepth2RadialScale;
                     data.PerObjShadowPcssParams0[i].y = 1.0f / data.PerObjShadowPcssParams0[i].x;
-                    data.PerObjShadowPcssParams0[i].z = pcssParams.maxPenumbraSize.value / (2.0f * halfMinFilterAngularDiameterTangent);
-                    data.PerObjShadowPcssParams0[i].w = pcssParams.maxSamplingDistance.value;
+                    // Match the scaled metric caps used by the main-light path.
+                    data.PerObjShadowPcssParams0[i].z = data.RendererData.ScaleWorldDistance(pcssParams.maxPenumbraSize.value)
+                                                           / (2.0f * halfMinFilterAngularDiameterTangent);
+                    data.PerObjShadowPcssParams0[i].w = data.RendererData.ScaleWorldDistance(pcssParams.maxSamplingDistance.value);
 
                     // PCSS Parameters 1
                     data.PerObjShadowPcssParams1[i].x = pcssParams.minFilterSizeTexels.value;

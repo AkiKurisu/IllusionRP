@@ -67,7 +67,8 @@ float ComputeMaxDenoisingRadius(float3 positionWS)
     // The world space radius for sample picking goes from distance/10.0 to distance/50.0 linearly until reaching 500.0 meters away from the camera
     // and it is always 20.0f (or two pixels if subpixel.
     // TODO: @Anis, I have a bunch of idea how to make this better and less empirical but it's for any other day
-    return distanceToPoint * _DenoiserFilterRadius / lerp(5.0, 50.0, saturate(distanceToPoint / 500.0));
+    // Convert the empirical 500-unit transition while keeping the radius multiplier dimensionless.
+    return distanceToPoint * _DenoiserFilterRadius / lerp(5.0, 50.0, saturate(distanceToPoint / (500.0 * _WorldScaleParams.x)));
 }
 
 [numthreads(DIFFUSE_DENOISER_TILE_SIZE, DIFFUSE_DENOISER_TILE_SIZE, 1)]
@@ -152,14 +153,16 @@ void BILATERAL_FILTER(uint3 dispatchThreadId : SV_DispatchThreadID, uint2 groupT
         const BilateralData tapData = TapBilateralData(tapCoord);
 
         // If the tapped pixel is a background pixel or too far from the center pixel
-        if (tapData.z01 == UNITY_RAW_FAR_CLIP_VALUE || tapData.isUnlit || abs(tapData.zNF - hClip.w) > 0.1)
+        // Bilateral rejection compares metric depth against a logical threshold.
+        if (tapData.z01 == UNITY_RAW_FAR_CLIP_VALUE || tapData.isUnlit || abs(tapData.zNF - hClip.w) > 0.1 * _WorldScaleParams.x)
             continue;
 
         // Compute the radius of the sample
         float r = length(newSample);
 
         // Compute the weight (skip computation for the center)
-        const float w = r > 0.001f ? gaussian(r, sigma) * ComputeBilateralWeight(center, tapData) : 1.0;
+        // The center-sample epsilon is a metric radius.
+        const float w = r > 0.001f * _WorldScaleParams.x ? gaussian(r, sigma) * ComputeBilateralWeight(center, tapData) : 1.0;
 
         // Accumulate the new sample
     #if SINGLE_CHANNEL
