@@ -4,9 +4,12 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonMaterial.hlsl"
 
-// Copied and modified from SampleShadowmap from Shadows.hlsl. 
+// Copied and modified from SampleShadowmap from Shadows.hlsl.
+// @IllusionRP: This single-tap volumetric path does not consume ShadowSamplingData.
+// Avoid passing URP's conditionally initialized sampling struct because D3D11 warns
+// about its unused undefined fields in hard-shadow variants.
 real VolumetricSampleShadowmap(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 shadowCoord,
-    ShadowSamplingData samplingData, half4 shadowParams, bool isPerspectiveProjection = true)
+    half4 shadowParams, bool isPerspectiveProjection = true)
 {
     if (isPerspectiveProjection)
         shadowCoord.xyz /= max(0.00001, shadowCoord.w);
@@ -45,9 +48,8 @@ half VolumetricMainLightRealtimeShadow(float4 shadowCoord)
 #elif defined(_MAIN_LIGHT_SHADOWS_SCREEN) && !defined(_SURFACE_TYPE_TRANSPARENT)
     return VolumetricSampleScreenSpaceShadowmap(shadowCoord);
 #else
-    ShadowSamplingData shadowSamplingData = GetMainLightShadowSamplingData();
     half4 shadowParams = GetMainLightShadowParams();
-    return VolumetricSampleShadowmap(TEXTURE2D_ARGS(_MainLightShadowmapTexture, sampler_LinearClampCompare), shadowCoord, shadowSamplingData, shadowParams, false);
+    return VolumetricSampleShadowmap(TEXTURE2D_ARGS(_MainLightShadowmapTexture, sampler_LinearClampCompare), shadowCoord, shadowParams, false);
 #endif
 }
 
@@ -55,8 +57,6 @@ half VolumetricMainLightRealtimeShadow(float4 shadowCoord)
 half VolumetricAdditionalLightRealtimeShadow(int lightIndex, float3 positionWS, half3 lightDirection)
 {
 #if defined(ADDITIONAL_LIGHT_CALCULATE_SHADOWS)
-    ShadowSamplingData shadowSamplingData = GetAdditionalLightShadowSamplingData(lightIndex);
-
     half4 shadowParams = GetAdditionalLightShadowParams(lightIndex);
 
     int shadowSliceIndex = shadowParams.w;
@@ -79,7 +79,7 @@ half VolumetricAdditionalLightRealtimeShadow(int lightIndex, float3 positionWS, 
         float4 shadowCoord = mul(_AdditionalLightsWorldToShadow[shadowSliceIndex], float4(positionWS, 1.0));
     #endif
 
-    return VolumetricSampleShadowmap(TEXTURE2D_ARGS(_AdditionalLightsShadowmapTexture, sampler_LinearClampCompare), shadowCoord, shadowSamplingData, shadowParams, true);
+    return VolumetricSampleShadowmap(TEXTURE2D_ARGS(_AdditionalLightsShadowmapTexture, sampler_LinearClampCompare), shadowCoord, shadowParams, true);
 #else
     return half(1.0);
 #endif
