@@ -353,6 +353,8 @@ namespace Illusion.Rendering
 
         public uint PerObjectShadowRenderingLayer { get; internal set; }
 
+        public bool AdditionalDirectionalPerObjectShadows { get; internal set; }
+
         public MipGenerator MipGenerator { get; }
 
         public const int ShadowCascadeCount = 4;
@@ -406,6 +408,9 @@ namespace Illusion.Rendering
         {
             public bool HasDirectionalHistoryState;
             public Vector3 LastMainLightDirection;
+            public PerObjectShadowLightMode LastPerObjectShadowMode;
+            public int LastPerObjectLightId;
+            public Vector3 LastPerObjectLightDirection;
             public uint LastHistoryFrameCount;
             public bool ActiveThisFrame;
             public bool HistoryValidThisFrame;
@@ -482,8 +487,6 @@ namespace Illusion.Rendering
         
         private RTHandle _grayTextureRTHandle;
 
-        private UniversalAdditionalLightData _mainLightData;
-
         private const GraphicsFormat ExposureFormat = GraphicsFormat.R32G32_SFloat;
 
         private ComputeBuffer _ambientProbeBuffer;
@@ -551,7 +554,6 @@ namespace Illusion.Rendering
             _currentCameraState.BeginFrame();
             _currentCameraState.IsFirstFrame = false;
             PruneStaleCameraStates();
-            UpdateLightData(lightData);
             UpdateShadowData(cameraData, lightData, shadowData);
             UpdateRenderTextures(cameraData);
             UpdateDebugSettings(cameraData);
@@ -668,8 +670,13 @@ namespace Illusion.Rendering
             int mainLightIndex = lightData.mainLightIndex;
             if (mainLightIndex < 0) return; // No main light
             VisibleLight mainLight = lightData.visibleLights[mainLightIndex];
-            intensity = mainLight.light.bounceIntensity;
-            renderingLayers = _mainLightData?.renderingLayers ?? 0;
+            Light light = mainLight.light;
+            if (!light) return;
+
+            intensity = light.bounceIntensity;
+            renderingLayers = light.TryGetComponent(out UniversalAdditionalLightData additionalLightData)
+                ? additionalLightData.renderingLayers
+                : unchecked((uint)light.renderingLayerMask);
         }
 
         private void UpdateDebugSettings(UniversalCameraData cameraData)
@@ -894,29 +901,6 @@ namespace Illusion.Rendering
                     cameraState.Dispose();
 
                 _cameraStates.Remove(key);
-            }
-        }
-
-        private void UpdateLightData(UniversalLightData lightData)
-        {
-            int mainLightIndex = lightData.mainLightIndex;
-            if (mainLightIndex < 0) return; // No main light
-
-            VisibleLight mainLight = lightData.visibleLights[mainLightIndex];
-            if (_mainLightData == null || _mainLightData.gameObject != mainLight.light.gameObject)
-            {
-                if (!mainLight.light) return;
-                // Prevent main light overdraw shadow.
-                if (!mainLight.light.TryGetComponent(out _mainLightData)) return;
-                if (_mainLightData.customShadowLayers)
-                {
-                    _mainLightData.shadowRenderingLayers &= ~PerObjectShadowRenderingLayer;
-                }
-                else
-                {
-                    _mainLightData.customShadowLayers = true;
-                    _mainLightData.shadowRenderingLayers = uint.MaxValue & ~PerObjectShadowRenderingLayer;
-                }
             }
         }
 

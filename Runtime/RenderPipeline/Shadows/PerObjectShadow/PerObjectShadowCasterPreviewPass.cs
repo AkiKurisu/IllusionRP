@@ -35,6 +35,8 @@ namespace Illusion.Rendering.Shadows
         private class PassData
         {
             internal int shadowCountPropertyID;
+            internal int sourceModePropertyID;
+            internal int additionalLightIndexPropertyID;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -42,6 +44,8 @@ namespace Illusion.Rendering.Shadows
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadow Preview", out var passData, profilingSampler))
             {
                 passData.shadowCountPropertyID = PerObjectShadowCasterPass.PropertyIds.ShadowCount();
+                passData.sourceModePropertyID = PerObjectShadowCasterPass.PropertyIds.SourceMode();
+                passData.additionalLightIndexPropertyID = PerObjectShadowCasterPass.PropertyIds.AdditionalLightIndex();
                 
                 builder.AllowPassCulling(false);
                 builder.AllowGlobalStateModification(true);
@@ -49,6 +53,8 @@ namespace Illusion.Rendering.Shadows
                 builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                 {
                     context.cmd.SetGlobalInt(data.shadowCountPropertyID, 0);
+                    context.cmd.SetGlobalInt(data.sourceModePropertyID, (int)PerObjectShadowLightMode.Disabled);
+                    context.cmd.SetGlobalInt(data.additionalLightIndexPropertyID, -1);
                 });
             }
         }

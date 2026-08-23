@@ -31,6 +31,9 @@ TEXTURE2D_SHADOW(_PerObjSceneShadowMap);
 SAMPLER_CMP(sampler_PerObjSceneShadowMap);
 
 int _PerObjSceneShadowCount;
+int _PerObjSceneShadowSourceMode;
+int _PerObjSceneShadowAdditionalLightIndex;
+float4 _PerObjSceneShadowLightDirection;
 float4x4 _PerObjSceneShadowMatrices[MAX_PER_OBJECT_SHADOW_COUNT];
 float4 _PerObjSceneShadowMapRects[MAX_PER_OBJECT_SHADOW_COUNT];
 float _PerObjSceneShadowCasterIds[MAX_PER_OBJECT_SHADOW_COUNT];
@@ -39,6 +42,11 @@ float4 _PerObjShadowBiases[MAX_PER_OBJECT_SHADOW_COUNT];
 float4 _PerObjSceneShadowOffset0;
 float4 _PerObjSceneShadowOffset1;
 float4 _PerObjSceneShadowMapSize;
+half4 _PerObjSceneShadowParams;
+
+#define PER_OBJECT_SHADOW_SOURCE_DISABLED 0
+#define PER_OBJECT_SHADOW_SOURCE_MAIN 1
+#define PER_OBJECT_SHADOW_SOURCE_ADDITIONAL_DIRECTIONAL 2
 
 float4 TransformWorldToPerObjectShadowCoord(float4x4 shadowMatrix, float3 positionWS)
 {
@@ -137,7 +145,7 @@ ShadowSamplingData GetMainLightPerObjectSceneShadowSamplingData()
 
     // shadowmapSize is used in SampleShadowmapFiltered otherwise
     shadowSamplingData.shadowmapSize = _PerObjSceneShadowMapSize;
-    shadowSamplingData.softShadowQuality = _MainLightShadowParams.y;
+    shadowSamplingData.softShadowQuality = _PerObjSceneShadowParams.y;
 
     return shadowSamplingData;
 }
@@ -156,10 +164,10 @@ float3 ApplyPerObjectShadowBias(float3 positionWS, float3 normalWS, float3 light
     return positionWS;
 }
 
-float MainLightPerObjectSceneShadow(float3 positionWS, float3 normalWS, half3 lightDir)
+float PerObjectDirectionalShadow(float3 positionWS, float3 normalWS, half3 lightDir)
 {
     ShadowSamplingData shadowSamplingData = GetMainLightPerObjectSceneShadowSamplingData();
-    half4 shadowParams = GetMainLightShadowParams();
+    half4 shadowParams = _PerObjSceneShadowParams;
     float shadow = 1;
 
     for (int i = 0; i < _PerObjSceneShadowCount; i++)
@@ -175,6 +183,13 @@ float MainLightPerObjectSceneShadow(float3 positionWS, float3 normalWS, half3 li
     }
 
     return shadow;
+}
+
+float MainLightPerObjectSceneShadow(float3 positionWS, float3 normalWS, half3 lightDir)
+{
+    return _PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_MAIN
+        ? PerObjectDirectionalShadow(positionWS, normalWS, lightDir)
+        : 1.0;
 }
 
 #endif

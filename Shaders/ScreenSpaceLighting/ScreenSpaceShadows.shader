@@ -78,40 +78,46 @@ Shader "Hidden/ScreenSpaceShadows"
                 float3 positionWS = ComputeWorldSpacePosition(input.texcoord.xy, deviceDepth, unity_MatrixInvVP);
 
                 float3 biasPositionWS = positionWS;
-                float3 lightDir = GetMainLight().direction;
+                float3 mainLightDir = GetMainLight().direction;
+                float3 perObjectLightDir = _PerObjSceneShadowLightDirection.xyz;
                 float3 normalWS = 0;
 #if APPLY_SHADOW_BIAS_FRAGMENT
                 normalWS = LoadSceneNormals(input.positionCS.xy);
-                biasPositionWS = IllusionApplyShadowBias(positionWS, normalWS, lightDir);
+                biasPositionWS = IllusionApplyShadowBias(positionWS, normalWS, mainLightDir);
 #endif
 
                 // Screenspace shadowmap is only used for directional lights which use orthogonal projection.
                 half realtimeShadow = IllusionMainLightRealtimeShadow(TransformWorldToShadowCoordCascade(biasPositionWS), input.texcoord.xy);
-                float perObjShadow = MainLightPerObjectSceneShadow(positionWS, normalWS, lightDir, input.texcoord.xy);
+                float perObjShadow = PerObjectDirectionalShadowHD(positionWS, normalWS, perObjectLightDir, input.texcoord.xy);
+
+                float mainShadow = realtimeShadow;
+                float additionalPerObjectShadow = 1.0;
+                if (_PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_MAIN)
+                    mainShadow = min(mainShadow, perObjShadow);
+                else if (_PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_ADDITIONAL_DIRECTIONAL)
+                    additionalPerObjectShadow = perObjShadow;
 
                 // TODO: Let contact shadow map always exist and be white default
 #ifdef _CONTACT_SHADOWS
-				float screenSpaceShadow = min(realtimeShadow, perObjShadow);
 				float contactShadow = 1 - LOAD_TEXTURE2D_X(_ContactShadowMap, input.positionCS.xy).r;
-            	float finalShadow = _IncludeContactShadow != 0.0 ? min(contactShadow, screenSpaceShadow) : screenSpaceShadow;
-#else
-                float finalShadow = min(realtimeShadow, perObjShadow);
+				if (_IncludeContactShadow != 0.0)
+                    mainShadow = min(contactShadow, mainShadow);
 #endif
 
                 // Debug mode
 #if defined(_DEBUG_SCREEN_SPACE_SHADOW_MAINLIGHT)
-                // Only display main light shadow (realtime shadow + per object shadow)
-                return min(realtimeShadow, perObjShadow);
+                return half4(mainShadow, 1.0, 1.0, 1.0);
 #elif defined(_DEBUG_SCREEN_SPACE_SHADOW_CONTACT)
                 // Only display contact shadow
 #ifdef _CONTACT_SHADOWS
-                return 1 - LOAD_TEXTURE2D_X(_ContactShadowMap, input.positionCS.xy).r;
+                float contactShadowDebug = 1 - LOAD_TEXTURE2D_X(_ContactShadowMap, input.positionCS.xy).r;
+                return half4(contactShadowDebug, 1.0, 1.0, 1.0);
 #else
-                return 1.0; // No contact shadow, return white
+                return half4(1.0, 1.0, 1.0, 1.0); // No contact shadow, return white
 #endif
 #else
-                // Normal mode
-                return finalShadow;
+                // R stores Main visibility; G stores the selected Additional Directional visibility.
+                return half4(mainShadow, additionalPerObjectShadow, 1.0, 1.0);
 #endif
             }
             ENDHLSL

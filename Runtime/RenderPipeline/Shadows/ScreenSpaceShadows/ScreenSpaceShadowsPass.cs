@@ -132,8 +132,11 @@ namespace Illusion.Rendering.Shadows
             
             descriptor.depthBufferBits = 0;
             descriptor.msaaSamples = 1;
-            descriptor.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
-                ? GraphicsFormat.R8_UNorm
+            GraphicsFormat preferredFormat = _rendererData.AdditionalDirectionalPerObjectShadows
+                ? GraphicsFormat.R8G8_UNorm
+                : GraphicsFormat.R8_UNorm;
+            descriptor.graphicsFormat = SystemInfo.IsFormatSupported(preferredFormat, GraphicsFormatUsage.Blend)
+                ? preferredFormat
                 : GraphicsFormat.B8G8R8A8_UNorm;
 
             // Keep a persistent screen space shadow texture so temporal accumulation can run in a follow-up pass.

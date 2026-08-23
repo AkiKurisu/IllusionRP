@@ -33,9 +33,28 @@ Light IllusionGetMainLight(InputData inputData, half4 shadowMask)
 }
 
 // AO has been separated for diffuse and specular, so it will be applied in lighting.
-Light IllusionGetAdditionalLight(uint i, InputData inputData, half4 shadowMask)
+Light IllusionGetAdditionalLight(uint i, InputData inputData, half4 shadowMask, bool receivePerObjectShadow)
 {
     Light light = GetAdditionalLight(i, inputData.positionWS, shadowMask);
+#if USE_CLUSTER_LIGHT_LOOP
+    if (receivePerObjectShadow &&
+        _PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_ADDITIONAL_DIRECTIONAL &&
+        (int)i == _PerObjSceneShadowAdditionalLightIndex)
+    {
+#if defined(_MAIN_LIGHT_SHADOWS_SCREEN) && (SURFACE_TYPE_RECEIVE_SCREEN_SPACE_SHADOWS)
+        float perObjectVisibility = IllusionAdditionalPerObjectScreenSpaceShadow(inputData.shadowCoord);
+#else
+        float perObjectVisibility = PerObjectDirectionalShadow(
+            inputData.positionWS, inputData.normalWS, light.direction);
+#endif
+        light.shadowAttenuation = min(light.shadowAttenuation, perObjectVisibility);
+    }
+#endif
     return light;
+}
+
+Light IllusionGetAdditionalLight(uint i, InputData inputData, half4 shadowMask)
+{
+    return IllusionGetAdditionalLight(i, inputData, shadowMask, true);
 }
 #endif

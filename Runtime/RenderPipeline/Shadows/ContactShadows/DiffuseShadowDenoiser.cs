@@ -18,12 +18,18 @@ namespace Illusion.Rendering.Shadows
         
         private readonly int _bilateralFilterVSingleDirectionalKernel;
 
+        private readonly int _bilateralFilterHColorDirectionalKernel;
+
+        private readonly int _bilateralFilterVColorDirectionalKernel;
+
         public DiffuseShadowDenoiser(ComputeShader shadowDenoiserCS)
         {
             _shadowDenoiser = shadowDenoiserCS;
 
             _bilateralFilterHSingleDirectionalKernel = _shadowDenoiser.FindKernel("BilateralFilterHSingleDirectional");
             _bilateralFilterVSingleDirectionalKernel = _shadowDenoiser.FindKernel("BilateralFilterVSingleDirectional");
+            _bilateralFilterHColorDirectionalKernel = _shadowDenoiser.FindKernel("BilateralFilterHColorDirectional");
+            _bilateralFilterVColorDirectionalKernel = _shadowDenoiser.FindKernel("BilateralFilterVColorDirectional");
         }
 
         /// <summary>
@@ -128,7 +134,7 @@ namespace Illusion.Rendering.Shadows
             TextureHandle noisyBuffer, TextureHandle intermediateBuffer, TextureHandle outputBuffer,
             int texWidth, int texHeight, int viewCount,
             float lightAngle, float cameraFov, int kernelSize,
-            ProfilingSampler profilingSampler)
+            ProfilingSampler profilingSampler, bool color = false)
         {
             using (var builder = renderGraph.AddComputePass<DenoisePassData>("Diffuse Shadow Denoise", out var passData, profilingSampler))
             {
@@ -143,8 +149,12 @@ namespace Illusion.Rendering.Shadows
                 passData.KernelSize = kernelSize;
 
                 // Kernels
-                passData.BilateralHKernel = _bilateralFilterHSingleDirectionalKernel;
-                passData.BilateralVKernel = _bilateralFilterVSingleDirectionalKernel;
+                passData.BilateralHKernel = color
+                    ? _bilateralFilterHColorDirectionalKernel
+                    : _bilateralFilterHSingleDirectionalKernel;
+                passData.BilateralVKernel = color
+                    ? _bilateralFilterVColorDirectionalKernel
+                    : _bilateralFilterVSingleDirectionalKernel;
 
                 // Other parameters
                 passData.DiffuseShadowDenoiserCs = _shadowDenoiser;

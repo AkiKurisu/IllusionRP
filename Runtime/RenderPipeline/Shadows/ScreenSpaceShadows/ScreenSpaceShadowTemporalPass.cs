@@ -16,6 +16,7 @@ namespace Illusion.Rendering.Shadows
 
         private readonly int _validateHistoryKernel;
         private readonly int _temporalAccumulationSingleKernel;
+        private readonly int _temporalAccumulationColorKernel;
         private readonly int _copyHistoryKernel;
         private readonly int _compositeContactShadowKernel;
 
@@ -32,6 +33,7 @@ namespace Illusion.Rendering.Shadows
             public int Width;
             public int Height;
             public int ViewCount;
+            public bool Color;
             public float HistoryValidity;
             public float PixelSpreadAngleTangent;
             public Vector4 HistorySizeAndScale;
@@ -80,6 +82,7 @@ namespace Illusion.Rendering.Shadows
             _temporalFilterCS = rendererData.RuntimeResources.temporalFilterCS;
             _validateHistoryKernel = _temporalFilterCS.FindKernel("ValidateHistory");
             _temporalAccumulationSingleKernel = _temporalFilterCS.FindKernel("TemporalAccumulationSingle");
+            _temporalAccumulationColorKernel = _temporalFilterCS.FindKernel("TemporalAccumulationColor");
             _copyHistoryKernel = _temporalFilterCS.FindKernel("CopyHistory");
             _compositeContactShadowKernel = _temporalFilterCS.FindKernel("CompositeContactShadow");
             _diffuseShadowDenoiser = new DiffuseShadowDenoiser(rendererData.RuntimeResources.diffuseShadowDenoiserCS);
@@ -107,11 +110,13 @@ namespace Illusion.Rendering.Shadows
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             var lightData = frameData.Get<UniversalLightData>();
+            bool useColorShadow = _rendererData.AdditionalDirectionalPerObjectShadows;
             TextureHandle currentDepthTexture = GetCurrentShadowDepthTexture(frameData, resource);
             TextureHandle currentNormalTexture = resource.cameraNormalsTexture;
 
             TextureHandle sourceShadowTexture = renderGraph.ImportTexture(_rendererData.ScreenSpaceShadowsRT);
-            TextureHandle historyShadowTexture = ImportOrAllocateShadowHistory(renderGraph, out bool shadowHistoryReallocated);
+            TextureHandle historyShadowTexture = ImportOrAllocateShadowHistory(
+                renderGraph, useColorShadow, out bool shadowHistoryReallocated);
             if (!historyShadowTexture.IsValid())
             {
                 return;
@@ -137,7 +142,13 @@ namespace Illusion.Rendering.Shadows
             int height = cameraData.cameraTargetDescriptor.height;
             int viewCount = IllusionRendererData.MaxViewCount;
 
-            float historyValidity = EvaluateHistoryValidity(lightData, hasHistoryDepth, hasHistoryNormal, shadowHistoryReallocated);
+            bool supportsAdditionalDirectional =
+                UniversalRenderingUtility.GetRenderingModeActual(cameraData.renderer) == RenderingMode.ForwardPlus;
+            PerObjectShadowLightData perObjectShadowLight =
+                PerObjectShadowLightData.Resolve(cameraData, lightData,
+                    useColorShadow, supportsAdditionalDirectional);
+            float historyValidity = EvaluateHistoryValidity(lightData, in perObjectShadowLight,
+                hasHistoryDepth, hasHistoryNormal, shadowHistoryReallocated);
             // Screenshot capture warmup needs one valid temporal shadow history before readback.
             ref var captureShadowState = ref _rendererData.CurrentScreenSpaceShadowTemporalState;
             captureShadowState.ActiveThisFrame = true;
@@ -161,26 +172,33 @@ namespace Illusion.Rendering.Shadows
 
             TextureHandle temporalOutputTexture = renderGraph.CreateTexture(new TextureDesc(width, height)
             {
-                colorFormat = GraphicsFormat.R16G16_SFloat,
+                colorFormat = useColorShadow
+                    ? GraphicsFormat.R16G16B16A16_SFloat
+                    : GraphicsFormat.R16G16_SFloat,
                 enableRandomWrite = true,
                 name = "Screen Space Shadow Temporal Output"
             });
-            TextureHandle finalShadowSignalTexture = renderGraph.CreateTexture(new TextureDesc(width, height)
-            {
-                colorFormat = GraphicsFormat.R16_SFloat,
-                enableRandomWrite = true,
-                name = "Screen Space Shadow Temporal Signal"
-            });
+            TextureHandle finalShadowSignalTexture = useColorShadow
+                ? TextureHandle.nullHandle
+                : renderGraph.CreateTexture(new TextureDesc(width, height)
+                {
+                    colorFormat = GraphicsFormat.R16_SFloat,
+                    enableRandomWrite = true,
+                    name = "Screen Space Shadow Temporal Signal"
+                });
 
             using (var builder = renderGraph.AddComputePass<TemporalPassData>("Screen Space Shadow Temporal", out var passData, _temporalSampler))
             {
                 passData.TemporalFilterCS = _temporalFilterCS;
                 passData.ValidateHistoryKernel = _validateHistoryKernel;
-                passData.TemporalAccumulationKernel = _temporalAccumulationSingleKernel;
+                passData.TemporalAccumulationKernel = useColorShadow
+                    ? _temporalAccumulationColorKernel
+                    : _temporalAccumulationSingleKernel;
                 passData.CopyHistoryKernel = _copyHistoryKernel;
                 passData.Width = width;
                 passData.Height = height;
                 passData.ViewCount = viewCount;
+                passData.Color = useColorShadow;
                 passData.HistoryValidity = historyValidity;
                 passData.PixelSpreadAngleTangent = pixelSpreadAngleTangent;
                 passData.HistorySizeAndScale = historySizeAndScale;
@@ -205,7 +223,10 @@ namespace Illusion.Rendering.Shadows
                 builder.UseTexture(passData.HistoryShadowTexture, AccessFlags.ReadWrite);
                 builder.UseTexture(passData.ValidationTexture, AccessFlags.Write);
                 builder.UseTexture(passData.TemporalOutputTexture, AccessFlags.Write);
-                builder.UseTexture(passData.FinalShadowSignalTexture, AccessFlags.Write);
+                if (!passData.Color)
+                {
+                    builder.UseTexture(passData.FinalShadowSignalTexture, AccessFlags.Write);
+                }
 
                 builder.AllowPassCulling(false);
 
@@ -244,27 +265,36 @@ namespace Illusion.Rendering.Shadows
                     context.cmd.SetComputeVectorParam(data.TemporalFilterCS, ShaderProperties.DenoiserResolutionMultiplierVals, data.ResolutionMultiplier);
                     context.cmd.DispatchCompute(data.TemporalFilterCS, data.CopyHistoryKernel, tilesX, tilesY, data.ViewCount);
 
-                    // Extract single-channel shadow signal for downstream passes.
-                    context.cmd.SetComputeTextureParam(data.TemporalFilterCS, data.CopyHistoryKernel, RayTracingShaderProperties.DenoiseInputTexture, data.TemporalOutputTexture);
-                    context.cmd.SetComputeTextureParam(data.TemporalFilterCS, data.CopyHistoryKernel, RayTracingShaderProperties.DenoiseOutputTextureRW, data.FinalShadowSignalTexture);
-                    context.cmd.SetComputeVectorParam(data.TemporalFilterCS, ShaderProperties.DenoiserResolutionMultiplierVals, data.ResolutionMultiplier);
-                    context.cmd.DispatchCompute(data.TemporalFilterCS, data.CopyHistoryKernel, tilesX, tilesY, data.ViewCount);
+                    if (!data.Color)
+                    {
+                        // Extract the single-channel visibility signal from the temporal moments buffer.
+                        context.cmd.SetComputeTextureParam(data.TemporalFilterCS, data.CopyHistoryKernel, RayTracingShaderProperties.DenoiseInputTexture, data.TemporalOutputTexture);
+                        context.cmd.SetComputeTextureParam(data.TemporalFilterCS, data.CopyHistoryKernel, RayTracingShaderProperties.DenoiseOutputTextureRW, data.FinalShadowSignalTexture);
+                        context.cmd.SetComputeVectorParam(data.TemporalFilterCS, ShaderProperties.DenoiserResolutionMultiplierVals, data.ResolutionMultiplier);
+                        context.cmd.DispatchCompute(data.TemporalFilterCS, data.CopyHistoryKernel, tilesX, tilesY, data.ViewCount);
+                    }
                 });
             }
 
-            TextureHandle finalShadowTexture = finalShadowSignalTexture;
+            TextureHandle finalShadowTexture = useColorShadow
+                ? temporalOutputTexture
+                : finalShadowSignalTexture;
             if (pcssParams.shadowSpatialDenoise.value)
             {
                 TextureHandle denoiseIntermediate = renderGraph.CreateTexture(new TextureDesc(width, height)
                 {
-                    colorFormat = GraphicsFormat.R16_SFloat,
+                    colorFormat = useColorShadow
+                        ? GraphicsFormat.R16G16B16A16_SFloat
+                        : GraphicsFormat.R16_SFloat,
                     enableRandomWrite = true,
                     name = "Screen Space Shadow Spatial Intermediate"
                 });
 
                 TextureHandle denoiseOutput = renderGraph.CreateTexture(new TextureDesc(width, height)
                 {
-                    colorFormat = GraphicsFormat.R16_SFloat,
+                    colorFormat = useColorShadow
+                        ? GraphicsFormat.R16G16B16A16_SFloat
+                        : GraphicsFormat.R16_SFloat,
                     enableRandomWrite = true,
                     name = "Screen Space Shadow Spatial Output"
                 });
@@ -273,10 +303,10 @@ namespace Illusion.Rendering.Shadows
                 float cameraFovRadians = cameraData.camera.fieldOfView * Mathf.Deg2Rad;
                 _diffuseShadowDenoiser.DenoiseBuffer(renderGraph,
                     currentDepthTexture, currentNormalTexture,
-                    finalShadowSignalTexture, denoiseIntermediate, denoiseOutput,
+                    finalShadowTexture, denoiseIntermediate, denoiseOutput,
                     width, height, viewCount,
                     lightAngleRadians, cameraFovRadians, pcssParams.shadowDenoiseKernelSize.value,
-                    _spatialSampler);
+                    _spatialSampler, color: useColorShadow);
 
                 finalShadowTexture = denoiseOutput;
             }
@@ -286,7 +316,9 @@ namespace Illusion.Rendering.Shadows
             {
                 TextureHandle contactCompositeTexture = renderGraph.CreateTexture(new TextureDesc(width, height)
                 {
-                    colorFormat = GraphicsFormat.R16_SFloat,
+                    colorFormat = useColorShadow
+                        ? GraphicsFormat.R16G16_SFloat
+                        : GraphicsFormat.R16_SFloat,
                     enableRandomWrite = true,
                     name = "Screen Space Shadow Contact Composite"
                 });
@@ -369,17 +401,22 @@ namespace Illusion.Rendering.Shadows
                 : TextureHandle.nullHandle;
         }
 
-        private TextureHandle ImportOrAllocateShadowHistory(RenderGraph renderGraph, out bool wasAllocated)
+        private TextureHandle ImportOrAllocateShadowHistory(
+            RenderGraph renderGraph, bool useColorShadow, out bool wasAllocated)
         {
             var historyRT = _rendererData.GetCurrentFrameRT((int)IllusionFrameHistoryType.ScreenSpaceShadowHistory);
-            wasAllocated = historyRT == null || !historyRT.IsValid();
+            GraphicsFormat historyFormat = useColorShadow
+                ? GraphicsFormat.R16G16B16A16_SFloat
+                : GraphicsFormat.R16G16_SFloat;
+            wasAllocated = historyRT == null || !historyRT.IsValid() ||
+                           historyRT.rt.graphicsFormat != historyFormat;
             if (wasAllocated)
             {
                 _rendererData.ReleaseHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceShadowHistory);
 
                 var allocator = new IllusionRendererData.CustomHistoryAllocator(
                     Vector2.one,
-                    GraphicsFormat.R16G16_SFloat,
+                    historyFormat,
                     "ScreenSpaceShadowHistory");
                 historyRT = _rendererData.AllocHistoryFrameRT((int)IllusionFrameHistoryType.ScreenSpaceShadowHistory, allocator.Allocator, 1);
             }
@@ -387,7 +424,9 @@ namespace Illusion.Rendering.Shadows
             return historyRT != null && historyRT.IsValid() ? renderGraph.ImportTexture(historyRT) : TextureHandle.nullHandle;
         }
 
-        private float EvaluateHistoryValidity(UniversalLightData lightData, bool hasHistoryDepth, bool hasHistoryNormal, bool shadowHistoryReallocated)
+        private float EvaluateHistoryValidity(UniversalLightData lightData,
+            in PerObjectShadowLightData perObjectShadowLight, bool hasHistoryDepth, bool hasHistoryNormal,
+            bool shadowHistoryReallocated)
         {
             ref var shadowState = ref _rendererData.CurrentScreenSpaceShadowTemporalState;
             float historyValidity = 1.0f;
@@ -400,19 +439,32 @@ namespace Illusion.Rendering.Shadows
             }
 
             Vector3 currentMainLightDirection = lightData.visibleLights[mainLightIndex].light.transform.forward;
+            Light currentPerObjectLight = perObjectShadowLight.VisibleLight.light;
+            int currentPerObjectLightId = currentPerObjectLight ? currentPerObjectLight.GetInstanceID() : 0;
+            Vector3 currentPerObjectLightDirection = currentPerObjectLight
+                ? currentPerObjectLight.transform.forward
+                : Vector3.zero;
             bool lightDirectionChanged = !shadowState.HasDirectionalHistoryState
                                          || (currentMainLightDirection - shadowState.LastMainLightDirection).sqrMagnitude > 1e-6f;
+            bool perObjectLightChanged = !shadowState.HasDirectionalHistoryState
+                                         || shadowState.LastPerObjectShadowMode != perObjectShadowLight.Mode
+                                         || shadowState.LastPerObjectLightId != currentPerObjectLightId
+                                         || (currentPerObjectLightDirection - shadowState.LastPerObjectLightDirection)
+                                         .sqrMagnitude > 1e-6f;
             bool nonConsecutiveFrame = !shadowState.HasDirectionalHistoryState
                                        || (shadowState.LastHistoryFrameCount + 1) != _rendererData.FrameCount;
             bool invalidByFrame = _rendererData.IsFirstFrame || _rendererData.ResetPostProcessingHistory || nonConsecutiveFrame;
             bool invalidByHistoryResources = !hasHistoryDepth || !hasHistoryNormal || shadowHistoryReallocated;
 
-            if (lightDirectionChanged || invalidByFrame || invalidByHistoryResources)
+            if (lightDirectionChanged || perObjectLightChanged || invalidByFrame || invalidByHistoryResources)
             {
                 historyValidity = 0.0f;
             }
 
             shadowState.LastMainLightDirection = currentMainLightDirection;
+            shadowState.LastPerObjectShadowMode = perObjectShadowLight.Mode;
+            shadowState.LastPerObjectLightId = currentPerObjectLightId;
+            shadowState.LastPerObjectLightDirection = currentPerObjectLightDirection;
             shadowState.LastHistoryFrameCount = _rendererData.FrameCount;
             shadowState.HasDirectionalHistoryState = true;
             return historyValidity;

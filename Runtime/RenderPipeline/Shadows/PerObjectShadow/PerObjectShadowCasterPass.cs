@@ -45,7 +45,7 @@ namespace Illusion.Rendering.Shadows
 
         private RTHandle _shadowMap;
 
-        private UniversalAdditionalLightData _mainLightData;
+        private PerObjectShadowLightData _lightData;
 
         // Per-object shadow PCSS parameters
         private readonly Vector4[] _perObjShadowPcssParams0;
@@ -77,10 +77,12 @@ namespace Illusion.Rendering.Shadows
             _shadowMap?.Release();
         }
 
-        public void Setup(ShadowCasterManager casterManager, ShadowTileResolution tileResolution, DepthBits depthBits)
+        public void Setup(ShadowCasterManager casterManager, ShadowTileResolution tileResolution, DepthBits depthBits,
+            in PerObjectShadowLightData lightData)
         {
             _casterManager = casterManager;
             _tileResolution = (int)tileResolution;
+            _lightData = lightData;
 
             if (casterManager.VisibleCount <= 0)
             {
@@ -99,8 +101,9 @@ namespace Illusion.Rendering.Shadows
         {
             internal PerObjectShadowCasterPass Pass;
             internal TextureHandle ShadowmapTexture;
-            internal UniversalLightData LightData;
-            internal UniversalShadowData ShadowData;
+            internal PerObjectShadowLightData LightData;
+            internal Vector2 ShadowBias;
+            internal bool SupportsSoftShadows;
             internal ShadowCasterManager CasterManager;
             internal int ShadowMapSizeInTile;
             internal int TileResolution;
@@ -118,8 +121,6 @@ namespace Illusion.Rendering.Shadows
         {
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
-            var lightData = frameData.Get<UniversalLightData>();
-            var shadowData = frameData.Get<UniversalShadowData>();
             if (_casterManager.VisibleCount <= 0)
             {
                 // No shadows to render, set shadow count to 0
@@ -133,6 +134,9 @@ namespace Illusion.Rendering.Shadows
                     builder.SetRenderFunc((PassData data, RasterGraphContext context) =>
                     {
                         context.cmd.SetGlobalInt(PropertyIds.ShadowCount(), 0);
+                        context.cmd.SetGlobalInt(PropertyIds.SourceMode(), (int)data.Pass._lightData.Mode);
+                        context.cmd.SetGlobalInt(PropertyIds.AdditionalLightIndex(), data.Pass._lightData.AdditionalLightIndex);
+                        context.cmd.SetGlobalVector(PropertyIds.LightDirection(), GetLightDirection(data.Pass._lightData));
                     });
                 }
                 return;
@@ -142,7 +146,7 @@ namespace Illusion.Rendering.Shadows
             TextureHandle shadowTexture;
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadowmap", out var passData, profilingSampler))
             {
-                InitPassData(ref passData, lightData, shadowData);
+                InitPassData(ref passData);
                 
                 passData.ShadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, _shadowMap.rt.descriptor, "_MainLightPerObjectShadow", true);
                 builder.SetRenderAttachmentDepth(passData.ShadowmapTexture);
@@ -161,7 +165,7 @@ namespace Illusion.Rendering.Shadows
             // Pass 2: Set global shadow properties
             using (var builder = renderGraph.AddRasterRenderPass<PassData>("Set Per-Object Shadow Globals", out var passData, profilingSampler))
             {
-                InitPassData(ref passData, lightData, shadowData);
+                InitPassData(ref passData);
                 passData.ShadowmapTexture = shadowTexture;
                 
                 if (shadowTexture.IsValid())
@@ -181,11 +185,12 @@ namespace Illusion.Rendering.Shadows
             renderer.SetupRenderGraphCameraProperties(renderGraph, resource.activeColorTexture);
         }
 
-        private void InitPassData(ref PassData passData, UniversalLightData lightData, UniversalShadowData shadowData)
+        private void InitPassData(ref PassData passData)
         {
             passData.Pass = this;
-            passData.LightData = lightData;
-            passData.ShadowData = shadowData;
+            passData.LightData = _lightData;
+            passData.ShadowBias = ResolveShadowBias(_lightData.VisibleLight.light, out bool supportsSoftShadows);
+            passData.SupportsSoftShadows = supportsSoftShadows;
             passData.CasterManager = _casterManager;
             passData.ShadowMapSizeInTile = _shadowMapSizeInTile;
             passData.TileResolution = _tileResolution;
@@ -208,11 +213,11 @@ namespace Illusion.Rendering.Shadows
             {
                 data.CasterManager.GetMatrices(i, out Matrix4x4 viewMatrix, out Matrix4x4 projectionMatrix);
 
-                int mainLightIndex = data.LightData.mainLightIndex;
-                VisibleLight mainLight = data.LightData.visibleLights[mainLightIndex];
-                Vector4 shadowBias = ShadowUtils.GetShadowBias(ref mainLight, mainLightIndex, data.ShadowData, projectionMatrix, data.Pass._shadowMap.rt.width);
+                VisibleLight shadowLight = data.LightData.VisibleLight;
+                Vector4 shadowBias = GetDirectionalShadowBias(ref shadowLight, data.ShadowBias,
+                    data.SupportsSoftShadows, projectionMatrix, data.Pass._shadowMap.rt.width);
                 data.ShadowBiases[i] = shadowBias;
-                ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref mainLight, shadowBias);
+                ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
 
                 Vector2Int tilePos = new(i % data.ShadowMapSizeInTile, i / data.ShadowMapSizeInTile);
                 DrawShadow(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
@@ -223,6 +228,53 @@ namespace Illusion.Rendering.Shadows
 
             cmd.SetGlobalDepthBias(0.0f, 0.0f);
             CoreUtils.SetKeyword(cmd, KeywordNames._CASTING_SELF_SHADOW, false);
+        }
+
+        // @IllusionRP: URP only populates UniversalShadowData.bias when it allocates a standard shadow atlas.
+        // The per-object atlas remains valid without that atlas, so resolve the same source settings independently.
+        private static Vector2 ResolveShadowBias(Light light, out bool supportsSoftShadows)
+        {
+            UniversalRenderPipelineAsset asset = UniversalRenderPipeline.asset;
+            supportsSoftShadows = asset && asset.supportsSoftShadows;
+
+            if (!light)
+                return Vector2.zero;
+
+            if (light.TryGetComponent(out UniversalAdditionalLightData additionalLightData) &&
+                !additionalLightData.usePipelineSettings)
+                return new Vector2(light.shadowBias, light.shadowNormalBias);
+
+            return asset
+                ? new Vector2(asset.shadowDepthBias, asset.shadowNormalBias)
+                : new Vector2(light.shadowBias, light.shadowNormalBias);
+        }
+
+        private static Vector4 GetDirectionalShadowBias(ref VisibleLight shadowLight, Vector2 bias,
+            bool supportsSoftShadows, Matrix4x4 lightProjectionMatrix, float shadowResolution)
+        {
+            float frustumSize = 2.0f / lightProjectionMatrix.m00;
+            float texelSize = frustumSize / shadowResolution;
+            float depthBias = -bias.x * texelSize;
+            float normalBias = -bias.y * texelSize;
+
+            if (supportsSoftShadows && shadowLight.light.shadows == LightShadows.Soft)
+            {
+                SoftShadowQuality softShadowQuality = SoftShadowQuality.Medium;
+                if (shadowLight.light.TryGetComponent(out UniversalAdditionalLightData additionalLightData))
+                    softShadowQuality = additionalLightData.softShadowQuality;
+
+                float kernelRadius = softShadowQuality switch
+                {
+                    SoftShadowQuality.High => 3.5f,
+                    SoftShadowQuality.Low => 1.5f,
+                    _ => 2.5f
+                };
+
+                depthBias *= kernelRadius;
+                normalBias *= kernelRadius;
+            }
+
+            return new Vector4(depthBias, normalBias, (float)LightType.Directional, 0.0f);
         }
 
         private static void DrawShadow(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
@@ -242,6 +294,13 @@ namespace Illusion.Rendering.Shadows
             // Set shadow map texture
             cmd.SetGlobalTexture(PropertyIds.ShadowMap(), data.ShadowmapTexture);
             cmd.SetGlobalInt(PropertyIds.ShadowCount(), data.CasterManager.VisibleCount);
+            cmd.SetGlobalInt(PropertyIds.SourceMode(), (int)data.LightData.Mode);
+            cmd.SetGlobalInt(PropertyIds.AdditionalLightIndex(), data.LightData.AdditionalLightIndex);
+            cmd.SetGlobalVector(PropertyIds.LightDirection(), GetLightDirection(data.LightData));
+            Light source = data.LightData.VisibleLight.light;
+            cmd.SetGlobalVector(PropertyIds.ShadowParams(), new Vector4(
+                source ? source.shadowStrength : 1.0f,
+                source && source.shadows == LightShadows.Soft ? 1.0f : 0.0f, 0.0f, 0.0f));
             cmd.SetGlobalMatrixArray(PropertyIds.ShadowMatrices(), data.ShadowMatrixArray);
             cmd.SetGlobalVectorArray(PropertyIds.ShadowMapRects(), data.ShadowMapRectArray);
             cmd.SetGlobalVectorArray(PropertyIds.ShadowBiases(), data.ShadowBiases);
@@ -308,6 +367,15 @@ namespace Illusion.Rendering.Shadows
             }
         }
 
+        private static Vector4 GetLightDirection(in PerObjectShadowLightData lightData)
+        {
+            if (!lightData.IsValid)
+                return Vector4.zero;
+
+            Vector3 direction = -lightData.VisibleLight.localToWorldMatrix.GetColumn(2);
+            return new Vector4(direction.x, direction.y, direction.z, 0.0f);
+        }
+
         private Matrix4x4 GetShadowMatrix(Vector2Int tilePos, in Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)
         {
             if (SystemInfo.usesReversedZBuffer)
@@ -364,6 +432,14 @@ namespace Illusion.Rendering.Shadows
 
             private static readonly int _PerObjSceneShadowMapSize = MemberNameHelpers.ShaderPropertyID();
 
+            private static readonly int _PerObjSceneShadowSourceMode = MemberNameHelpers.ShaderPropertyID();
+
+            private static readonly int _PerObjSceneShadowAdditionalLightIndex = MemberNameHelpers.ShaderPropertyID();
+
+            private static readonly int _PerObjSceneShadowLightDirection = MemberNameHelpers.ShaderPropertyID();
+
+            private static readonly int _PerObjSceneShadowParams = MemberNameHelpers.ShaderPropertyID();
+
             // Per-object shadow PCSS parameters
             public static readonly int _PerObjShadowPcssParams0 = MemberNameHelpers.ShaderPropertyID();
             
@@ -390,6 +466,14 @@ namespace Illusion.Rendering.Shadows
             public static int ShadowOffset1() => _PerObjSceneShadowOffset1;
 
             public static int ShadowMapSize() => _PerObjSceneShadowMapSize;
+
+            public static int SourceMode() => _PerObjSceneShadowSourceMode;
+
+            public static int AdditionalLightIndex() => _PerObjSceneShadowAdditionalLightIndex;
+
+            public static int LightDirection() => _PerObjSceneShadowLightDirection;
+
+            public static int ShadowParams() => _PerObjSceneShadowParams;
         }
     }
 }
