@@ -77,12 +77,13 @@ namespace Illusion.Rendering.Shadows
             }
         }
 
-        public unsafe void Cull(UniversalCameraData cameraData, UniversalLightData lightData, int maxCount, float shadowLengthOffset, bool debugMode)
+        public unsafe void Cull(UniversalCameraData cameraData, in PerObjectShadowLightData lightData,
+            int maxCount, float shadowLengthOffset, bool debugMode)
         {
             m_RendererIndexList.Clear();
             m_CullResults.Reset(maxCount);
 
-            if (s_Casters.Count <= 0 || !TryGetMainLight(lightData, out VisibleLight mainLight))
+            if (s_Casters.Count <= 0 || !lightData.IsValid)
             {
                 return;
             }
@@ -108,7 +109,7 @@ namespace Illusion.Rendering.Shadows
                 DebugMode = debugMode ? 1 : 0,
                 FrustumEightCorners = frustumCorners,
                 CameraLocalToWorldMatrix = cameraTransform.localToWorldMatrix,
-                MainLightLocalToWorldMatrix = mainLight.localToWorldMatrix,
+                MainLightLocalToWorldMatrix = lightData.VisibleLight.localToWorldMatrix,
                 ShadowLengthOffset = shadowLengthOffset
             };
 
@@ -155,18 +156,5 @@ namespace Illusion.Rendering.Shadows
             });
         }
 
-        private static bool TryGetMainLight(in UniversalLightData lightData, out VisibleLight mainLight)
-        {
-            int mainLightIndex = lightData.mainLightIndex;
-
-            if (mainLightIndex < 0)
-            {
-                mainLight = default;
-                return false;
-            }
-
-            mainLight = lightData.visibleLights[mainLightIndex];
-            return mainLight.lightType == LightType.Directional;
-        }
     }
 }

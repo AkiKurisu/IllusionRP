@@ -93,6 +93,11 @@ namespace Illusion.Rendering
         internal RenderingLayerMask perObjectShadowRenderingLayer;
 
         /// <summary>
+        /// Allow cameras to select an additional directional light as their per-object shadow source.
+        /// </summary>
+        public bool additionalDirectionalPerObjectShadows = true;
+
+        /// <summary>
         /// When enabled, transparent objects will sample per object shadow which will decrease performance."
         /// </summary>
         public bool transparentReceivePerObjectShadows;
@@ -236,6 +241,8 @@ namespace Illusion.Rendering
 
         private SetupPass _setupPass;
 
+        private PerObjectShadowMainLightCasterScope _mainLightCasterScope;
+
         private AdvancedTonemappingPass _advancedTonemappingPass;
 
         private ExposurePass _exposurePass;
@@ -283,6 +290,8 @@ namespace Illusion.Rendering
             }
             _rendererData = new IllusionRendererData(_renderPipelineResources);
             UpdateRenderDataSettings();
+            _mainLightCasterScope = new PerObjectShadowMainLightCasterScope(
+                additionalDirectionalPerObjectShadows, perObjectShadowRenderingLayer);
 
             _sceneShadowCasterManager = new ShadowCasterManager();
 
@@ -361,6 +370,11 @@ namespace Illusion.Rendering
             _stencilVRSDebugPass = new StencilVRSDebugPass();
             _transparentSSRDebugPass = new TransparentSSRDebugPass(_rendererData);
 #endif
+        }
+
+        public override void OnCameraPreCull(ScriptableRenderer renderer, in CameraData cameraData)
+        {
+            _mainLightCasterScope?.BeginCameraCull(cameraData.camera, renderer);
         }
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
@@ -666,12 +680,17 @@ namespace Illusion.Rendering
             rendererData.RequireHistoryDepthNormal = useScreenSpaceGlobalIllumination || useShadowTemporalAccumulation;
 
             var shadow = VolumeManager.instance.stack.GetComponent<PerObjectShadows>();
-            _sceneShadowCasterManager.Cull(cameraData, lightData,
+            bool supportsAdditionalDirectional =
+                UniversalRenderingUtility.GetRenderingModeActual(cameraData.renderer) == RenderingMode.ForwardPlus;
+            PerObjectShadowLightData perObjectShadowLight =
+                PerObjectShadowLightData.Resolve(cameraData, lightData,
+                    additionalDirectionalPerObjectShadows, supportsAdditionalDirectional);
+            _sceneShadowCasterManager.Cull(cameraData, in perObjectShadowLight,
                 PerObjectShadowCasterPass.MaxShadowCount,
                 shadow.perObjectShadowLengthOffset.value,
                 IllusionRuntimeRenderingConfig.Get().EnablePerObjectShadowDebug);
             _perObjShadowPass.Setup(_sceneShadowCasterManager, shadow.perObjectShadowTileResolution.value,
-                shadow.perObjectShadowDepthBits.value);
+                shadow.perObjectShadowDepthBits.value, in perObjectShadowLight);
             _volumetricFogPass.Setup(_volumetricLightManager);
         }
 
@@ -679,6 +698,9 @@ namespace Illusion.Rendering
         {
             var config = IllusionRuntimeRenderingConfig.Get();
             _rendererData.PerObjectShadowRenderingLayer = perObjectShadowRenderingLayer;
+            _rendererData.AdditionalDirectionalPerObjectShadows = additionalDirectionalPerObjectShadows;
+            _mainLightCasterScope?.UpdateSettings(
+                additionalDirectionalPerObjectShadows, perObjectShadowRenderingLayer);
             _rendererData.WorldScale = Mathf.Max(0.001f, worldScale);
             // We should check compute shaders are supported whether we should fall back to fragment shader.
             // But currently IllusionRP only supports platforms that support compute shader.
@@ -697,6 +719,7 @@ namespace Illusion.Rendering
 
         private void Release()
         {
+            SafeDispose(ref _mainLightCasterScope);
             SafeDispose(ref _rendererData);
             SafeDispose(ref _diffuseShadowDenoisePass);
             SafeDispose(ref _groundTruthAmbientOcclusionPass);

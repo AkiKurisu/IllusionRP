@@ -99,6 +99,19 @@ half IllusionMainLightRealtimeShadow(float4 shadowCoord)
 #endif
 }
 
+half IllusionAdditionalPerObjectScreenSpaceShadow(float4 shadowCoord)
+{
+    shadowCoord.xy /= max(0.00001, shadowCoord.w);
+    shadowCoord.xy = UnityStereoTransformScreenSpaceTex(shadowCoord.xy);
+
+#if defined(UNITY_STEREO_INSTANCING_ENABLED) || defined(UNITY_STEREO_MULTIVIEW_ENABLED)
+    return SAMPLE_TEXTURE2D_ARRAY(_ScreenSpaceShadowmapTexture, sampler_PointClamp, shadowCoord.xy,
+        unity_StereoEyeIndex).y;
+#else
+    return SAMPLE_TEXTURE2D(_ScreenSpaceShadowmapTexture, sampler_PointClamp, shadowCoord.xy).y;
+#endif
+}
+
 // Fragment shader lighting pass
 half IllusionMainLightShadow(float4 shadowCoord, float3 positionWS, float3 normalWS, half3 lightDir, half4 shadowMask, half4 occlusionProbeChannels)
 {

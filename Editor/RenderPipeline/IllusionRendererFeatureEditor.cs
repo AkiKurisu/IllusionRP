@@ -27,6 +27,7 @@ namespace Illusion.Rendering.Editor
 
         // Shadow Settings
         private SerializedProperty _perObjectShadowRenderingLayer;
+        private SerializedProperty _additionalDirectionalPerObjectShadows;
         private SerializedProperty _transparentReceivePerObjectShadows;
         private SerializedProperty _contactShadows;
         private SerializedProperty _pcssShadows;
@@ -69,6 +70,7 @@ namespace Illusion.Rendering.Editor
 
             // Shadow Settings
             _perObjectShadowRenderingLayer = Properties.Find(feature => feature.perObjectShadowRenderingLayer);
+            _additionalDirectionalPerObjectShadows = Properties.Find(feature => feature.additionalDirectionalPerObjectShadows);
             _transparentReceivePerObjectShadows = Properties.Find(feature => feature.transparentReceivePerObjectShadows);
             _contactShadows = Properties.Find(feature => feature.contactShadows);
             _pcssShadows = Properties.Find(feature => feature.pcssShadows);
@@ -165,6 +167,8 @@ namespace Illusion.Rendering.Editor
             if (Foldout("Shadows", true))
             {
                 EditorGUILayout.PropertyField(_perObjectShadowRenderingLayer, Styles.PerObjectShadowRenderingLayerLabel);
+                EditorGUILayout.PropertyField(_additionalDirectionalPerObjectShadows,
+                    Styles.AdditionalDirectionalPerObjectShadowsLabel);
                 EditorGUILayout.PropertyField(_transparentReceivePerObjectShadows, Styles.TransparentReceivePerObjectShadowsLabel);
                 EditorGUILayout.PropertyField(_pcssShadows, Styles.PcssShadowsLabel);
                 EditorGUILayout.PropertyField(_contactShadows, Styles.ContactShadowsLabel);
@@ -242,6 +246,9 @@ namespace Illusion.Rendering.Editor
             // Shadow Settings
             public static readonly GUIContent PerObjectShadowRenderingLayerLabel = new("Per Object Shadow Rendering Layer",
                 "Rendering layer for per object shadow to prevent shadow overdraw in main light caster.");
+            public static readonly GUIContent AdditionalDirectionalPerObjectShadowsLabel = new(
+                "Additional Directional Per-Object Shadows",
+                "Allow a camera to use an additional directional light for per-object shadows.");
             public static readonly GUIContent TransparentReceivePerObjectShadowsLabel = new("Transparent Receive Per Object Shadows",
                 "When enabled, transparent objects will sample per object shadow.");
             public static readonly GUIContent ContactShadowsLabel = new("Contact Shadows",

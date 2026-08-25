@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add renderer-level World Scale conversion across IllusionRP world-space effects.
+- Add camera-level selection of the directional light used by per-object shadows, including Forward+ additional directional lights.
 
 ## [1.2.5] - 2026-8-10
 

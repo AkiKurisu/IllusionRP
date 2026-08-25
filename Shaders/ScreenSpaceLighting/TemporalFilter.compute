@@ -326,9 +326,13 @@ void CompositeContactShadow(uint3 dispatchThreadId : SV_DispatchThreadID)
     if (any(dispatchThreadId.xy >= (uint2)round((float2)_ScreenSize.xy * _DenoiserResolutionMultiplierVals.xx)))
         return;  // Out of bounds, discard
 
-    float screenSpaceShadow = LOAD_TEXTURE2D_X(_DenoiseInputTexture, dispatchThreadId.xy).x;
+    float2 screenSpaceShadow = LOAD_TEXTURE2D_X(_DenoiseInputTexture, dispatchThreadId.xy).xy;
     float contactShadow = 1.0 - LOAD_TEXTURE2D_X(_ContactShadowMap, dispatchThreadId.xy).r;
-    _DenoiseOutputTextureRW[COORD_TEXTURE2D_X(dispatchThreadId.xy)] = float4(min(screenSpaceShadow, contactShadow), 0.0, 0.0, 1.0);
+    float2 compositedShadow = float2(
+        min(screenSpaceShadow.x, contactShadow),
+        screenSpaceShadow.y);
+    _DenoiseOutputTextureRW[COORD_TEXTURE2D_X(dispatchThreadId.xy)] =
+        float4(compositedShadow, 0.0, 1.0);
 }
 
 // Output is array textures

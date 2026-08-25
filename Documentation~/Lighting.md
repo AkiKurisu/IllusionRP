@@ -49,6 +49,15 @@ You can add the **Illusion/Per Object Shadows** Volume component to configure gl
 
 Per Object Shadows are automatically combined with the main directional light shadow map in the Screen Space Shadows pass. This enables advanced shadow filtering techniques like PCSS to work with per-object shadows.
 
+### Additional Directional Light Source
+
+Enable **Additional Directional Per-Object Shadows** in the **Illusion Graphics** renderer feature to allow a camera to select a Forward+ additional directional light:
+
+1. Add `PerObjectShadowLightSource` to the Camera.
+2. Assign an enabled Directional Light with shadows to **Source**.
+
+A missing, disabled, or unassigned component follows the camera's URP Main Light. An assigned source that is temporarily invalid disables Per Object Shadows for that frame instead of falling back to Main. Disable the renderer feature option to ignore camera overrides and use the lower-cost, Main-only single-channel screen-space shadow path.
+
 > [!TIP]
 > Per Object Shadows work seamlessly with PCSS. When PCSS is enabled, per-object shadows receive the same soft penumbra filtering as the main light shadows.
 

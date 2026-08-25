@@ -493,7 +493,9 @@ half4 HairPBR(InputData inputData, SurfaceData surfaceData, HairData HairData)
     {
         CLUSTER_LIGHT_LOOP_SUBTRACTIVE_LIGHT_CHECK
 
-        Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask);
+        // Alpha-card hair remains a caster, but skips the selected additional
+        // directional per-object receiver overlay to avoid self-shadow banding.
+        Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask, false);
 
     #ifdef _LIGHT_LAYERS
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
@@ -506,7 +508,7 @@ half4 HairPBR(InputData inputData, SurfaceData surfaceData, HairData HairData)
     #endif
 
     LIGHT_LOOP_BEGIN(pixelLightCount)
-        Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask);
+        Light light = IllusionGetAdditionalLight(lightIndex, inputData, shadowMask, false);
 
         #ifdef _LIGHT_LAYERS
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))

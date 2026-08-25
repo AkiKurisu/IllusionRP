@@ -163,10 +163,10 @@ float PerObjectShadowHD(
         shadowCoord, shadowSamplingData, shadowParams, isPerspectiveProjection, screenCoord, shadowIndex, shadowMapRects);
 }
 
-float MainLightPerObjectSceneShadow(float3 positionWS, float3 normalWS, half3 lightDir, float2 screenCoord)
+float PerObjectDirectionalShadowHD(float3 positionWS, float3 normalWS, half3 lightDir, float2 screenCoord)
 {
     ShadowSamplingData shadowSamplingData = GetMainLightPerObjectSceneShadowSamplingData();
-    half4 shadowParams = GetMainLightShadowParams();
+    half4 shadowParams = _PerObjSceneShadowParams;
     float shadow = 1;
 
     for (int i = 0; i < _PerObjSceneShadowCount; i++)
@@ -182,5 +182,12 @@ float MainLightPerObjectSceneShadow(float3 positionWS, float3 normalWS, half3 li
     }
 
     return shadow;
+}
+
+float MainLightPerObjectSceneShadow(float3 positionWS, float3 normalWS, half3 lightDir, float2 screenCoord)
+{
+    return _PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_MAIN
+        ? PerObjectDirectionalShadowHD(positionWS, normalWS, lightDir, screenCoord)
+        : 1.0;
 }
 #endif
