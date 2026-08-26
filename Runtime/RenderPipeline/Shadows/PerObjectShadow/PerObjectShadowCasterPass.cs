@@ -20,6 +20,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
@@ -39,10 +40,6 @@ namespace Illusion.Rendering.Shadows
 
         private ShadowCasterManager _casterManager;
 
-        private int _tileResolution;
-
-        private int _shadowMapSizeInTile; // 一行/一列有多少个 tile
-
         private RTHandle _shadowMap;
 
         private PerObjectShadowLightData _lightData;
@@ -54,6 +51,57 @@ namespace Illusion.Rendering.Shadows
         private readonly Vector4[] _perObjShadowBiases;
 
         private readonly IllusionRendererData _rendererData;
+
+        private readonly ShadowAllocation[] _allocations = new ShadowAllocation[MaxShadowCount];
+
+        private readonly ShadowAllocation[] _idealAllocations = new ShadowAllocation[MaxShadowCount];
+
+        private readonly ShadowAllocation[] _packingScratch = new ShadowAllocation[MaxShadowCount];
+
+        private readonly bool[] _rejectedUpgrades = new bool[MaxShadowCount];
+
+        private List<RectInt> _freeRects = new(64);
+
+        private List<RectInt> _splitFreeRects = new(64);
+
+        private int _allocationCount;
+
+        private int _atlasWidth;
+
+        private int _atlasHeight;
+
+        private struct ShadowAllocation
+        {
+            public int CasterIndex;
+            public int CasterId;
+            public float Priority;
+            public float ProjectedCoveragePixels;
+            public int Resolution;
+            public RectInt Viewport;
+        }
+
+        private sealed class ShadowAllocationIdComparer : IComparer<ShadowAllocation>
+        {
+            public static readonly ShadowAllocationIdComparer Instance = new();
+
+            public int Compare(ShadowAllocation x, ShadowAllocation y)
+            {
+                return x.CasterId.CompareTo(y.CasterId);
+            }
+        }
+
+        private sealed class ShadowAllocationComparer : IComparer<ShadowAllocation>
+        {
+            public static readonly ShadowAllocationComparer Instance = new();
+
+            public int Compare(ShadowAllocation x, ShadowAllocation y)
+            {
+                int result = y.Resolution.CompareTo(x.Resolution);
+                if (result != 0) return result;
+                result = x.Priority.CompareTo(y.Priority);
+                return result != 0 ? result : x.CasterId.CompareTo(y.CasterId);
+            }
+        }
 
         public PerObjectShadowCasterPass(IllusionRendererData rendererData)
         {
@@ -77,24 +125,370 @@ namespace Illusion.Rendering.Shadows
             _shadowMap?.Release();
         }
 
-        public void Setup(ShadowCasterManager casterManager, ShadowTileResolution tileResolution, DepthBits depthBits,
+        public void Setup(ShadowCasterManager casterManager, PerObjectShadows settings, DepthBits depthBits,
             in PerObjectShadowLightData lightData)
         {
             _casterManager = casterManager;
-            _tileResolution = (int)tileResolution;
             _lightData = lightData;
+            _allocationCount = casterManager.VisibleCount;
 
-            if (casterManager.VisibleCount <= 0)
+            if (_allocationCount <= 0)
             {
+                UpdateAllocationSignature(settings.adaptiveTileResolution.value);
                 return;
             }
 
-            // 保证 shadow map 是正方形
-            _shadowMapSizeInTile = Mathf.CeilToInt(Mathf.Sqrt(casterManager.VisibleCount));
-            int shadowRTSize = _shadowMapSizeInTile * _tileResolution;
+            if (settings.adaptiveTileResolution.value)
+            {
+                SetupAdaptiveAllocations(settings);
+            }
+            else
+            {
+                SetupFixedAllocations((int)settings.perObjectShadowTileResolution.value);
+            }
+
             int shadowRTDepthBits = Mathf.Max((int)depthBits, (int)DepthBits.Depth8);
-            ShadowUtils.ShadowRTReAllocateIfNeeded(ref _shadowMap, shadowRTSize, shadowRTSize,
+            ShadowUtils.ShadowRTReAllocateIfNeeded(ref _shadowMap, _atlasWidth, _atlasHeight,
                 shadowRTDepthBits, name: "_MainLightPerObjectShadow");
+            UpdateAllocationSignature(settings.adaptiveTileResolution.value);
+        }
+
+        private void SetupFixedAllocations(int tileResolution)
+        {
+            int tileCount = Mathf.CeilToInt(Mathf.Sqrt(_allocationCount));
+            _atlasWidth = tileCount * tileResolution;
+            _atlasHeight = _atlasWidth;
+
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                _allocations[i] = new ShadowAllocation
+                {
+                    CasterIndex = i,
+                    CasterId = _casterManager.GetId(i),
+                    Priority = _casterManager.GetPriority(i),
+                    Resolution = tileResolution,
+                    Viewport = new RectInt(i % tileCount * tileResolution, i / tileCount * tileResolution,
+                        tileResolution, tileResolution)
+                };
+            }
+        }
+
+        private void SetupAdaptiveAllocations(PerObjectShadows settings)
+        {
+            _atlasWidth = Mathf.Max(256, (int)settings.adaptiveAtlasResolution.value);
+            _atlasHeight = _atlasWidth;
+            int maximumResolution = Mathf.Clamp((int)settings.maximumAdaptiveTileResolution.value, 256, _atlasWidth);
+            IllusionRendererData.PerObjectShadowAtlasState cameraState =
+                _rendererData.CurrentPerObjectShadowAtlasState;
+
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                int casterId = _casterManager.GetId(i);
+                _idealAllocations[i] = new ShadowAllocation
+                {
+                    CasterIndex = i,
+                    CasterId = casterId,
+                    Priority = _casterManager.GetPriority(i),
+                    ProjectedCoveragePixels = _casterManager.GetScreenCoveragePixels(i),
+                    Resolution = 256
+                };
+            }
+
+            BuildIdealAdaptiveAllocations(maximumResolution);
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                ShadowAllocation ideal = _idealAllocations[i];
+                ideal.Resolution = cameraState.ResolveTileResolution(ideal.CasterId, ideal.Resolution,
+                    maximumResolution, _rendererData.FrameCount);
+                _allocations[i] = ideal;
+            }
+
+            cameraState.Prune(_rendererData.FrameCount);
+            while (!TryPackAdaptiveAllocations(_allocations))
+            {
+                int downgradeIndex = FindLowestPriorityDowngradeCandidate();
+                if (downgradeIndex < 0)
+                {
+                    throw new InvalidOperationException("Per-object shadow atlas cannot fit minimum tile allocations.");
+                }
+
+                ShadowAllocation allocation = _allocations[downgradeIndex];
+                allocation.Resolution = GetLowerResolution(allocation.Resolution);
+                _allocations[downgradeIndex] = allocation;
+                cameraState.ForceTileResolution(allocation.CasterId, allocation.Resolution,
+                    _rendererData.FrameCount);
+            }
+
+            Array.Sort(_allocations, 0, _allocationCount, ShadowAllocationIdComparer.Instance);
+        }
+
+        private void BuildIdealAdaptiveAllocations(int maximumResolution)
+        {
+            if (!TryPackAdaptiveAllocations(_idealAllocations))
+            {
+                throw new InvalidOperationException("Per-object shadow atlas cannot fit minimum tile allocations.");
+            }
+
+            while (true)
+            {
+                Array.Clear(_rejectedUpgrades, 0, _allocationCount);
+                bool acceptedUpgrade = false;
+                while (true)
+                {
+                    int candidateIndex = FindBestUpgradeCandidate(maximumResolution);
+                    if (candidateIndex < 0)
+                        break;
+
+                    ShadowAllocation candidate = _idealAllocations[candidateIndex];
+                    int previousResolution = candidate.Resolution;
+                    candidate.Resolution = GetHigherResolution(previousResolution, maximumResolution);
+                    _idealAllocations[candidateIndex] = candidate;
+
+                    if (TryPackAdaptiveAllocations(_idealAllocations))
+                    {
+                        acceptedUpgrade = true;
+                        break;
+                    }
+
+                    candidate.Resolution = previousResolution;
+                    _idealAllocations[candidateIndex] = candidate;
+                    _rejectedUpgrades[candidateIndex] = true;
+                }
+
+                if (!acceptedUpgrade)
+                    break;
+            }
+        }
+
+        private int FindBestUpgradeCandidate(int maximumResolution)
+        {
+            int candidate = -1;
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                ShadowAllocation allocation = _idealAllocations[i];
+                if (_rejectedUpgrades[i] || allocation.Resolution >= maximumResolution)
+                    continue;
+
+                if (candidate < 0 || IsBetterUpgradeCandidate(allocation, _idealAllocations[candidate]))
+                    candidate = i;
+            }
+
+            return candidate;
+        }
+
+        private static bool IsBetterUpgradeCandidate(ShadowAllocation candidate, ShadowAllocation current)
+        {
+            float candidateDensity = candidate.ProjectedCoveragePixels / candidate.Resolution;
+            float currentDensity = current.ProjectedCoveragePixels / current.Resolution;
+            if (!Mathf.Approximately(candidateDensity, currentDensity))
+                return candidateDensity > currentDensity;
+            if (!Mathf.Approximately(candidate.Priority, current.Priority))
+                return candidate.Priority < current.Priority;
+            if (!Mathf.Approximately(candidate.ProjectedCoveragePixels, current.ProjectedCoveragePixels))
+                return candidate.ProjectedCoveragePixels > current.ProjectedCoveragePixels;
+            return candidate.CasterId < current.CasterId;
+        }
+
+        private bool TryPackAdaptiveAllocations(ShadowAllocation[] allocations)
+        {
+            Array.Copy(allocations, _packingScratch, _allocationCount);
+            Array.Sort(_packingScratch, 0, _allocationCount, ShadowAllocationComparer.Instance);
+
+            _freeRects.Clear();
+            _freeRects.Add(new RectInt(0, 0, _atlasWidth, _atlasHeight));
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                ShadowAllocation allocation = _packingScratch[i];
+                if (!TryFindBestShortSideFit(allocation.Resolution, out RectInt viewport))
+                    return false;
+
+                allocation.Viewport = viewport;
+                _packingScratch[i] = allocation;
+                SplitFreeRects(viewport);
+            }
+
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                int casterId = _packingScratch[i].CasterId;
+                for (int j = 0; j < _allocationCount; j++)
+                {
+                    if (allocations[j].CasterId != casterId)
+                        continue;
+
+                    ShadowAllocation allocation = allocations[j];
+                    allocation.Viewport = _packingScratch[i].Viewport;
+                    allocations[j] = allocation;
+                    break;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryFindBestShortSideFit(int resolution, out RectInt result)
+        {
+            int bestShortSide = int.MaxValue;
+            int bestLongSide = int.MaxValue;
+            result = default;
+            bool found = false;
+
+            for (int i = 0; i < _freeRects.Count; i++)
+            {
+                RectInt free = _freeRects[i];
+                if (resolution > free.width || resolution > free.height)
+                    continue;
+
+                int leftoverWidth = free.width - resolution;
+                int leftoverHeight = free.height - resolution;
+                int shortSide = Mathf.Min(leftoverWidth, leftoverHeight);
+                int longSide = Mathf.Max(leftoverWidth, leftoverHeight);
+                if (found && (shortSide > bestShortSide ||
+                              shortSide == bestShortSide && longSide > bestLongSide ||
+                              shortSide == bestShortSide && longSide == bestLongSide && free.y > result.y ||
+                              shortSide == bestShortSide && longSide == bestLongSide && free.y == result.y &&
+                              free.x >= result.x))
+                    continue;
+
+                bestShortSide = shortSide;
+                bestLongSide = longSide;
+                result = new RectInt(free.x, free.y, resolution, resolution);
+                found = true;
+            }
+
+            return found;
+        }
+
+        private void SplitFreeRects(RectInt used)
+        {
+            _splitFreeRects.Clear();
+            for (int i = 0; i < _freeRects.Count; i++)
+            {
+                RectInt free = _freeRects[i];
+                if (!Intersects(free, used))
+                {
+                    _splitFreeRects.Add(free);
+                    continue;
+                }
+
+                if (used.xMin > free.xMin)
+                    _splitFreeRects.Add(new RectInt(free.xMin, free.yMin, used.xMin - free.xMin, free.height));
+                if (used.xMax < free.xMax)
+                    _splitFreeRects.Add(new RectInt(used.xMax, free.yMin, free.xMax - used.xMax, free.height));
+                if (used.yMin > free.yMin)
+                    _splitFreeRects.Add(new RectInt(free.xMin, free.yMin, free.width, used.yMin - free.yMin));
+                if (used.yMax < free.yMax)
+                    _splitFreeRects.Add(new RectInt(free.xMin, used.yMax, free.width, free.yMax - used.yMax));
+            }
+
+            PruneContainedFreeRects(_splitFreeRects);
+            (_freeRects, _splitFreeRects) = (_splitFreeRects, _freeRects);
+        }
+
+        private static bool Intersects(RectInt a, RectInt b)
+        {
+            return a.xMin < b.xMax && a.xMax > b.xMin && a.yMin < b.yMax && a.yMax > b.yMin;
+        }
+
+        private static void PruneContainedFreeRects(List<RectInt> freeRects)
+        {
+            for (int i = freeRects.Count - 1; i >= 0; i--)
+            {
+                RectInt candidate = freeRects[i];
+                if (candidate.width <= 0 || candidate.height <= 0)
+                {
+                    freeRects.RemoveAt(i);
+                    continue;
+                }
+
+                for (int j = 0; j < freeRects.Count; j++)
+                {
+                    if (i == j || !Contains(freeRects[j], candidate))
+                        continue;
+
+                    freeRects.RemoveAt(i);
+                    break;
+                }
+            }
+        }
+
+        private static bool Contains(RectInt container, RectInt candidate)
+        {
+            return candidate.xMin >= container.xMin && candidate.yMin >= container.yMin &&
+                   candidate.xMax <= container.xMax && candidate.yMax <= container.yMax;
+        }
+
+        private int FindLowestPriorityDowngradeCandidate()
+        {
+            int candidate = -1;
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                if (_allocations[i].Resolution <= 256)
+                {
+                    continue;
+                }
+
+                if (candidate < 0 || _allocations[i].Priority > _allocations[candidate].Priority ||
+                    Mathf.Approximately(_allocations[i].Priority, _allocations[candidate].Priority) &&
+                    _allocations[i].CasterId > _allocations[candidate].CasterId)
+                {
+                    candidate = i;
+                }
+            }
+
+            return candidate;
+        }
+
+        private static int GetHigherResolution(int resolution, int maximumResolution)
+        {
+            int next = resolution switch
+            {
+                < 512 => 512,
+                < 1024 => 1024,
+                < 1280 => 1280,
+                < 1536 => 1536,
+                < 2048 => 2048,
+                < 3072 => 3072,
+                _ => 4096
+            };
+            return Mathf.Min(next, maximumResolution);
+        }
+
+        private static int GetLowerResolution(int resolution)
+        {
+            if (resolution > 3072) return 3072;
+            if (resolution > 2048) return 2048;
+            if (resolution > 1536) return 1536;
+            if (resolution > 1280) return 1280;
+            if (resolution > 1024) return 1024;
+            if (resolution > 512) return 512;
+            return 256;
+        }
+
+        private void UpdateAllocationSignature(bool adaptive)
+        {
+            const ulong offsetBasis = 14695981039346656037UL;
+            const ulong prime = 1099511628211UL;
+            ulong signature = offsetBasis;
+            AddSignatureValue(ref signature, adaptive ? 1 : 0, prime);
+            AddSignatureValue(ref signature, _atlasWidth, prime);
+            AddSignatureValue(ref signature, _atlasHeight, prime);
+            AddSignatureValue(ref signature, _allocationCount, prime);
+            for (int i = 0; i < _allocationCount; i++)
+            {
+                ShadowAllocation allocation = _allocations[i];
+                AddSignatureValue(ref signature, allocation.CasterId, prime);
+                AddSignatureValue(ref signature, allocation.Resolution, prime);
+                AddSignatureValue(ref signature, allocation.Viewport.x, prime);
+                AddSignatureValue(ref signature, allocation.Viewport.y, prime);
+            }
+
+            _rendererData.CurrentPerObjectShadowAtlasState.UpdateAllocationSignature(signature);
+        }
+
+        private static void AddSignatureValue(ref ulong signature, int value, ulong prime)
+        {
+            signature ^= unchecked((uint)value);
+            signature *= prime;
         }
 
         private class PassData
@@ -103,10 +497,12 @@ namespace Illusion.Rendering.Shadows
             internal TextureHandle ShadowmapTexture;
             internal PerObjectShadowLightData LightData;
             internal Vector2 ShadowBias;
-            internal bool SupportsSoftShadows;
+            internal float SoftShadowQuality;
             internal ShadowCasterManager CasterManager;
-            internal int ShadowMapSizeInTile;
-            internal int TileResolution;
+            internal ShadowAllocation[] Allocations;
+            internal int AllocationCount;
+            internal int AtlasWidth;
+            internal int AtlasHeight;
             internal Matrix4x4[] ShadowMatrixArray;
             internal Vector4[] ShadowMapRectArray;
             internal float[] ShadowCasterIdArray;
@@ -121,7 +517,7 @@ namespace Illusion.Rendering.Shadows
         {
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
-            if (_casterManager.VisibleCount <= 0)
+            if (_allocationCount <= 0)
             {
                 // No shadows to render, set shadow count to 0
                 using (var builder = renderGraph.AddRasterRenderPass<PassData>("Per-Object Shadow (No Shadows)", out var passData, profilingSampler))
@@ -190,10 +586,12 @@ namespace Illusion.Rendering.Shadows
             passData.Pass = this;
             passData.LightData = _lightData;
             passData.ShadowBias = ResolveShadowBias(_lightData.VisibleLight.light, out bool supportsSoftShadows);
-            passData.SupportsSoftShadows = supportsSoftShadows;
+            passData.SoftShadowQuality = ResolveSoftShadowQuality(_lightData.VisibleLight.light, supportsSoftShadows);
             passData.CasterManager = _casterManager;
-            passData.ShadowMapSizeInTile = _shadowMapSizeInTile;
-            passData.TileResolution = _tileResolution;
+            passData.Allocations = _allocations;
+            passData.AllocationCount = _allocationCount;
+            passData.AtlasWidth = _atlasWidth;
+            passData.AtlasHeight = _atlasHeight;
             passData.ShadowMatrixArray = _shadowMatrixArray;
             passData.ShadowMapRectArray = _shadowMapRectArray;
             passData.ShadowCasterIdArray = _shadowCasterIdArray;
@@ -209,21 +607,25 @@ namespace Illusion.Rendering.Shadows
             cmd.SetGlobalDepthBias(1.0f, 2.5f);
             CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
 
-            for (int i = 0; i < data.CasterManager.VisibleCount; i++)
+            for (int i = 0; i < data.AllocationCount; i++)
             {
-                data.CasterManager.GetMatrices(i, out Matrix4x4 viewMatrix, out Matrix4x4 projectionMatrix);
+                ShadowAllocation allocation = data.Allocations[i];
+                int casterIndex = allocation.CasterIndex;
+                data.CasterManager.GetMatrices(casterIndex, out Matrix4x4 viewMatrix,
+                    out Matrix4x4 projectionMatrix);
 
                 VisibleLight shadowLight = data.LightData.VisibleLight;
                 Vector4 shadowBias = GetDirectionalShadowBias(ref shadowLight, data.ShadowBias,
-                    data.SupportsSoftShadows, projectionMatrix, data.Pass._shadowMap.rt.width);
+                    data.SoftShadowQuality, projectionMatrix, allocation.Resolution);
                 data.ShadowBiases[i] = shadowBias;
                 ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
 
-                Vector2Int tilePos = new(i % data.ShadowMapSizeInTile, i / data.ShadowMapSizeInTile);
-                DrawShadow(cmd, data, i, tilePos, in viewMatrix, in projectionMatrix);
-                data.ShadowMatrixArray[i] = data.Pass.GetShadowMatrix(tilePos, in viewMatrix, projectionMatrix);
-                data.ShadowMapRectArray[i] = data.Pass.GetShadowMapRect(tilePos);
-                data.ShadowCasterIdArray[i] = data.CasterManager.GetId(i);
+                DrawShadow(cmd, data, casterIndex, allocation.Viewport, in viewMatrix, in projectionMatrix);
+                data.ShadowMatrixArray[i] = GetShadowMatrix(allocation.Viewport, data.AtlasWidth,
+                    data.AtlasHeight, in viewMatrix, projectionMatrix);
+                data.ShadowMapRectArray[i] = GetShadowMapRect(allocation.Viewport, data.AtlasWidth,
+                    data.AtlasHeight);
+                data.ShadowCasterIdArray[i] = allocation.CasterId;
             }
 
             cmd.SetGlobalDepthBias(0.0f, 0.0f);
@@ -250,20 +652,16 @@ namespace Illusion.Rendering.Shadows
         }
 
         private static Vector4 GetDirectionalShadowBias(ref VisibleLight shadowLight, Vector2 bias,
-            bool supportsSoftShadows, Matrix4x4 lightProjectionMatrix, float shadowResolution)
+            float softShadowQuality, Matrix4x4 lightProjectionMatrix, float shadowResolution)
         {
             float frustumSize = 2.0f / lightProjectionMatrix.m00;
             float texelSize = frustumSize / shadowResolution;
             float depthBias = -bias.x * texelSize;
             float normalBias = -bias.y * texelSize;
 
-            if (supportsSoftShadows && shadowLight.light.shadows == LightShadows.Soft)
+            if (softShadowQuality > 0.0f)
             {
-                SoftShadowQuality softShadowQuality = SoftShadowQuality.Medium;
-                if (shadowLight.light.TryGetComponent(out UniversalAdditionalLightData additionalLightData))
-                    softShadowQuality = additionalLightData.softShadowQuality;
-
-                float kernelRadius = softShadowQuality switch
+                float kernelRadius = (SoftShadowQuality)softShadowQuality switch
                 {
                     SoftShadowQuality.High => 3.5f,
                     SoftShadowQuality.Low => 1.5f,
@@ -277,11 +675,20 @@ namespace Illusion.Rendering.Shadows
             return new Vector4(depthBias, normalBias, (float)LightType.Directional, 0.0f);
         }
 
-        private static void DrawShadow(RasterCommandBuffer cmd, PassData data, int casterIndex, Vector2Int tilePos, in Matrix4x4 view, in Matrix4x4 proj)
+        private static float ResolveSoftShadowQuality(Light light, bool supportsSoftShadows)
+        {
+            if (!light || !supportsSoftShadows || light.shadows != LightShadows.Soft)
+                return 0.0f;
+
+            return ShadowUtils.SoftShadowQualityToShaderProperty(light, true);
+        }
+
+        private static void DrawShadow(RasterCommandBuffer cmd, PassData data, int casterIndex, RectInt viewportRect,
+            in Matrix4x4 view, in Matrix4x4 proj)
         {
             cmd.SetViewProjectionMatrices(view, proj);
 
-            Rect viewport = new(tilePos * data.TileResolution, new Vector2(data.TileResolution, data.TileResolution));
+            Rect viewport = new(viewportRect.x, viewportRect.y, viewportRect.width, viewportRect.height);
             cmd.SetViewport(viewport);
 
             cmd.EnableScissorRect(new Rect(viewport.x + 4, viewport.y + 4, viewport.width - 8, viewport.height - 8));
@@ -293,14 +700,14 @@ namespace Illusion.Rendering.Shadows
         {
             // Set shadow map texture
             cmd.SetGlobalTexture(PropertyIds.ShadowMap(), data.ShadowmapTexture);
-            cmd.SetGlobalInt(PropertyIds.ShadowCount(), data.CasterManager.VisibleCount);
+            cmd.SetGlobalInt(PropertyIds.ShadowCount(), data.AllocationCount);
             cmd.SetGlobalInt(PropertyIds.SourceMode(), (int)data.LightData.Mode);
             cmd.SetGlobalInt(PropertyIds.AdditionalLightIndex(), data.LightData.AdditionalLightIndex);
             cmd.SetGlobalVector(PropertyIds.LightDirection(), GetLightDirection(data.LightData));
             Light source = data.LightData.VisibleLight.light;
             cmd.SetGlobalVector(PropertyIds.ShadowParams(), new Vector4(
                 source ? source.shadowStrength : 1.0f,
-                source && source.shadows == LightShadows.Soft ? 1.0f : 0.0f, 0.0f, 0.0f));
+                data.SoftShadowQuality, 0.0f, 0.0f));
             cmd.SetGlobalMatrixArray(PropertyIds.ShadowMatrices(), data.ShadowMatrixArray);
             cmd.SetGlobalVectorArray(PropertyIds.ShadowMapRects(), data.ShadowMapRectArray);
             cmd.SetGlobalVectorArray(PropertyIds.ShadowBiases(), data.ShadowBiases);
@@ -335,9 +742,10 @@ namespace Illusion.Rendering.Shadows
                 float halfBlockerSearchAngularDiameterTangent =
                     Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, lightAngularDiameter));
 
-                for (int i = 0; i < data.CasterManager.VisibleCount; i++)
+                for (int i = 0; i < data.AllocationCount; i++)
                 {
-                    data.CasterManager.GetMatrices(i, out _, out Matrix4x4 projectionMatrix);
+                    data.CasterManager.GetMatrices(data.Allocations[i].CasterIndex, out _,
+                        out Matrix4x4 projectionMatrix);
 
                     // Calculate shadowmap depth to radial scale for per-object shadow
                     float shadowmapDepth2RadialScale = Mathf.Abs(projectionMatrix.m00 / projectionMatrix.m22);
@@ -376,7 +784,8 @@ namespace Illusion.Rendering.Shadows
             return new Vector4(direction.x, direction.y, direction.z, 0.0f);
         }
 
-        private Matrix4x4 GetShadowMatrix(Vector2Int tilePos, in Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)
+        private static Matrix4x4 GetShadowMatrix(RectInt viewport, int atlasWidth, int atlasHeight,
+            in Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)
         {
             if (SystemInfo.usesReversedZBuffer)
             {
@@ -386,27 +795,29 @@ namespace Illusion.Rendering.Shadows
                 projectionMatrix.m23 = -projectionMatrix.m23;
             }
 
-            float oneOverTileCount = 1.0f / _shadowMapSizeInTile;
-
             Matrix4x4 textureScaleAndBias = Matrix4x4.identity;
-            textureScaleAndBias.m00 = 0.5f * oneOverTileCount;
-            textureScaleAndBias.m11 = 0.5f * oneOverTileCount;
+            textureScaleAndBias.m00 = 0.5f * viewport.width / atlasWidth;
+            textureScaleAndBias.m11 = 0.5f * viewport.height / atlasHeight;
             textureScaleAndBias.m22 = 0.5f;
-            textureScaleAndBias.m03 = (0.5f + tilePos.x) * oneOverTileCount;
-            textureScaleAndBias.m13 = (0.5f + tilePos.y) * oneOverTileCount;
+            textureScaleAndBias.m03 = (viewport.x + 0.5f * viewport.width) / atlasWidth;
+            textureScaleAndBias.m13 = (viewport.y + 0.5f * viewport.height) / atlasHeight;
             textureScaleAndBias.m23 = 0.5f;
 
             // Apply texture scale and offset to save a MAD in shader.
             return textureScaleAndBias * projectionMatrix * viewMatrix;
         }
 
-        private Vector4 GetShadowMapRect(Vector2Int tilePos)
+        private static Vector4 GetShadowMapRect(RectInt viewport, int atlasWidth, int atlasHeight)
         {
             // x: xMin
             // y: xMax
             // z: yMin
             // w: yMax
-            return new Vector4(tilePos.x, 1 + tilePos.x, tilePos.y, 1 + tilePos.y) / _shadowMapSizeInTile;
+            return new Vector4(
+                (float)viewport.x / atlasWidth,
+                (float)viewport.xMax / atlasWidth,
+                (float)viewport.y / atlasHeight,
+                (float)viewport.yMax / atlasHeight);
         }
 
         private static class KeywordNames

@@ -36,6 +36,10 @@ namespace Illusion.Rendering.Shadows
 
         public float4x4 CameraLocalToWorldMatrix;
 
+        public float4x4 CameraWorldToClipMatrix;
+
+        public float2 CameraTargetSize;
+
         public float4x4 MainLightLocalToWorldMatrix;
 
         public float3 AABBMin;

@@ -61,6 +61,10 @@ namespace Illusion.Rendering.Shadows
 
         public Vector4 GetLightDirection(int index) => m_CullResults[index].LightDirection;
 
+        public float GetPriority(int index) => m_CullResults[index].Priority;
+
+        public float GetScreenCoveragePixels(int index) => m_CullResults[index].ScreenCoveragePixels;
+
         public void GetMatrices(int index, out Matrix4x4 viewMatrix, out Matrix4x4 projectionMatrix)
         {
             ref ShadowCasterCullingResult result = ref m_CullResults[index];
@@ -109,6 +113,10 @@ namespace Illusion.Rendering.Shadows
                 DebugMode = debugMode ? 1 : 0,
                 FrustumEightCorners = frustumCorners,
                 CameraLocalToWorldMatrix = cameraTransform.localToWorldMatrix,
+                CameraWorldToClipMatrix = camera.projectionMatrix * camera.worldToCameraMatrix,
+                CameraTargetSize = new float2(
+                    math.max(1, cameraData.cameraTargetDescriptor.width),
+                    math.max(1, cameraData.cameraTargetDescriptor.height)),
                 MainLightLocalToWorldMatrix = lightData.VisibleLight.localToWorldMatrix,
                 ShadowLengthOffset = shadowLengthOffset
             };
@@ -136,7 +144,8 @@ namespace Illusion.Rendering.Shadows
             baseArgs.AABBMax = bounds.max;
             baseArgs.CasterUpVector = caster.Transform.up;
             bool visible = ShadowCasterUtility.Cull(in baseArgs, out float4x4 viewMatrix,
-                out float4x4 projectionMatrix, out float priority, out float4 lightDirection);
+                out float4x4 projectionMatrix, out float priority, out float4 lightDirection,
+                out float screenCoveragePixels);
 
             caster.Priority = priority + caster.RendererList.Priority;
 
@@ -153,6 +162,8 @@ namespace Illusion.Rendering.Shadows
                 LightDirection = UnsafeUtility.As<float4, Vector4>(ref lightDirection),
                 ViewMatrix = UnsafeUtility.As<float4x4, Matrix4x4>(ref viewMatrix),
                 ProjectionMatrix = UnsafeUtility.As<float4x4, Matrix4x4>(ref projectionMatrix),
+                Priority = priority,
+                ScreenCoveragePixels = screenCoveragePixels,
             });
         }
 

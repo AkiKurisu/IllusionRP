@@ -135,7 +135,14 @@ float PerObjectShadow(
         shadowCoord, shadowSamplingData, shadowParams, isPerspectiveProjection);
 }
 
-ShadowSamplingData GetMainLightPerObjectSceneShadowSamplingData()
+half4 GetPerObjectDirectionalShadowParams()
+{
+    return _PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_MAIN
+        ? GetMainLightShadowParams()
+        : _PerObjSceneShadowParams;
+}
+
+ShadowSamplingData GetMainLightPerObjectSceneShadowSamplingData(half softShadowQuality)
 {
     ShadowSamplingData shadowSamplingData;
 
@@ -145,7 +152,7 @@ ShadowSamplingData GetMainLightPerObjectSceneShadowSamplingData()
 
     // shadowmapSize is used in SampleShadowmapFiltered otherwise
     shadowSamplingData.shadowmapSize = _PerObjSceneShadowMapSize;
-    shadowSamplingData.softShadowQuality = _PerObjSceneShadowParams.y;
+    shadowSamplingData.softShadowQuality = softShadowQuality;
 
     return shadowSamplingData;
 }
@@ -166,8 +173,8 @@ float3 ApplyPerObjectShadowBias(float3 positionWS, float3 normalWS, float3 light
 
 float PerObjectDirectionalShadow(float3 positionWS, float3 normalWS, half3 lightDir)
 {
-    ShadowSamplingData shadowSamplingData = GetMainLightPerObjectSceneShadowSamplingData();
-    half4 shadowParams = _PerObjSceneShadowParams;
+    half4 shadowParams = GetPerObjectDirectionalShadowParams();
+    ShadowSamplingData shadowSamplingData = GetMainLightPerObjectSceneShadowSamplingData(shadowParams.y);
     float shadow = 1;
 
     for (int i = 0; i < _PerObjSceneShadowCount; i++)
