@@ -48,7 +48,7 @@ You can add the **Illusion/Per Object Shadows** Volume component to configure gl
 | **Tile Resolution** | Sets the resolution for every tile when adaptive allocation is disabled. |
 | **Shadow Length Offset** | Controls the offset distance for shadow length calculation (0-1000). Used for culling shadows that are too far from the camera. |
 
-Adaptive allocation starts each visible caster at the minimum tile size, then spends the remaining fixed atlas budget on the caster with the lowest current screen-space texel density. A MaxRects allocator repacks the complete set after each upgrade, which supports mixed square tile sizes without shelf fragmentation. Camera output size affects relative projected coverage, but uniformly increasing capture resolution does not expand the configured atlas budget. Disabling adaptive allocation restores the fixed equal-size grid.
+Adaptive allocation starts each visible caster at the minimum tile size, then spends the remaining fixed atlas budget on the caster with the lowest current screen-space texel density. A MaxRects allocator repacks the complete set after each upgrade, which supports mixed square tile sizes without shelf fragmentation. If the minimum tiles exceed the configured budget, the lowest-priority casters are omitted. Camera output size affects relative projected coverage, but uniformly increasing capture resolution does not expand the configured atlas budget. Disabling adaptive allocation restores the fixed equal-size grid.
 
 ## Integration with Screen Space Shadows
 

@@ -147,7 +147,8 @@ namespace Illusion.Rendering.Shadows
                 out float4x4 projectionMatrix, out float priority, out float4 lightDirection,
                 out float screenCoveragePixels);
 
-            caster.Priority = priority + caster.RendererList.Priority;
+            priority += caster.RendererList.Priority;
+            caster.Priority = priority;
 
             if (!visible)
             {

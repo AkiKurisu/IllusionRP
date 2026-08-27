@@ -103,6 +103,17 @@ namespace Illusion.Rendering.Shadows
             }
         }
 
+        private sealed class ShadowAllocationPriorityComparer : IComparer<ShadowAllocation>
+        {
+            public static readonly ShadowAllocationPriorityComparer Instance = new();
+
+            public int Compare(ShadowAllocation x, ShadowAllocation y)
+            {
+                int result = x.Priority.CompareTo(y.Priority);
+                return result != 0 ? result : x.CasterId.CompareTo(y.CasterId);
+            }
+        }
+
         public PerObjectShadowCasterPass(IllusionRendererData rendererData)
         {
             _rendererData = rendererData;
@@ -181,7 +192,8 @@ namespace Illusion.Rendering.Shadows
             IllusionRendererData.PerObjectShadowAtlasState cameraState =
                 _rendererData.CurrentPerObjectShadowAtlasState;
 
-            for (int i = 0; i < _allocationCount; i++)
+            int visibleCount = _allocationCount;
+            for (int i = 0; i < visibleCount; i++)
             {
                 int casterId = _casterManager.GetId(i);
                 _idealAllocations[i] = new ShadowAllocation
@@ -194,7 +206,18 @@ namespace Illusion.Rendering.Shadows
                 };
             }
 
+            Array.Sort(_idealAllocations, 0, visibleCount, ShadowAllocationPriorityComparer.Instance);
+            int minimumTileCountPerAxis = _atlasWidth / 256;
+            int minimumTileCapacity = minimumTileCountPerAxis * minimumTileCountPerAxis;
+            _allocationCount = Mathf.Min(visibleCount, minimumTileCapacity);
+
             BuildIdealAdaptiveAllocations(maximumResolution);
+            if (_allocationCount <= 0)
+            {
+                cameraState.Prune(_rendererData.FrameCount);
+                return;
+            }
+
             for (int i = 0; i < _allocationCount; i++)
             {
                 ShadowAllocation ideal = _idealAllocations[i];
@@ -209,7 +232,8 @@ namespace Illusion.Rendering.Shadows
                 int downgradeIndex = FindLowestPriorityDowngradeCandidate();
                 if (downgradeIndex < 0)
                 {
-                    throw new InvalidOperationException("Per-object shadow atlas cannot fit minimum tile allocations.");
+                    _allocationCount = 0;
+                    break;
                 }
 
                 ShadowAllocation allocation = _allocations[downgradeIndex];
@@ -226,7 +250,8 @@ namespace Illusion.Rendering.Shadows
         {
             if (!TryPackAdaptiveAllocations(_idealAllocations))
             {
-                throw new InvalidOperationException("Per-object shadow atlas cannot fit minimum tile allocations.");
+                _allocationCount = 0;
+                return;
             }
 
             while (true)
