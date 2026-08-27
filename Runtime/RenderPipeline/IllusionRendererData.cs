@@ -380,6 +380,9 @@ namespace Illusion.Rendering
         internal ref ScreenSpaceShadowTemporalState CurrentScreenSpaceShadowTemporalState =>
             ref _currentCameraState.ScreenSpaceShadowTemporal;
 
+        internal PerObjectShadowAtlasState CurrentPerObjectShadowAtlasState =>
+            _currentCameraState.PerObjectShadowAtlas;
+
         internal ref ScreenSpaceReflectionHistoryState CurrentScreenSpaceReflectionHistoryState =>
             ref _currentCameraState.ScreenSpaceReflection;
 
@@ -426,6 +429,113 @@ namespace Illusion.Rendering
             public bool HistoryReallocatedThisFrame;
         }
 
+        internal sealed class PerObjectShadowAtlasState
+        {
+            private const int ResolutionDownFrameThreshold = 8;
+            private const uint StaleCasterFrameThreshold = 60;
+
+            private struct CasterResolutionState
+            {
+                public int Resolution;
+                public int FramesBelowThreshold;
+                public uint LastSeenFrame;
+            }
+
+            private readonly Dictionary<int, CasterResolutionState> _casterResolutions = new();
+            private readonly List<int> _staleCasterIds = new();
+            private ulong _allocationSignature;
+            private bool _hasAllocationSignature;
+
+            public bool AllocationChangedThisFrame { get; private set; }
+
+            public void BeginFrame()
+            {
+                AllocationChangedThisFrame = false;
+            }
+
+            public int ResolveTileResolution(int casterId, int idealResolution, int maximumResolution,
+                uint frameCount)
+            {
+                idealResolution = Mathf.Min(idealResolution, maximumResolution);
+                if (!_casterResolutions.TryGetValue(casterId, out CasterResolutionState state))
+                {
+                    state.Resolution = idealResolution;
+                }
+                else if (state.Resolution > maximumResolution)
+                {
+                    state.Resolution = maximumResolution;
+                    state.FramesBelowThreshold = 0;
+                }
+                else if (idealResolution > state.Resolution)
+                {
+                    state.Resolution = idealResolution;
+                    state.FramesBelowThreshold = 0;
+                }
+                else if (idealResolution < state.Resolution)
+                {
+                    state.FramesBelowThreshold++;
+                    if (state.FramesBelowThreshold >= ResolutionDownFrameThreshold)
+                    {
+                        state.Resolution = Mathf.Max(idealResolution, GetLowerResolution(state.Resolution));
+                        state.FramesBelowThreshold = 0;
+                    }
+                }
+                else
+                {
+                    state.FramesBelowThreshold = 0;
+                }
+
+                state.LastSeenFrame = frameCount;
+                _casterResolutions[casterId] = state;
+                return state.Resolution;
+            }
+
+            public void ForceTileResolution(int casterId, int resolution, uint frameCount)
+            {
+                _casterResolutions[casterId] = new CasterResolutionState
+                {
+                    Resolution = resolution,
+                    FramesBelowThreshold = 0,
+                    LastSeenFrame = frameCount
+                };
+            }
+
+            public void Prune(uint frameCount)
+            {
+                _staleCasterIds.Clear();
+                foreach (KeyValuePair<int, CasterResolutionState> pair in _casterResolutions)
+                {
+                    if (frameCount - pair.Value.LastSeenFrame > StaleCasterFrameThreshold)
+                    {
+                        _staleCasterIds.Add(pair.Key);
+                    }
+                }
+
+                foreach (int casterId in _staleCasterIds)
+                {
+                    _casterResolutions.Remove(casterId);
+                }
+            }
+
+            public void UpdateAllocationSignature(ulong signature)
+            {
+                AllocationChangedThisFrame = _hasAllocationSignature && _allocationSignature != signature;
+                _allocationSignature = signature;
+                _hasAllocationSignature = true;
+            }
+
+            private static int GetLowerResolution(int resolution)
+            {
+                if (resolution > 3072) return 3072;
+                if (resolution > 2048) return 2048;
+                if (resolution > 1536) return 1536;
+                if (resolution > 1280) return 1280;
+                if (resolution > 1024) return 1024;
+                if (resolution > 512) return 512;
+                return 256;
+            }
+        }
+
         private sealed class CameraRenderState
         {
             public readonly BufferedRTHandleSystem HistoryRTSystem = new();
@@ -440,6 +550,7 @@ namespace Illusion.Rendering
             public int LastUsedFrame;
             public SsgiHistoryState SsgiHistory;
             public ScreenSpaceShadowTemporalState ScreenSpaceShadowTemporal;
+            public readonly PerObjectShadowAtlasState PerObjectShadowAtlas = new();
             public ScreenSpaceReflectionHistoryState ScreenSpaceReflection =
                 new ScreenSpaceReflectionHistoryState { CurrentAlgorithm = ScreenSpaceReflectionAlgorithm.Approximation };
 
@@ -454,6 +565,7 @@ namespace Illusion.Rendering
 
                 ScreenSpaceShadowTemporal.ActiveThisFrame = false;
                 ScreenSpaceShadowTemporal.HistoryValidThisFrame = false;
+                PerObjectShadowAtlas.BeginFrame();
 
                 ScreenSpaceReflection.ActiveThisFrame = false;
                 ScreenSpaceReflection.AccumulationActiveThisFrame = false;

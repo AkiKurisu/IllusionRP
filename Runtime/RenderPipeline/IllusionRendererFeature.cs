@@ -687,9 +687,9 @@ namespace Illusion.Rendering
                     additionalDirectionalPerObjectShadows, supportsAdditionalDirectional);
             _sceneShadowCasterManager.Cull(cameraData, in perObjectShadowLight,
                 PerObjectShadowCasterPass.MaxShadowCount,
-                shadow.perObjectShadowLengthOffset.value,
+                rendererData.ScaleWorldDistance(shadow.perObjectShadowLengthOffset.value),
                 IllusionRuntimeRenderingConfig.Get().EnablePerObjectShadowDebug);
-            _perObjShadowPass.Setup(_sceneShadowCasterManager, shadow.perObjectShadowTileResolution.value,
+            _perObjShadowPass.Setup(_sceneShadowCasterManager, shadow,
                 shadow.perObjectShadowDepthBits.value, in perObjectShadowLight);
             _volumetricFogPass.Setup(_volumetricLightManager);
         }

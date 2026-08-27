@@ -455,8 +455,10 @@ namespace Illusion.Rendering.Shadows
                                        || (shadowState.LastHistoryFrameCount + 1) != _rendererData.FrameCount;
             bool invalidByFrame = _rendererData.IsFirstFrame || _rendererData.ResetPostProcessingHistory || nonConsecutiveFrame;
             bool invalidByHistoryResources = !hasHistoryDepth || !hasHistoryNormal || shadowHistoryReallocated;
+            bool invalidByPerObjectAtlas = _rendererData.CurrentPerObjectShadowAtlasState.AllocationChangedThisFrame;
 
-            if (lightDirectionChanged || perObjectLightChanged || invalidByFrame || invalidByHistoryResources)
+            if (lightDirectionChanged || perObjectLightChanged || invalidByFrame || invalidByHistoryResources ||
+                invalidByPerObjectAtlas)
             {
                 historyValidity = 0.0f;
             }

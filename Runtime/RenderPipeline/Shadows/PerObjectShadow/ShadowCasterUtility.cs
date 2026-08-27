@@ -44,7 +44,8 @@ namespace Illusion.Rendering.Shadows
 
         [BurstCompile(OptimizeFor = OptimizeFor.Performance)]
         public static bool Cull(in ShadowCasterCullingArgs args,
-            out float4x4 viewMatrix, out float4x4 projectionMatrix, out float priority, out float4 lightDirection)
+            out float4x4 viewMatrix, out float4x4 projectionMatrix, out float priority, out float4 lightDirection,
+            out float screenCoveragePixels)
         {
             float3 aabbCenter = (args.AABBMin + args.AABBMax) * 0.5f;
             GetLightRotationAndDirection(in aabbCenter, in args, out quaternion lightRotation, out lightDirection);
@@ -52,7 +53,7 @@ namespace Illusion.Rendering.Shadows
             viewMatrix = inverse(float4x4.TRS(aabbCenter, lightRotation, 1));
             viewMatrix = mul(s_FlipZMatrix, viewMatrix); // 翻转 z 轴
 
-            if (GetProjectionMatrix(in args, in viewMatrix, out projectionMatrix))
+            if (GetProjectionMatrix(in args, in viewMatrix, out projectionMatrix, out screenCoveragePixels))
             {
                 float3 cameraForward = args.CameraLocalToWorldMatrix.c2.xyz;
                 float3 cameraPosition = args.CameraLocalToWorldMatrix.c3.xyz;
@@ -64,6 +65,7 @@ namespace Illusion.Rendering.Shadows
             }
 
             priority = default;
+            screenCoveragePixels = default;
             return false;
         }
 
@@ -77,11 +79,12 @@ namespace Illusion.Rendering.Shadows
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool GetProjectionMatrix(in ShadowCasterCullingArgs args,
-            in float4x4 viewMatrix, out float4x4 projectionMatrix)
+            in float4x4 viewMatrix, out float4x4 projectionMatrix, out float screenCoveragePixels)
         {
             GetViewSpaceShadowAABB(in args, in viewMatrix, out float3 shadowMin, out float3 shadowMax);
 
-            if (AdjustViewSpaceShadowAABB(in args, in viewMatrix, ref shadowMin, ref shadowMax))
+            if (AdjustViewSpaceShadowAABB(in args, in viewMatrix, ref shadowMin, ref shadowMax,
+                    out screenCoveragePixels))
             {
                 DebugDrawViewSpaceAABB(in args, in shadowMin, in shadowMax, in viewMatrix, Color.blue);
 
@@ -94,6 +97,7 @@ namespace Illusion.Rendering.Shadows
             }
 
             projectionMatrix = default;
+            screenCoveragePixels = default;
             return false;
         }
 
@@ -150,7 +154,8 @@ namespace Illusion.Rendering.Shadows
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe bool AdjustViewSpaceShadowAABB(in ShadowCasterCullingArgs args,
-            in float4x4 viewMatrix, ref float3 shadowMin, ref float3 shadowMax)
+            in float4x4 viewMatrix, ref float3 shadowMin, ref float3 shadowMax,
+            out float screenCoveragePixels)
         {
             float3* frustumCorners = stackalloc float3[ShadowCasterCullingArgs.FrustumCornerCount];
 
@@ -173,6 +178,9 @@ namespace Illusion.Rendering.Shadows
             bool isVisibleXY = false;
             float minZ = float.PositiveInfinity;
             float maxZ = float.NegativeInfinity;
+            float2 screenMin = float2(float.PositiveInfinity);
+            float2 screenMax = float2(float.NegativeInfinity);
+            float4x4 lightViewToWorld = inverse(viewMatrix);
 
             for (int i = 0; i < ShadowCasterCullingArgs.FrustumTriangleCount; i++)
             {
@@ -204,6 +212,9 @@ namespace Illusion.Rendering.Shadows
                     isVisibleXY = true;
                     minZ = min(minZ, min(tri.P0.z, min(tri.P1.z, tri.P2.z)));
                     maxZ = max(maxZ, max(tri.P0.z, max(tri.P1.z, tri.P2.z)));
+                    AccumulateScreenBounds(in args, in lightViewToWorld, in tri.P0, ref screenMin, ref screenMax);
+                    AccumulateScreenBounds(in args, in lightViewToWorld, in tri.P1, ref screenMin, ref screenMax);
+                    AccumulateScreenBounds(in args, in lightViewToWorld, in tri.P2, ref screenMin, ref screenMax);
                 }
             }
 
@@ -211,10 +222,37 @@ namespace Illusion.Rendering.Shadows
             {
                 // 为了阴影的完整性，不应该修改 shadowMax.z
                 shadowMin.z = max(shadowMin.z, minZ);
+                if (all(isfinite(screenMin)) && all(isfinite(screenMax)))
+                {
+                    float2 coverage = max(0.0f, screenMax - screenMin) * 0.5f * args.CameraTargetSize;
+                    screenCoveragePixels = cmax(coverage);
+                }
+                else
+                {
+                    screenCoveragePixels = cmax(args.CameraTargetSize);
+                }
                 return true;
             }
 
+            screenCoveragePixels = default;
             return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void AccumulateScreenBounds(in ShadowCasterCullingArgs args,
+            in float4x4 lightViewToWorld, in float3 lightViewPosition,
+            ref float2 screenMin, ref float2 screenMax)
+        {
+            float4 worldPosition = mul(lightViewToWorld, float4(lightViewPosition, 1.0f));
+            float4 clipPosition = mul(args.CameraWorldToClipMatrix, worldPosition);
+            if (abs(clipPosition.w) <= 1e-5f)
+            {
+                return;
+            }
+
+            float2 ndc = clamp(clipPosition.xy / clipPosition.w, -1.0f, 1.0f);
+            screenMin = min(screenMin, ndc);
+            screenMax = max(screenMax, ndc);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

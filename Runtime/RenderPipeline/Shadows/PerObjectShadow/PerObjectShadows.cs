@@ -51,12 +51,30 @@ namespace Illusion.Rendering.Shadows
         public ShadowTileResolutionParameter perObjectShadowTileResolution = new(ShadowTileResolution._1024);
 
         /// <summary>
+        /// Distributes a fixed atlas budget from each caster's projected screen coverage and priority.
+        /// </summary>
+        [Tooltip("Distributes a fixed atlas budget from each caster's projected screen coverage and priority.")]
+        public BoolParameter adaptiveTileResolution = new(true);
+
+        /// <summary>
+        /// Sets the fixed atlas budget used by adaptive tile allocation.
+        /// </summary>
+        [Tooltip("Sets the fixed atlas budget used by adaptive tile allocation.")]
+        public ShadowTileResolutionParameter adaptiveAtlasResolution = new(ShadowTileResolution._4096);
+
+        /// <summary>
+        /// Limits the resolution requested by a single adaptive tile.
+        /// </summary>
+        [Tooltip("Limits the resolution requested by a single adaptive tile.")]
+        public ShadowTileResolutionParameter maximumAdaptiveTileResolution = new(ShadowTileResolution._3072);
+
+        /// <summary>
         /// Controls the offset distance for per-object shadow length calculation.
         /// </summary>
         [Header("Culling")]
         [AdditionalProperty]
         [Tooltip("Controls the offset distance for shadow length calculation.")]
-        public ClampedFloatParameter perObjectShadowLengthOffset = new(500.0f, 0.0f, 1000.0f);
+        public ClampedFloatParameter perObjectShadowLengthOffset = new(50.0f, 0.0f, 1000.0f);
     }
 }
 

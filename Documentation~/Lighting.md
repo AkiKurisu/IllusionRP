@@ -42,8 +42,13 @@ You can add the **Illusion/Per Object Shadows** Volume component to configure gl
 | Property | Description |
 |----------|-------------|
 | **Depth Bits** | Sets the depth buffer precision for the per-object shadow map. Options: **Depth16** or **Depth24**. Higher precision improves shadow quality but uses more memory. |
-| **Tile Resolution** | Sets the resolution for each tile in the per-object shadow atlas. Options range from **256** to **2048**. Higher resolutions provide sharper shadows but increase memory usage. |
+| **Adaptive Tile Resolution** | Distributes a fixed atlas budget among visible casters according to their projected coverage and priority. Enabled by default. |
+| **Adaptive Atlas Resolution** | Sets the fixed atlas memory budget used by adaptive allocation. |
+| **Maximum Adaptive Tile Resolution** | Limits the resolution assigned to a single caster. |
+| **Tile Resolution** | Sets the resolution for every tile when adaptive allocation is disabled. |
 | **Shadow Length Offset** | Controls the offset distance for shadow length calculation (0-1000). Used for culling shadows that are too far from the camera. |
+
+Adaptive allocation starts each visible caster at the minimum tile size, then spends the remaining fixed atlas budget on the caster with the lowest current screen-space texel density. A MaxRects allocator repacks the complete set after each upgrade, which supports mixed square tile sizes without shelf fragmentation. If the minimum tiles exceed the configured budget, the lowest-priority casters are omitted. Camera output size affects relative projected coverage, but uniformly increasing capture resolution does not expand the configured atlas budget. Disabling adaptive allocation restores the fixed equal-size grid.
 
 ## Integration with Screen Space Shadows
 

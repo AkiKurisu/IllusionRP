@@ -36,5 +36,9 @@ namespace Illusion.Rendering.Shadows
         public Matrix4x4 ViewMatrix;
 
         public Matrix4x4 ProjectionMatrix;
+
+        public float Priority;
+
+        public float ScreenCoveragePixels;
     }
 }

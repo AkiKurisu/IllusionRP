@@ -165,8 +165,8 @@ float PerObjectShadowHD(
 
 float PerObjectDirectionalShadowHD(float3 positionWS, float3 normalWS, half3 lightDir, float2 screenCoord)
 {
-    ShadowSamplingData shadowSamplingData = GetMainLightPerObjectSceneShadowSamplingData();
-    half4 shadowParams = _PerObjSceneShadowParams;
+    half4 shadowParams = GetPerObjectDirectionalShadowParams();
+    ShadowSamplingData shadowSamplingData = GetMainLightPerObjectSceneShadowSamplingData(shadowParams.y);
     float shadow = 1;
 
     for (int i = 0; i < _PerObjSceneShadowCount; i++)
