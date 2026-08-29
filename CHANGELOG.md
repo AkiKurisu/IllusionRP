@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix GTAO half-resolution denoising, upsampling, and render resource handling.
 - Fix contact-shadow depth binding and HD Skin lighting and shader generation.
 - Fix per-object PCF quality when URP main-light shadows are disabled.
+- Fix transparent receivers missing additional-directional per-object shadows.
 
 ## [1.2.6] - 2026-8-22
 

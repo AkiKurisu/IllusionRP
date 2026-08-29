@@ -41,7 +41,14 @@ Light IllusionGetAdditionalLight(uint i, InputData inputData, half4 shadowMask, 
         _PerObjSceneShadowSourceMode == PER_OBJECT_SHADOW_SOURCE_ADDITIONAL_DIRECTIONAL &&
         (int)i == _PerObjSceneShadowAdditionalLightIndex)
     {
-#if defined(_MAIN_LIGHT_SHADOWS_SCREEN) && (SURFACE_TYPE_RECEIVE_SCREEN_SPACE_SHADOWS)
+#if defined(_SURFACE_TYPE_TRANSPARENT)
+    #if defined(_TRANSPARENT_PER_OBJECT_SHADOWS)
+        float perObjectVisibility = PerObjectDirectionalShadow(
+            inputData.positionWS, inputData.normalWS, light.direction);
+    #else
+        float perObjectVisibility = 1.0;
+    #endif
+#elif defined(_MAIN_LIGHT_SHADOWS_SCREEN) && (SURFACE_TYPE_RECEIVE_SCREEN_SPACE_SHADOWS)
         float perObjectVisibility = IllusionAdditionalPerObjectScreenSpaceShadow(inputData.shadowCoord);
 #else
         float perObjectVisibility = PerObjectDirectionalShadow(
