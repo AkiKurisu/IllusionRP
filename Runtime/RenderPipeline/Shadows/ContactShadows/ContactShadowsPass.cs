@@ -32,9 +32,9 @@ namespace Illusion.Rendering.Shadows
             desc.enableRandomWrite = true;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
-            desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
+            desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.LoadStore)
                 ? GraphicsFormat.R8_UNorm
-                : GraphicsFormat.B8G8R8A8_UNorm;
+                : GraphicsFormat.R32_SFloat;
 
             RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ContactShadowsRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
                 name: "_ContactShadowMap");
@@ -66,6 +66,7 @@ namespace Illusion.Rendering.Shadows
         
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             var camera = cameraData.camera;
 
@@ -76,6 +77,7 @@ namespace Illusion.Rendering.Shadows
 
             // Import contact shadow RT
             TextureHandle contactShadowHandle = renderGraph.ImportTexture(_rendererData.ContactShadowsRT);
+            TextureHandle depthHandle = resource.cameraDepthTexture;
 
             using (var builder = renderGraph.AddComputePass<ContactShadowPassData>("Contact Shadow", out var passData, _contactShadowMapProfile))
             {
@@ -84,6 +86,8 @@ namespace Illusion.Rendering.Shadows
                 passData.Params1 = params1;
                 passData.Params2 = params2;
                 passData.Params3 = params3;
+                builder.UseTexture(depthHandle);
+                passData.DepthTexture = depthHandle;
                 builder.UseTexture(contactShadowHandle, AccessFlags.Write);
                 passData.ContactShadowRT = contactShadowHandle;
                 passData.DispatchX = Mathf.CeilToInt(camera.pixelWidth / 8.0f);
@@ -96,6 +100,7 @@ namespace Illusion.Rendering.Shadows
                     context.cmd.SetComputeVectorParam(data.ComputeShader, ShaderIDs._ContactShadowParamsParameters, data.Params1);
                     context.cmd.SetComputeVectorParam(data.ComputeShader, ShaderIDs._ContactShadowParamsParameters2, data.Params2);
                     context.cmd.SetComputeVectorParam(data.ComputeShader, ShaderIDs._ContactShadowParamsParameters3, data.Params3);
+                    context.cmd.SetComputeTextureParam(data.ComputeShader, data.Kernel, ShaderIDs._CameraDepthTexture, data.DepthTexture);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.Kernel, ShaderIDs._ContactShadowTextureUAV, data.ContactShadowRT);
                     context.cmd.DispatchCompute(data.ComputeShader, data.Kernel, data.DispatchX, data.DispatchY, 1);
                 });
@@ -109,6 +114,7 @@ namespace Illusion.Rendering.Shadows
             public Vector4 Params1;
             public Vector4 Params2;
             public Vector4 Params3;
+            public TextureHandle DepthTexture;
             public TextureHandle ContactShadowRT;
             public int DispatchX;
             public int DispatchY;
@@ -126,6 +132,8 @@ namespace Illusion.Rendering.Shadows
             public static readonly int _ContactShadowParamsParameters2 = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _ContactShadowParamsParameters3 = MemberNameHelpers.ShaderPropertyID();
+
+            public static readonly int _CameraDepthTexture = MemberNameHelpers.ShaderPropertyID();
 
             public static readonly int _ContactShadowTextureUAV = MemberNameHelpers.ShaderPropertyID();
         }

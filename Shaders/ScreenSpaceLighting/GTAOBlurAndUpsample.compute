@@ -45,7 +45,7 @@ float SmartBlur(float a, float b, float c, float d, float e, bool Left, bool Mid
 
 bool CompareDeltas(float d1, float d2, float l1, float l2)
 {
-    float temp = d1 * d2 + _AOStepCount;
+    float temp = d1 * d2 + _StepSize;
     return temp * temp > l1 * l2 * _BlurTolerance;
 }
 
@@ -91,12 +91,12 @@ void BlurHorizontally(uint leftMostIndex)
     float d45 = d5 - d4;
     float d56 = d6 - d5;
 
-    float l01 = d01 * d01 + _AOStepCount;
-    float l12 = d12 * d12 + _AOStepCount;
-    float l23 = d23 * d23 + _AOStepCount;
-    float l34 = d34 * d34 + _AOStepCount;
-    float l45 = d45 * d45 + _AOStepCount;
-    float l56 = d56 * d56 + _AOStepCount;
+    float l01 = d01 * d01 + _StepSize;
+    float l12 = d12 * d12 + _StepSize;
+    float l23 = d23 * d23 + _StepSize;
+    float l34 = d34 * d34 + _StepSize;
+    float l45 = d45 * d45 + _StepSize;
+    float l56 = d56 * d56 + _StepSize;
 
     bool c02 = CompareDeltas(d01, d12, l01, l12);
     bool c13 = CompareDeltas(d12, d23, l12, l23);
@@ -131,11 +131,11 @@ void BlurVertically(uint topMostIndex)
     float d34 = d4 - d3;
     float d45 = d5 - d4;
 
-    float l01 = d01 * d01 + _AOStepCount;
-    float l12 = d12 * d12 + _AOStepCount;
-    float l23 = d23 * d23 + _AOStepCount;
-    float l34 = d34 * d34 + _AOStepCount;
-    float l45 = d45 * d45 + _AOStepCount;
+    float l01 = d01 * d01 + _StepSize;
+    float l12 = d12 * d12 + _StepSize;
+    float l23 = d23 * d23 + _StepSize;
+    float l34 = d34 * d34 + _StepSize;
+    float l45 = d45 * d45 + _StepSize;
 
     bool c02 = CompareDeltas(d01, d12, l01, l12);
     bool c13 = CompareDeltas(d12, d23, l12, l23);

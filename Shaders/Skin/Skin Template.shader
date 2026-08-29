@@ -1069,7 +1069,6 @@
 			#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 			
 			// @IllusionRP Start
-			#pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
 			// #pragma multi_compile_fragment _ _PRT_GLOBAL_ILLUMINATION
 			#pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
 			// #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION

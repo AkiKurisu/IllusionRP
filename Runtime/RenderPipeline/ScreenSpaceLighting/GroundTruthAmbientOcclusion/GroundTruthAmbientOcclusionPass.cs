@@ -33,7 +33,11 @@ namespace Illusion.Rendering
         private const string PackAODepthKeyword = "PACK_AO_DEPTH";
 
         // Private Variables
-        private readonly bool _supportsR8RenderTextureFormat = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.R8);
+        private readonly bool _supportsR8RenderTarget =
+            SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Render);
+
+        private readonly bool _supportsR8LoadStore =
+            SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.LoadStore);
 
         private readonly LazyMaterial _material = new(IllusionShaders.GroundTruthAmbientOcclusion);
 
@@ -60,6 +64,10 @@ namespace Illusion.Rendering
         private int _rtWidth;
 
         private int _rtHeight;
+
+        private int _outputWidth;
+
+        private int _outputHeight;
 
         private readonly int _tracingKernel;
 
@@ -144,9 +152,12 @@ namespace Illusion.Rendering
             _aoPassDescriptor.msaaSamples = 1;
             _aoPassDescriptor.depthBufferBits = 0;
 
+            _outputWidth = _aoPassDescriptor.width;
+            _outputHeight = _aoPassDescriptor.height;
+
             // AO Pass
-            _aoPassDescriptor.width /= downsampleDivider;
-            _aoPassDescriptor.height /= downsampleDivider;
+            _aoPassDescriptor.width = Mathf.CeilToInt(_outputWidth / (float)downsampleDivider);
+            _aoPassDescriptor.height = Mathf.CeilToInt(_outputHeight / (float)downsampleDivider);
             _rtWidth = _aoPassDescriptor.width;
             _rtHeight = _aoPassDescriptor.height;
             
@@ -392,8 +403,10 @@ namespace Illusion.Rendering
             bool useAsyncCompute = _tracingInCS && _blurInCS 
                                    && IllusionRuntimeRenderingConfig.Get().EnableAsyncCompute;
             
-            bool useRedComponentOnly = _supportsR8RenderTextureFormat && actualBlurQuality == AmbientOcclusionBlurQuality.Spatial;
             bool packAODepth = _tracingInCS && _blurInCS;
+            bool useRedComponentOnly = !packAODepth && !_tracingInCS
+                && _supportsR8RenderTarget
+                && actualBlurQuality == AmbientOcclusionBlurQuality.Spatial;
             
             // Create AO packed data texture (intermediate result from tracing)
             var aoPackedDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
@@ -426,9 +439,12 @@ namespace Illusion.Rendering
             }
             
             // Create final output texture (full resolution)
-            var outputDesc = new TextureDesc(_rtWidth * downsampleDivider, _rtHeight * downsampleDivider, false, false)
+            GraphicsFormat outputFormat = _blurInCS
+                ? (_supportsR8LoadStore ? GraphicsFormat.R8_UNorm : GraphicsFormat.R32_SFloat)
+                : (_supportsR8RenderTarget ? GraphicsFormat.R8_UNorm : GraphicsFormat.B8G8R8A8_UNorm);
+            var outputDesc = new TextureDesc(_outputWidth, _outputHeight, false, false)
             {
-                colorFormat = _supportsR8RenderTextureFormat ? GraphicsFormat.R8_UNorm : GraphicsFormat.B8G8R8A8_UNorm,
+                colorFormat = outputFormat,
                 enableRandomWrite = _blurInCS,
                 name = SSAOTextureName
             };
@@ -453,20 +469,10 @@ namespace Illusion.Rendering
             TextureHandle denoisedAO;
             if (_blurInCS)
             {
-                // Spatial denoise with compute shader
                 if (_downSample)
                 {
-                    // Half-res: spatial denoise then upsample
-                    // Create temporary texture for spatial denoised result
-                    var spatialDenoisedDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
-                    {
-                        colorFormat = GraphicsFormat.R32_SFloat,
-                        enableRandomWrite = true,
-                        name = "AO Spatial Denoised"
-                    };
-                    TextureHandle spatialDenoisedTexture = renderGraph.CreateTexture(spatialDenoisedDesc);
-                    TextureHandle spatialDenoised = SpatialDenoiseAOPass(renderGraph, tracedAO, spatialDenoisedTexture, useAsyncCompute);
-                    denoisedAO = UpsampleAOPass(renderGraph, spatialDenoised, depthPyramid, finalAOTexture, useAsyncCompute);
+                    // BlurUpsample consumes the packed AO + depth trace result directly.
+                    denoisedAO = UpsampleAOPass(renderGraph, tracedAO, depthPyramid, finalAOTexture, useAsyncCompute);
                 }
                 else
                 {
@@ -532,7 +538,7 @@ namespace Illusion.Rendering
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, ShaderConstants._AOPackedData, data.AOPackedData);
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._StencilTexture, 
                         data.StencilTexture, 0, RenderTextureSubElement.Stencil);
-                    context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._CameraDepthTexture, data.DepthTexture);
+                    context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._DepthPyramid, data.DepthTexture);
                     context.cmd.SetComputeTextureParam(data.TracingCS, data.TracingKernel, IllusionShaderProperties._CameraNormalsTexture, data.NormalBuffer);
                     
                     int groupsX = IllusionRenderingUtils.DivRoundUp(data.RTWidth, 8);
@@ -568,6 +574,7 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc(static (RenderAOPassData data, RasterGraphContext context) =>
                 {
                     data.Material.SetTexture(IllusionShaderProperties._StencilTexture, data.StencilTexture, RenderTextureSubElement.Stencil);
+                    data.Material.SetTexture(IllusionShaderProperties._DepthPyramid, data.DepthTexture);
                     // Material properties already set in PrepareAOParameters
                     Blitter.BlitTexture(context.cmd, data.DepthTexture, Vector2.one, data.Material, (int)ShaderPasses.AmbientOcclusion);
                 });
@@ -628,6 +635,8 @@ namespace Illusion.Rendering
 
                 builder.UseTexture(aoInput);
                 passData.Input = aoInput;
+                builder.UseTexture(depthPyramid);
+                passData.DepthPyramid = depthPyramid;
                 builder.UseTexture(outputTexture, AccessFlags.Write);
                 passData.Output = outputTexture;
                 
@@ -638,6 +647,7 @@ namespace Illusion.Rendering
                 {
                     ConstantBuffer.Push(context.cmd, data.Variables, data.UpsampleCS, ShaderConstants.ShaderVariablesAmbientOcclusion);
                     context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, ShaderConstants._AOPackedData, data.Input);
+                    context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, IllusionShaderProperties._DepthPyramid, data.DepthPyramid);
                     context.cmd.SetComputeTextureParam(data.UpsampleCS, data.UpsampleKernel, ShaderConstants._OcclusionTexture, data.Output);
                     
                     int groupsX = IllusionRenderingUtils.DivRoundUp(data.RTWidth, 8);
@@ -793,6 +803,7 @@ namespace Illusion.Rendering
             internal int RTHeight;
             
             internal TextureHandle Input;
+            internal TextureHandle DepthPyramid;
             internal TextureHandle Output;
         }
 
