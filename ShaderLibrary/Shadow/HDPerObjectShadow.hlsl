@@ -105,42 +105,24 @@ real SamplePerObjectShadowmap(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMa
     float4 shadowCoord, ShadowSamplingData samplingData, half4 shadowParams,
     bool isPerspectiveProjection, float2 screenCoord, int shadowIndex, float4 shadowMapRect)
 {
+#if defined(_PCSS_SHADOWS)
     // Compiler will optimize this branch away as long as isPerspectiveProjection is known at compile time
     if (isPerspectiveProjection)
         shadowCoord.xyz /= shadowCoord.w;
 
-    real attenuation;
-    real shadowStrength = shadowParams.x;
-
-    // Quality levels are only for platforms requiring strict static branches
-#if defined(_PCSS_SHADOWS)
     // Support PCSS for per-object shadows
-    attenuation = SamplePerObjectShadowmapPCSS(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord,
+    real attenuation = SamplePerObjectShadowmapPCSS(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord,
         samplingData, screenCoord, shadowIndex, shadowMapRect);
-#elif defined(_SHADOWS_SOFT_LOW)
-    attenuation = SampleShadowmapFilteredLowQuality(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingData);
-#elif defined(_SHADOWS_SOFT_MEDIUM)
-    attenuation = SampleShadowmapFilteredMediumQuality(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingData);
-#elif defined(_SHADOWS_SOFT_HIGH)
-    attenuation = SampleShadowmapFilteredHighQuality(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingData);
-#elif defined(_SHADOWS_SOFT)
-    if (shadowParams.y > SOFT_SHADOW_QUALITY_OFF)
-    {
-        attenuation = SampleShadowmapFiltered(TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingData);
-    }
-    else
-    {
-        attenuation = real(SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz));
-    }
-#else
-    attenuation = real(SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz));
-#endif
-
-    attenuation = LerpWhiteTo(attenuation, shadowStrength);
+    attenuation = LerpWhiteTo(attenuation, shadowParams.x);
 
     // Shadow coords that fall out of the light frustum volume must always return attenuation 1.0
     // TODO: We could use branch here to save some perf on some platforms.
     return BEYOND_SHADOW_FAR(shadowCoord) ? 1.0 : attenuation;
+#else
+    return SamplePerObjectShadowmapPCF(
+        TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap),
+        shadowCoord, samplingData, shadowParams, isPerspectiveProjection);
+#endif
 }
 
 float PerObjectShadowHD(

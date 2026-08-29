@@ -104,6 +104,42 @@ real SamplePerObjectShadowmap(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMa
     return BEYOND_SHADOW_FAR(shadowCoord) ? 1.0 : attenuation;
 }
 
+real SamplePerObjectShadowmapFilteredByQuality(
+    TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap),
+    float4 shadowCoord,
+    ShadowSamplingData samplingData,
+    half softShadowQuality)
+{
+    real attenuation = real(SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz));
+
+    UNITY_BRANCH
+    if (softShadowQuality > SOFT_SHADOW_QUALITY_OFF)
+    {
+        attenuation = SampleShadowmapFiltered(
+            TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap), shadowCoord, samplingData);
+    }
+
+    return attenuation;
+}
+
+real SamplePerObjectShadowmapPCF(
+    TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap),
+    float4 shadowCoord,
+    ShadowSamplingData samplingData,
+    half4 shadowParams,
+    bool isPerspectiveProjection = true)
+{
+    if (isPerspectiveProjection)
+        shadowCoord.xyz /= shadowCoord.w;
+
+    real attenuation = SamplePerObjectShadowmapFilteredByQuality(
+        TEXTURE2D_SHADOW_ARGS(ShadowMap, sampler_ShadowMap),
+        shadowCoord, samplingData, shadowParams.y);
+    attenuation = LerpWhiteTo(attenuation, shadowParams.x);
+
+    return BEYOND_SHADOW_FAR(shadowCoord) ? 1.0 : attenuation;
+}
+
 float2 ComputeShadowZOffset(float4 shadowCoord)
 {
     float3 dx = ddx(shadowCoord.xyz);
@@ -127,11 +163,7 @@ float PerObjectShadow(
         return 1; // Beyond the shadow map range, it is considered as no shadow
     }
 
-    // float2 dz = ComputeShadowZOffset(shadowCoord);
-    // return SamplePerObjectShadowmap(TEXTURE2D_SHADOW_ARGS(shadowMap, sampler_shadowMap),
-    //         shadowMapRects, shadowCoord, dz, shadowSamplingData, shadowParams, isPerspectiveProjection);
-
-    return SampleShadowmap(TEXTURE2D_SHADOW_ARGS(shadowMap, sampler_shadowMap),
+    return SamplePerObjectShadowmapPCF(TEXTURE2D_SHADOW_ARGS(shadowMap, sampler_shadowMap),
         shadowCoord, shadowSamplingData, shadowParams, isPerspectiveProjection);
 }
 
