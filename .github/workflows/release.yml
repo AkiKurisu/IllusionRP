@@ -77,7 +77,7 @@ jobs:
           if not body:
               raise SystemExit(f"CHANGELOG.md section for {version} is empty.")
 
-          package_json = pathlib.Path("package.json")
+          package_json = pathlib.Path("Packages/com.kurisu.illusion-render-pipelines/package.json")
           if package_json.exists():
               package_version = json.loads(package_json.read_text(encoding="utf-8")).get("version")
               if package_version and package_version != version:

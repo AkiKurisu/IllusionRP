@@ -1,0 +1,15 @@
+{
+  "name": "top.kuanmi.unityrhi.native",
+  "version": "1.0.1",
+  "displayName": "UnityRHI Native",
+  "description": "Windows x64 native plugins for UnityRHI (UnityRHI, NRI, NRD, DXC, DLSS, D3D12 Agility SDK). Required by top.kuanmi.unityrhi. Binaries are not committed in source — run 3-Pack.bat after building.",
+  "unity": "6000.3",
+  "author": {
+    "name": "UnityRHI"
+  },
+  "keywords": [
+    "rendering",
+    "d3d12",
+    "native"
+  ]
+}

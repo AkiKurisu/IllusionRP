@@ -1,0 +1,20 @@
+{
+  "name": "top.kuanmi.unityrhi",
+  "version": "1.0.0",
+  "displayName": "UnityRHI",
+  "description": "NVRHI-shaped D3D12 render hardware interface for Unity. Records command streams that replay directly onto Unity's own D3D12 command list, exposing ray tracing, bindless resources, compute and explicit barriers that the engine does not surface. Requires Unity 6.3 and Direct3D12 as the active graphics API.",
+  "unity": "6000.3",
+  "author": {
+    "name": "UnityRHI"
+  },
+  "keywords": [
+    "rendering",
+    "d3d12",
+    "raytracing",
+    "nvrhi"
+  ],
+  "dependencies": {
+    "com.unity.mathematics": "1.2.6",
+    "top.kuanmi.unityrhi.native": "1.0.1"
+  }
+}

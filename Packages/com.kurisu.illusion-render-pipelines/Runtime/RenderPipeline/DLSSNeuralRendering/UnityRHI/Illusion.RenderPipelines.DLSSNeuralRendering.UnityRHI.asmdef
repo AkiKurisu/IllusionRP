@@ -1,0 +1,31 @@
+{
+  "name": "Illusion.RenderPipelines.DLSSNeuralRendering.UnityRHI",
+  "rootNamespace": "Illusion.Rendering.UnityRHI",
+  "references": [
+    "Illusion.RenderPipelines",
+    "Ceres",
+    "UnityRhi.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor",
+    "WindowsStandalone64"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "ILLUSION_DLSSNR_EXPERIMENTAL"
+  ],
+  "versionDefines": [
+    {
+      "name": "top.kuanmi.unityrhi",
+      "expression": "[1.0.0,2.0.0)",
+      "define": "ILLUSION_DLSSNR_EXPERIMENTAL"
+    }
+  ],
+  "noEngineReferences": false
+}

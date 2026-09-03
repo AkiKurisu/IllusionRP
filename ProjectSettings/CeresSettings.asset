@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &1
+MonoBehaviour:
+  m_ObjectHideFlags: 53
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a9e0cc14d012cc49ba5cd26dee19fdb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  modules:
+  - serializedTypeString: Ceres.DataDriven.DataDrivenModule, Ceres##0
+  - serializedTypeString: Ceres.Gameplay.Flow.GameplayFlowModule, Ceres.Gameplay##0
+  - serializedTypeString: Ceres.Graph.CeresGraphModule, Ceres.Graph##0
+  schedulerStackTrace: 1
+  initializeDataTableManagerOnLoad: 0
+  validateDataTableBeforeLoad: 1
+  dataTableEditorSerializer:
+    serializedTypeString: Ceres.DataDriven.Editor.DataTableEditorJsonSerializer,
+      Ceres.Editor##0
+  inlineRowReadOnly: 1
+  configSerializer:
+    serializedTypeString: Ceres.Serialization.TextSerializeFormatter, Ceres##0
+  password: 

@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33cde549a9392d24fb54534a0232bc88, type: 3}
+  m_Name: DynamicVolumeProfileTable
+  m_EditorClassIdentifier: 
+  m_rowType:
+    serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+  m_rows:
+  - RowId: Bloom
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/ConvolutionBloom.asset","Guid":"09bb5ea53e2fc234185cf574c1db13d0","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/ConvolutionBloom_Mobile.asset","Guid":"24b9ec32b4573c5409d8de7c969079f2","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/ConvolutionBloom.asset","Guid":"09bb5ea53e2fc234185cf574c1db13d0","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: DepthOfField
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/DepthOfField.asset","Guid":"aa3bf8356c9235c4ca6951bd54c5f516","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/DepthOfField.asset","Guid":"aa3bf8356c9235c4ca6951bd54c5f516","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/DepthOfField.asset","Guid":"aa3bf8356c9235c4ca6951bd54c5f516","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: MotionBlur
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/MotionBlur.asset","Guid":"c64fe9bae90368e468d5292ea1699ac2","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/MotionBlur.asset","Guid":"c64fe9bae90368e468d5292ea1699ac2","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/MotionBlur.asset","Guid":"c64fe9bae90368e468d5292ea1699ac2","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: Tonemapping
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/Tonemapping.asset","Guid":"c213ae885a1044e4aa8b7faafb1b28df","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/Tonemapping.asset","Guid":"c213ae885a1044e4aa8b7faafb1b28df","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/Tonemapping.asset","Guid":"c213ae885a1044e4aa8b7faafb1b28df","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: Vignette
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/Vignette.asset","Guid":"421f3b94b8f6dcc4c95f4d8c2c598857","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/Vignette.asset","Guid":"421f3b94b8f6dcc4c95f4d8c2c598857","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/Vignette.asset","Guid":"421f3b94b8f6dcc4c95f4d8c2c598857","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: ScreenSpaceAmbientOcclusion
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/AmbientOcclusion.asset","Guid":"84c1bed7c26cdaf4889cb65e8764f643","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/AmbientOcclusion_Mobile.asset","Guid":"c0ede0a19c73c22499fe3b8887ac231d","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/AmbientOcclusion.asset","Guid":"84c1bed7c26cdaf4889cb65e8764f643","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: ScreenSpaceReflection
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/ScreenSpaceReflection.asset","Guid":"3c5bf3fe9426d634f89b9a8db2790307","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/ScreenSpaceGlobalIllumination_Mobile.asset","Guid":"a89b43ba764a02143b4d2d85ac32f2e2","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/ScreenSpaceReflection.asset","Guid":"3c5bf3fe9426d634f89b9a8db2790307","Locked":true},"priority":1}'
+      objectHandle: 0
+  - RowId: ScreenSpaceGlobalIllumination
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/ScreenSpaceGlobalIllumination.asset","Guid":"e6facb59a9f1b3c45baaa060f248e320","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/ScreenSpaceGlobalIllumination_Mobile.asset","Guid":"a89b43ba764a02143b4d2d85ac32f2e2","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/ScreenSpaceGlobalIllumination.asset","Guid":"e6facb59a9f1b3c45baaa060f248e320","Locked":true},"priority":1}'
+      objectHandle: 0
+  - RowId: SubsurfaceScattering
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/SubsurfaceScattering.asset","Guid":"b00de1c69fbf9c545af01bd8c1341c7a","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/SubsurfaceScattering_Mobile.asset","Guid":"96f928b36aa8587438d1ecb97d7c8fe2","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/SubsurfaceScattering.asset","Guid":"b00de1c69fbf9c545af01bd8c1341c7a","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: ContactShadows
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/ContactShadows.asset","Guid":"164048b2e7b0a13409d313d400b7f3fa","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/ContactShadows_Mobile.asset","Guid":"155b7815c648fdc45bfcbc9d1ff32a9a","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/ContactShadows.asset","Guid":"164048b2e7b0a13409d313d400b7f3fa","Locked":true},"priority":0}'
+      objectHandle: 0
+  - RowId: PercentageCloserSoftShadows
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/Shadows.asset","Guid":"80185715ac9672546bb7450f1c8956a8","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/Shadows_Mobile.asset","Guid":"cb6748549dbd89341b41d194db8c28d4","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/Shadows.asset","Guid":"80185715ac9672546bb7450f1c8956a8","Locked":true},"priority":1}'
+      objectHandle: 0
+  - RowId: VolumetricFog
+    RowData:
+      serializedTypeString: Ceres.Gameplay.Graphics.DynamicVolumeProfileRow, Ceres.Gameplay##0
+      isArray: 0
+      jsonData: '{"windowsProfile":{"Address":"Assets/Settings/Graphics/Volumes/VolumetricFog.asset","Guid":"44c32ae215f631340b8efd3a9c0bc0d7","Locked":true},"mobileProfile":{"Address":"Assets/Settings/Graphics/Volumes/VolumetricFog_Mobile.asset","Guid":"609739d1f40fe654798b9cdeb42c69f1","Locked":true},"consoleProfile":{"Address":"Assets/Settings/Graphics/Volumes/VolumetricFog.asset","Guid":"44c32ae215f631340b8efd3a9c0bc0d7","Locked":true},"priority":1}'
+      objectHandle: 0

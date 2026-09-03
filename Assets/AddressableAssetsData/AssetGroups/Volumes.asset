@@ -1,0 +1,125 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Volumes
+  m_EditorClassIdentifier: 
+  m_GroupName: Volumes
+  m_Data:
+    m_SerializedData: []
+  m_GUID: b4c260f151639114bbeb904483011945
+  m_SerializeEntries:
+  - m_GUID: 09bb5ea53e2fc234185cf574c1db13d0
+    m_Address: Assets/Settings/Graphics/Volumes/ConvolutionBloom.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 155b7815c648fdc45bfcbc9d1ff32a9a
+    m_Address: Assets/Settings/Graphics/Volumes/ContactShadows_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 164048b2e7b0a13409d313d400b7f3fa
+    m_Address: Assets/Settings/Graphics/Volumes/ContactShadows.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 24b9ec32b4573c5409d8de7c969079f2
+    m_Address: Assets/Settings/Graphics/Volumes/ConvolutionBloom_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3c5bf3fe9426d634f89b9a8db2790307
+    m_Address: Assets/Settings/Graphics/Volumes/ScreenSpaceReflection.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 421f3b94b8f6dcc4c95f4d8c2c598857
+    m_Address: Assets/Settings/Graphics/Volumes/Vignette.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 44c32ae215f631340b8efd3a9c0bc0d7
+    m_Address: Assets/Settings/Graphics/Volumes/VolumetricFog.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 609739d1f40fe654798b9cdeb42c69f1
+    m_Address: Assets/Settings/Graphics/Volumes/VolumetricFog_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6b05eba52c5480148b60dfaf3cd3e60a
+    m_Address: Assets/Settings/Graphics/Volumes/ScreenSpaceReflection_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 80185715ac9672546bb7450f1c8956a8
+    m_Address: Assets/Settings/Graphics/Volumes/Shadows.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 84c1bed7c26cdaf4889cb65e8764f643
+    m_Address: Assets/Settings/Graphics/Volumes/AmbientOcclusion.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 96f928b36aa8587438d1ecb97d7c8fe2
+    m_Address: Assets/Settings/Graphics/Volumes/SubsurfaceScattering_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a89b43ba764a02143b4d2d85ac32f2e2
+    m_Address: Assets/Settings/Graphics/Volumes/ScreenSpaceGlobalIllumination_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: aa3bf8356c9235c4ca6951bd54c5f516
+    m_Address: Assets/Settings/Graphics/Volumes/DepthOfField.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b00de1c69fbf9c545af01bd8c1341c7a
+    m_Address: Assets/Settings/Graphics/Volumes/SubsurfaceScattering.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c0ede0a19c73c22499fe3b8887ac231d
+    m_Address: Assets/Settings/Graphics/Volumes/AmbientOcclusion_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c213ae885a1044e4aa8b7faafb1b28df
+    m_Address: Assets/Settings/Graphics/Volumes/Tonemapping.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c64fe9bae90368e468d5292ea1699ac2
+    m_Address: Assets/Settings/Graphics/Volumes/MotionBlur.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: cb6748549dbd89341b41d194db8c28d4
+    m_Address: Assets/Settings/Graphics/Volumes/Shadows_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e6facb59a9f1b3c45baaa060f248e320
+    m_Address: Assets/Settings/Graphics/Volumes/ScreenSpaceGlobalIllumination.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 5c3281147b6329840baa3fbb6b86427c, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 8ff016a34fcec9f49abf00d836329f0a, type: 2}
+    - {fileID: 11400000, guid: f914c4062e7efd24b98843f52533baec, type: 2}

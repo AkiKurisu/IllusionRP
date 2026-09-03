@@ -1,0 +1,200 @@
+#if CERES_INSTALL
+using Ceres.Configs;
+#endif
+
+namespace Illusion.Rendering
+{
+    /// <summary>
+    /// Runtime rendering config allow you to toggle illusion rendering features above renderer feature settings.
+    /// </summary>
+#if CERES_INSTALL
+    [ConfigPath("Graphics.IllusionRP")] // Not mark serializable as a runtime only config.
+    public class IllusionRuntimeRenderingConfig : Config<IllusionRuntimeRenderingConfig>
+#else
+    public class IllusionRuntimeRenderingConfig
+#endif
+    {
+        /// <summary>
+        /// Whether enable Screen Space Reflection.
+        /// </summary>
+        [ConfigVariable("r.ssr")]
+        public bool EnableScreenSpaceReflection { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Screen Space Reflection for transparent surfaces.
+        /// Requires Screen Space Reflection to be enabled.
+        /// </summary>
+        [ConfigVariable("r.ssr.transparent")]
+        public bool EnableTransparentScreenSpaceReflection { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Screen Space Refraction.
+        /// </summary>
+        [ConfigVariable("r.refraction")]
+        public bool EnableScreenSpaceRefraction { get; set; } = true;
+        
+        /// <summary>
+        /// Whether enable Screen Space Reflection.
+        /// </summary>
+        [ConfigVariable("r.ssgi")]
+        public bool EnableScreenSpaceGlobalIllumination { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Contact Shadows.
+        /// </summary>
+        [ConfigVariable("r.contactshadows")]
+        public bool EnableContactShadows { get; set; } = true;
+        
+        /// <summary>
+        /// Whether enable Percentage Closer Soft Shadows.
+        /// </summary>
+        [ConfigVariable("r.pcss")]
+        public bool EnablePercentageCloserSoftShadows { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Screen Space Ambient Occlusion.
+        /// </summary>
+        [ConfigVariable("r.ssao")]
+        public bool EnableScreenSpaceAmbientOcclusion { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Volumetric Fog.
+        /// </summary>
+        [ConfigVariable("r.volumetricfog")]
+        public bool EnableVolumetricFog { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable PRT GI.
+        /// </summary>
+        [ConfigVariable("r.prt")]
+        public bool EnablePrecomputedRadianceTransferGlobalIllumination { get; set; } = true;
+        
+        /// <summary>
+        /// Whether enable convolution bloom
+        /// </summary>
+        [ConfigVariable("r.bloom")]
+        public bool EnableConvolutionBloom { get; set; } = true;
+
+        /// <summary>Global capability switch for Experimental DLSS 5 NR.</summary>
+        [ConfigVariable("r.dlssnr")]
+        public bool EnableDLSSNeuralRendering { get; set; } = true;
+
+        /// <summary>Editor input visualization for DLSS Neural Rendering.</summary>
+        [ConfigVariable("r.debug.dlssnr", IsEditor = true)]
+        public DLSSNeuralRenderingDebugMode DLSSNeuralRenderingDebugMode { get; set; } =
+            global::Illusion.Rendering.DLSSNeuralRenderingDebugMode.Off;
+
+        /// <summary>Motion vector visualization range for DLSS Neural Rendering.</summary>
+        [ConfigVariable("r.debug.dlssnr.motionrange", IsEditor = true)]
+        public float DLSSNeuralRenderingDebugMotionRange { get; set; } = 32f;
+
+        /// <summary>Linear eye depth visualization range for DLSS Neural Rendering.</summary>
+        [ConfigVariable("r.debug.dlssnr.depthrange", IsEditor = true)]
+        public float DLSSNeuralRenderingDebugDepthRange { get; set; } = 100f;
+
+        /// <summary>
+        /// When the Exposure volume does not override Scene View behavior, Scene View cameras use fixed exposure fallback instead of histogram auto exposure.
+        /// </summary>
+        [ConfigVariable("r.sceneview.exposure.fixedfallback", IsEditor = true)]
+        public bool SceneViewPreferFixedExposure { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable Async Compute.
+        /// </summary>
+        // [ConfigVariable("r.asynccompute")]
+        // TODO: Fix Async Compute Crash
+        public bool EnableAsyncCompute { get; set; } = false;
+        
+        /// <summary>
+        /// Whether enable Compute Shader.
+        /// </summary>
+        [ConfigVariable("r.computeshader")]
+        public bool EnableComputeShader { get; set; } = true;
+        
+        /// <summary>
+        /// Whether enable Vrs.
+        /// </summary>
+        [ConfigVariable("r.vrs", IsEditor = true)]
+        public bool EnableVrs { get; set; } = true;
+
+        // =================================== Debug ========================================= //
+        [ConfigVariable("r.debug.velocity", IsEditor = true)]
+        public bool EnableMotionVectorsDebug { get; set; }
+        
+        [ConfigVariable("r.debug.ssr", IsEditor = true)]
+        public bool EnableScreenSpaceReflectionDebug { get; set; }
+
+        [ConfigVariable("r.debug.ssr.transparent", IsEditor = true)]
+        public bool EnableTransparentScreenSpaceReflectionDebug { get; set; }
+        
+        /// <summary>
+        /// Exposure debug mode.
+        /// </summary>
+        [ConfigVariable("r.debug.exposure", IsEditor = true)]
+        public ExposureDebugMode ExposureDebugMode { get; set; } = ExposureDebugMode.None;
+        
+        /// <summary>
+        /// Screen space shadow debug mode.
+        /// </summary>
+        [ConfigVariable("r.debug.ssshadow", IsEditor = true)]
+        public ScreenSpaceShadowDebugMode ScreenSpaceShadowDebugMode { get; set; } = ScreenSpaceShadowDebugMode.None;
+        
+        /// <summary>
+        /// Enable Per Object Shadow debug mode.
+        /// </summary>
+        [ConfigVariable("r.debug.perobjectshadow", IsEditor = true)]
+        public bool EnablePerObjectShadowDebug { get; set; }
+        
+        /// <summary>
+        /// Enable Vrs debug mode.
+        /// </summary>
+        [ConfigVariable("r.debug.vrs", IsEditor = true)]
+        public bool EnableVrsDebug { get; set; }
+
+        /// <summary>
+        /// Whether to center the histogram debug view around the middle-grey point or not.
+        /// </summary>
+        [ConfigVariable("r.CenterHistogramAroundMiddleGrey", IsEditor = true)]
+        public bool CenterHistogramAroundMiddleGrey { get; set; }
+
+        /// <summary>
+        /// Whether to show the on scene overlay displaying pixels excluded by the exposure computation via histogram.
+        /// </summary>
+        [ConfigVariable("r.DisplayOnSceneOverlay", IsEditor = true)]
+        public bool DisplayOnSceneOverlay { get; set; } = true;
+        
+        /// <summary>
+        /// Whether to display histogram debug view in rgb mode.
+        /// </summary>
+        [ConfigVariable("r.DisplayFinalImageHistogramAsRGB", IsEditor = true)]
+        public bool DisplayFinalImageHistogramAsRGB { get; set; }
+
+        /// <summary>
+        /// Whether to show only the mask in the picture in picture. If unchecked, the mask view is weighted by the scene color.
+        /// </summary>
+        [ConfigVariable("r.DisplayMaskOnly", IsEditor = true)]
+        public bool DisplayMaskOnly { get; set; }
+        // =================================== Debug ========================================= //
+
+#if !CERES_INSTALL
+        private static IllusionRuntimeRenderingConfig _instance;
+
+        public static IllusionRuntimeRenderingConfig Get()
+        {
+            return _instance ??= new IllusionRuntimeRenderingConfig();
+        }
+
+        private sealed class ConfigVariableAttribute : System.Attribute
+        {
+            public string Name { get; private set; }
+        
+            public bool IsEditor { get; set; }
+
+            public ConfigVariableAttribute(string name)
+            {
+                Name = name;
+            }
+        }
+#endif
+    }
+}

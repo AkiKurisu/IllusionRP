@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-7186034704661503342
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 89dab98673184c8cad5c5838b70e6e97, type: 3}
+  m_Name: PerObjectShadows
+  m_EditorClassIdentifier: 
+  active: 1
+  perObjectShadowDepthBits:
+    m_OverrideState: 1
+    m_Value: 16
+  perObjectShadowTileResolution:
+    m_OverrideState: 0
+    m_Value: 1024
+  perObjectShadowLengthOffset:
+    m_OverrideState: 1
+    m_Value: 50
+--- !u!114 &-2707464735598556559
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74773b01a0f34b740911e0b08afedf2d, type: 3}
+  m_Name: PercentageCloserSoftShadows
+  m_EditorClassIdentifier: 
+  active: 1
+  angularDiameter:
+    m_OverrideState: 0
+    m_Value: 1.5
+  blockerSearchAngularDiameter:
+    m_OverrideState: 0
+    m_Value: 12
+  minFilterMaxAngularDiameter:
+    m_OverrideState: 0
+    m_Value: 10
+  maxPenumbraSize:
+    m_OverrideState: 0
+    m_Value: 0.56
+  maxSamplingDistance:
+    m_OverrideState: 0
+    m_Value: 0.5
+  minFilterSizeTexels:
+    m_OverrideState: 0
+    m_Value: 1.5
+  findBlockerSampleCount:
+    m_OverrideState: 0
+    m_Value: 24
+  pcfSampleCount:
+    m_OverrideState: 0
+    m_Value: 16
+  penumbraMaskScale:
+    m_OverrideState: 0
+    m_Value: 4
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7fd9488000d3734a9e00ee676215985, type: 3}
+  m_Name: Shadows_Mobile
+  m_EditorClassIdentifier: 
+  components:
+  - {fileID: -2707464735598556559}
+  - {fileID: -7186034704661503342}
+  - {fileID: 2655115885027050169}
+--- !u!114 &2655115885027050169
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2cba31253d834bc0beba12922028d695, type: 3}
+  m_Name: MicroShadows
+  m_EditorClassIdentifier: 
+  active: 1
+  enable:
+    m_OverrideState: 1
+    m_Value: 1
+  opacity:
+    m_OverrideState: 1
+    m_Value: 0.25

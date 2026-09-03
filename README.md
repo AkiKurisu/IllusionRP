@@ -5,7 +5,7 @@
 [![Zhihu](https://img.shields.io/badge/知乎-AkiKurisu-0084ff?style=flat-square)](https://www.zhihu.com/people/akikurisu)
 [![Bilibili](https://img.shields.io/badge/Bilibili-爱姬Kurisu-00A1D6?style=flat-square)](https://space.bilibili.com/20472331)
 
-<img src="./Documentation~/images/banner.png">
+<img src="Documentations/images/banner.png">
 
 Unity high-definition graphics plugin for Universal Render Pipelines.
 
@@ -21,9 +21,9 @@ Unity high-definition graphics plugin for Universal Render Pipelines.
 
 <b>Sponza Demo</b> 
 
-IllusionRP demo for Sponza scene, see [AkiKurisu/IllusionRP-Demo](https://github.com/AkiKurisu/IllusionRP-Demo) for more details.
+IllusionRP demo for the Sponza scene, open [Assets/Scenes/Sponza.unity](Assets/Scenes/Sponza.unity) for a quick preview.
 
-![Demo](https://github.com/AkiKurisu/IllusionRP-Demo/raw/master/Documentation/images/sponza.png)
+![Demo](Documentations/images/sponza.png)
 
 <b>AIChara Demo</b> 
 
@@ -35,7 +35,7 @@ IllusionRP is first designed to re-rendering game characters of @ILLUSION, see [
 
 Remaster is WIP, stay tuned.
 
-![Showcase](./Documentation~/images/showcase.png)
+![Showcase](Documentations/images/showcase.png)
 
 # Notice
 
@@ -63,15 +63,17 @@ Designed for <b>Forward</b> and <b>Forward+</b> rendering path, <b>Deferred</b> 
 
 # Install
 
-Use git URL to download package by Unity Package Manager ```https://github.com/AkiKurisu/IllusionRP.git```.
+Use the package subpath URL in Unity Package Manager:
 
-To fix compute shader compilation error when enable `Forward+`, copy the `./com.unity.render-pipelines.ps5~` folder to your project `Package` directory and rename it to `com.unity.render-pipelines.ps5`. 
+```text
+https://github.com/AkiKurisu/IllusionRP.git?path=Packages/com.kurisu.illusion-render-pipelines
+```
 
 # Setup
 1. Replace Post Process Data with `IllusionRPPostProcessData` in your URP renderer asset.
-    ![Post Process Data](./Documentation~/images/post_process_data.png)
+    ![Post Process Data](Documentations/images/post_process_data.png)
 2. Add `Illusion Graphics` renderer feature in your URP renderer asset.
-    ![Renderer Feature](./Documentation~/images/renderer_feature.png)
+    ![Renderer Feature](Documentations/images/renderer_feature.png)
 
 >[!Tip]
 > For best visual experience and performance, I recommend you to enable `Depth Priming` and `Forward+` in renderer asset to use <b>Pre-Z Cluster Forward Rendering</b>.
@@ -86,7 +88,7 @@ Support <b>Screen Space Subsurface Scattering (SSSSS)</b> ported from HDRP and f
 
 <b>Dual Lobe Specular</b> provides a more natural skin effect.
 
-![SSS](./Documentation~/images/sss.png)
+![SSS](Documentations/images/sss.png)
 
 ## Hair
 
@@ -94,7 +96,7 @@ Support <b>Kajiya-Kay</b> shading model with better performance.
 
 Support <b>Marschner</b> shading model implemented by Unreal Engine.
 
-![Hair Shading](./Documentation~/images/hair_shading.png)
+![Hair Shading](Documentations/images/hair_shading.png)
 
 <b>Multipass</b> is used (opaque & transparent).
 
@@ -104,7 +106,7 @@ Support <b>Marschner</b> shading model implemented by Unreal Engine.
 
 Support <b>Anisotropy Specular</b>.
 
-![Anisotropy](./Documentation~/images/anisotropy.png)
+![Anisotropy](Documentations/images/anisotropy.png)
 
 <b>Oren-Nayar</b> diffuse model.
   
@@ -120,7 +122,7 @@ Support all <b>Screen Space Lighting</b> features in IllusionRP.
 
 Support <b>Order Independent Transparency</b>.
 
-![Hybrid Lit](./Documentation~/images/hybrid_lit.png)
+![Hybrid Lit](Documentations/images/hybrid_lit.png)
 
 > [!TIP]
 > You can directly replace the urp lit shader with `Universal Render Pipeline/Hybrid Lit` shader to get better lighting results.
@@ -138,7 +140,7 @@ Support <b>Per-Object Shadow</b> based on [stalomeow/StarRailNPRShader](https://
 
 Include <b>Contact Shadows</b> ported from HDRP to capture small details.
 
-![Contact Shadows](./Documentation~/images/contact_shadows.png)
+![Contact Shadows](Documentations/images/contact_shadows.png)
 
 Support <b>Micro Shadows</b> ported from HDRP to simulate small details embedded in the Material of a GameObject, but not in its Mesh geometry.
 
@@ -149,7 +151,7 @@ Support <b>Fragment Shadow Bias</b> to reduce shadow acne.
 
 Include <b>Percentage-Closer Soft Shadow</b> from [recaeee/RecaNoMaho_P](https://github.com/recaeee/RecaNoMaho_P) for more realistic shadows.
 
-![PCSS](./Documentation~/images/pcss.png)
+![PCSS](Documentations/images/pcss.png)
 
 > [!TIP]
 > Percentage-Closer Soft Shadow only works for Main Light Shadow Caster and Per-Object Shadow Caster.
@@ -160,51 +162,51 @@ Include <b>Ground Truth Ambient Occlusion</b> based on [bladesero/GTAO_URP](http
 
 Support <b>AO Multi-Bounce</b> and <b>Separate AO</b> for diffuse and specular lighting.
 
-![GTAO](./Documentation~/images/gtao.png)
+![GTAO](Documentations/images/gtao.png)
 
 ## Global Illumination
 
 Include <b>Screen Space Reflection</b> based on [EricHu33/URP_SSR](https://github.com/EricHu33/URP_SSR) and HDRP implementation.
 
-![SSR](./Documentation~/images/ssr.png)
+![SSR](Documentations/images/ssr.png)
 
 Support 3 algorithms: <b>View Space Linear Search</b>, <b>Screen Space Linear Search</b> and <b>Hiz Search</b>.
 
 Include <b>Precomputed Radiance Transfer Global Illumination (PRTGI)</b> based on [AKGWSB/CasualPRT](https://github.com/AKGWSB/CasualPRT).
 
-![PRTGI](./Documentation~/images/prtgi.png)
+![PRTGI](Documentations/images/prtgi.png)
 
 > [!TIP]
 > `PRTGI` will not affect materials that use baked lightmaps.
 
 Support <b>Reflection Probe Normalization</b> based on Unity Adaptive Probe Volume when enable PRTGI to prevent light leaking.
 
-![Reflection Probe Normalization](./Documentation~/images/reflection_normalization.png)
+![Reflection Probe Normalization](Documentations/images/reflection_normalization.png)
 
 Include <b>Screen Space Global Illumination</b> based on [jiaozi158/UnitySSGIURP](https://github.com/jiaozi158/UnitySSGIURP) and HDRP implementation.
 
-![SSGI](./Documentation~/images/ssgi.png)
+![SSGI](Documentations/images/ssgi.png)
 
 > [!TIP]
 > Recommend to use `PRTGI` outdoor and combine with `SSGI` indoor. 
 > 
 > Also, `SSGI` will not affect materials that use baked lightmaps.
 
-![SSGI + PRTGI](./Documentation~/images/gi_combine.png)
+![SSGI + PRTGI](Documentations/images/gi_combine.png)
 
 ## Post Processing
 
 Include <b>Automatic Exposure</b> ported from HDRP.
 
-![Exposure](./Documentation~/images/exposure.png)
+![Exposure](Documentations/images/exposure.png)
 
 Include <b>Convolution Bloom</b> from [StellarWarp/High-Performance-Convolution-Bloom-On-Unity](https://github.com/StellarWarp/High-Performance-Convolution-Bloom-On-Unity). 
 
-![Bloom](./Documentation~/images/bloom.png)
+![Bloom](Documentations/images/bloom.png)
 
 Include <b>Volumetric Light</b> from [CristianQiu/Unity-URP-Volumetric-Light](https://github.com/CristianQiu/Unity-URP-Volumetric-Light).
 
-![Volumetric Light](./Documentation~/images/volumetric_light.png)
+![Volumetric Light](Documentations/images/volumetric_light.png)
 
 Include <b>Advanced Tonemapping</b> with two kinds: 
 
@@ -212,42 +214,48 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 
 <b>Filmic ACES</b> from Unreal Engine which is more artist friendly.
 
-![Tonemapping](./Documentation~/images/tonemapping.png)
+![Tonemapping](Documentations/images/tonemapping.png)
 
 > [!NOTE]
 > Advanced Tonemapping only works in `High Dynamic Range` grading mode.
+
+## Experimental DLSS Neural Rendering
+
+Include DLSS Neural Rendering integration based on [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR). `nvngx_dlssnr.dll` is not included. See [Experimental DLSS Neural Rendering](Documentations/DLSSNeuralRendering.md) for setup and limitations.
 
 # Debugging
 
 Recommended to install [Ceres](https://github.com/AkiKurisu/Ceres) to use Unreal-like console variables for debugging rendering features.
 
-> Install from git url `https://github.com/AkiKurisu/Ceres`
+> Install from git URL `https://github.com/AkiKurisu/Ceres.git?path=Packages/com.kurisu.ceres`
 
-![Console Variable](./Documentation~/images/console_variables.png)
+![Console Variable](Documentations/images/console_variables.png)
 
 `Ceres` also provides a Data-Driven Dynamic Volume Provider to support configuring volume profile per-platform.
 
-![Dynamic Volume](./Documentation~/images/dynamic_volume.png)
+![Dynamic Volume](Documentations/images/dynamic_volume.png)
 
 # Documents
 
 Documents are generated with [Devin AI](https://app.devin.ai/), please create an issue if you find any problems.
 
-[Shaders](./Documentation~/Shaders.md)
+[Shaders](Documentations/Shaders.md)
 
-[Lighting](./Documentation~/Lighting.md)
+[Lighting](Documentations/Lighting.md)
 
-[Render Pipeline](./Documentation~/RenderPipeline.md)
+[Render Pipeline](Documentations/RenderPipeline.md)
 
-[Optimization](./Documentation~/Optimization.md)
+[Optimization](Documentations/Optimization.md)
 
 # Contribution
 
-See [Contributing](./CONTRIBUTING) for more details.
+See [Contributing](CONTRIBUTING) for more details.
 
 # Credits
 
 Thanks to the following great works and articles.
+
+[Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR)
 
 [bladesero/GTAO_URP](https://github.com/bladesero/GTAO_URP)
 

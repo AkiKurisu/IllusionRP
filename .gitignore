@@ -10,6 +10,7 @@
 /[Bb]uilds/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
+/Configs/
 *.log
 
 # MemoryCaptures can get excessive in size.
@@ -76,3 +77,10 @@ crashlytics-build.properties
 
 References~
 .craft
+/Saved/
+/Snapshots/
+/.idea/
+
+# The local DLSS Neural Rendering runtime is intentionally not tracked.
+/Packages/top.kuanmi.unityrhi.native/Plugins/x86_64/nvngx_dlssnr.dll
+/Packages/top.kuanmi.unityrhi.native/Plugins/x86_64/nvngx_dlssnr.dll.meta
