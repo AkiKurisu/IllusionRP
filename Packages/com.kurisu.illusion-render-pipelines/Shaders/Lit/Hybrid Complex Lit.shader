@@ -454,9 +454,9 @@ Shader "Universal Render Pipeline/Hybrid Complex Lit"
             #pragma shader_feature_local _ _DETAIL_MULX2 _DETAIL_SCALED
             #pragma shader_feature_local _ALPHATEST_ON
             #pragma shader_feature_local_fragment _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+            #pragma shader_feature_local_fragment _METALLICSPECGLOSSMAP
 
             #pragma multi_compile _ LOD_FADE_CROSSFADE
-            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
 
             #pragma multi_compile_instancing
             #pragma instancing_options renderinglayer

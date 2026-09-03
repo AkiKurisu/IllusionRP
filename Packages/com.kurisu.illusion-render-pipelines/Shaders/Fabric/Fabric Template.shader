@@ -416,6 +416,10 @@
 				On:SetDefine:ASE_BAKEDGI 1
 			Port:Forward:Normal
 				On:SetDefine:_NORMALMAP 1
+			Port:ForwardGBuffer:GBuffer Normal
+				On:SetDefine:ForwardGBuffer:_GBUFFER_NORMAL_OVERRIDE 1
+			Port:ForwardGBuffer:GBuffer Smoothness
+				On:SetDefine:ForwardGBuffer:_GBUFFER_SMOOTHNESS_OVERRIDE 1
 		*/
 
 		/*ase_unity_cond_begin:<=10000000*/
@@ -441,6 +445,8 @@
 			// 18 => Frag: Coat Mask
 			// 20 => Frag: Coat Smoothness
 			// 30 => Vert: Vertex Tangent
+			// 40 => Frag: GBuffer Normal
+			// 41 => Frag: GBuffer Smoothness
 		/*ase_unity_cond_end*/
 
 		Tags
@@ -735,6 +741,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -1334,6 +1341,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -1629,6 +1637,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -1905,6 +1914,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -2168,6 +2178,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -2496,6 +2507,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -2946,6 +2958,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3171,6 +3184,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3311,7 +3325,6 @@
 			// Desktop OpenGL, OpenGL ES 3.0, WebGL 2.0.
 			#pragma exclude_renderers gles3 glcore
 
-			#pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
 
 			#pragma vertex vert
 			#pragma fragment frag
@@ -3417,6 +3430,7 @@
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
+			half _Anisotropy_On;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3633,6 +3647,8 @@
 
 				float3 Normal = /*ase_frag_out:Normal;Float3;1;-1;_FragNormal*/float3(0, 0, 1)/*end*/;
 				float Smoothness = /*ase_frag_out:Smoothness;Float;0;-1;_Smoothness*/0.5/*end*/;
+				float3 GBufferNormalTS = /*ase_frag_out:GBuffer Normal;Float3;40;40*/float3(0, 0, 1)/*end*/;
+				float GBufferSmoothness = /*ase_frag_out:GBuffer Smoothness;Float;41;41*/0.5/*end*/;
 				float Alpha = /*ase_frag_out:Alpha;Float;6;-1;_Alpha*/1/*end*/;
 				float AlphaClipThreshold = /*ase_frag_out:Alpha Clip Threshold;Float;7;-1;_AlphaClip*/0.5/*end*/;
 
@@ -3648,29 +3664,28 @@
 					outputDepth = DepthValue;
 				#endif
 
-				half s = Smoothness;
+				#if defined(_GBUFFER_SMOOTHNESS_OVERRIDE)
+					half s = GBufferSmoothness;
+				#else
+					half s = Smoothness;
+				#endif
 				outSmoothness = half4(s, s, s, s);
 
-				#if defined(_GBUFFER_NORMALS_OCT)
-					float3 nOct = normalize( NormalWS );
-					float2 octNormalWS = PackNormalOctQuadEncode( nOct );
-					float2 remappedOctNormalWS = saturate(octNormalWS * 0.5 + 0.5);
-					half3 packedNormalWS = PackFloat2To888(remappedOctNormalWS);
-					outNormalWS = half4(packedNormalWS, 0.0);
-				#else
-					#if defined(_NORMALMAP)
-						#if _NORMAL_DROPOFF_TS
-							float3 normalWS = TransformTangentToWorld(Normal, half3x3(TangentWS, BitangentWS, NormalWS));
-						#elif _NORMAL_DROPOFF_OS
-							float3 normalWS = TransformObjectToWorldNormal(Normal);
-						#elif _NORMAL_DROPOFF_WS
-							float3 normalWS = Normal;
-						#endif
-					#else
-						float3 normalWS = NormalWS;
+				// Connected GBuffer ports replace the Forward chain for screen-space consumers only.
+				#if defined(_GBUFFER_NORMAL_OVERRIDE)
+					float3 normalWS = TransformTangentToWorld(GBufferNormalTS, half3x3(TangentWS, BitangentWS, NormalWS));
+				#elif defined(_NORMALMAP)
+					#if _NORMAL_DROPOFF_TS
+						float3 normalWS = TransformTangentToWorld(Normal, half3x3(TangentWS, BitangentWS, NormalWS));
+					#elif _NORMAL_DROPOFF_OS
+						float3 normalWS = TransformObjectToWorldNormal(Normal);
+					#elif _NORMAL_DROPOFF_WS
+						float3 normalWS = Normal;
 					#endif
-					outNormalWS = half4(NormalizeNormalPerPixel(normalWS), 0.0);
+				#else
+					float3 normalWS = NormalWS;
 				#endif
+				outNormalWS = half4(NormalizeNormalPerPixel(normalWS), 0.0);
 			}
 
 			ENDHLSL
