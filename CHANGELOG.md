@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fix fragment shadow bias for every active main-light cascade, independent of visible-light count.
 - Fix GTAO half-resolution denoising, upsampling, and render resource handling.
 - Fix contact-shadow depth binding and HD Skin lighting and shader generation.
 - Fix per-object PCF quality when URP main-light shadows are disabled.

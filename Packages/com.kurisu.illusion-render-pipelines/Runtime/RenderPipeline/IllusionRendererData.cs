@@ -363,7 +363,8 @@ namespace Illusion.Rendering
 
         public readonly Vector4[] MainLightShadowDeviceProjectionVectors = new Vector4[ShadowCascadeCount];
         
-        public readonly Vector4[] MainLightShadowCascadeBiases = new Vector4[ShadowCascadeCount];
+        // Keep a zero no-op entry for positions outside all shadow cascades.
+        public readonly Vector4[] MainLightShadowCascadeBiases = new Vector4[ShadowCascadeCount + 1];
 
         public ShadowSliceData[] MainLightShadowSliceData { get; private set; }
         
@@ -806,6 +807,8 @@ namespace Illusion.Rendering
 
         private void UpdateShadowData(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
         {
+            Array.Clear(MainLightShadowCascadeBiases, 0, MainLightShadowCascadeBiases.Length);
+
             var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(cameraData.renderer);
             MainLightShadowSliceData = UniversalRenderingUtility.GetMainLightShadowSliceData(mainLightShadowCasterPass);
             
@@ -821,14 +824,14 @@ namespace Illusion.Rendering
             if (shadowLightIndex == -1)
                 return;
 
+            if (shadowData.bias == null || shadowLightIndex >= shadowData.bias.Count)
+                return;
+
             VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
-            for (int i = 0; i < MainLightShadowSliceData.Length && i < ShadowCascadeCount; ++i)
+            int cascadeCount = Math.Min(shadowData.mainLightShadowCascadesCount,
+                Math.Min(MainLightShadowSliceData.Length, ShadowCascadeCount));
+            for (int i = 0; i < cascadeCount; ++i)
             {
-                if (i >= (shadowData.bias?.Count ?? 0))
-                {
-                    MainLightShadowCascadeBiases[i] = Vector4.zero;
-                    continue;
-                }
                 MainLightShadowCascadeBiases[i] = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, shadowData, MainLightShadowSliceData[i].projectionMatrix, MainLightShadowSliceData[i].resolution);
             }
         }
