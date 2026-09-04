@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.3.0] - 2026-8-29
 
+### Added
+
+- Integrate experimental DLSS Neural Rendering.
+
 ### Fixed
 
 - Fix GTAO half-resolution denoising, upsampling, and render resource handling.
