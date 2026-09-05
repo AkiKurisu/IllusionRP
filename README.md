@@ -127,6 +127,12 @@ Support <b>Order Independent Transparency</b>.
 > [!TIP]
 > You can directly replace the urp lit shader with `Universal Render Pipeline/Hybrid Lit` shader to get better lighting results.
 
+## Area Lights
+
+Support rectangular <b>Area Lights</b> with Linearly Transformed Cosines (LTC) lighting, cookies, and filtered shadows.
+
+![Area Lights](Documentations/images/area_lights.png)
+
 ## Water
 
 Water shader is modified from URP samples and has been converted to ASE version.
