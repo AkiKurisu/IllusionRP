@@ -127,6 +127,12 @@ Support <b>Order Independent Transparency</b>.
 > [!TIP]
 > You can directly replace the urp lit shader with `Universal Render Pipeline/Hybrid Lit` shader to get better lighting results.
 
+## Area Lights
+
+Support rectangular <b>Area Lights</b> with Linearly Transformed Cosines (LTC) lighting, cookies, and filtered shadows.
+
+![Area Lights](Documentations/images/area_lights.png)
+
 ## Water
 
 Water shader is modified from URP samples and has been converted to ASE version.
@@ -222,6 +228,8 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 ## Experimental DLSS Neural Rendering
 
 Include DLSS Neural Rendering integration based on [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR). `nvngx_dlssnr.dll` is not included. See [Experimental DLSS Neural Rendering](Documentations/DLSSNeuralRendering.md) for setup and limitations.
+
+![DLSS Neural Rendering](Documentations/images/dlss_neural_rendering.png)
 
 # Debugging
 

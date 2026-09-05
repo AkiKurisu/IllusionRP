@@ -13,5 +13,5 @@ MonoBehaviour:
   m_Name: LevelSceneTable
   m_EditorClassIdentifier: Ceres::Ceres.DataDriven.DataTable
   m_rowType:
-    serializedTypeString:
+    serializedTypeString: Ceres.Gameplay.Level.LevelSceneRow, Ceres.Gameplay##0
   m_rows: []

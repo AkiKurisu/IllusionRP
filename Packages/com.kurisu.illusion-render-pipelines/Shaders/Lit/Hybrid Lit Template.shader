@@ -626,6 +626,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 			#pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
 			#pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
 			#pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+			#pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
 			// @IllusionRP End
 
 			#pragma multi_compile _ LIGHTMAP_SHADOW_MIXING

@@ -52,6 +52,12 @@ namespace Illusion.Rendering
         public bool EnablePercentageCloserSoftShadows { get; set; } = true;
 
         /// <summary>
+        /// Whether enable rectangle area lights.
+        /// </summary>
+        [ConfigVariable("r.arealights")]
+        public bool EnableAreaLights { get; set; } = true;
+
+        /// <summary>
         /// Whether enable Screen Space Ambient Occlusion.
         /// </summary>
         [ConfigVariable("r.ssao")]
@@ -144,6 +150,18 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.debug.perobjectshadow", IsEditor = true)]
         public bool EnablePerObjectShadowDebug { get; set; }
+
+        /// <summary>
+        /// Overlay the area light shadow atlas.
+        /// </summary>
+        [ConfigVariable("r.debug.arealightshadowatlas", IsEditor = true)]
+        public bool EnableAreaLightShadowAtlasDebug { get; set; }
+
+        [ConfigVariable("r.debug.arealightshadowatlas.min", IsEditor = true)]
+        public float AreaLightShadowAtlasDebugMinValue { get; set; } = 0.0f;
+
+        [ConfigVariable("r.debug.arealightshadowatlas.max", IsEditor = true)]
+        public float AreaLightShadowAtlasDebugMaxValue { get; set; } = 1.0f;
         
         /// <summary>
         /// Enable Vrs debug mode.

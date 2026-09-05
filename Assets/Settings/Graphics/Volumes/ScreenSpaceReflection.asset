@@ -30,6 +30,9 @@ MonoBehaviour:
   enable:
     m_OverrideState: 1
     m_Value: 1
+  tracing:
+    m_OverrideState: 1
+    m_Value: 4
   mode:
     m_OverrideState: 0
     m_Value: 2
@@ -72,6 +75,50 @@ MonoBehaviour:
   stepSize:
     m_OverrideState: 0
     m_Value: 0.1
+  rayMiss:
+    m_OverrideState: 0
+    m_Value: 3
+  lastBounceFallbackHierarchy:
+    m_OverrideState: 0
+    m_Value: 3
+  layerMask:
+    m_OverrideState: 1
+    m_Value:
+      serializedVersion: 2
+      m_Bits: 65
+  textureLodBias:
+    m_OverrideState: 0
+    m_Value: 1
+  rayLength:
+    m_OverrideState: 0
+    m_Value: 50
+  clampValue:
+    m_OverrideState: 0
+    m_Value: 100
+  rayTracingDenoise:
+    m_OverrideState: 0
+    m_Value: 0
+  denoiserRadius:
+    m_OverrideState: 0
+    m_Value: 0.75
+  denoiserAntiFlickeringStrength:
+    m_OverrideState: 0
+    m_Value: 1
+  rayTracingMode:
+    m_OverrideState: 0
+    m_Value: 2
+  fullResolution:
+    m_OverrideState: 0
+    m_Value: 0
+  sampleCount:
+    m_OverrideState: 0
+    m_Value: 1
+  bounceCount:
+    m_OverrideState: 0
+    m_Value: 1
+  rayMaxIterationsRT:
+    m_OverrideState: 0
+    m_Value: 48
   fullScreenDebugMode:
     m_OverrideState: 0
     m_Value: 0

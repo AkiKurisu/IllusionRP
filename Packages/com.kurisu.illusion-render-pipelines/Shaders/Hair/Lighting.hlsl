@@ -16,6 +16,9 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/LightingData.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ForwardLightLoop.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/MostRepresentativePoint.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl"
 
 ///////////////////////////////////////////////////////////////////////////////
 //                     Math Functions                                        //
@@ -379,6 +382,116 @@ half3 HairLighting(BRDFData brdfData, Light light, float3 normalWS,
                         light.distanceAttenuation, normalWS, viewDirectionWS, light.shadowAttenuation, HairData, aoFactor);
 }
 
+#if defined(_AREA_LIGHTS)
+float RoughnessToBlinnPhongSpecularExponent(float roughness)
+{
+    return clamp(2 * rcp(max(roughness * roughness, FLT_EPS)) - 2, FLT_EPS, rcp(FLT_EPS));
+}
+
+float3 RayPlaneIntersect(in float3 rayOrigin, in float3 rayDirection, in float3 planeOrigin, in float3 planeNormal)
+{
+    float dist = dot(planeNormal, planeOrigin - rayOrigin) / dot(planeNormal, rayDirection);
+    return rayOrigin + rayDirection * dist;
+}
+
+//-----------------------------------------------------------------------------
+// EvaluateBSDF_Rect_MRP - Approximation with Most Representative Point
+//-----------------------------------------------------------------------------
+
+half3 EvaluateBSDF_Rect_MRP(BRDFData brdfData, float2 positionSS, float3 positionWS, AreaLightData lightData,
+                            half3 V, float3 N, HairData HairData, BRDFOcclusionFactor aoFactor)
+{
+    half3 lighting = 0;
+
+    // Ref: Moving Frostbite to PBR (Appendix E)
+    // Solve the area lighting using the Most Representative Point detection method.
+    // This is a stop-gap solution until further research is given to LTC support for anisotropic BSDFs.
+    // In the future, when strand-space shading is added, it might be doable to take a "structured sampling" approach.
+
+#if SHADEROPTIONS_BARN_DOOR
+    // Apply the barn door modification to the light data
+    RectangularLightApplyBarnDoor(lightData, positionWS);
+#endif
+
+    float3 unL = lightData.positionRWS - positionWS;
+
+    if (dot(lightData.forward, unL) < FLT_EPS)
+    {
+        const float halfWidth  = lightData.size.x * 0.5;
+        const float halfHeight = lightData.size.y * 0.5;
+
+        // Solid angle computation (brute force or approximate routine).
+        // In our measurements the brute force is slightly more expensive but not by much. Additionally MRP is faster overall
+        // than LTC so we accept the cost for the quality benefit.
+        float4x3 lightVerts;
+        lightVerts[0] = lightData.positionRWS + lightData.right * -halfWidth + lightData.up * -halfHeight; // LL
+        lightVerts[1] = lightData.positionRWS + lightData.right * -halfWidth + lightData.up *  halfHeight; // UL
+        lightVerts[2] = lightData.positionRWS + lightData.right *  halfWidth + lightData.up *  halfHeight; // UR
+        lightVerts[3] = lightData.positionRWS + lightData.right *  halfWidth + lightData.up * -halfHeight; // LR
+
+        const float solidAngle = SolidAngleRectangle(positionWS, lightVerts);
+
+        float3 L;
+
+    #if _MARSCHNER_HAIR
+        // Let's choose a dominant direction with the same philosophy as we have for marschner IBL, using the the vector in the
+        // tangent-camera plane that is orthogonal to the tangent. This provides well-behaved results (though not perfect)
+        // with respect to the reference, instead of the classic reflection vector.
+        const float3 dh = ComputeViewFacingNormal(V, HairData.Tangent);
+
+        // Intersect the dominant specular direction with the light plane.
+        float3 ph = RayPlaneIntersect(positionWS, dh, lightData.positionRWS, lightData.forward);
+
+        // Compute the closest position on the rectangle.
+        ph = ClosestPointRectangle(ph, lightData.positionRWS, -lightData.right, lightData.up, halfWidth, halfHeight);
+
+        // Determine the dominant hemisphere direction based on the camera-light plane angle.
+        const float LdotV = max(dot(-lightData.forward, V), 0);
+
+        // Construct the most representative direction.
+        // We must consider multiple specular lobes, on the backward (R, TRT) and forward (TT) scattering hemisphere.
+        // For the backward hemisphere we handle R and TRT similarly, and use the MRP result (based on the "fake" normal just like how we use it for IBL).
+        // For the forward hemisphere we need to approximate harsher. We can get away with falling back to the light center and modifying the roughness.
+        const float3 LBHemisphere = ph - positionWS;
+        const float3 LFHemisphere = unL;
+        L = SafeNormalize(lerp(LFHemisphere, LBHemisphere, LdotV));
+
+        // Define a factor here to weight the solid angle contribution term to match the reference as close as possible for varying sizes.
+        const float solidAngleFactor = 0.1;
+        // @IllusionRP: HairData.Area widens the longitudinal lobes like HDRP roughnessTT, widen it for the forward hemisphere.
+        const float areaPrime = saturate(HairData.Area + solidAngleFactor * solidAngle);
+        HairData.Area = lerp(areaPrime, HairData.Area, LdotV);
+    #else
+        // For Kajiya instead of MRP, fall back to the light center and modulate the roughnesses by the solid angle.
+        // This isn't perfect for respecting the shape's orientation but generally good enough at widening the distribution for rects of varying size.
+        L = normalize(lightData.positionRWS - positionWS);
+
+        // Again, define a factor to fudge the solid angle to closely match the reference.
+        const float solidAngleFactor = 0.05;
+
+        // @IllusionRP: the Kajiya-Kay exponent is HighLight * 4000, widen it through the Blinn-Phong roughness like HDRP.
+        const float roughness2 = sqrt(2.0 / (HairData.HighLight * 4000.0 + 2.0));
+        HairData.HighLight = RoughnessToBlinnPhongSpecularExponent(saturate(roughness2 + solidAngleFactor * solidAngle)) / 4000.0;
+    #endif
+
+        // Configure a theoretically placed point light at the most important position contributing the area light irradiance.
+        float3 lightColor = lightData.color * solidAngle;
+
+        // Raytracing shadow algorithm require to evaluate lighting without shadow, so it defined SKIP_RASTERIZED_AREA_SHADOWS
+        // This is only present in Lit Material as it is the only one using the improved shadow algorithm.
+    #ifndef SKIP_RASTERIZED_AREA_SHADOWS
+        SHADOW_TYPE shadow = EvaluateShadow_RectArea(positionSS, positionWS, lightData, N, normalize(unL), length(unL));
+        lightColor.rgb *= ComputeShadowColor(shadow, lightData.shadowTint, lightData.penumbraTint);
+    #endif
+
+        // @IllusionRP: HairLighting has no separate diffuse / specular dimmer, the specular dimmer drives the whole lobe set.
+        lighting = HairLighting(brdfData, lightColor * lightData.specularDimmer, L, 1.0, N, V, 1.0, HairData, aoFactor);
+    }
+
+    return lighting;
+}
+#endif
+
 half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFactor aoFactor, float3 positionWS,
     half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, HairData hairData, uint renderingLayers)
 {
@@ -519,6 +632,24 @@ half4 HairPBR(InputData inputData, SurfaceData surfaceData, HairData HairData)
         }
     LIGHT_LOOP_END
     #endif
+
+#if defined(_AREA_LIGHTS)
+    [branch] if (_AreaLightCount > 0)
+    {
+        // Rectangle area lights, most representative point.
+        float2 positionSS = inputData.normalizedScreenSpaceUV * _ScreenParams.xy;
+        for (uint areaLightIndex = 0; areaLightIndex < (uint)_AreaLightCount; areaLightIndex++)
+        {
+            AreaLightData areaLight = _AreaLightDatas[areaLightIndex];
+        #ifdef _LIGHT_LAYERS
+            if (!IsMatchingLightLayer(areaLight.lightLayers, meshRenderingLayers))
+                continue;
+        #endif
+            lightingData.additionalLightsColor += EvaluateBSDF_Rect_MRP(brdfData, positionSS, inputData.positionWS, areaLight,
+                inputData.viewDirectionWS, inputData.normalWS, HairData, brdfOcclusionFactor);
+        }
+    }
+#endif
 
     #if REAL_IS_HALF
         // Clamp any half.inf+ to HALF_MAX

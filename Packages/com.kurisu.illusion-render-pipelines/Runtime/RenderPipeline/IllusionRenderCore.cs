@@ -39,6 +39,8 @@ namespace Illusion.Rendering
         internal const string ProbeGBuffer = "Hidden/ProbeGBuffer";
         
         internal const string ProbeSHDebug = "Hidden/ProbeSHDebug";
+
+        internal const string DebugDisplayHDShadowMap = "Hidden/AreaLights/DebugDisplayHDShadowMap";
 #endif
     }
 
@@ -70,6 +72,11 @@ namespace Illusion.Rendering
         public const string _DEBUG_SCREEN_SPACE_SHADOW_MAINLIGHT = "_DEBUG_SCREEN_SPACE_SHADOW_MAINLIGHT";
 
         public const string _DEBUG_SCREEN_SPACE_SHADOW_CONTACT = "_DEBUG_SCREEN_SPACE_SHADOW_CONTACT";
+
+        // Area light shadow filtering tiers, the off variant disables area lights.
+        public const string AREA_SHADOW_MEDIUM = "AREA_SHADOW_MEDIUM";
+
+        public const string AREA_SHADOW_HIGH = "AREA_SHADOW_HIGH";
     }
 
     public static class IllusionShaderPasses
@@ -185,6 +192,41 @@ namespace Illusion.Rendering
         public static readonly int _PrevExposureTexture = MemberNameHelpers.ShaderPropertyID();
         
         public static readonly int _MainLightShadowCascadeBiases = MemberNameHelpers.ShaderPropertyID();
+
+        // Area lights
+        public static readonly int ShaderVariablesAreaLights = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _AreaLightDatas = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _HDShadowDatas = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _ShadowmapAreaAtlas = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _CachedAreaLightShadowmapAtlas = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _LtcData = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _CookieAtlas = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _InputTexture = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _OutputTexture = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _SrcRect = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _DstRect = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _BlurWeightsStorage = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _EVSMExponent = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _AtlasTexture = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _TextureScaleBias = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _ValidRange = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _RcpGlobalScaleFactor = MemberNameHelpers.ShaderPropertyID();
     }
 
     /// <summary>
@@ -290,6 +332,8 @@ namespace Illusion.Rendering
         public const RenderPassEvent PerObjectShadowCasterPass = RenderPassEvent.AfterRenderingPrePasses + 4;
 
         public const RenderPassEvent ContactShadowsPass = RenderPassEvent.AfterRenderingPrePasses + 4;
+
+        public const RenderPassEvent AreaLightShadowPass = RenderPassEvent.AfterRenderingPrePasses + 4;
         // ====================================== Shadows ================================================== //
 
         // Require main shadow pass

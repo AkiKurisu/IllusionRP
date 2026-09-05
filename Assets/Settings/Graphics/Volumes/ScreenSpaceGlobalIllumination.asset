@@ -16,6 +16,9 @@ MonoBehaviour:
   enable:
     m_OverrideState: 1
     m_Value: 1
+  tracing:
+    m_OverrideState: 1
+    m_Value: 4
   halfResolution:
     m_OverrideState: 0
     m_Value: 0
@@ -43,6 +46,29 @@ MonoBehaviour:
   halfResolutionDenoiser:
     m_OverrideState: 0
     m_Value: 0
+  layerMask:
+    m_OverrideState: 1
+    m_Value:
+      serializedVersion: 2
+      m_Bits: 65
+  rayLength:
+    m_OverrideState: 0
+    m_Value: 50
+  clampValue:
+    m_OverrideState: 0
+    m_Value: 10
+  rayTracingMode:
+    m_OverrideState: 0
+    m_Value: 2
+  fullResolution:
+    m_OverrideState: 0
+    m_Value: 0
+  sampleCount:
+    m_OverrideState: 0
+    m_Value: 2
+  bounceCount:
+    m_OverrideState: 0
+    m_Value: 1
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

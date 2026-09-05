@@ -537,6 +537,7 @@
 			// #pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
 			#pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
 			#pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+			#pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
 			// #pragma multi_compile_fragment _ _SCREEN_SPACE_SSS
 			// @IllusionRP End
 
@@ -1079,6 +1080,7 @@
 			#pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
 			// #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
 			#pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+			#pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
 			#pragma multi_compile_fragment _ _SCREEN_SPACE_SSS
 			// @IllusionRP End
 

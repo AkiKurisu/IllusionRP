@@ -16,6 +16,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Fabric/FabricDefine.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ForwardLightLoop.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
 
 ///////////////////////////////////////////////////////////////////////////////
 //                      Lighting Functions                                   //
@@ -337,6 +338,63 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
         }
     LIGHT_LOOP_END
     #endif
+
+#if defined(_AREA_LIGHTS)
+    [branch] if (_AreaLightCount > 0)
+    {
+        // Rectangle area lights: Lambert diffuse lit on both sides, GGX base lobe and a Charlie sheen lobe
+        // mixed by SheenData.Sheen like FabricLighting. Anisotropy is dropped.
+        AreaBSDFData areaBsdfData;
+        ZERO_INITIALIZE(AreaBSDFData, areaBsdfData);
+        areaBsdfData.materialFeatures = MATERIALFEATUREFLAGS_LIT_TRANSMISSION;
+        areaBsdfData.normalWS = inputData.normalWS;
+        areaBsdfData.perceptualRoughness = brdfData.perceptualRoughness;
+        areaBsdfData.perceptualRoughnessB = brdfData.perceptualRoughness;
+        areaBsdfData.fresnel0 = brdfData.specular;
+        areaBsdfData.transmittance = 1.0;
+
+        float clampedNdotV = ClampNdotV(dot(inputData.normalWS, inputData.viewDirectionWS));
+        float3 specularFGD;
+        float3 diffuseFGD;
+        float3 reflectivity;
+        GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, brdfData.perceptualRoughness, brdfData.specular,
+            specularFGD, diffuseFGD, reflectivity);
+        float3 sheenFGD;
+        float3 sheenDiffuseFGD;
+        float3 sheenReflectivity;
+        GetPreIntegratedFGDCharlieAndFabricLambert(clampedNdotV, brdfData.perceptualRoughness, SheenData.Color,
+            sheenFGD, sheenDiffuseFGD, sheenReflectivity);
+
+        AreaPreLightData areaPreLightData = GetAreaPreLightData(inputData.viewDirectionWS, inputData.normalWS, areaBsdfData,
+            LTCLIGHTINGMODEL_COUNT, 0.0, specularFGD, 1.0, 0.0);
+        AreaPreLightData sheenPreLightData = areaPreLightData;
+        sheenPreLightData.ltcTransformSpecular[0] = SampleLtcMatrix(brdfData.perceptualRoughness, clampedNdotV, LTCLIGHTINGMODEL_CHARLIE);
+        sheenPreLightData.specularFGD = sheenFGD;
+        float2 positionSS = inputData.normalizedScreenSpaceUV * _ScreenParams.xy;
+
+        for (uint areaLightIndex = 0; areaLightIndex < (uint)_AreaLightCount; areaLightIndex++)
+        {
+            AreaLightData areaLight = _AreaLightDatas[areaLightIndex];
+    #ifdef _LIGHT_LAYERS
+            if (!IsMatchingLightLayer(areaLight.lightLayers, meshRenderingLayers))
+                continue;
+    #endif
+            DirectLighting areaLighting = EvaluateBSDF_Area(positionSS, inputData.positionWS, areaPreLightData, areaLight,
+                areaBsdfData, true, !specularHighlightsOff);
+            half3 areaSpecular = areaLighting.specular;
+    #ifndef _SPECULARHIGHLIGHTS_OFF
+            [branch] if (!specularHighlightsOff)
+            {
+                DirectLighting sheenLighting = EvaluateBSDF_Area(positionSS, inputData.positionWS, sheenPreLightData, areaLight,
+                    areaBsdfData, false, true);
+                areaSpecular = lerp(areaLighting.specular, sheenLighting.specular, SheenData.Sheen);
+            }
+    #endif
+            lightingData.additionalLightsColor += areaLighting.diffuse * brdfData.diffuse * brdfOcclusionFactor.directAmbientOcclusion
+                                                + areaSpecular * brdfOcclusionFactor.directSpecularOcclusion;
+        }
+    }
+#endif
 
     #if _ADDITIONAL_LIGHTS_VERTEX
         lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;

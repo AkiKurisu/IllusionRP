@@ -27,7 +27,7 @@
         },
         {
             "name": "com.kurisu.ceres",
-            "expression": "1.0.0",
+            "expression": "1.0.1",
             "define": "CERES_INSTALL"
         },
         {

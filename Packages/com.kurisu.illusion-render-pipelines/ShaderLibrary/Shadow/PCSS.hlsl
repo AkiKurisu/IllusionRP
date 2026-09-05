@@ -117,6 +117,18 @@ real2 ComputeFibonacciSpiralDiskSampleClumped(const in int sampleIndex, const in
     return fibonacciSpiralDirection[sampleIndex] * sampleDistNorm;
 }
 
+// Samples denser near the center - HDRP punctual / area PCSS blocker search distribution.
+real2 ComputeFibonacciSpiralDiskSampleClumpedCubic(const in int sampleIndex, const in real sampleCountInverse, out real sampleDistNorm)
+{
+    // Samples not biased away from the center - sample 0 at (0, 0) is important for blocker search near shadow contact points.
+    sampleDistNorm = (real)sampleIndex * sampleCountInverse;
+
+    // Third power chosen arbitrarily - center area is really that much more important
+    sampleDistNorm = sampleDistNorm * sampleDistNorm * sampleDistNorm;
+
+    return fibonacciSpiralDirection[sampleIndex] * sampleDistNorm;
+}
+
 // Samples uniformly spread across the disk kernel
 real2 ComputeFibonacciSpiralDiskSampleUniform(const in int sampleIndex, const in real sampleCountInverse,
     const in real sampleBias, out real sampleDistNorm)

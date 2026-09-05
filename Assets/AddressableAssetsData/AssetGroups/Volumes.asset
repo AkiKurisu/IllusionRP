@@ -13,8 +13,6 @@ MonoBehaviour:
   m_Name: Volumes
   m_EditorClassIdentifier: 
   m_GroupName: Volumes
-  m_Data:
-    m_SerializedData: []
   m_GUID: b4c260f151639114bbeb904483011945
   m_SerializeEntries:
   - m_GUID: 09bb5ea53e2fc234185cf574c1db13d0
@@ -57,6 +55,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 618e6d5daafcc01966e64642d3c85cf1
+    m_Address: Assets/Settings/Graphics/Volumes/AreaLighting.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 6b05eba52c5480148b60dfaf3cd3e60a
     m_Address: Assets/Settings/Graphics/Volumes/ScreenSpaceReflection_Mobile.asset
     m_ReadOnly: 0
@@ -72,8 +75,18 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 906674f3734d71aad44ff3404fdd5531
+    m_Address: Assets/Settings/Graphics/Volumes/DLSSNeuralRendering.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 96f928b36aa8587438d1ecb97d7c8fe2
     m_Address: Assets/Settings/Graphics/Volumes/SubsurfaceScattering_Mobile.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 98109c195658948a5af94b5b6e79dc3b
+    m_Address: Assets/Settings/Graphics/Volumes/AreaLighting_Mobile.asset
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -104,6 +117,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c64fe9bae90368e468d5292ea1699ac2
     m_Address: Assets/Settings/Graphics/Volumes/MotionBlur.asset
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c6c1e4d1d50537c41be91536af2ebef3
+    m_Address: Assets/Settings/Graphics/Volumes/DLSSNeuralRendering_Mobile.asset
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

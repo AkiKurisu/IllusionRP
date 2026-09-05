@@ -14,6 +14,11 @@ namespace Illusion.Rendering
         [Header("DLSS Neural Rendering")]
         public Shader dlssNeuralRenderingPrepareInputsShader;
 
+        [Header("Area Lights")]
+        public Shader areaLightShadowClearShader;
+
+        public Shader filterAreaLightCookiesShader;
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         // ReSharper disable once UnusedMember.Global
         public Shader[] debugShaders;
@@ -24,6 +29,8 @@ namespace Illusion.Rendering
         public ComputeShader subsurfaceScatteringCS;
 
         public ComputeShader contactShadowsCS;
+
+        public ComputeShader evsmBlurCS;
 
         public ComputeShader diffuseShadowDenoiserCS;
 

@@ -70,6 +70,31 @@ namespace Illusion.Rendering
         [SerializeField]
         internal PrefilterMode percentageCloserSoftShadowsPrefilterMode = PrefilterMode.Select;
         
+        // The area shadow axis (off / AREA_SHADOW_MEDIUM / AREA_SHADOW_HIGH) is a single multi_compile set, so one field
+        // selects the exact subset the target renderers need. Off is only kept for renderers without area lights:
+        // an enabled feature keeps its tier keyword resident and disables area lights with a zero light count.
+        internal enum AreaShadowPrefilterMode
+        {
+            OffOnly,
+            MediumOnly,
+            HighOnly,
+            OffAndMedium,
+            OffAndHigh,
+            MediumAndHigh,
+            All
+        }
+
+        // ReSharper disable once NotAccessedField.Global
+        [RemoveIf(AreaShadowPrefilterMode.OffOnly,       keywordNames: new [] {IllusionShaderKeywords.AREA_SHADOW_MEDIUM, IllusionShaderKeywords.AREA_SHADOW_HIGH})]
+        [SelectIf(AreaShadowPrefilterMode.MediumOnly,    keywordNames: IllusionShaderKeywords.AREA_SHADOW_MEDIUM)]
+        [SelectIf(AreaShadowPrefilterMode.HighOnly,      keywordNames: IllusionShaderKeywords.AREA_SHADOW_HIGH)]
+        [SelectIf(AreaShadowPrefilterMode.OffAndMedium,  keywordNames: new [] {"", IllusionShaderKeywords.AREA_SHADOW_MEDIUM})]
+        [SelectIf(AreaShadowPrefilterMode.OffAndHigh,    keywordNames: new [] {"", IllusionShaderKeywords.AREA_SHADOW_HIGH})]
+        [SelectIf(AreaShadowPrefilterMode.MediumAndHigh, keywordNames: new [] {IllusionShaderKeywords.AREA_SHADOW_MEDIUM, IllusionShaderKeywords.AREA_SHADOW_HIGH})]
+        [SelectIf(AreaShadowPrefilterMode.All,           keywordNames: new [] {"", IllusionShaderKeywords.AREA_SHADOW_MEDIUM, IllusionShaderKeywords.AREA_SHADOW_HIGH})]
+        [SerializeField]
+        internal AreaShadowPrefilterMode areaShadowPrefilterMode = AreaShadowPrefilterMode.All;
+
         // ReSharper disable once NotAccessedField.Global
         [RemoveIf(PrefilterMode.Remove,     keywordNames: IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION)]
         [SelectIf(PrefilterMode.Select,     keywordNames: new [] {"", IllusionShaderKeywords._PRT_GLOBAL_ILLUMINATION})]
