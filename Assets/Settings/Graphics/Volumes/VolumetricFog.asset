@@ -37,6 +37,12 @@ MonoBehaviour:
   attenuationDistance:
     m_OverrideState: 0
     m_Value: 128
+  enableProbeVolumeContribution:
+    m_OverrideState: 1
+    m_Value: 0
+  probeVolumeContributionWeight:
+    m_OverrideState: 0
+    m_Value: 1
   enableMainLightContribution:
     m_OverrideState: 0
     m_Value: 0
@@ -53,14 +59,17 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 0
   maxSteps:
-    m_OverrideState: 0
-    m_Value: 128
+    m_OverrideState: 1
+    m_Value: 256
   blurIterations:
     m_OverrideState: 1
-    m_Value: 1
+    m_Value: 4
   transmittanceThreshold:
     m_OverrideState: 1
     m_Value: 0.02
+  shadingRate:
+    m_OverrideState: 0
+    m_Value: 0
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

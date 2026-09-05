@@ -32,8 +32,8 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 2
   thickness:
-    m_OverrideState: 1
-    m_Value: 0.18
+    m_OverrideState: 0
+    m_Value: 0.5
   spatialBilateralAggressiveness:
     m_OverrideState: 0
     m_Value: 0.15

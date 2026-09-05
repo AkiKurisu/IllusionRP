@@ -41,8 +41,8 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: {x: 0.2, y: 0.2}
   updateOTF:
-    m_OverrideState: 1
-    m_Value: 1
+    m_OverrideState: 0
+    m_Value: 0
   generatePSF:
     m_OverrideState: 1
     m_Value: 1
@@ -62,9 +62,6 @@ MonoBehaviour:
   imagePSFPow:
     m_OverrideState: 0
     m_Value: 1
-  showDownSampleResult:
-    m_OverrideState: 0
-    m_Value: 0
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-3391660131046392471
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e83f8d4570f49a4b1c7d278a118f5ca, type: 3}
+  m_Name: DLSSNeuralRendering
+  m_EditorClassIdentifier: 
+  active: 1
+  enable:
+    m_OverrideState: 1
+    m_Value: 0
+  preset:
+    m_OverrideState: 0
+    m_Value: 0
+  style:
+    m_OverrideState: 0
+    m_Value: 0
+  intensity:
+    m_OverrideState: 0
+    m_Value: 1
+  localToneStrength:
+    m_OverrideState: 0
+    m_Value: 1
+  localStructureStrength:
+    m_OverrideState: 0
+    m_Value: 1
+  skinStructureStrength:
+    m_OverrideState: 0
+    m_Value: -1
+  useAutoMask:
+    m_OverrideState: 0
+    m_Value: 0
+  uiCorrection:
+    m_OverrideState: 0
+    m_Value: 0
+  motionVectorScale:
+    m_OverrideState: 0
+    m_Value: {x: 1, y: 1}
+  cameraCutDistance:
+    m_OverrideState: 0
+    m_Value: 5
+  cameraCutAngle:
+    m_OverrideState: 0
+    m_Value: 45
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7fd9488000d3734a9e00ee676215985, type: 3}
+  m_Name: DLSSNeuralRendering_Mobile
+  m_EditorClassIdentifier: 
+  components:
+  - {fileID: -3391660131046392471}

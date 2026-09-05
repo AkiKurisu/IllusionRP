@@ -19,8 +19,17 @@ MonoBehaviour:
   perObjectShadowTileResolution:
     m_OverrideState: 0
     m_Value: 1024
-  perObjectShadowLengthOffset:
+  adaptiveTileResolution:
     m_OverrideState: 1
+    m_Value: 1
+  adaptiveAtlasResolution:
+    m_OverrideState: 1
+    m_Value: 2048
+  maximumAdaptiveTileResolution:
+    m_OverrideState: 1
+    m_Value: 1536
+  perObjectShadowLengthOffset:
+    m_OverrideState: 0
     m_Value: 50
 --- !u!114 &-2707464735598556559
 MonoBehaviour:
@@ -45,8 +54,8 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 10
   maxPenumbraSize:
-    m_OverrideState: 0
-    m_Value: 0.56
+    m_OverrideState: 1
+    m_Value: 0.65
   maxSamplingDistance:
     m_OverrideState: 0
     m_Value: 0.5
@@ -60,6 +69,30 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 16
   penumbraMaskScale:
+    m_OverrideState: 0
+    m_Value: 4
+  penumbraMaskDilation:
+    m_OverrideState: 0
+    m_Value: 16
+  penumbraMaskMinDilation:
+    m_OverrideState: 1
+    m_Value: 10
+  penumbraMaskDilationFadeStart:
+    m_OverrideState: 0
+    m_Value: 8
+  penumbraMaskDilationFadeEnd:
+    m_OverrideState: 0
+    m_Value: 30
+  usePenumbraMask:
+    m_OverrideState: 0
+    m_Value: 1
+  shadowTemporalAccumulation:
+    m_OverrideState: 1
+    m_Value: 0
+  shadowSpatialDenoise:
+    m_OverrideState: 0
+    m_Value: 0
+  shadowDenoiseKernelSize:
     m_OverrideState: 0
     m_Value: 4
 --- !u!114 &11400000

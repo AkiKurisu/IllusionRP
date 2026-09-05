@@ -100,6 +100,10 @@ MonoBehaviour:
   contactShadows: 1
   pcssShadows: 1
   fragmentShadowBias: 1
+  areaLights: 1
+  areaShadowFilteringQuality: 1
+  areaLightCookieAtlasSize: 2048
+  areaLightCookieFormat: 74
   groundTruthAO: 1
   screenSpaceReflection: 1
   screenSpaceGlobalIllumination: 1
@@ -110,6 +114,7 @@ MonoBehaviour:
   screenSpaceSubsurfaceScatteringPrefilterMode: 2
   contactShadowPrefilterMode: 1
   percentageCloserSoftShadowsPrefilterMode: 1
+  areaShadowPrefilterMode: 6
   precomputedRadianceTransferGIPrefilterMode: 2
   transparentPerObjectShadowsPrefilterMode: 2
   screenSpaceReflectionPrefilterMode: 2

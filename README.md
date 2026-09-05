@@ -223,6 +223,8 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 
 Include DLSS Neural Rendering integration based on [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR). `nvngx_dlssnr.dll` is not included. See [Experimental DLSS Neural Rendering](Documentations/DLSSNeuralRendering.md) for setup and limitations.
 
+![DLSS Neural Rendering](Documentations/images/dlss_neural_rendering.png)
+
 # Debugging
 
 Recommended to install [Ceres](https://github.com/AkiKurisu/Ceres) to use Unreal-like console variables for debugging rendering features.
