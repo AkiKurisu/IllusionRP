@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Port HDRP rectangle area lights: LTC lighting for Lit, Skin, Fabric, Eye and Hair, EVSM / PCSS area shadows, 2D cookies.
 - Integrate experimental DLSS Neural Rendering.
 - Register screenshot capture hooks with Ceres when installed.
 - Expose `IllusionRendererFeature.IsDLSSNeuralRenderingAvailable` for runtime settings UI.
