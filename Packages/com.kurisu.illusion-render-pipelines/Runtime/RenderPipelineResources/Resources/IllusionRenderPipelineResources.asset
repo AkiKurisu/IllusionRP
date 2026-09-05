@@ -31,13 +31,17 @@ MonoBehaviour:
   preIntegratedFGD_CharlieFabricLambertShader: {fileID: 4800000, guid: 6b5875a88815e6546ac591e537e0a211, type: 3}
   preIntegratedFGD_GGXDisneyDiffuseShader: {fileID: 4800000, guid: 202f6c6e19a562c439f3f0fe581e80cf, type: 3}
   dlssNeuralRenderingPrepareInputsShader: {fileID: 4800000, guid: fa83229e14a546d882f6994fe630c564, type: 3}
+  areaLightShadowClearShader: {fileID: 4800000, guid: 32b46714b5c24e46b554b9f31b673958, type: 3}
+  filterAreaLightCookiesShader: {fileID: 4800000, guid: 7f323cb18e9e629060cebadd3c2b7f64, type: 3}
   debugShaders:
   - {fileID: 4800000, guid: 8bbd92567fd5ceb458f6f0317acc0bc7, type: 3}
   - {fileID: 4800000, guid: 7746387bc7e49cd4fa068adfcb7b1fc6, type: 3}
   - {fileID: 4800000, guid: a3a85e85940649bebb7d83de5e7d6b5e, type: 3}
+  - {fileID: 4800000, guid: 4c5b28ebf1e34325a221b71f73b921f8, type: 3}
   clearBuffer2D: {fileID: 7200000, guid: 555dfd3ed0cc5d940b569b3705c7cb1f, type: 3}
   subsurfaceScatteringCS: {fileID: 7200000, guid: d7611ebeaf1c49478593a3ffa5e87c4e, type: 3}
   contactShadowsCS: {fileID: 7200000, guid: 01b67e9493b00934d815eb2a12fb094c, type: 3}
+  evsmBlurCS: {fileID: 7200000, guid: 0cd2ccf301524ab9aed2be748e624b9f, type: 3}
   diffuseShadowDenoiserCS: {fileID: 7200000, guid: 24334c26778cd4240b3448d0a289ad0e, type: 3}
   diffuseDenoiserCS: {fileID: 7200000, guid: d6beb8ede1ec9f746adbbaa9e5814660, type: 3}
   temporalFilterCS: {fileID: 7200000, guid: af087f3f9bb126842b3d9d3fc5eeae84, type: 3}

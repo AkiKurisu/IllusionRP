@@ -162,6 +162,7 @@ Shader "Universal Render Pipeline/Hybrid Complex Lit"
             #pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
             #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
             #pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+            #pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #include_with_pragmas "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRenderingKeywords.hlsl"
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
 
@@ -256,6 +257,7 @@ Shader "Universal Render Pipeline/Hybrid Complex Lit"
             // #pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
             // #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
             #pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+            #pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #include_with_pragmas "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRenderingKeywords.hlsl"
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
 

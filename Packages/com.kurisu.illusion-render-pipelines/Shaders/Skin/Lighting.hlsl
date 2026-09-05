@@ -19,6 +19,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/LightingData.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/SubsurfaceScattering/ShaderVariablesSubsurface.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
 #if SPHERICAL_GAUSSIAN_SSS
     #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/SphericalGaussian.hlsl"
 #endif
@@ -288,7 +289,52 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
             lightingData.additionalLightsColor += SkinDiffuse(brdfData, light, inputData, surfaceData, skinData, brdfAOFactor);
         }
     LIGHT_LOOP_END
-    
+
+#if defined(_AREA_LIGHTS)
+    [branch] if (_AreaLightCount > 0)
+    {
+        // Rectangle area lights, diffuse and transmission.
+        AreaBSDFData areaBsdfData;
+        ZERO_INITIALIZE(AreaBSDFData, areaBsdfData);
+        areaBsdfData.materialFeatures = MATERIALFEATUREFLAGS_LIT_TRANSMISSION;
+        areaBsdfData.normalWS = inputData.normalWS;
+        areaBsdfData.perceptualRoughness = brdfData.perceptualRoughness;
+        areaBsdfData.perceptualRoughnessB = skinData.PerceptualRoughness;
+        areaBsdfData.fresnel0 = skinData.F0;
+        areaBsdfData.transmittance = skinData.Transmittance;
+
+        float clampedNdotV = ClampNdotV(dot(inputData.normalWS, inputData.viewDirectionWS));
+        float3 specularFGD;
+        float3 diffuseFGD;
+        float3 reflectivity;
+        GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, brdfData.perceptualRoughness, skinData.F0,
+            specularFGD, diffuseFGD, reflectivity);
+    #if USE_DIFFUSE_LAMBERT_BRDF
+        uint diffuseLtcModel = LTCLIGHTINGMODEL_COUNT;
+        diffuseFGD = 1.0;
+    #else
+        uint diffuseLtcModel = LTCLIGHTINGMODEL_DISNEY_DIFFUSE;
+    #endif
+        AreaPreLightData areaPreLightData = GetAreaPreLightData(inputData.viewDirectionWS, inputData.normalWS, areaBsdfData,
+            diffuseLtcModel, 0.0, specularFGD, diffuseFGD.x, 0.0);
+        float2 positionSS = inputData.normalizedScreenSpaceUV * _ScreenParams.xy;
+        // @IllusionRP: SkinDiffuse weights the diffuse lobe by (1 - F), use the view Fresnel for the area integral.
+        half3 fresnelTerm = 1 - F_Schlick(skinData.F0, clampedNdotV);
+
+        for (uint areaLightIndex = 0; areaLightIndex < (uint)_AreaLightCount; areaLightIndex++)
+        {
+            AreaLightData areaLight = _AreaLightDatas[areaLightIndex];
+    #ifdef _LIGHT_LAYERS
+            if (!IsMatchingLightLayer(areaLight.lightLayers, meshRenderingLayers))
+                continue;
+    #endif
+            DirectLighting areaLighting = EvaluateBSDF_Area(positionSS, inputData.positionWS, areaPreLightData, areaLight,
+                areaBsdfData, true, false);
+            lightingData.additionalLightsColor += areaLighting.diffuse * brdfData.albedo * fresnelTerm * brdfAOFactor.directAmbientOcclusion;
+        }
+    }
+#endif
+
 
 #if REAL_IS_HALF
     // Clamp any half.inf+ to HALF_MAX
@@ -371,7 +417,43 @@ half4 SkinSpecular(InputData inputData, SurfaceData surfaceData, SkinData SkinDa
             lightingData.additionalLightsColor += SkinSpecular(brdfData, light, inputData, SkinData, brdfAOFactor);
         }
     LIGHT_LOOP_END
-    
+
+#if defined(_AREA_LIGHTS)
+    [branch] if (_AreaLightCount > 0)
+    {
+        // Rectangle area lights, dual lobe specular.
+        AreaBSDFData areaBsdfData;
+        ZERO_INITIALIZE(AreaBSDFData, areaBsdfData);
+        areaBsdfData.materialFeatures = MATERIALFEATUREFLAGS_SSS_DUAL_LOBE;
+        areaBsdfData.normalWS = inputData.normalWS;
+        areaBsdfData.perceptualRoughness = brdfData.perceptualRoughness;
+        areaBsdfData.perceptualRoughnessB = SkinData.PerceptualRoughness;
+        areaBsdfData.fresnel0 = brdfData.specular;
+
+        float clampedNdotV = ClampNdotV(dot(inputData.normalWS, inputData.viewDirectionWS));
+        float3 specularFGD;
+        float3 diffuseFGD;
+        float3 reflectivity;
+        GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, SkinData.PerceptualRoughnessMix, brdfData.specular,
+            specularFGD, diffuseFGD, reflectivity);
+        AreaPreLightData areaPreLightData = GetAreaPreLightData(inputData.viewDirectionWS, inputData.normalWS, areaBsdfData,
+            LTCLIGHTINGMODEL_COUNT, SkinData.LobeWeight, specularFGD, 1.0, 0.0);
+        float2 positionSS = inputData.normalizedScreenSpaceUV * _ScreenParams.xy;
+
+        for (uint areaLightIndex = 0; areaLightIndex < (uint)_AreaLightCount; areaLightIndex++)
+        {
+            AreaLightData areaLight = _AreaLightDatas[areaLightIndex];
+    #ifdef _LIGHT_LAYERS
+            if (!IsMatchingLightLayer(areaLight.lightLayers, meshRenderingLayers))
+                continue;
+    #endif
+            DirectLighting areaLighting = EvaluateBSDF_Area(positionSS, inputData.positionWS, areaPreLightData, areaLight,
+                areaBsdfData, false, true);
+            lightingData.additionalLightsColor += areaLighting.specular * brdfAOFactor.directSpecularOcclusion;
+        }
+    }
+#endif
+
 
 #if REAL_IS_HALF
     // Clamp any half.inf+ to HALF_MAX

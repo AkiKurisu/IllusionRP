@@ -15,6 +15,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/LightingData.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/GlobalIllumination.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -191,11 +192,61 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
 #endif
         {
             lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
-                                                                          inputData, surfaceData, 
+                                                                          inputData, surfaceData,
                                                                           specularHighlightsOff, brdfOcclusionFactor);
         }
     LIGHT_LOOP_END
     #endif
+
+#if defined(_AREA_LIGHTS)
+    [branch] if (_AreaLightCount > 0)
+    {
+        // Rectangle area lights, LTC on the URP BRDF inputs.
+        AreaBSDFData areaBsdfData;
+        ZERO_INITIALIZE(AreaBSDFData, areaBsdfData);
+        areaBsdfData.normalWS = inputData.normalWS;
+        areaBsdfData.perceptualRoughness = brdfData.perceptualRoughness;
+        areaBsdfData.perceptualRoughnessB = brdfData.perceptualRoughness;
+        areaBsdfData.fresnel0 = brdfData.specular;
+        float coatIblF = 0.0;
+    #if defined(_CLEARCOAT) || defined(_CLEARCOATMAP)
+        areaBsdfData.materialFeatures |= MATERIALFEATUREFLAGS_LIT_CLEAR_COAT;
+        areaBsdfData.coatRoughness = brdfDataClearCoat.roughness;
+        areaBsdfData.coatMask = surfaceData.clearCoatMask;
+        half coatNoV = saturate(dot(inputData.normalWS, inputData.viewDirectionWS));
+        coatIblF = kDielectricSpec.x + kDielectricSpec.a * Pow4(1.0 - coatNoV);
+    #endif
+
+        float clampedNdotV = ClampNdotV(dot(inputData.normalWS, inputData.viewDirectionWS));
+        float3 specularFGD;
+        float3 diffuseFGD;
+        float3 reflectivity;
+        GetPreIntegratedFGDGGXAndDisneyDiffuse(clampedNdotV, brdfData.perceptualRoughness, brdfData.specular,
+            specularFGD, diffuseFGD, reflectivity);
+    #if USE_DIFFUSE_LAMBERT_BRDF
+        uint diffuseLtcModel = LTCLIGHTINGMODEL_COUNT;
+        diffuseFGD = 1.0;
+    #else
+        uint diffuseLtcModel = LTCLIGHTINGMODEL_DISNEY_DIFFUSE;
+    #endif
+        AreaPreLightData areaPreLightData = GetAreaPreLightData(inputData.viewDirectionWS, inputData.normalWS, areaBsdfData,
+            diffuseLtcModel, 0.0, specularFGD, diffuseFGD.x, coatIblF);
+        float2 positionSS = inputData.normalizedScreenSpaceUV * _ScreenParams.xy;
+
+        for (uint areaLightIndex = 0; areaLightIndex < (uint)_AreaLightCount; areaLightIndex++)
+        {
+            AreaLightData areaLight = _AreaLightDatas[areaLightIndex];
+    #ifdef _LIGHT_LAYERS
+            if (!IsMatchingLightLayer(areaLight.lightLayers, meshRenderingLayers))
+                continue;
+    #endif
+            DirectLighting areaLighting = EvaluateBSDF_Area(positionSS, inputData.positionWS, areaPreLightData, areaLight,
+                areaBsdfData, true, !specularHighlightsOff);
+            lightingData.additionalLightsColor += areaLighting.diffuse * brdfData.diffuse * brdfOcclusionFactor.directAmbientOcclusion
+                                                + areaLighting.specular * brdfOcclusionFactor.directSpecularOcclusion;
+        }
+    }
+#endif
 
     #if defined(_ADDITIONAL_LIGHTS_VERTEX)
     lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;

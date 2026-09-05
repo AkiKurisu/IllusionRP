@@ -5,9 +5,11 @@ namespace Illusion.Rendering
     public partial class IllusionRendererFeature
     {
         [SerializeField, Tooltip("Enable DLSS Neural Rendering when its Volume and optional UnityRHI backend are available.")]
-        internal bool dlssNeuralRendering = true;
+        public bool dlssNeuralRendering = true;
 
         private IDLSSNeuralRenderingBackend _dlssNeuralRenderingBackend;
+
+        public bool IsDLSSNeuralRenderingAvailable => dlssNeuralRendering && _dlssNeuralRenderingBackend is { IsAvailable: true };
 
         private void CreateDLSSNeuralRenderingBackend()
         {

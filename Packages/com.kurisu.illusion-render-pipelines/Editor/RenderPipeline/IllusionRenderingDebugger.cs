@@ -77,6 +77,10 @@ namespace Illusion.Rendering.Editor
                 new GUIContent("Percentage Closer Soft Shadows", "Enable/Disable PCSS"),
                 _config.EnablePercentageCloserSoftShadows);
 
+            _config.EnableAreaLights = EditorGUILayout.ToggleLeft(
+                new GUIContent("Area Lights", "Enable/Disable rectangle area lights"),
+                _config.EnableAreaLights);
+
             _config.EnableScreenSpaceAmbientOcclusion = EditorGUILayout.ToggleLeft(
                 new GUIContent("Screen Space Ambient Occlusion", "Enable/Disable SSAO"),
                 _config.EnableScreenSpaceAmbientOcclusion);
@@ -129,7 +133,23 @@ namespace Illusion.Rendering.Editor
             _config.EnablePerObjectShadowDebug = EditorGUILayout.ToggleLeft(
                 new GUIContent("Per Object Shadow Debug", "Visualize per-object shadows"),
                 _config.EnablePerObjectShadowDebug);
-            
+
+            _config.EnableAreaLightShadowAtlasDebug = EditorGUILayout.ToggleLeft(
+                new GUIContent("Area Light Shadow Atlas Debug", "Overlay the area light shadow atlas"),
+                _config.EnableAreaLightShadowAtlasDebug);
+
+            if (_config.EnableAreaLightShadowAtlasDebug)
+            {
+                EditorGUI.indentLevel++;
+                _config.AreaLightShadowAtlasDebugMinValue = EditorGUILayout.FloatField(
+                    new GUIContent("Min Value", "Atlas value mapped to black"),
+                    _config.AreaLightShadowAtlasDebugMinValue);
+                _config.AreaLightShadowAtlasDebugMaxValue = EditorGUILayout.FloatField(
+                    new GUIContent("Max Value", "Atlas value mapped to white"),
+                    _config.AreaLightShadowAtlasDebugMaxValue);
+                EditorGUI.indentLevel--;
+            }
+
             _config.EnableVrsDebug = EditorGUILayout.ToggleLeft(
                 new GUIContent("Stencil VRS Debug", "Visualize stencil vrs color mask"),
                 _config.EnableVrsDebug);

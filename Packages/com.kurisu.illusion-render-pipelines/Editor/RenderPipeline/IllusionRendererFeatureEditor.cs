@@ -33,6 +33,12 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _contactShadows;
         private SerializedProperty _pcssShadows;
         private SerializedProperty _fragmentShadowBias;
+        private SerializedProperty _areaLights;
+        private SerializedProperty _areaShadowFilteringQuality;
+
+        private SerializedProperty _areaLightCookieAtlasSize;
+
+        private SerializedProperty _areaLightCookieFormat;
 
         // Ambient Occlusion Settings
         private SerializedProperty _groundTruthAO;
@@ -77,6 +83,10 @@ namespace Illusion.Rendering.Editor
             _contactShadows = Properties.Find(feature => feature.contactShadows);
             _pcssShadows = Properties.Find(feature => feature.pcssShadows);
             _fragmentShadowBias = Properties.Find(feature => feature.fragmentShadowBias);
+            _areaLights = Properties.Find(feature => feature.areaLights);
+            _areaShadowFilteringQuality = Properties.Find(feature => feature.areaShadowFilteringQuality);
+            _areaLightCookieAtlasSize = Properties.Find(feature => feature.areaLightCookieAtlasSize);
+            _areaLightCookieFormat = Properties.Find(feature => feature.areaLightCookieFormat);
 
             // Ambient Occlusion Settings
             _groundTruthAO = Properties.Find(feature => feature.groundTruthAO);
@@ -176,6 +186,13 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.PropertyField(_pcssShadows, Styles.PcssShadowsLabel);
                 EditorGUILayout.PropertyField(_contactShadows, Styles.ContactShadowsLabel);
                 EditorGUILayout.PropertyField(_fragmentShadowBias, Styles.FragmentShadowBiasLabel);
+                EditorGUILayout.PropertyField(_areaLights, Styles.AreaLightsLabel);
+                if (_areaLights.boolValue)
+                {
+                    EditorGUILayout.PropertyField(_areaShadowFilteringQuality, Styles.AreaShadowFilteringQualityLabel);
+                    EditorGUILayout.PropertyField(_areaLightCookieAtlasSize, Styles.AreaLightCookieAtlasSizeLabel);
+                    EditorGUILayout.PropertyField(_areaLightCookieFormat, Styles.AreaLightCookieFormatLabel);
+                }
             }
 
             EditorGUILayout.Space();
@@ -262,6 +279,14 @@ namespace Illusion.Rendering.Editor
                 "Enable Percentage Closer Soft Shadows.");
             public static readonly GUIContent FragmentShadowBiasLabel = new("Fragment Shadow Bias",
                 "Enable Fragment Shadow Bias in receiver pass instead of caster pass, notice this will let IllusionRP shaders not compatible to URP original shaders.");
+            public static readonly GUIContent AreaLightCookieAtlasSizeLabel = new("Area Light Cookie Atlas", "Resolution of the power of two atlas holding rectangle area light cookies.");
+
+            public static readonly GUIContent AreaLightCookieFormatLabel = new("Area Light Cookie Format", "Graphics format of the area light cookie atlas.");
+
+            public static readonly GUIContent AreaLightsLabel = new("Area Lights",
+                "Enable rectangle area lights (LTC lighting and area shadows), the Area Lighting volume must also be enabled.");
+            public static readonly GUIContent AreaShadowFilteringQualityLabel = new("Area Shadow Filtering",
+                "Medium uses blurred EVSM moments, High uses area PCSS on the depth atlas.");
 
             // Ambient Occlusion Settings
             public static readonly GUIContent GroundTruthAOLabel = new("Ground Truth AO",

@@ -55,6 +55,8 @@ namespace Illusion.Rendering.Editor
         private LocalKeyword _precomputedRadianceTransferGI;
         private LocalKeyword _transparentPerObjectShadow;
         private LocalKeyword _fragmentShadowBias;
+        private LocalKeyword _areaShadowMedium;
+        private LocalKeyword _areaShadowHigh;
 
         public ShaderVariantStripper()
         {
@@ -124,9 +126,31 @@ namespace Illusion.Rendering.Editor
                     _transparentPerObjectShadow,
                     ShaderFeatures.TransparentPerObjectShadow))
                 return true;
-            return stripTool.StripMultiCompile(
-                _fragmentShadowBias,
-                ShaderFeatures.FragmentShadowBias);
+            if (stripTool.StripMultiCompile(
+                    _fragmentShadowBias,
+                    ShaderFeatures.FragmentShadowBias))
+                return true;
+            return StripAreaShadow(ref strippingData);
+        }
+
+        // One multi_compile set: a renderer with area lights keeps exactly its tier (the volume / runtime switch
+        // only zeroes the light count), a renderer without area lights keeps only the off variant.
+        private bool StripAreaShadow(ref ShaderStrippingData strippingData)
+        {
+            if (!strippingData.StripUnusedVariants)
+                return false;
+
+            bool medium = strippingData.IsKeywordEnabled(_areaShadowMedium);
+            bool high = strippingData.IsKeywordEnabled(_areaShadowHigh);
+            if (medium)
+                return !strippingData.IsShaderFeatureEnabled(ShaderFeatures.AreaShadowMedium);
+            if (high)
+                return !strippingData.IsShaderFeatureEnabled(ShaderFeatures.AreaShadowHigh);
+
+            // Off variant: only passes that declare the axis are eligible.
+            bool declaresAxis = strippingData.PassHasKeyword(_areaShadowMedium)
+                                || strippingData.PassHasKeyword(_areaShadowHigh);
+            return declaresAxis && strippingData.IsShaderFeatureEnabled(ShaderFeatures.AreaLights);
         }
 
         private bool StripScreenSpaceReflection(
@@ -213,6 +237,10 @@ namespace Illusion.Rendering.Editor
                 IllusionShaderKeywords._TRANSPARENT_PER_OBJECT_SHADOWS);
             _fragmentShadowBias = shader.keywordSpace.FindKeyword(
                 IllusionShaderKeywords._SHADOW_BIAS_FRAGMENT);
+            _areaShadowMedium = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords.AREA_SHADOW_MEDIUM);
+            _areaShadowHigh = shader.keywordSpace.FindKeyword(
+                IllusionShaderKeywords.AREA_SHADOW_HIGH);
         }
 
         public void AfterShaderStripping(Shader shader)

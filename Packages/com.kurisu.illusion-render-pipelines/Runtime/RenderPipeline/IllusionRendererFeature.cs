@@ -111,6 +111,20 @@ namespace Illusion.Rendering
 
         public bool fragmentShadowBias;
 
+        /// <summary>
+        /// Enable rectangle area lights (LTC lighting and area shadows).
+        /// </summary>
+        public bool areaLights;
+
+        /// <summary>
+        /// Area shadow filtering tier, drives the AREA_SHADOW_MEDIUM / AREA_SHADOW_HIGH global keyword and the atlas blur.
+        /// </summary>
+        public AreaLights.HDAreaShadowFilteringQuality areaShadowFilteringQuality = AreaLights.HDAreaShadowFilteringQuality.Medium;
+
+        public AreaLights.CookieAtlasResolution areaLightCookieAtlasSize = AreaLights.CookieAtlasResolution.CookieResolution2048;
+
+        public AreaLights.CookieAtlasGraphicsFormat areaLightCookieFormat = AreaLights.CookieAtlasGraphicsFormat.R11G11B10;
+
         #endregion Shadows
 
         #region Ambient Occlusion
@@ -176,6 +190,16 @@ namespace Illusion.Rendering
         private SetKeywordPass _disableSSAOPass;
 
         private ContactShadowsPass _contactShadowsPass;
+
+        private AreaLights.AreaLightsPass _areaLightsPass;
+
+        private SetKeywordPass _enableAreaShadowMediumPass;
+
+        private SetKeywordPass _disableAreaShadowMediumPass;
+
+        private SetKeywordPass _enableAreaShadowHighPass;
+
+        private SetKeywordPass _disableAreaShadowHighPass;
 
         private WeightedBlendedOITPass _weightedBlendedOitPass;
 
@@ -267,6 +291,8 @@ namespace Illusion.Rendering
         private StencilVRSDebugPass _stencilVRSDebugPass;
 
         private TransparentSSRDebugPass _transparentSSRDebugPass;
+
+        private AreaLights.AreaLightShadowAtlasDebugPass _areaLightShadowAtlasDebugPass;
 #endif
 
         public override void Create()
@@ -307,6 +333,11 @@ namespace Illusion.Rendering
             _perObjShadowPreviewPass = new PerObjectShadowCasterPreviewPass();
 
             _contactShadowsPass = new ContactShadowsPass(_rendererData);
+            _areaLightsPass = new AreaLights.AreaLightsPass(_rendererData, areaLightCookieAtlasSize, areaLightCookieFormat);
+            _enableAreaShadowMediumPass = new SetKeywordPass(IllusionShaderKeywords.AREA_SHADOW_MEDIUM, true, RenderPassEvent.BeforeRendering);
+            _disableAreaShadowMediumPass = new SetKeywordPass(IllusionShaderKeywords.AREA_SHADOW_MEDIUM, false, RenderPassEvent.BeforeRendering);
+            _enableAreaShadowHighPass = new SetKeywordPass(IllusionShaderKeywords.AREA_SHADOW_HIGH, true, RenderPassEvent.BeforeRendering);
+            _disableAreaShadowHighPass = new SetKeywordPass(IllusionShaderKeywords.AREA_SHADOW_HIGH, false, RenderPassEvent.BeforeRendering);
             _screenSpaceShadowsPass = new ScreenSpaceShadowsPass(_rendererData);
             _screenSpaceShadowTemporalPass = new ScreenSpaceShadowTemporalPass(_rendererData);
             _diffuseShadowDenoisePass = new DiffuseShadowDenoisePass(_rendererData);
@@ -370,6 +401,7 @@ namespace Illusion.Rendering
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
             _stencilVRSDebugPass = new StencilVRSDebugPass();
             _transparentSSRDebugPass = new TransparentSSRDebugPass(_rendererData);
+            _areaLightShadowAtlasDebugPass = new AreaLights.AreaLightShadowAtlasDebugPass();
 #endif
         }
 
@@ -403,6 +435,10 @@ namespace Illusion.Rendering
                                     && contactShadowParam.enable.value;
 
             bool useTransparentShadow = transparentReceivePerObjectShadows && !isPreviewCamera;
+            var areaLightingParam = VolumeManager.instance.stack.GetComponent<AreaLights.AreaLighting>();
+            bool useAreaLights = config.EnableAreaLights
+                                 && areaLights && !isPreviewCamera && !isDeferred
+                                 && areaLightingParam.enable.value;
             var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
             bool useShadowTemporalAccumulation = config.EnablePercentageCloserSoftShadows
                                                  && pcssShadows
@@ -478,6 +514,11 @@ namespace Illusion.Rendering
             renderer.EnqueuePass(isDeferred ? _enableDeferredPass : _disableDeferredPass);
             renderer.EnqueuePass(precomputedRadianceTransferGI ? _enablePRTGIPass : _disablePRTGIPass);
             renderer.EnqueuePass(fragmentShadowBias ? _enableFragmentShadowBiasPass : _disableFragmentShadowBiasPass);
+            // @IllusionRP: the tier keyword stays resident while the feature is on; volume / config only zero the light count.
+            bool areaShadowKeyword = areaLights && !isDeferred;
+            bool areaShadowHigh = areaShadowKeyword && areaShadowFilteringQuality == AreaLights.HDAreaShadowFilteringQuality.High;
+            renderer.EnqueuePass(areaShadowKeyword && !areaShadowHigh ? _enableAreaShadowMediumPass : _disableAreaShadowMediumPass);
+            renderer.EnqueuePass(areaShadowHigh ? _enableAreaShadowHighPass : _disableAreaShadowHighPass);
 
             // BeforeRenderingPrePasses
             renderer.EnqueuePass(_advancedTonemappingPass);
@@ -527,6 +568,9 @@ namespace Illusion.Rendering
             }
 
             renderer.EnqueuePass(enableSceneShadow ? _perObjShadowPass : _perObjShadowPreviewPass);
+
+            _areaLightsPass.Setup(useAreaLights, enableSceneShadow, areaLightingParam, areaShadowFilteringQuality);
+            renderer.EnqueuePass(_areaLightsPass);
 
             if (useContactShadows)
             {
@@ -625,6 +669,11 @@ namespace Illusion.Rendering
             {
                 renderer.EnqueuePass(_exposureDebugPass);
             }
+            if (useAreaLights && config.EnableAreaLightShadowAtlasDebug)
+            {
+                renderer.EnqueuePass(_areaLightShadowAtlasDebugPass);
+            }
+
             if (useVrs && config.EnableVrsDebug)
             {
                 renderer.EnqueuePass(_stencilVRSDebugPass);
@@ -743,6 +792,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _screenSpaceShadowTemporalPass);
             SafeDispose(ref _subsurfaceScatteringPass);
             SafeDispose(ref _contactShadowsPass);
+            SafeDispose(ref _areaLightsPass);
             SafeDispose(ref _weightedBlendedOitPass);
             SafeDispose(ref _transparentCopyPreDepthPass);
             SafeDispose(ref _transparentCopyPostDepthPass);
@@ -770,6 +820,7 @@ namespace Illusion.Rendering
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             SafeDispose(ref _stencilVRSDebugPass);
             SafeDispose(ref _transparentSSRDebugPass);
+            SafeDispose(ref _areaLightShadowAtlasDebugPass);
             SafeDispose(ref _motionVectorsDebugPass);
             SafeDispose(ref _exposureDebugPass);
 #endif

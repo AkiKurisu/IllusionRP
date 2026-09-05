@@ -29,6 +29,9 @@ namespace Illusion.Rendering.Editor
         TransparentDepthPostPass = 1L << 11,
         TransparentOverdraw = 1L << 12,
         TransparentScreenSpaceReflection = 1L << 13,
+        AreaLights = 1L << 14,
+        AreaShadowMedium = 1L << 15,
+        AreaShadowHigh = 1L << 16,
         All = ~0
     }
 
@@ -246,6 +249,13 @@ namespace Illusion.Rendering.Editor
                 features |= ShaderFeatures.TransparentOverdraw;
             if (feature.screenSpaceReflection && feature.transparentScreenSpaceReflection)
                 features |= ShaderFeatures.TransparentScreenSpaceReflection;
+            if (feature.areaLights)
+            {
+                features |= ShaderFeatures.AreaLights;
+                features |= feature.areaShadowFilteringQuality == AreaLights.HDAreaShadowFilteringQuality.High
+                    ? ShaderFeatures.AreaShadowHigh
+                    : ShaderFeatures.AreaShadowMedium;
+            }
             return features;
         }
 
@@ -279,6 +289,9 @@ namespace Illusion.Rendering.Editor
             PrefilterMode fragmentBias = enabled
                 ? AggregateMode(rendererFeatures, ShaderFeatures.FragmentShadowBias)
                 : safe;
+            IllusionRendererFeature.AreaShadowPrefilterMode areaShadow = enabled
+                ? AreaShadowMode(rendererFeatures)
+                : IllusionRendererFeature.AreaShadowPrefilterMode.All;
 
             foreach (IllusionRendererFeature feature in featureAssets)
             {
@@ -294,6 +307,11 @@ namespace Illusion.Rendering.Editor
                 changed |= SetMode(ref feature.screenSpaceReflectionPrefilterMode, ssr);
                 changed |= SetMode(ref feature.screenSpaceGlobalIlluminationPrefilterMode, ssgi);
                 changed |= SetMode(ref feature.fragmentShadowBiasPrefilterMode, fragmentBias);
+                if (feature.areaShadowPrefilterMode != areaShadow)
+                {
+                    feature.areaShadowPrefilterMode = areaShadow;
+                    changed = true;
+                }
 
                 if (!changed)
                     continue;
@@ -330,6 +348,36 @@ namespace Illusion.Rendering.Editor
                     return PrefilterMode.Select;
             }
             return PrefilterMode.Remove;
+        }
+
+        // Off is needed by renderers without area lights, each tier by the renderers that selected it.
+        internal static IllusionRendererFeature.AreaShadowPrefilterMode AreaShadowMode(
+            IReadOnlyList<ShaderFeatures> rendererFeatures)
+        {
+            bool needOff = false;
+            bool needMedium = false;
+            bool needHigh = false;
+            for (int i = 0; i < rendererFeatures.Count; i++)
+            {
+                ShaderFeatures features = rendererFeatures[i];
+                needOff |= (features & ShaderFeatures.AreaLights) == 0;
+                needMedium |= (features & ShaderFeatures.AreaShadowMedium) != 0;
+                needHigh |= (features & ShaderFeatures.AreaShadowHigh) != 0;
+            }
+
+            if (needMedium && needHigh)
+                return needOff
+                    ? IllusionRendererFeature.AreaShadowPrefilterMode.All
+                    : IllusionRendererFeature.AreaShadowPrefilterMode.MediumAndHigh;
+            if (needMedium)
+                return needOff
+                    ? IllusionRendererFeature.AreaShadowPrefilterMode.OffAndMedium
+                    : IllusionRendererFeature.AreaShadowPrefilterMode.MediumOnly;
+            if (needHigh)
+                return needOff
+                    ? IllusionRendererFeature.AreaShadowPrefilterMode.OffAndHigh
+                    : IllusionRendererFeature.AreaShadowPrefilterMode.HighOnly;
+            return IllusionRendererFeature.AreaShadowPrefilterMode.OffOnly;
         }
 
         private static bool SetMode(ref PrefilterMode current, PrefilterMode value)

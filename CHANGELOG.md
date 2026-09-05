@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Integrate experimental DLSS Neural Rendering.
+- Register screenshot capture hooks with Ceres when installed.
+- Expose `IllusionRendererFeature.IsDLSSNeuralRenderingAvailable` for runtime settings UI.
 
 ### Fixed
 

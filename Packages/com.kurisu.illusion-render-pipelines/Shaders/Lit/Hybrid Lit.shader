@@ -142,6 +142,7 @@ Shader "Universal Render Pipeline/Hybrid Lit"
             #pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
             #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
             #pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+            #pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
@@ -232,6 +233,7 @@ Shader "Universal Render Pipeline/Hybrid Lit"
             // #pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
             // #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
             #pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+            #pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
