@@ -480,7 +480,7 @@ half3 EvaluateBSDF_Rect_MRP(BRDFData brdfData, float2 positionSS, float3 positio
         // Raytracing shadow algorithm require to evaluate lighting without shadow, so it defined SKIP_RASTERIZED_AREA_SHADOWS
         // This is only present in Lit Material as it is the only one using the improved shadow algorithm.
     #ifndef SKIP_RASTERIZED_AREA_SHADOWS
-        SHADOW_TYPE shadow = EvaluateShadow_RectArea(positionSS, positionWS, lightData, N, normalize(lightData.positionRWS), length(lightData.positionRWS));
+        SHADOW_TYPE shadow = EvaluateShadow_RectArea(positionSS, positionWS, lightData, N, normalize(unL), length(unL));
         lightColor.rgb *= ComputeShadowColor(shadow, lightData.shadowTint, lightData.penumbraTint);
     #endif
 

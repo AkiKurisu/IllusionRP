@@ -416,7 +416,7 @@ DirectLighting EvaluateBSDF_Area(float2 positionSS, float3 positionWS,
 #ifndef SKIP_RASTERIZED_AREA_SHADOWS
     if (isRectLight && intensity > 0)
     {
-        SHADOW_TYPE shadow = EvaluateShadow_RectArea(positionSS, positionWS, lightData, bsdfData.normalWS, normalize(lightData.positionRWS), length(lightData.positionRWS));
+        SHADOW_TYPE shadow = EvaluateShadow_RectArea(positionSS, positionWS, lightData, bsdfData.normalWS, normalize(unL), length(unL));
         lightData.color.rgb *= ComputeShadowColor(shadow, lightData.shadowTint, lightData.penumbraTint);
 
         isVisible = Max3(lightData.color.r, lightData.color.g, lightData.color.b) > 0;
