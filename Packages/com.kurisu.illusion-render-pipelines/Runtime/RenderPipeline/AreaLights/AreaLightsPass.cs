@@ -197,6 +197,7 @@ namespace Illusion.Rendering.AreaLights
             {
                 ref var shadowRequest = ref _manager.shadowRequests[i];
                 var shadowDrawSettings = new ShadowDrawingSettings(cullResults, shadowRequest.lightIndex);
+                shadowDrawSettings.useRenderingLayerMaskTest = UniversalRenderPipeline.asset.useRenderingLayers;
                 shadowDrawSettings.splitIndex = shadowRequest.cullingSplit.splitIndex;
                 _shadowRendererLists[i] = renderGraph.CreateShadowRendererList(ref shadowDrawSettings);
             }
