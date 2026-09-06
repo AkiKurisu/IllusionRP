@@ -42,3 +42,65 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.VolumeProfile
   components:
   - {fileID: -3466347367085613228}
+  - {fileID: 939953164830269940}
+--- !u!114 &939953164830269940
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c2c78391681b4e73a58126b0c50578fa, type: 3}
+  m_Name: ScreenSpaceReflection
+  m_EditorClassIdentifier: Illusion.RenderPipelines::Illusion.Rendering.ScreenSpaceReflection
+  active: 1
+  enable:
+    m_OverrideState: 1
+    m_Value: 0
+  mode:
+    m_OverrideState: 0
+    m_Value: 2
+  usedAlgorithm:
+    m_OverrideState: 0
+    m_Value: 0
+  intensity:
+    m_OverrideState: 0
+    m_Value: 1
+  thickness:
+    m_OverrideState: 0
+    m_Value: 0.01
+  minSmoothness:
+    m_OverrideState: 0
+    m_Value: 0.25
+  smoothnessFadeStart:
+    m_OverrideState: 0
+    m_Value: 0.9
+  screenFadeDistance:
+    m_OverrideState: 0
+    m_Value: 0.1
+  accumulationFactor:
+    m_OverrideState: 0
+    m_Value: 0.75
+  biasFactor:
+    m_OverrideState: 0
+    m_Value: 0.5
+  speedRejectionParam:
+    m_OverrideState: 0
+    m_Value: 0.5
+  speedRejectionScalerFactor:
+    m_OverrideState: 0
+    m_Value: 0.2
+  enableWorldSpeedRejection:
+    m_OverrideState: 0
+    m_Value: 0
+  steps:
+    m_OverrideState: 0
+    m_Value: 128
+  stepSize:
+    m_OverrideState: 0
+    m_Value: 0.1
+  fullScreenDebugMode:
+    m_OverrideState: 0
+    m_Value: 0
