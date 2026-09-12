@@ -27,9 +27,12 @@ IllusionRP demo for the Sponza scene, open [Assets/Scenes/Sponza.unity](Assets/S
 
 <b>AIChara Demo</b> 
 
-IllusionRP is first designed to re-rendering game characters of @ILLUSION, see [AkiKurisu/IllusionRP-AIChara](https://github.com/AkiKurisu/IllusionRP-AIChara) for more details.
+IllusionRP was first designed to re-render game characters from @ILLUSION, open [Assets/Scenes/AIChara.unity](Assets/Scenes/AIChara.unity) for a quick preview.
 
-![Demo](https://github.com/AkiKurisu/IllusionRP-AIChara/raw/master/Documentation/images/banner.png)
+![AIChara Demo](Documentations/images/aichara.png)
+
+> [!NOTE]
+> The AIChara demo assets are provided for educational use only. Commercial use is prohibited.
 
 <b>AIChara Remaster</b> 
 

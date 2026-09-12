@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   profile:
     scatteringDistance: {r: 0.74540436, g: 0.32314324, b: 0.20155624, a: 1}
-    scatteringDistanceMultiplier: 1
-    transmissionTint: {r: 0.7568628, g: 0.32156864, b: 0.20000002, a: 1}
-    thicknessRemap: {x: 1, y: 10}
+    scatteringDistanceMultiplier: 2
+    transmissionTint: {r: 48.439217, g: 20.580393, b: 12.8, a: 1}
+    thicknessRemap: {x: 10, y: 40}
     worldScale: 1
     ior: 1.36
-    hash: 1077514089
+    hash: 1078092797

@@ -1,0 +1,665 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af1d36cf2c9540db9b6f8444310eca9a, type: 3}
+  m_Name: FillLight
+  m_EditorClassIdentifier: Ceres.Flow::Ceres.Flow.FlowGraphAsset
+  generatedRuntimeInfo:
+    enabled: 1
+    generatorVersion: 5
+    programId: 9ba197aa37c12eb4486bf4bdc208a7bd
+    assetGuid: 9ba197aa37c12eb4486bf4bdc208a7bd
+    graphHash: D547F4E6731B6F40
+    generatedTypeName: Ceres.Generated.Flow.FlowProgram_FillLight_9ba197aa
+    generatorProfile: 0
+    generatorCancellationMode: 0
+    generatorVariableStorageMode: 0
+    generatorSerializedTypeMode: 0
+    generatorOptionsHash: E25E1141DF70A6D3
+    generatedUtcTicks: 639247966879213524
+    functionDependencies: []
+  graphData:
+    variableData:
+    - variableType:
+        _class: SharedFloat
+        _ns: Ceres.Graph
+        _asm: Ceres.Graph
+      serializedData: '{"isShared":false,"isGlobal":false,"isExposed":false,"mName":"seed","value":0.0}'
+      uobjectLinks: []
+    nodeData:
+    - graphPosition:
+        serializedVersion: 2
+        x: 731
+        y: 71
+        width: 168
+        height: 77
+      description: 
+      guid: 3c48df07-ee67-480d-bc01-5e38d2648744
+      nodeType:
+        _class: ExecutionEvent
+        _ns: Ceres.Flow
+        _asm: Ceres.Flow
+      genericParameters: []
+      serializedData: '{"eventName":"Start","isImplementable":true,"eventDelegate":{},"exec":{"defaultValue":{"guid":""}}}'
+      executionPath: 0
+      portData:
+      - type: Ceres.Flow.EventDelegate, Ceres.Flow##0
+        propertyName: eventDelegate
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections:
+        - nodeId: 0f09c2fc-d7e8-4590-8d42-ef773ebf263e
+          portId: input
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 975
+        y: -84
+        width: 293
+        height: 125
+      description: 
+      guid: 0f09c2fc-d7e8-4590-8d42-ef773ebf263e
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`4
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.UnityExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_RandomRange","parameterCount":2,"isStatic":true,"executeInDependency":false,"isSelfTarget":false,"isScriptMethod":false,"target":{},"input1":{"defaultValue":0.0},"input2":{"defaultValue":6.283180236816406},"output":{"defaultValue":0.0}}'
+      executionPath: 0
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections:
+        - nodeId: 2d4228dc-ab1c-4480-a816-d724854d960e
+          portId: input
+          portIndex: 0
+          isFlattened: 0
+      - type: Ceres.Flow.Utilities.UnityExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: 2d4228dc-ab1c-4480-a816-d724854d960e
+          portId: inputValue
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 1294
+        y: -84
+        width: 112
+        height: 101
+      description: 
+      guid: 2d4228dc-ab1c-4480-a816-d724854d960e
+      nodeType:
+        _class: PropertyNode_SetSharedVariableTValue`3
+        _ns: Ceres.Flow.Properties
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Graph.SharedFloat, Ceres.Graph##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"propertyName":"seed","input":{"defaultValue":{"guid":""}},"inputValue":{"defaultValue":0.0},"exec":{"defaultValue":{"guid":""}}}'
+      executionPath: 0
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: inputValue
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections:
+        - nodeId: 77465a7b-847f-42f4-b2c1-49e9d86d5f4d
+          portId: input
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 704
+        y: 244
+        width: 185
+        height: 77
+      description: 
+      guid: 089ecc1c-2914-4e8f-b080-aaae65d6000d
+      nodeType:
+        _class: ExecutionEvent
+        _ns: Ceres.Flow
+        _asm: Ceres.Flow
+      genericParameters: []
+      serializedData: '{"eventName":"Update","isImplementable":true,"eventDelegate":{},"exec":{"defaultValue":{"guid":""}}}'
+      executionPath: 0
+      portData:
+      - type: Ceres.Flow.EventDelegate, Ceres.Flow##0
+        propertyName: eventDelegate
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections:
+        - nodeId: fb708446-f5c0-4b28-ae3b-2017743cd4b3
+          portId: input
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 1375
+        y: 244
+        width: 135
+        height: 125
+      description: 
+      guid: fb708446-f5c0-4b28-ae3b-2017743cd4b3
+      nodeType:
+        _class: PropertyNode_SetPropertyTValue`2
+        _ns: Ceres.Flow.Properties
+        _asm: Ceres.Flow
+      genericParameters:
+      - UnityEngine.Light, UnityEngine.CoreModule##0
+      - System.Single, mscorlib##0
+      serializedData: '{"propertyName":"intensity","isSelfTarget":false,"isStatic":false,"input":{"defaultValue":{"guid":""}},"target":{"defaultValue":{"instanceID":0}},"inputValue":{"defaultValue":0.0},"exec":{"defaultValue":{"guid":""}}}'
+      executionPath: 0
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: UnityEngine.Light, UnityEngine.CoreModule##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: inputValue
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 969
+        y: 71
+        width: 376
+        height: 125
+      description: 
+      guid: 77465a7b-847f-42f4-b2c1-49e9d86d5f4d
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`4
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.UnityExecutableLibrary, Ceres.Flow##0
+      - UnityEngine.Component, UnityEngine.CoreModule##0
+      - Ceres.Serialization.SerializedType`1[[UnityEngine.Component, UnityEngine.CoreModule]],
+        Ceres##0
+      - UnityEngine.Component, UnityEngine.CoreModule##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_ComponentGetComponentInChildren","parameterCount":2,"isStatic":true,"executeInDependency":false,"isSelfTarget":true,"isScriptMethod":true,"target":{},"input1":{"defaultValue":{"instanceID":0}},"input2":{"defaultValue":{"serializedTypeString":"UnityEngine.Light,
+        UnityEngine.CoreModule##0"}},"output":{"defaultValue":{"instanceID":0}}}'
+      executionPath: 0
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.UnityExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: UnityEngine.Component, UnityEngine.CoreModule##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Serialization.SerializedType`1[[UnityEngine.Component, UnityEngine.CoreModule]],
+          Ceres##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: UnityEngine.Component, UnityEngine.CoreModule##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: fb708446-f5c0-4b28-ae3b-2017743cd4b3
+          portId: target
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 347
+        y: 404
+        width: 175
+        height: 101
+      description: 
+      guid: 50606b6d-7b4a-40d0-b12a-43cff050cf14
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`4
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_FloatAdd","parameterCount":2,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":true,"target":{},"input1":{"defaultValue":0.0},"input2":{"defaultValue":0.0},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: 29462746-f4db-4e34-b01d-b49d77c36fc2
+          portId: input1
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 552
+        y: 403
+        width: 181
+        height: 77
+      description: 
+      guid: 29462746-f4db-4e34-b01d-b49d77c36fc2
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`3
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_FloatSin","parameterCount":1,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":true,"target":{},"input1":{"defaultValue":0.0},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: 31a0e09a-b8b5-440c-bfa5-0549fd3eb383
+          portId: input1
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 722
+        y: 517
+        width: 261
+        height: 101
+      description: 
+      guid: 988bb7ef-6186-463e-aa50-9107ca1b5a50
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`4
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_FloatMultiply","parameterCount":2,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":true,"target":{},"input1":{"defaultValue":0.0},"input2":{"defaultValue":0.5},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: 132f1da3-3b31-4414-8a52-b78af7372ebf
+          portId: input3
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 1093
+        y: 480
+        width: 252
+        height: 125
+      description: 
+      guid: 132f1da3-3b31-4414-8a52-b78af7372ebf
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`5
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_FloatLerp","parameterCount":3,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":true,"target":{},"input1":{"defaultValue":0.1},"input2":{"defaultValue":1.0},"input3":{"defaultValue":0.0},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input3
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: fb708446-f5c0-4b28-ae3b-2017743cd4b3
+          portId: inputValue
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 754
+        y: 403
+        width: 261
+        height: 101
+      description: 
+      guid: 31a0e09a-b8b5-440c-bfa5-0549fd3eb383
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`4
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_FloatAdd","parameterCount":2,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":true,"target":{},"input1":{"defaultValue":0.0},"input2":{"defaultValue":1.0},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: 988bb7ef-6186-463e-aa50-9107ca1b5a50
+          portId: input1
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 140
+        y: 427
+        width: 111
+        height: 77
+      description: 
+      guid: 24944190-e8fc-4b60-850f-692d1dafbeb6
+      nodeType:
+        _class: PropertyNode_GetSharedVariableTValue`3
+        _ns: Ceres.Flow.Properties
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Graph.SharedFloat, Ceres.Graph##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"propertyName":"seed","outputValue":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: System.Single, mscorlib##0
+        propertyName: outputValue
+        arrayIndex: 0
+        connections:
+        - nodeId: 50606b6d-7b4a-40d0-b12a-43cff050cf14
+          portId: input2
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 61
+        y: 605
+        width: 261
+        height: 101
+      description: 
+      guid: e5c855fb-e88b-4711-8bdb-23d228747a55
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`4
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_FloatMultiply","parameterCount":2,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":true,"target":{},"input1":{"defaultValue":0.0},"input2":{"defaultValue":2.0},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.MathExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input1
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: input2
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: 50606b6d-7b4a-40d0-b12a-43cff050cf14
+          portId: input1
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    - graphPosition:
+        serializedVersion: 2
+        x: 105
+        y: 517
+        width: 111
+        height: 77
+      description: 
+      guid: 3050044a-4d06-4488-8b17-d20be71fa404
+      nodeType:
+        _class: FlowNode_ExecuteFunctionTReturn`2
+        _ns: Ceres.Flow.Utilities
+        _asm: Ceres.Flow
+      genericParameters:
+      - Ceres.Flow.Utilities.UnityExecutableLibrary, Ceres.Flow##0
+      - System.Single, mscorlib##0
+      serializedData: '{"input":{"defaultValue":{"guid":""}},"exec":{"defaultValue":{"guid":""}},"methodName":"Flow_TimeGetTime","parameterCount":0,"isStatic":true,"executeInDependency":true,"isSelfTarget":false,"isScriptMethod":false,"target":{},"output":{"defaultValue":0.0}}'
+      executionPath: 1
+      portData:
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: input
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Graph.NodeReference, Ceres.Graph##0
+        propertyName: exec
+        arrayIndex: 0
+        connections: []
+      - type: Ceres.Flow.Utilities.UnityExecutableLibrary, Ceres.Flow##0
+        propertyName: target
+        arrayIndex: 0
+        connections: []
+      - type: System.Single, mscorlib##0
+        propertyName: output
+        arrayIndex: 0
+        connections:
+        - nodeId: e5c855fb-e88b-4711-8bdb-23d228747a55
+          portId: input1
+          portIndex: 0
+          isFlattened: 0
+      uobjectLinks: []
+    nodeGroups:
+    - childNodes:
+      - 50606b6d-7b4a-40d0-b12a-43cff050cf14
+      - 29462746-f4db-4e34-b01d-b49d77c36fc2
+      - 988bb7ef-6186-463e-aa50-9107ca1b5a50
+      - 132f1da3-3b31-4414-8a52-b78af7372ebf
+      - 31a0e09a-b8b5-440c-bfa5-0549fd3eb383
+      - 24944190-e8fc-4b60-850f-692d1dafbeb6
+      - e5c855fb-e88b-4711-8bdb-23d228747a55
+      - 3050044a-4d06-4488-8b17-d20be71fa404
+      position: {x: 36, y: 344}
+      title: phase = Time * breathSpeed + seed t = (Sin(phase) + 1) * 0.5 intensity
+        = Lerp(minIntensity, maxIntensity, t)
+    relayNodes: []
+    saveTimestamp: 639158226620700422
+    nodeDependencyPath:
+    - path: 
+    - path: 
+    - path: 
+    - path: 
+    - path: 0b0000000d0000000c00000006000000070000000a0000000800000009000000
+    - path: 
+    - path: 0b0000000d0000000c000000
+    - path: 0b0000000d0000000c00000006000000
+    - path: 0b0000000d0000000c00000006000000070000000a000000
+    - path: 0b0000000d0000000c00000006000000070000000a00000008000000
+    - path: 0b0000000d0000000c0000000600000007000000
+    - path: 
+    - path: 0d000000
+    - path: 
+    subGraphData: []
+  runtimeType:
+    serializedTypeString: Ceres.Gameplay.Actor, Ceres.Gameplay##0

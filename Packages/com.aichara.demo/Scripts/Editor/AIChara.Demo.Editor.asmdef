@@ -1,0 +1,18 @@
+{
+    "name": "AIChara.Demo.Editor",
+    "rootNamespace": "AIChara.Editor",
+    "references": [
+        "GUID:49c8ef85c8e045d3b595b935cc5ebcb9"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

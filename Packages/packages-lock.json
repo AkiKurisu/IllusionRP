@@ -1,5 +1,17 @@
 {
   "dependencies": {
+    "com.aichara.demo": {
+      "version": "file:com.aichara.demo",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.kurisu.ceres": "1.0.2",
+        "com.cysharp.unitask": "2.5.3",
+        "com.unity.burst": "1.8.29",
+        "com.unity.collections": "2.6.6",
+        "com.unity.mathematics": "1.3.3"
+      }
+    },
     "com.cysharp.unitask": {
       "version": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
       "depth": 0,
@@ -27,7 +39,7 @@
         "com.unity.nuget.newtonsoft-json": "3.2.1",
         "com.unity.nuget.mono-cecil": "1.11.4"
       },
-      "hash": "edbf4baee08acc9e06403a52f77fd10d763b16c2"
+      "hash": "2cddb532ef5d7f56f5e9b71832105accf71a07ac"
     },
     "com.kurisu.illusion-render-pipelines": {
       "version": "file:com.kurisu.illusion-render-pipelines",
@@ -63,6 +75,16 @@
       "dependencies": {
         "com.unity.mathematics": "1.2.1",
         "com.unity.modules.jsonserialize": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.cinemachine": {
+      "version": "3.1.7",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.splines": "2.0.0",
+        "com.unity.modules.imgui": "1.0.0"
       },
       "url": "https://packages.unity.com"
     },
@@ -186,6 +208,13 @@
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
+    "com.unity.settings-manager": {
+      "version": "2.1.1",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
     "com.unity.shadergraph": {
       "version": "17.3.0",
       "depth": 1,
@@ -194,6 +223,17 @@
         "com.unity.render-pipelines.core": "17.3.0",
         "com.unity.searcher": "4.9.3"
       }
+    },
+    "com.unity.splines": {
+      "version": "2.8.4",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.mathematics": "1.2.1",
+        "com.unity.modules.imgui": "1.0.0",
+        "com.unity.settings-manager": "1.0.3"
+      },
+      "url": "https://packages.unity.com"
     },
     "com.unity.test-framework": {
       "version": "1.6.0",

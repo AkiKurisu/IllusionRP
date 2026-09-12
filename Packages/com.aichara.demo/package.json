@@ -1,0 +1,14 @@
+{
+  "name": "com.aichara.demo",
+  "displayName": "AIChara Demo",
+  "version": "0.1.0",
+  "unity": "6000.0",
+  "description": "Lightweight runtime helpers for AIChara rendering demos.",
+  "dependencies": {
+    "com.kurisu.ceres": "1.0.2",
+    "com.cysharp.unitask": "2.5.3",
+    "com.unity.burst": "1.8.29",
+    "com.unity.collections": "2.6.6",
+    "com.unity.mathematics": "1.3.3"
+  }
+}
