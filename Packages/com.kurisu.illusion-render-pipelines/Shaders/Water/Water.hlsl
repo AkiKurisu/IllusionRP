@@ -121,6 +121,20 @@ float2 ViewSpacePosToUV(float3 pos)
     return ComputeNormalizedDeviceCoordinates(pos, UNITY_MATRIX_P);
 }
 
+bool HasWaterSceneDepth(float deviceDepth)
+{
+    if (!isfinite(deviceDepth))
+        return false;
+
+#if UNITY_REVERSED_Z
+    return deviceDepth > 0.0;
+#else
+    return deviceDepth < 1.0;
+#endif
+}
+
+static const float WATER_LEGACY_VIRTUAL_SKY_DEPTH = -500.0;
+
 half OutOfBoundsFade(half2 uv)
 {
     half2 fade = 0;
@@ -155,12 +169,14 @@ void Raymarch_half(float3 origin, float3 direction, half steps, half stepSize, h
             return;
 
         float deviceDepth = SampleSceneDepth(sampleUV);
-        float3 samplePos = ViewPosFromDepth(sampleUV, deviceDepth);
+        float sampleDepth = HasWaterSceneDepth(deviceDepth)
+            ? ViewPosFromDepth(sampleUV, deviceDepth).z
+            : WATER_LEGACY_VIRTUAL_SKY_DEPTH;
 
-        if (distance(samplePos.z, origin.z) > length(direction) * thickness)
+        if (distance(sampleDepth, origin.z) > length(direction) * thickness)
             continue;
 
-        if (samplePos.z > origin.z)
+        if (sampleDepth > origin.z)
         {
             valid = 1;
             return;
