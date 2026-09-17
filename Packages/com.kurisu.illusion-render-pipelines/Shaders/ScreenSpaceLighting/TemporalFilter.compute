@@ -27,7 +27,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Raytracing/DenoisingUtils.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
 
-#pragma enable_d3d11_debug_symbols
+// #pragma enable_d3d11_debug_symbols
 
 // Tile size of this compute shaders
 #define TEMPORAL_FILTER_TILE_SIZE 8

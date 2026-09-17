@@ -107,7 +107,7 @@ namespace Illusion.Rendering
         
         [Header("Performance")]
         [AdditionalProperty]
-        public ClampedIntParameter steps = new(128, 60, 500);
+        public ClampedIntParameter steps = new(64, 0, 500);
 
         [AdditionalProperty]
         [Tooltip("Linear search step size, invalid when use hiz mode")]
