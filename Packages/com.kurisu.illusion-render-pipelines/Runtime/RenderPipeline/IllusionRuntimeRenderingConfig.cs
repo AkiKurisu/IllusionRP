@@ -1,4 +1,4 @@
-#if CERES_INSTALL
+﻿#if CERES_INSTALL
 using Ceres.Configs;
 #endif
 
@@ -68,6 +68,12 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.volumetricfog")]
         public bool EnableVolumetricFog { get; set; } = true;
+
+        /// <summary>
+        /// Whether enable screen space Sun Shafts.
+        /// </summary>
+        [ConfigVariable("r.sunshafts")]
+        public bool EnableSunShafts { get; set; } = true;
 
         /// <summary>
         /// Whether enable PRT GI.

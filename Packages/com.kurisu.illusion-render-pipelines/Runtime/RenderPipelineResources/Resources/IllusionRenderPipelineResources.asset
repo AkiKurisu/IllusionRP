@@ -28,6 +28,7 @@ MonoBehaviour:
   - {fileID: 4800000, guid: 08f816187f9af0244a95556ee0cab83f, type: 3}
   - {fileID: 4800000, guid: 4535befa9d424751b35d3ffeadf518c2, type: 3}
   - {fileID: 4800000, guid: 209b39890caf4135a5a7c6415db417b3, type: 3}
+  - {fileID: 4800000, guid: 845b1a39304bb9440a615e2362049927, type: 3}
   preIntegratedFGD_CharlieFabricLambertShader: {fileID: 4800000, guid: 6b5875a88815e6546ac591e537e0a211, type: 3}
   preIntegratedFGD_GGXDisneyDiffuseShader: {fileID: 4800000, guid: 202f6c6e19a562c439f3f0fe581e80cf, type: 3}
   dlssNeuralRenderingPrepareInputsShader: {fileID: 4800000, guid: fa83229e14a546d882f6994fe630c564, type: 3}

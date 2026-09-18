@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -157,6 +157,11 @@ namespace Illusion.Rendering
         /// </summary>
         public bool volumetricFog = true;
 
+        /// <summary>
+        /// Enable screen space sun shafts effect.
+        /// </summary>
+        public bool sunShafts = true;
+
         #endregion Post Processing
 
         private ShadowCasterManager _sceneShadowCasterManager;
@@ -262,6 +267,10 @@ namespace Illusion.Rendering
         private VolumetricFogPass _volumetricFogPass;
 
         private VolumetricLightManager _volumetricLightManager;
+
+        private SunShaftsPass _sunShaftsPass;
+
+        private SunShaftCasterManager _sunShaftCasterManager;
 
         private SetupPass _setupPass;
 
@@ -384,6 +393,8 @@ namespace Illusion.Rendering
             _convolutionBloomPass = new ConvolutionBloomPass(_rendererData);
             _volumetricFogPass = new VolumetricFogPass(_rendererData);
             _volumetricLightManager = new VolumetricLightManager();
+            _sunShaftsPass = new SunShaftsPass();
+            _sunShaftCasterManager = new SunShaftCasterManager();
             _advancedTonemappingPass = new AdvancedTonemappingPass();
             _exposurePass = new ExposurePass(_rendererData);
             _processingPostPass = new PostProcessingPostPass(_rendererData);
@@ -477,6 +488,13 @@ namespace Illusion.Rendering
                                     && isPostProcessEnabled 
                                     && !isPreviewCamera 
                                     && volumetricFogParam.IsActive();
+
+            var sunShaftsParam = VolumeManager.instance.stack.GetComponent<SunShafts>();
+            bool useSunShafts = config.EnableSunShafts
+                                && sunShafts
+                                && isPostProcessEnabled
+                                && !isPreviewCamera
+                                && sunShaftsParam.IsActive();
             // ========================================= Post Processing ============================================================ //
 
             bool usePrecomputedRadianceTransfer = config.EnablePrecomputedRadianceTransferGlobalIllumination
@@ -648,6 +666,11 @@ namespace Illusion.Rendering
                 renderer.EnqueuePass(_convolutionBloomPass);
             }
 
+            if (useSunShafts)
+            {
+                renderer.EnqueuePass(_sunShaftsPass);
+            }
+
             if (useVolumetricFog)
             {
                 renderer.EnqueuePass(_volumetricFogPass);
@@ -754,6 +777,7 @@ namespace Illusion.Rendering
             _perObjShadowPass.Setup(_sceneShadowCasterManager, shadow,
                 shadow.perObjectShadowDepthBits.value, in perObjectShadowLight);
             _volumetricFogPass.Setup(_volumetricLightManager);
+            _sunShaftsPass.Setup(_sunShaftCasterManager);
         }
 
         private void UpdateRenderDataSettings()
@@ -806,6 +830,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _depthPyramidPass);
             SafeDispose(ref _convolutionBloomPass);
             SafeDispose(ref _volumetricFogPass);
+            SafeDispose(ref _sunShaftsPass);
             SafeDispose(ref _copyHistoryColorPass);
             SafeDispose(ref _colorPyramidPass);
             SafeDispose(ref _exposurePass);

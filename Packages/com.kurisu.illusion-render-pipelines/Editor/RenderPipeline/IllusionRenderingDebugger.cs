@@ -1,4 +1,4 @@
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 
 namespace Illusion.Rendering.Editor
@@ -88,6 +88,10 @@ namespace Illusion.Rendering.Editor
             _config.EnableVolumetricFog = EditorGUILayout.ToggleLeft(
                 new GUIContent("Volumetric Fog", "Enable/Disable volumetric fog"),
                 _config.EnableVolumetricFog);
+
+            _config.EnableSunShafts = EditorGUILayout.ToggleLeft(
+                new GUIContent("Sun Shafts", "Enable/Disable screen space sun shafts"),
+                _config.EnableSunShafts);
 
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = EditorGUILayout.ToggleLeft(
                 new GUIContent("PRT Global Illumination", "Enable/Disable PRT global illumination"),
@@ -267,6 +271,7 @@ namespace Illusion.Rendering.Editor
             _config.EnablePercentageCloserSoftShadows = true;
             _config.EnableScreenSpaceAmbientOcclusion = true;
             _config.EnableVolumetricFog = true;
+            _config.EnableSunShafts = true;
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = true;
             _config.EnableDLSSNeuralRendering = true;
             _config.EnableAsyncCompute = false;

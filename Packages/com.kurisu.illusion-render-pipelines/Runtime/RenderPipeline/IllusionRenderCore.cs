@@ -21,6 +21,8 @@ namespace Illusion.Rendering
 
         public const string VolumetricFog = "Hidden/VolumetricFog";
 
+        public const string SunShafts = "Hidden/SunShafts";
+
         public const string ConvolutionBloomBrightMask = "Hidden/ConvolutionBloom/BrightMask";
 
         public const string ConvolutionBloomBlend = "Hidden/ConvolutionBloom/Blend";
@@ -373,6 +375,8 @@ namespace Illusion.Rendering
         public const RenderPassEvent ColorPyramidPass = RenderPassEvent.AfterRenderingTransparents + 5;
 
         // =================================== Post Processing ============================================= //
+        public const RenderPassEvent SunShaftsPass = RenderPassEvent.BeforeRenderingPostProcessing - 4;
+
         public const RenderPassEvent VolumetricFogPass = RenderPassEvent.BeforeRenderingPostProcessing - 3;
 
         // Automatic exposure should consider volumetric fog.
