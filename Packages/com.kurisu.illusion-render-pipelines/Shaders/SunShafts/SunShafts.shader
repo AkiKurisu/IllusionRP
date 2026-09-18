@@ -68,7 +68,7 @@ Shader "Hidden/SunShafts"
                 uv += blurVector;
             }
 
-            return half4(color.xyz / SAMPLES_FLOAT, color.w);
+            return color / SAMPLES_FLOAT;
         }
 
         half4 FragComposite(Varyings input) : SV_Target
