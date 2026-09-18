@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditor.Rendering.Universal;
 
@@ -53,6 +53,8 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _convolutionBloom;
         private SerializedProperty _volumetricFog;
 
+        private SerializedProperty _sunShafts;
+
         protected override void OnEnable()
         {
             base.OnEnable();
@@ -100,6 +102,7 @@ namespace Illusion.Rendering.Editor
             // Post Processing Settings
             _convolutionBloom = Properties.Find(feature => feature.convolutionBloom);
             _volumetricFog = Properties.Find(feature => feature.volumetricFog);
+            _sunShafts = Properties.Find(feature => feature.sunShafts);
         }
 
         public override void OnInspectorGUI()
@@ -227,6 +230,7 @@ namespace Illusion.Rendering.Editor
             {
                 EditorGUILayout.PropertyField(_convolutionBloom, Styles.ConvolutionBloomLabel);
                 EditorGUILayout.PropertyField(_volumetricFog, Styles.VolumetricFogLabel);
+                EditorGUILayout.PropertyField(_sunShafts, Styles.SunShaftsLabel);
             }
         }
 
@@ -307,6 +311,8 @@ namespace Illusion.Rendering.Editor
                 "Enable high-quality bloom effect using Fast Fourier Transform convolution.");
             public static readonly GUIContent VolumetricFogLabel = new("Volumetric Fog",
                 "Enable volumetric fog effect.");
+            public static readonly GUIContent SunShaftsLabel = new("Sun Shafts",
+                "Enable screen space sun shafts effect.");
         }
     }
 }
