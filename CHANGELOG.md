@@ -5,6 +5,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-9-19
+
+### Added
+
+- Add screen-space Sun Shafts post-processing with Volume, renderer feature, runtime config, debugger, caster tracking, quality, and blend controls.
+
+### Changed
+
+- Update the rectangle area light sample with an explicit SSR profile and revised presentation settings.
+
+### Fixed
+
+- Fix rectangle area-light shadow caster lists ignoring rendering layer masks.
+- Fix Water area-light shadow variants and stabilize legacy screen-space reflections when sampled scene depth is invalid or represents the sky.
+
 ## [1.3.0] - 2026-8-29
 
 ### Added
