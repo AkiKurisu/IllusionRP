@@ -89,6 +89,10 @@ namespace Illusion.Rendering.Editor
                 new GUIContent("Volumetric Fog", "Enable/Disable volumetric fog"),
                 _config.EnableVolumetricFog);
 
+            _config.EnableConvolutionBloom = EditorGUILayout.ToggleLeft(
+                new GUIContent("Convolution Bloom", "Enable/Disable convolution bloom"),
+                _config.EnableConvolutionBloom);
+
             _config.EnableSunShafts = EditorGUILayout.ToggleLeft(
                 new GUIContent("Sun Shafts", "Enable/Disable screen space sun shafts"),
                 _config.EnableSunShafts);
@@ -271,6 +275,7 @@ namespace Illusion.Rendering.Editor
             _config.EnablePercentageCloserSoftShadows = true;
             _config.EnableScreenSpaceAmbientOcclusion = true;
             _config.EnableVolumetricFog = true;
+            _config.EnableConvolutionBloom = true;
             _config.EnableSunShafts = true;
             _config.EnablePrecomputedRadianceTransferGlobalIllumination = true;
             _config.EnableDLSSNeuralRendering = true;
@@ -299,4 +304,3 @@ namespace Illusion.Rendering.Editor
         }
     }
 }
-
