@@ -47,7 +47,7 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
                           half3 normalWS, half3 viewDirectionWS, bool specularHighlightsOff,
                           AnisotropyData anisotropyData, SheenData SheenData, BRDFOcclusionFactor aoFactor)
 {
-    half Alpha = brdfData.roughness2;
+    half Alpha = brdfData.roughness;
     // Anisotropic parameters: ax and ay are the Roughness along the tangent and bitangent
     // Reference: [Kulla 2017, "Revisiting Physically Based Shading at Imageworks"]
     half aT = max(Alpha * (1.0 + anisotropyData.Anisotropy), 0.001f);
@@ -86,7 +86,8 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
     #endif
 
         half3 F = F_Schlick(brdfData.specular, VoH);
-        half3 AnisoSpecular = DV * F;
+        // @IllusionRP: Convert HDRP's normalized specular to URP's direct-light convention.
+        half3 AnisoSpecular = DV * F * PI;
 
         // Sheen Specular
         // Use smooth normal (without detail)
