@@ -4,6 +4,46 @@ using System;
 
 namespace Illusion.Rendering.Editor
 {
+    public static class DiffusionProfileMaterialUtility
+    {
+        public static void SetProfile(Material material, DiffusionProfileAsset profile,
+            string propertyName = "_DiffusionProfile")
+        {
+            if (material == null)
+                throw new ArgumentNullException(nameof(material));
+            if (string.IsNullOrEmpty(propertyName))
+                throw new ArgumentException("A diffusion profile property name is required.", nameof(propertyName));
+
+            string assetPropertyName = propertyName + "_Asset";
+            if (!material.HasProperty(propertyName) || !material.HasProperty(assetPropertyName))
+            {
+                throw new ArgumentException(
+                    $"Material '{material.name}' does not expose {propertyName} and {assetPropertyName}.",
+                    nameof(material));
+            }
+
+            EncodeProfile(profile, out Vector4 guid, out float hash);
+            material.SetVector(assetPropertyName, guid);
+            material.SetFloat(propertyName, hash);
+        }
+
+        internal static void EncodeProfile(DiffusionProfileAsset profile, out Vector4 guid, out float hash)
+        {
+            guid = Vector4.zero;
+            hash = 0f;
+            if (profile == null)
+                return;
+
+            string assetPath = AssetDatabase.GetAssetPath(profile);
+            string assetGuid = AssetDatabase.AssetPathToGUID(assetPath);
+            if (string.IsNullOrEmpty(assetGuid))
+                throw new ArgumentException($"Diffusion profile '{profile.name}' is not a saved asset.", nameof(profile));
+
+            guid = IllusionRenderingUtils.ConvertGUIDToVector4(assetGuid);
+            hash = IllusionRenderingUtils.AsFloat(profile.profile.hash);
+        }
+    }
+
     internal class DiffusionProfileDrawer : MaterialPropertyDrawer
     {
         public override float GetPropertyHeight(MaterialProperty prop, string label, MaterialEditor editor) => 0;
@@ -35,15 +75,7 @@ namespace Illusion.Rendering.Editor
             diffusionProfile = (DiffusionProfileAsset)EditorGUILayout.ObjectField(displayName, diffusionProfile, typeof(DiffusionProfileAsset), false);
             if (EditorGUI.EndChangeCheck())
             {
-                Vector4 newGuid = Vector4.zero;
-                float hash = 0;
-
-                if (diffusionProfile != null)
-                {
-                    guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(diffusionProfile));
-                    newGuid = IllusionRenderingUtils.ConvertGUIDToVector4(guid);
-                    hash = IllusionRenderingUtils.AsFloat(diffusionProfile.profile.hash);
-                }
+                DiffusionProfileMaterialUtility.EncodeProfile(diffusionProfile, out Vector4 newGuid, out float hash);
 
                 // encode back GUID and it's hash
                 diffusionProfileAsset.vectorValue = newGuid;
