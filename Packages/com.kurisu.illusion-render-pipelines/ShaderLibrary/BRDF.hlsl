@@ -76,14 +76,6 @@ float Vis_SmithJointApprox(float a, float NoV, float NoL )
     return 0.5 * rcp(Vis_SmithV + Vis_SmithL);
 }
 
-// Reference: [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"]
-half V_SmithJointAniso(float ax, float ay, half NoV, half NoL, half XoV, half XoL, half YoV, half YoL)
-{
-    float Vis_SmithV = NoL * length(float3(ax * XoV, ay * YoV, NoV));
-    float Vis_SmithL = NoV * length(float3(ax * XoL, ay * YoL, NoL));
-    return 0.5 * INV_PI * rcp(Vis_SmithV + Vis_SmithL);
-}
-
 // Reference: https://www.slideshare.net/slideshow/custom-fabric-shader-for-unreal-engine-4/60751176#11
 half3 Diffuse_OrenNayar(half NoV, half3 albedo, half roughness)
 {
@@ -101,7 +93,7 @@ half D_AshikhminNoPI(half NoH, half roughness2)
     half sin2h = max(1.0 - cos2h, 0.0078125); // 2^(-14/2), so sin2h^2 > 0 in fp16
     half sin4h = sin2h * sin2h;
     half cot2 = -cos2h / (roughness2 * sin2h);
-    return (4.0 * roughness2 + 1.0) * sin4h * (4.0 * exp(cot2) + sin4h);
+    return (4.0 * exp(cot2) + sin4h) / ((4.0 * roughness2 + 1.0) * sin4h);
 }
 
 half D_Ashikhmin(half NoH, half roughness2)
@@ -186,7 +178,7 @@ half3 Diffuse_GGX_Rough_NoPI(half3 DiffuseColor, half Roughness, half NoV, half 
     // It turns out the EON model in the range [0, 0.4] is nearly a perfect match to a ground truth
     // simulation of diffuse microfacets oriented with a GGX NDF.
     half VoL = 2 * VoH * VoH - 1;      // double angle identity to keep signature above consistent with other models
-    return Diffuse_EON_NoPI(DiffuseColor, RetroReflectivityWeight * Roughness * 0.4, NoV, NoL, VoL);
+    return Diffuse_EON_NoPI(DiffuseColor, Roughness * 0.4, NoV, NoL, VoL);
 #elif ROUGH_DIFFUSE_BRDF_VERSION == 2
     // [ Chan 2024, "Multiscattering Diffuse and Specular BRDFs", Unpublished manuscript ]
     // Roughness *= RetroReflectivityWeight;
