@@ -7,6 +7,9 @@ namespace Illusion.Rendering
 {
     public partial class IllusionRendererData
     {
+        internal bool ExposureControlEnabled => _camera == null || _camera.cameraType != CameraType.Reflection;
+        private bool _emptyExposureInitialized;
+
         private static void SetExposureTextureToEmpty(RTHandle exposureTexture)
         {
             var tex = new Texture2D(1, 1, ExposureFormat, TextureCreationFlags.None);
@@ -33,6 +36,7 @@ namespace Illusion.Rendering
 
         public RTHandle GetExposureTexture()
         {
+            if (!ExposureControlEnabled) return _emptyExposureTexture;
             // Note: GetExposureTexture(camera) must be call AFTER the call of DoFixedExposure to be correctly taken into account
             // When we use Dynamic Exposure and we reset history we can't use pre-exposure (as there is no information)
             // For this reasons we put neutral value at the beginning of the frame in Exposure textures and
@@ -58,6 +62,7 @@ namespace Illusion.Rendering
 
         public RTHandle GetPreviousExposureTexture()
         {
+            if (!ExposureControlEnabled) return _emptyExposureTexture;
             // If the history was reset in the previous frame, then the history buffers were actually rendered with a neutral EV100 exposure multiplier
             return DidResetPostProcessingHistoryInLastFrame && !IsExposureFixed() ?
                 _emptyExposureTexture : GetExposureTextureHandle(CurrentExposureTextures.Previous);
@@ -70,7 +75,7 @@ namespace Illusion.Rendering
             // || _automaticExposure.mode.value == ExposureMode.UsePhysicalCamera;
         }
         
-        public bool CanRunFixedExposurePass() => IsExposureFixed()
+        public bool CanRunFixedExposurePass() => ExposureControlEnabled && IsExposureFixed()
                                                  && CurrentExposureTextures.Current != null;
 
         public RTHandle GetFixedExposureOutputTexture()
@@ -163,6 +168,17 @@ namespace Illusion.Rendering
 
         private void SetupExposureTextures()
         {
+            if (!_emptyExposureInitialized || !_emptyExposureTexture.rt.IsCreated())
+            {
+                SetExposureTextureToEmpty(_emptyExposureTexture);
+                _emptyExposureInitialized = true;
+            }
+            // @IllusionRP: HDRP disables exposure control for cubemap captures; probe radiance must remain scene-linear.
+            if (!ExposureControlEnabled)
+            {
+                _currentCameraState.ExposureTextures.Clear();
+                return;
+            }
             var currentTexture = GetCurrentFrameRT((int)IllusionFrameHistoryType.Exposure);
             if (currentTexture == null)
             {
