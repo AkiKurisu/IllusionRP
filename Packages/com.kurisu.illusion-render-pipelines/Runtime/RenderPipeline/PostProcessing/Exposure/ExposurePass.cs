@@ -324,6 +324,7 @@ namespace Illusion.Rendering.PostProcessing
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            if (!_rendererData.ExposureControlEnabled) return;
             var resource = frameData.Get<UniversalResourceData>();
             var cameraData = frameData.Get<UniversalCameraData>();
             PrepareExposureData(cameraData);
