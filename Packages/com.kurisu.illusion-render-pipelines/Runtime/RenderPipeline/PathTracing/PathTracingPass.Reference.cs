@@ -20,6 +20,7 @@ namespace Illusion.Rendering.PathTracing
             internal PathTracingShaderTime TraceTime;
             internal PathTracingShaderTime CurrentTime;
             internal PathTracingResources Resources;
+            internal IllusionRenderPipelineResources PipelineResources;
             internal PathTracingEnvironment Environment;
             internal PathTracingLightCollector Lights;
             internal PathTracingLightBaker LightBaker;
@@ -130,6 +131,7 @@ namespace Illusion.Rendering.PathTracing
             passData.Frame = PathTracingFrame.Index;
             passData.CurrentTime = PathTracingShaderTime.Current;
             passData.Resources = _resources;
+            passData.PipelineResources = _rendererData.RuntimeResources;
             passData.Environment = _environment;
             passData.Lights = _lights;
             passData.LightBaker = context.GetLightBaker(_lightBakerKernels);

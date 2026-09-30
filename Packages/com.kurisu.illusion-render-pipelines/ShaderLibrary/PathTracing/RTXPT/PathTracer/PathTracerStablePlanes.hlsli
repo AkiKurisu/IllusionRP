@@ -33,7 +33,7 @@ namespace PathTracer
         newPath.SetDir( lobe.dir );
         newPath.SetThp( newPath.GetThp() * lobe.thp );
         //newPath.pdf             = 0;
-        newPath.SetOrigin( shadingData.computeNewRayOrigin(lobe.transmission==0) );  // bool param is viewside
+        newPath.SetOrigin( Bridge::computeSurfaceRayOrigin(shadingData, surfaceData.bsdf, lobe.transmission==0) );  // bool param is viewside  // @IllusionRP
         newPath.stableBranchID  = StablePlanesAdvanceBranchID( oldPath.stableBranchID, deltaLobeIndex );
 
         newPath.setScatterDelta();

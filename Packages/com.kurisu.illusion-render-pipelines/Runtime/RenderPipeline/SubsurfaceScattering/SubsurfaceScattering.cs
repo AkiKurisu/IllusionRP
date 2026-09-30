@@ -48,7 +48,7 @@ namespace Illusion.Rendering
 
         private void AddProfile(DiffusionProfileAsset profile)
         {
-            if (profile == null)
+            if (profile == null || profile.profile.hash == 0 || AccumulatedCount >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT - 1)
                 return;
             for (int i = 0; i < AccumulatedCount; i++)
             {
@@ -94,7 +94,7 @@ namespace Illusion.Rendering
                 foreach (var profile in to)
                 {
                     AddProfile(profile);
-                    if (AccumulatedCount >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT)
+                    if (AccumulatedCount >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT - 1)
                         break;
                 }
             }
@@ -103,7 +103,7 @@ namespace Illusion.Rendering
                 foreach (var profile in from)
                 {
                     AddProfile(profile);
-                    if (AccumulatedCount >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT)
+                    if (AccumulatedCount >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT - 1)
                         break;
                 }
             }

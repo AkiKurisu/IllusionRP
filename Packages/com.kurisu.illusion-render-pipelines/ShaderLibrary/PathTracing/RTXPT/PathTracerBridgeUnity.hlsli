@@ -198,7 +198,11 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     hdrpPayload.pixelCoord = pixelPos;
     g_HDRPSampleIndex = Bridge::getSampleIndex();
     g_HDRPVertexIndex = pathVertexIndex;
-    float materialSample = RTXPTSample4D(pixelPos, g_HDRPSampleIndex, 38).x;
+    // @IllusionRP: RTXPT vertex 1 is HDRP segment 0; retain the conditionally remapped Skin sample.
+    float4 materialSamples = family == PT_FAMILY_SKIN
+        ? Illusion::GetSample4D(pixelPos, g_HDRPSampleIndex, 4 * (pathVertexIndex - 1))
+        : SampleSequenceGenerator::Generate(4, SampleGeneratorVertexBase::make(pixelPos, pathVertexIndex, g_HDRPSampleIndex), (SampleGeneratorEffectSeed)38);
+    float materialSample = family == PT_FAMILY_SKIN ? materialSamples.z : materialSamples.x;
     if (family == PT_FAMILY_SKIN)
     {
         bsdfData.subsurfaceMask = PathTracingUnpackHalf2(payload.parameters.y).x;
@@ -249,6 +253,8 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     else
     {
         bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
+        if (family == PT_FAMILY_SKIN)
+            bsdf.skinSample = float3(materialSamples.xy, materialSample);
         if (bsdf.material.isSubsurface)
         {
             // @IllusionRP: HDRP random walk moved the interaction to its exit surface.
@@ -265,6 +271,14 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
                                     ptShadingData.posW + PathTracingUnpackHalf4(payload.motion).xyz,
 #endif
                                     matIoR, neeTriangleLightIndex, neeAnalyticLightIndex);
+}
+
+// @IllusionRP: HDRP random-walk exits use its world-scaled bias rather than RTXPT's barycentric-position offset.
+float3 Bridge::computeSurfaceRayOrigin(const ShadingData shadingData, const ActiveBSDF bsdf, bool outward)
+{
+    if (bsdf.family == PT_FAMILY_SKIN && bsdf.material.isSubsurface)
+        return shadingData.posW + bsdf.material.bsdfData.geomNormalWS * (outward ? _RayTracingRayBias : -_RayTracingRayBias);
+    return shadingData.computeNewRayOrigin(outward);
 }
 
 void Bridge::updateOutsideIoR(inout PathTracer::SurfaceData surfaceData, lpfloat outsideIoR)

@@ -114,22 +114,36 @@ namespace Illusion.Rendering
 
         private void UpdateCurrentDiffusionProfileSettings(SubsurfaceScattering param)
         {
-            int profileCount = 0;
+            int profileCount = 1;
             var diffusionProfiles = param.diffusionProfiles;
             if (diffusionProfiles.value != null)
             {
-                profileCount = diffusionProfiles.AccumulatedCount;
-                for (int i = 0; i < diffusionProfiles.AccumulatedCount; i++)
-                    SetDiffusionProfileAtIndex(diffusionProfiles.value[i], i);
+                foreach (var profile in diffusionProfiles.value)
+                {
+                    if (!profile || profile.profile.hash == 0) continue;
+                    if (profileCount >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT) break;
+                    SetDiffusionProfileAtIndex(profile, profileCount++);
+                }
             }
-            
+            for (int i = 0; i < DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT; ++i)
+            {
+                if (i > 0 && i < profileCount) continue;
+                _sssShapeParamsAndMaxScatterDists[i] = DiffusionProfileAsset.NeutralShape;
+                _sssTransmissionTintsAndFresnel0[i] = DiffusionProfileAsset.NeutralTransmission;
+                _sssDisabledTransmissionTintsAndFresnel0[i] = DiffusionProfileAsset.NeutralTransmission;
+                _sssWorldScalesAndFilterRadiiAndThicknessRemaps[i] = DiffusionProfileAsset.NeutralWorldScale;
+                _sssDiffusionProfileHashes[i] = 0;
+                _sssSetDiffusionProfiles[i] = null;
+                _sssDiffusionProfileUpdate[i] = 0;
+            }
+
             _sssActiveDiffusionProfileCount = profileCount;
         }
 
         private unsafe void UpdateShaderVariablesSubsurface(ref ShaderVariablesSubsurface cb)
         {
             cb.DiffusionProfileCount = (uint)_sssActiveDiffusionProfileCount;
-            for (int i = 0; i < _sssActiveDiffusionProfileCount; ++i)
+            for (int i = 0; i < DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT; ++i)
             {
                 for (int c = 0; c < 4; ++c) // Vector4 component
                 {

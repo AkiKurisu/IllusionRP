@@ -13,6 +13,7 @@ struct HDRPBSDF
     Illusion::Fabric::MaterialData fabric;
     Illusion::Hair::MaterialData hair;
     uint family;
+    float3 skinSample;
     float3 diffuseAlbedo;
     bool thin;
     bool valid;
@@ -91,14 +92,15 @@ struct HDRPBSDF
             return all(isfinite(result.weight));
         }
         Illusion::Lit::MaterialResult value;
-        if (!Illusion::Lit::SampleMaterial(material, inputSample.xyz, result.wo, value, thin)) return false;
+        float3 materialSample = family == PT_FAMILY_SKIN ? skinSample : inputSample.xyz;
+        if (!Illusion::Lit::SampleMaterial(material, materialSample, result.wo, value, thin)) return false;
         result.pdf = value.diffPdf + value.specPdf;
         if (!(result.pdf > 0.0)) return false;
         result.weight = (value.diffValue + value.specValue) / result.pdf;
-        bool transmission = Illusion::Lit::IsAbove(material) != Illusion::Lit::IsAbove(material, result.wo);
+        bool transmission = !material.isSubsurface && Illusion::Lit::IsAbove(material) != Illusion::Lit::IsAbove(material, result.wo);
         if (thin && transmission)
             result.weight *= Illusion::Lit::GetMaterialAbsorption(material, (Illusion::Lit::SurfaceData)0, 0.0, Illusion::Lit::IsBelow(material, result.wo), true);
-        bool diffuse = inputSample.z < material.bsdfWeight[0];
+        bool diffuse = material.isSubsurface || materialSample.z < material.bsdfWeight[0];
         bool delta = value.specPdf >= DELTA_PDF * BSDF_WEIGHT_EPSILON;
         result.lobe = transmission ? (uint)(delta ? LobeType::DeltaTransmission : (diffuse ? LobeType::DiffuseTransmission : LobeType::SpecularTransmission))
                                    : (uint)(delta ? LobeType::DeltaReflection : (diffuse ? LobeType::DiffuseReflection : LobeType::SpecularReflection));
@@ -111,6 +113,7 @@ struct HDRPBSDF
         if (family == PT_FAMILY_HAIR) return (uint)LobeType::SpecularReflection | (uint)LobeType::SpecularTransmission;
         if (family == PT_FAMILY_FABRIC)
             return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection | (fabric.bsdfWeight[2] > 0.0 ? (uint)LobeType::DiffuseTransmission : 0u);
+        if (material.isSubsurface) return (uint)LobeType::DiffuseReflection;
         return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection
             | (material.bsdfData.transmittanceMask > 0.0 ? (uint)LobeType::SpecularTransmission : 0u);
     }

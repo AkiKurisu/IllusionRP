@@ -3,6 +3,8 @@
 
 static uint g_HDRPSampleIndex;
 static uint g_HDRPVertexIndex;
+// @IllusionRP: Unity reflects namespace-scoped scalar parameters with qualified names.
+float _PathTracingSubsurfaceRayBias;
 #if defined(ILLUSION_HDRP_ENABLE_SSS)
 #include "SkinSampling.hlsl"
 #endif
@@ -33,7 +35,6 @@ static float3 g_HDRPViewDirection;
 #include "PathTracingSampling.hlsl"
 #endif
 #define _RaytracingSampleIndex g_HDRPSampleIndex
-float _PathTracingSubsurfaceRayBias;
 #define _RayTracingRayBias _PathTracingSubsurfaceRayBias
 
 

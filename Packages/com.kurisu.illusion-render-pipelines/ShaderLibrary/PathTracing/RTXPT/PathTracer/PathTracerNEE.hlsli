@@ -163,15 +163,14 @@ namespace PathTracer
     // Computes shading surface visibility ray starting position with an offset to avoid self intersection at source, and a
     // shortening offset to avoid self-intersection at the light source end. 
     // Optimal selfIntersectionShorteningK default found empirically.
-    RayDesc ComputeVisibilityRay(LightSample lightSample, const ShadingData shadingData, const float selfIntersectionShorteningK = 0.9985)
+    RayDesc ComputeVisibilityRay(LightSample lightSample, const ShadingData shadingData, const ActiveBSDF bsdf, const float selfIntersectionShorteningK = 0.9985)  // @IllusionRP
     {
         float3 surfaceShadingNormal = shadingData.N;
 
         // We must use **shading** normal to correctly figure out whether we're solving for BRDF or BTDF lobe (whether we want to cast the ray above or under the triangle).
         float faceSide = dot(surfaceShadingNormal, lightSample.Direction) >= 0 ? 1 : -1;
 
-        float3 surfaceFaceNormal = shadingData.faceNCorrected * faceSide;
-        float3 surfaceWorldPos = ComputeRayOrigin(shadingData.posW, surfaceFaceNormal);
+        float3 surfaceWorldPos = Bridge::computeSurfaceRayOrigin(shadingData, bsdf, faceSide > 0);  // @IllusionRP
 
         RayDesc ret; 
         ret.Origin = surfaceWorldPos; 
@@ -190,7 +189,7 @@ namespace PathTracer
 
         /*[branch]*/ if (lightSample.Valid())   // if sample's bad, skip; we tried casting the ray anyway but ignoring the results - didn't yield better perf
         {
-            RayDesc ray = ComputeVisibilityRay(lightSample, shadingData);
+            RayDesc ray = ComputeVisibilityRay(lightSample, shadingData, bsdf);  // @IllusionRP
             visible = Bridge::traceVisibilityRay(ray, preScatterPath.rayCone, preScatterPath.getVertexIndex(), workingContext.Debug, preScatterPath.GetPixelPos());
         }
 

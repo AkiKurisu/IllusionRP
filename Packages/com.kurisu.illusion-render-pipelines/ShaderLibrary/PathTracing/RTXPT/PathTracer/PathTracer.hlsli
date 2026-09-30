@@ -248,7 +248,7 @@ namespace PathTracer
         path.clearScatterEventFlags(); // removes PathFlags::transmission, PathFlags::specular, PathFlags::delta flags
 
         // Compute ray origin for next ray segment.
-        path.SetOrigin(shadingData.computeNewRayOrigin(bs.isLobe(LobeType::Reflection)));
+        path.SetOrigin(Bridge::computeSurfaceRayOrigin(shadingData, bsdf, bs.isLobe(LobeType::Reflection)));
         
         const float roughness = bsdf.getRoughness();  // @IllusionRP
 

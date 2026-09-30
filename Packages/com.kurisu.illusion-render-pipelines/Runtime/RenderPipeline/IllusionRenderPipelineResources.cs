@@ -134,6 +134,10 @@ namespace Illusion.Rendering
 
         public Texture2D rankingTile8SPP;
 
+        public Texture2D scramblingTile256SPP;
+
+        public Texture2D rankingTile256SPP;
+
         public Texture2D scramblingTex;
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR

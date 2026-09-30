@@ -11,6 +11,10 @@ namespace Illusion.Rendering.PathTracing
             var lightBaker = data.LightBaker;
             var environment = data.Environment;
 
+            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._OwenScrambledTexture, data.PipelineResources.owenScrambled256Tex);
+            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._ScramblingTileXSPP, data.PipelineResources.scramblingTile256SPP);
+            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._RankingTileXSPP, data.PipelineResources.rankingTile256SPP);
+            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._ScramblingTexture, data.PipelineResources.scramblingTex);
             cmd.SetRayTracingFloatParam(shader, "_PathTracingSubsurfaceRayBias", data.SubsurfaceRayBias);
             ConstantBuffer.PushGlobal(cmd, data.Profiles, Shader.PropertyToID("ShaderVariablesSubsurface"));
             cmd.SetRayTracingTextureParam(shader, "_PreIntegratedFGD_GGXDisneyDiffuse", resources.GetFGD(cmd));

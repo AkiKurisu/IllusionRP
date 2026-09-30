@@ -199,6 +199,10 @@ namespace Illusion.Rendering
     public class DiffusionProfileAsset : ScriptableObject
     {
         public const int DIFFUSION_PROFILE_COUNT = 16;
+
+        internal static readonly Vector4 NeutralWorldScale = new(1, 0, 0, 1);
+        internal static readonly Vector4 NeutralShape = new(16777216, 16777216, 16777216, 0);
+        internal static readonly Vector4 NeutralTransmission = new(0, 0, 0, 0.04f);
         
         [SerializeField]
         internal DiffusionProfile profile;
@@ -294,9 +298,9 @@ namespace Illusion.Rendering
         /// </summary>
         internal void SetDefaultParams()
         {
-            worldScaleAndFilterRadiusAndThicknessRemap = new Vector4(1, 0, 0, 1);
-            shapeParamAndMaxScatterDist = new Vector4(16777216, 16777216, 16777216, 0);
-            transmissionTintAndFresnel0.w = 0.04f; // Match DEFAULT_SPECULAR_VALUE defined in Lit.hlsl
+            worldScaleAndFilterRadiusAndThicknessRemap = NeutralWorldScale;
+            shapeParamAndMaxScatterDist = NeutralShape;
+            transmissionTintAndFresnel0 = NeutralTransmission; // Match DEFAULT_SPECULAR_VALUE defined in Lit.hlsl
         }
     }
 }

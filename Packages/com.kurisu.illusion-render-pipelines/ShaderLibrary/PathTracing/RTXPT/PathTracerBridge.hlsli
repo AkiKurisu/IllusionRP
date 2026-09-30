@@ -62,6 +62,8 @@ namespace Bridge
     static PathTracer::SurfaceData loadSurface( const IllusionPathPayload payload, const float3 rayOrigin, const float3 rayDir,
         const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPosition, DebugContext debug );
 
+    static float3 computeSurfaceRayOrigin(const ShadingData shadingData, const ActiveBSDF bsdf, bool outward);
+
     static void updateOutsideIoR(inout PathTracer::SurfaceData surfaceData, lpfloat outsideIoR);
 
     static lpfloat loadIoR(const uint materialID);

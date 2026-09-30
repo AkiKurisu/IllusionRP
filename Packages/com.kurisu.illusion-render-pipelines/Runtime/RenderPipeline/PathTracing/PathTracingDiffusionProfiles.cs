@@ -33,13 +33,17 @@ namespace Illusion.Rendering.PathTracing
         {
             var result = new PathTracingDiffusionProfiles();
             var profiles = VolumeManager.instance.stack.GetComponent<SubsurfaceScattering>()?.diffusionProfiles.value;
-            for (int i = 0; i < 16; ++i)
+            result.Count = 1;
+            for (int i = 0; i < DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT; ++i)
             {
-                result.ShapeParamsAndMaxScatterDists[i * 4] = 16777216;
-                result.ShapeParamsAndMaxScatterDists[i * 4 + 1] = 16777216;
-                result.ShapeParamsAndMaxScatterDists[i * 4 + 2] = 16777216;
-                result.WorldScalesAndFilterRadiiAndThicknessRemaps[i * 4] = 1;
-                result.TransmissionTintsAndFresnel0[i * 4 + 3] = 0.028f;
+                for (int c = 0; c < 4; ++c)
+                {
+                    result.ShapeParamsAndMaxScatterDists[i * 4 + c] = DiffusionProfileAsset.NeutralShape[c];
+                    result.TransmissionTintsAndFresnel0[i * 4 + c] = DiffusionProfileAsset.NeutralTransmission[c];
+                    result.WorldScalesAndFilterRadiiAndThicknessRemaps[i * 4 + c] = c == 0
+                        ? rendererData.ScaleInverseWorldDistance(DiffusionProfileAsset.NeutralWorldScale[c])
+                        : DiffusionProfileAsset.NeutralWorldScale[c];
+                }
             }
             if (profiles == null) return result;
             foreach (var asset in profiles)
