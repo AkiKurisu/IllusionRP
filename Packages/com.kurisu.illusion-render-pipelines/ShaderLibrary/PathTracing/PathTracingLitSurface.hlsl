@@ -19,6 +19,7 @@ struct PathTracingLitSurface
     float3 transmissionTint;
     float ior;
     bool thin;
+    float coatMask;
 };
 
 PathTracingLitSurface PathTracingInitLitSurface()
@@ -36,6 +37,7 @@ PathTracingLitSurface PathTracingInitLitSurface()
     s.transmissionTint = 1.0;
     s.ior = 1.5;
     s.thin = false;
+    s.coatMask = 0.0;
     return s;
 }
 
@@ -64,7 +66,7 @@ void PathTracingWriteLitSurface(inout IllusionPathPayload payload, PathTracingHi
     payload.specularRoughness = PathTracingPackHalf4(float4(f0, 1.0 - s.smoothness));
     payload.emissionMetallic = PathTracingPackHalf4(float4(s.emission, s.metallic));
     payload.parameters = uint4(
-        0u,
+        PathTracingPackHalf2(s.coatMask, 0.0),
         PathTracingPackHalf2(s.specularTransmission, s.diffuseTransmission),
         PathTracingPackHalf2(s.ior, s.transmissionTint.r),
         PathTracingPackHalf2(s.transmissionTint.g, s.transmissionTint.b));

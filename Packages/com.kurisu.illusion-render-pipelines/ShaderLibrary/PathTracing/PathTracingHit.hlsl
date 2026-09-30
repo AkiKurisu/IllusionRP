@@ -281,4 +281,15 @@ bool PathTracingIsCulledFace()
     return (culled & (frontFacing ? PT_CULL_FRONT : PT_CULL_BACK)) != 0u;
 }
 
+// @IllusionRP: all Unity material passes contribute the nearest exit normal to HDRP random walks.
+void PathTracingRecordRandomWalk(inout IllusionPathPayload payload, AttributeData attributes)
+{
+    if (PathTracingGetRayKind(payload) == PT_RAY_RANDOM_WALK && RayTCurrent() < payload.hitT)
+    {
+        PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
+        payload.hitT = RayTCurrent();
+        payload.normalVertex = PathTracingPackNormal(hit.vertexNormalWS);
+    }
+}
+
 #endif

@@ -3617,8 +3617,9 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 				surface.smoothness = Smoothness;
 				surface.emission = Emission;
 				surface.alpha = Alpha;
-				// Graphs that fake refraction in their emission are path traced as real transmission through a film or
-				// a closed volume, tinted by the base color.
+				#ifdef _CLEARCOAT
+					surface.coatMask = CoatMask;
+				#endif
 				#if defined( _PATH_TRACING_TRANSMISSION_THIN ) || defined( _PATH_TRACING_TRANSMISSION_REFRACTIVE )
 					surface.emission = 0;
 					surface.specularTransmission = 1.0;

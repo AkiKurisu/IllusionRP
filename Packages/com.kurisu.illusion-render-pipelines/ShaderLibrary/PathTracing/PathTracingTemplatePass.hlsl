@@ -50,12 +50,7 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
     }
 
 #endif
-    if (PathTracingGetRayKind(payload) == PT_RAY_RANDOM_WALK && RayTCurrent() < payload.hitT)
-    {
-        PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
-        payload.hitT = RayTCurrent();
-        payload.normalVertex = PathTracingPackNormal(hit.vertexNormalWS);
-    }
+    PathTracingRecordRandomWalk(payload, attributes);
 }
 
 #endif

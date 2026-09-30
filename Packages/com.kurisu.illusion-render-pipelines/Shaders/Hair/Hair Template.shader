@@ -3340,6 +3340,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 
 			ENDHLSL
 		}
+		/*ase_pass*/
 		Pass
 		{
 			/*ase_hide_pass*/

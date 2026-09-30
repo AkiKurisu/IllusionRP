@@ -31,6 +31,7 @@ PathTracingLitSurface HybridLitPathTracingSurface(PathTracingHitContext hit)
     surface.smoothness = surfaceData.smoothness;
     surface.emission = surfaceData.emission;
     surface.alpha = surfaceData.alpha;
+    surface.coatMask = surfaceData.clearCoatMask;
 #if defined(HYBRID_LIT_PATH_TRACING_FILM)
     surface.specularTransmission = 1.0 - surface.alpha;
     surface.ior = PathTracingIorFromF0(Luminance(PathTracingLitF0(surface)));
@@ -70,6 +71,7 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
     }
 
 #endif
+    PathTracingRecordRandomWalk(payload, attributes);
 }
 
 #endif

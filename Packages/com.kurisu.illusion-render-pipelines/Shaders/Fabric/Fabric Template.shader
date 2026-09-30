@@ -3706,6 +3706,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 
 			ENDHLSL
 		}
+		/*ase_pass*/
 		Pass
 		{
 			/*ase_hide_pass*/

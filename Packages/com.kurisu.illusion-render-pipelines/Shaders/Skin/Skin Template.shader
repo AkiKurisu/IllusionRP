@@ -3671,6 +3671,7 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 
 			ENDHLSL
 		}
+		/*ase_pass*/
 		Pass
 		{
 			/*ase_hide_pass*/

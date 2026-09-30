@@ -13,6 +13,8 @@ struct HDRPBSDF
     Illusion::Fabric::MaterialData fabric;
     Illusion::Hair::MaterialData hair;
     uint family;
+    float3 diffuseAlbedo;
+    bool thin;
     bool valid;
 
     float getRoughness()
@@ -35,6 +37,7 @@ struct HDRPBSDF
             Illusion::Fabric::EvaluateMaterial(fabric, wo, value);
             return float4(value.diffValue + value.specValue, Average(value.specValue));
         }
+        if (Illusion::Lit::IsBelow(material, wo)) return 0.0.xxxx;
         Illusion::Lit::MaterialResult result;
         Illusion::Lit::EvaluateMaterial(material, wo, result);
         return float4(result.diffValue + result.specValue, Average(result.specValue));
@@ -54,6 +57,7 @@ struct HDRPBSDF
             Illusion::Fabric::EvaluateMaterial(fabric, wo, value);
             return value.diffPdf + value.specPdf;
         }
+        if (Illusion::Lit::IsBelow(material, wo)) return 0.0;
         Illusion::Lit::MaterialResult result;
         Illusion::Lit::EvaluateMaterial(material, wo, result);
         return result.diffPdf + result.specPdf;
@@ -87,11 +91,13 @@ struct HDRPBSDF
             return all(isfinite(result.weight));
         }
         Illusion::Lit::MaterialResult value;
-        if (!Illusion::Lit::SampleMaterial(material, inputSample.xyz, result.wo, value)) return false;
+        if (!Illusion::Lit::SampleMaterial(material, inputSample.xyz, result.wo, value, thin)) return false;
         result.pdf = value.diffPdf + value.specPdf;
         if (!(result.pdf > 0.0)) return false;
         result.weight = (value.diffValue + value.specValue) / result.pdf;
-        bool transmission = !Illusion::Lit::IsAbove(material, result.wo);
+        bool transmission = Illusion::Lit::IsAbove(material) != Illusion::Lit::IsAbove(material, result.wo);
+        if (thin && transmission)
+            result.weight *= Illusion::Lit::GetMaterialAbsorption(material, (Illusion::Lit::SurfaceData)0, 0.0, Illusion::Lit::IsBelow(material, result.wo), true);
         bool diffuse = inputSample.z < material.bsdfWeight[0];
         bool delta = value.specPdf >= DELTA_PDF * BSDF_WEIGHT_EPSILON;
         result.lobe = transmission ? (uint)(delta ? LobeType::DeltaTransmission : (diffuse ? LobeType::DiffuseTransmission : LobeType::SpecularTransmission))
@@ -123,7 +129,7 @@ struct HDRPBSDF
             specular = hair.bsdfData.diffuseColor;
             return;
         }
-        diffuse = material.bsdfData.diffuseColor * (1.0 - material.bsdfData.transmittanceMask);
+        diffuse = diffuseAlbedo * (1.0 - material.bsdfData.transmittanceMask);
         float2 uv = Illusion::Remap01ToHalfTexelCoord(float2(sqrt(saturate(dot(normal, view))), material.bsdfData.perceptualRoughness), FGDTEXTURE_RESOLUTION);
         float2 fgd = Illusion::_PreIntegratedFGD_GGXDisneyDiffuse.SampleLevel(Illusion::s_linear_clamp_sampler, uv, 0).xy;
         specular = lerp(fgd.x, fgd.y, material.bsdfData.fresnel0) * Illusion::Lit::GetSpecularCompensation(material);
@@ -135,6 +141,11 @@ struct HDRPBSDF
         nonDeltaPart = 1.0;
         [unroll] for (uint i = 0; i < cMaxDeltaLobes; ++i) lobes[i] = (DeltaLobe)0;
         if (family == PT_FAMILY_FABRIC || family == PT_FAMILY_HAIR || Illusion::Lit::IsAbove(material)) return;
+        if (thin && material.bsdfData.transmittanceMask > 0.0)
+        {
+            lobes[0].dir = -material.V; lobes[0].thp = Illusion::Lit::GetMaterialAbsorption(material, (Illusion::Lit::SurfaceData)0, 0.0, Illusion::Lit::IsBelow(material, -material.V), true); lobes[0].probability = 1.0; lobes[0].transmission = 1;
+            count = 1; nonDeltaPart = 0.0; return;
+        }
         float3 direction, value; float pdf;
         if (material.bsdfWeight[2] > BSDF_WEIGHT_EPSILON && Illusion::Lit::BRDF::SampleDelta(material, Illusion::Lit::GetSpecularNormal(material), material.bsdfData.ior, direction, value, pdf))
         {
@@ -147,6 +158,12 @@ struct HDRPBSDF
             lobes[count].probability = material.bsdfWeight[3]; lobes[count].transmission = 1; count++;
         }
         nonDeltaPart = count == 0 ? 1.0 : 0.0;
+    }
+
+    // @IllusionRP: HDRP Lit does not NEE-sample refraction, so it has no competing light-sampling PDF for that event.
+    float scatterMISPdf(BSDFSample result)
+    {
+        return family != PT_FAMILY_FABRIC && family != PT_FAMILY_HAIR && result.isLobe(LobeType::Transmission) ? 0.0 : result.pdf;
     }
 
     void setOutsideIoR(float relativeIoR)

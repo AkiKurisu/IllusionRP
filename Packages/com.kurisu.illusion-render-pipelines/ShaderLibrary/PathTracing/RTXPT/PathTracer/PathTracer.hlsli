@@ -330,7 +330,7 @@ namespace PathTracer
 #else
         float fireflyFilterK = 0;
 #endif
-        path.SetFireflyFilterK_BsdfScatterPdf( fireflyFilterK, bs.pdf );
+        path.SetFireflyFilterK_BsdfScatterPdf( fireflyFilterK, bsdf.scatterMISPdf(bs) );  // @IllusionRP
 #endif
 
 

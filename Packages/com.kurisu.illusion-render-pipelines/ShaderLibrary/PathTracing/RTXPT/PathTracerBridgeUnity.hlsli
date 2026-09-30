@@ -120,7 +120,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
 
     const uint materialID = payload.familyParameters.w;
     const uint materialFlags = materialID < _PathTracingMaterialCount ? _PathTracingMaterials[materialID].Flags : 0u;
-    const lpfloat matIoR = Bridge::loadIoR(materialID);
+    const lpfloat matIoR = family == PT_FAMILY_LIT ? (lpfloat)iorTintR.x : Bridge::loadIoR(materialID);
     const bool thinSurface = PathTracingHasSurfaceFlag(payload, PT_SURFACE_THIN);
 
     ptShadingData.materialID = materialID;
@@ -167,12 +167,13 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     // @IllusionRP: Unity's material pass has already evaluated the surface inputs; HDRP owns all material calculations.
     HDRPBSDF bsdf = (HDRPBSDF)0;
     bsdf.family = family;
+    bsdf.thin = thinSurface;
     Illusion::Lit::BSDFData bsdfData = (Illusion::Lit::BSDFData)0;
     bsdfData.diffuseColor = bsdfDataDiffuse;
     bsdfData.fresnel0 = bsdfDataSpecular;
     bsdfData.fresnel90 = 1.0;
     bsdfData.ambientOcclusion = 1.0;
-    bsdfData.normalWS = ptShadingData.N;
+    bsdfData.normalWS = family == PT_FAMILY_LIT ? shadingN : ptShadingData.N;
     bsdfData.geomNormalWS = frontFacing ? ptShadingData.faceNCorrected : -ptShadingData.faceNCorrected;
     bsdfData.tangentWS = ptShadingData.T;
     bsdfData.bitangentWS = ptShadingData.B;
@@ -180,7 +181,17 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     bsdfData.roughnessT = bsdfDataRoughness * bsdfDataRoughness;
     bsdfData.roughnessB = bsdfData.roughnessT;
     bsdfData.ior = matIoR;
+    bsdfData.coatMask = family == PT_FAMILY_LIT ? PathTracingUnpackHalf2(payload.parameters.x).x : 0.0;
     bsdfData.transmittanceMask = bsdfDataSpecularTransmission;
+    if (family == PT_FAMILY_LIT)
+    {
+        if (bsdfData.transmittanceMask > 0.0)
+            Illusion::Lit::FillMaterialTransparencyData(diffuseOpacity.rgb / max(1.0 - bsdfDataMetallic, 0.001), bsdfDataMetallic, matIoR,
+                bsdfDataTransmission, thinSurface ? REFRACTION_THIN_DISTANCE : 1.0, 0.0, bsdfData.transmittanceMask, bsdfData);
+        Illusion::Lit::FillMaterialClearCoatData(bsdfData.coatMask, bsdfData);
+        Illusion::ConvertAnisotropyToRoughness(bsdfData.perceptualRoughness, bsdfData.anisotropy, bsdfData.roughnessT, bsdfData.roughnessB);
+    }
+    bsdf.diffuseAlbedo = bsdfDataDiffuse;
     Illusion::Lit::BuiltinData builtin = (Illusion::Lit::BuiltinData)0;
     builtin.opacity = diffuseOpacity.a;
     Illusion::Lit::PathPayload hdrpPayload = (Illusion::Lit::PathPayload)0;

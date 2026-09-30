@@ -99,8 +99,8 @@ namespace Illusion.Rendering.PathTracing
         private static PathTracingMaterialData ReadMaterial(Material material, MaterialPropertyBlock block)
         {
             float ior = ReadFloat(material, block, "_Ior", ReadFloat(material, block, "_IOR", ReadFloat(material, block, "_RefractionIndex", 1.5f)));
-            Vector3 attenuation = Vector3.one;
-            float distance = float.MaxValue;
+            Vector3 attenuation = ReadColor(material, block, "_TransmittanceColor", ReadColor(material, block, "_RefractionColor", Vector3.one));
+            float distance = ReadFloat(material, block, "_TransmittanceDistance", 1.0f);
             if (float.IsNaN(ior) || float.IsInfinity(ior) || ior <= 0f)
                 throw new InvalidOperationException("Path tracing requires a finite positive material IoR: " + material.name);
             return new PathTracingMaterialData { AttenuationColor = attenuation, AttenuationDistance = distance, IoR = ior, Flags = DefaultFlags };

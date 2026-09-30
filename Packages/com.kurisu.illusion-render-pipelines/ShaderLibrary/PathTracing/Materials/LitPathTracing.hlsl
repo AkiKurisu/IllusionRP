@@ -136,7 +136,8 @@ bool CreateMaterialData(PathPayload payload, BuiltinData builtinData, BSDFData b
     return true;
 }
 
-bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleDir, out MaterialResult result)
+// @IllusionRP: thin refraction is a per-material-pass input in the shared RTXPT raygen library.
+bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleDir, out MaterialResult result, bool thinSurface = false)
 {
     Init(result);
 
@@ -234,11 +235,12 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
             if (!BTDF::SampleAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.roughnessT, mtlData.bsdfData.roughnessB, mtlData.bsdfData.ior, inputSample, sampleDir, result.specValue, result.specPdf))
                 return false;
 
-    #ifdef _REFRACTION_THIN
+            if (thinSurface)
+            {
             sampleDir = refract(sampleDir, GetSpecularNormal(mtlData), mtlData.bsdfData.ior);
             if (!any(sampleDir))
                 return false;
-    #endif
+            }
 
             result.specValue *= mtlData.bsdfData.transmittanceMask;
             result.specPdf *= mtlData.bsdfWeight[3];
@@ -253,7 +255,8 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
     else // Below
     {
 #ifdef _SURFACE_TYPE_TRANSPARENT
-    #ifdef _REFRACTION_THIN
+        if (thinSurface)
+        {
         if (mtlData.bsdfData.transmittanceMask > 0.0)
         {
             // Just go through (although we should not end up here)
@@ -261,7 +264,9 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
             result.specValue = DELTA_PDF;
             result.specPdf = DELTA_PDF;
         }
-    #else
+        }
+        else
+        {
         if (inputSample.z < mtlData.bsdfWeight[2]) // Specular BRDF
         {
             if (!BRDF::SampleDelta(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.ior, sampleDir, result.specValue, result.specPdf))
@@ -276,7 +281,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
 
             result.specPdf *= mtlData.bsdfWeight[3];
         }
-    #endif
+        }
 #else
         return false;
 #endif
@@ -356,19 +361,22 @@ float AdjustPathRoughness(MaterialData mtlData, MaterialResult mtlResult, bool i
     return adjustedPathRoughness;
 }
 
-float3 GetMaterialAbsorption(MaterialData mtlData, SurfaceData surfaceData, float dist, bool isSampleBelow)
+float3 GetMaterialAbsorption(MaterialData mtlData, SurfaceData surfaceData, float dist, bool isSampleBelow, bool thinSurface = false)
 {
 #if defined(_SURFACE_TYPE_TRANSPARENT) && HAS_REFRACTION
     // Apply absorption on rays below the interface, using Beer-Lambert's law
     if (isSampleBelow)
     {
-    #ifdef _REFRACTION_THIN
+        if (thinSurface)
+        {
         // On thin surfaces, we apply a fixed distance of absorption. 
         return exp(-mtlData.bsdfData.absorptionCoefficient * REFRACTION_THIN_DISTANCE);
-    #else
+        }
+        else
+        {
         // We allow a reasonable max distance of 10 times the "atDistance" (so that objects do not end up appearing black)
         return exp(-mtlData.bsdfData.absorptionCoefficient * min(dist, max(surfaceData.atDistance, REAL_EPS) * 10.0));
-    #endif
+        }
     }
 #endif
 

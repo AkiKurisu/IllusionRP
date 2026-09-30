@@ -2821,6 +2821,270 @@ Shader "Universal Render Pipeline/HD Lit"
 				outNormalWS = half4(NormalizeNormalPerPixel(normalWS), 0.0);
 			}
 
+			ENDHLSL
+		}
+
+		
+		Pass
+		{
+			
+			Name "PathTracing"
+			Tags { "LightMode"="PathTracing" "PathTracingAnyHit"="True" }
+
+			HLSLPROGRAM
+
+			#define ASE_GEOMETRY
+			#define _ALPHATEST_ON
+			#define _NORMAL_DROPOFF_TS 1
+			#define ASE_FOG 1
+			#define _NORMALMAP 1
+			#define ASE_VERSION 19905
+			#define ASE_SRP_VERSION 170300
+			#define ASE_USING_SAMPLING_MACROS 1
+
+
+			#pragma raytracing PathTracing
+			// @IllusionRP: ASE locates the graph input functions from these stage declarations.
+			// #pragma vertex vert
+			// #pragma fragment frag
+
+			#define SHADERPASS SHADERPASS_PATH_TRACING
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/Lighting.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingLitSurface.hlsl"
+
+			#define ASE_NEEDS_TEXTURE_COORDINATES0
+			#define ASE_NEEDS_FRAG_TEXTURE_COORDINATES0
+
+
+			struct Attributes
+			{
+				float4 positionOS : POSITION;
+				half3 normalOS : NORMAL;
+				half4 tangentOS : TANGENT;
+				float4 texcoord : TEXCOORD0;
+				float4 texcoord1 : TEXCOORD1;
+				float4 texcoord2 : TEXCOORD2;
+				float4 texcoord3 : TEXCOORD3;
+				float4 color : COLOR;
+				
+			};
+
+			struct PackedVaryings
+			{
+				float4 positionCS : SV_POSITION;
+				float3 positionWS : TEXCOORD0;
+				float4 ase_texcoord1 : TEXCOORD1;
+			};
+
+			CBUFFER_START(UnityPerMaterial)
+			half4 _BaseColor;
+			half4 _BaseColorMap_ST;
+			half4 _NormalMap_ST;
+			half4 _MaskMap_ST;
+			half _NormalScale;
+			half _MetallicRemapMin;
+			half _MetallicRemapMax;
+			half _SmoothnessRemapMin;
+			half _SmoothnessRemapMax;
+			half _AORemapMin;
+			half _AORemapMax;
+			half _AlphaRemapMin;
+			half _AlphaRemapMax;
+			half _AlphaCutoff;
+			#ifdef ASE_TRANSMISSION
+				float _TransmissionShadow;
+			#endif
+			#ifdef ASE_TRANSLUCENCY
+				float _TransStrength;
+				float _TransNormal;
+				float _TransScattering;
+				float _TransDirect;
+				float _TransAmbient;
+				float _TransShadow;
+			#endif
+			#ifdef ASE_TESSELLATION
+				float _TessPhongStrength;
+				float _TessValue;
+				float _TessMin;
+				float _TessMax;
+				float _TessEdgeLength;
+				float _TessMaxDisp;
+			#endif
+			CBUFFER_END
+
+			TEXTURE2D(_BaseColorMap);
+			SAMPLER(sampler_BaseColorMap);
+			TEXTURE2D(_NormalMap);
+			SAMPLER(sampler_NormalMap);
+			TEXTURE2D(_MaskMap);
+			SAMPLER(sampler_MaskMap);
+
+
+			
+			PackedVaryings VertexFunction( Attributes input  )
+			{
+				PackedVaryings output = (PackedVaryings)0;
+
+				output.ase_texcoord1.xy = input.texcoord.xy;
+				
+				//setting value to unused interpolator channels and avoid initialization warnings
+				output.ase_texcoord1.zw = 0;
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					float3 defaultVertexValue = input.positionOS.xyz;
+				#else
+					float3 defaultVertexValue = float3(0, 0, 0);
+				#endif
+
+				float3 vertexValue = defaultVertexValue;
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					input.positionOS.xyz = vertexValue;
+				#else
+					input.positionOS.xyz += vertexValue;
+				#endif
+
+				input.normalOS = input.normalOS;
+				input.tangentOS = input.tangentOS;
+
+				output.positionWS = g_PathTracingHit.positionWS;
+				return output;
+			}
+
+			PackedVaryings vert ( Attributes input )
+			{
+				return VertexFunction( input );
+			}
+
+			#define PATH_TRACING_TEMPLATE_SURFACE PathTracingLitSurface
+
+			PathTracingLitSurface frag ( PackedVaryings input  )
+			{
+				float3 PositionWS = g_PathTracingHit.positionWS;
+				float3 PositionRWS = GetCameraRelativePositionWS( PositionWS );
+				float3 ViewDirWS = g_PathTracingHit.viewDirWS;
+				float4 ShadowCoord = float4( 0, 0, 0, 0 );
+				float4 ScreenPosNorm = g_PathTracingScreenPosition;
+				float4 ClipPos = ComputeClipSpacePosition( ScreenPosNorm.xy, ScreenPosNorm.z );
+				float4 ScreenPos = ComputeScreenPos( ClipPos );
+				float3 TangentWS = g_PathTracingHit.tangentWS.xyz;
+				float3 BitangentWS = cross( g_PathTracingHit.vertexNormalWS, g_PathTracingHit.tangentWS.xyz ) * g_PathTracingHit.tangentWS.w;
+				float3 NormalWS = g_PathTracingHit.vertexNormalWS;
+				float FaceSign = g_PathTracingHit.frontFacing ? 1.0 : -1.0;
+
+				half2 uv_BaseColorMap = input.ase_texcoord1.xy * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;
+				half4 temp_output_18_0_g3 = ( _BaseColor * SAMPLE_TEXTURE2D( _BaseColorMap, sampler_BaseColorMap, uv_BaseColorMap ) );
+				half4 FinalBaseColor39_g3 = temp_output_18_0_g3;
+				half4 temp_output_67_0 = FinalBaseColor39_g3;
+				
+				half2 uv_NormalMap = input.ase_texcoord1.xy * _NormalMap_ST.xy + _NormalMap_ST.zw;
+				half3 unpack36_g3 = UnpackNormalScale( SAMPLE_TEXTURE2D( _NormalMap, sampler_NormalMap, uv_NormalMap ), _NormalScale );
+				unpack36_g3.z = lerp( 1, unpack36_g3.z, saturate(_NormalScale) );
+				half3 FinalNormal37_g3 = unpack36_g3;
+				
+				half2 uv_MaskMap = input.ase_texcoord1.xy * _MaskMap_ST.xy + _MaskMap_ST.zw;
+				half4 tex2DNode19_g3 = SAMPLE_TEXTURE2D( _MaskMap, sampler_MaskMap, uv_MaskMap );
+				half MetallicMask20_g3 = tex2DNode19_g3.r;
+				half lerpResult31_g3 = lerp( _MetallicRemapMin , _MetallicRemapMax , MetallicMask20_g3);
+				half FinalMetallic33_g3 = lerpResult31_g3;
+				half temp_output_67_49 = FinalMetallic33_g3;
+				
+				half SmoothnessMask21_g3 = tex2DNode19_g3.a;
+				half lerpResult28_g3 = lerp( _SmoothnessRemapMin , _SmoothnessRemapMax , SmoothnessMask21_g3);
+				half FinalSmoothness29_g3 = lerpResult28_g3;
+				
+				half BaseAlpha40_g3 = (temp_output_18_0_g3).a;
+				half lerpResult45_g3 = lerp( _AlphaRemapMin , _AlphaRemapMax , BaseAlpha40_g3);
+				half FinalAlpha47_g3 = lerpResult45_g3;
+				
+
+				float3 BaseColor = temp_output_67_0.rgb;
+				float3 Normal = FinalNormal37_g3;
+				float3 Specular = 0.5;
+				float Metallic = temp_output_67_49;
+				float Smoothness = FinalSmoothness29_g3;
+				float3 Emission = 0;
+				float Alpha = FinalAlpha47_g3;
+				float AlphaClipThreshold = _AlphaCutoff;
+				float3 RefractionColor = 1;
+				float RefractionIndex = 1;
+				float3 Transmission = 1;
+				float3 Translucency = 1;
+
+				#ifdef _CLEARCOAT
+					float CoatMask = 0;
+					float CoatSmoothness = 0;
+				#endif
+
+				#if defined( _ALPHATEST_ON )
+					AlphaDiscard( Alpha, AlphaClipThreshold );
+				#endif
+
+				PathTracingLitSurface surface = PathTracingInitLitSurface();
+				#ifdef _NORMALMAP
+					#if _NORMAL_DROPOFF_TS
+						surface.normalWS = TransformTangentToWorld( Normal, half3x3( TangentWS, BitangentWS, NormalWS ) );
+					#elif _NORMAL_DROPOFF_OS
+						surface.normalWS = TransformObjectToWorldNormal( Normal );
+					#elif _NORMAL_DROPOFF_WS
+						surface.normalWS = Normal;
+					#endif
+					surface.normalWS = SafeNormalize( surface.normalWS );
+				#else
+					surface.normalWS = NormalWS;
+				#endif
+				surface.albedo = BaseColor;
+				surface.specular = Specular;
+				surface.metallic = Metallic;
+				surface.smoothness = Smoothness;
+				surface.emission = Emission;
+				surface.alpha = Alpha;
+				#ifdef _CLEARCOAT
+					surface.coatMask = CoatMask;
+				#endif
+				#if defined( _PATH_TRACING_TRANSMISSION_THIN ) || defined( _PATH_TRACING_TRANSMISSION_REFRACTIVE )
+					surface.emission = 0;
+					surface.specularTransmission = 1.0;
+					surface.transmissionTint = BaseColor;
+					surface.ior = RefractionIndex > 1.0 ? RefractionIndex : 1.5;
+					#if defined( _PATH_TRACING_TRANSMISSION_THIN )
+						surface.thin = true;
+					#endif
+				#elif defined( _SURFACE_TYPE_TRANSPARENT ) && defined( ASE_REFRACTION )
+					surface.specularTransmission = 1.0 - Alpha;
+					surface.transmissionTint = RefractionColor;
+					surface.ior = RefractionIndex;
+				#elif defined( ASE_TRANSMISSION )
+					surface.diffuseTransmission = saturate( Max3( Transmission.r, Transmission.g, Transmission.b ) );
+					surface.transmissionTint = Transmission / max( surface.diffuseTransmission, 1e-4 );
+				#elif defined( ASE_TRANSLUCENCY )
+					surface.diffuseTransmission = saturate( Max3( Translucency.r, Translucency.g, Translucency.b ) );
+					surface.transmissionTint = Translucency / max( surface.diffuseTransmission, 1e-4 );
+				#endif
+				return surface;
+			}
+
+			void PathTracingWriteTemplateSurface( inout IllusionPathPayload payload, PathTracingHitContext hit, PathTracingLitSurface surface )
+			{
+				PathTracingWriteLitSurface( payload, hit, surface );
+			}
+
+			float PathTracingTemplateCoverage( PathTracingLitSurface surface )
+			{
+				#if defined( _PATH_TRACING_TRANSMISSION_REFRACTIVE )
+					return 1.0;
+				#elif defined( _PATH_TRACING_TRANSMISSION_THIN ) || ( defined( _SURFACE_TYPE_TRANSPARENT ) && !defined( ASE_REFRACTION ) )
+					return surface.alpha;
+				#else
+					return 1.0;
+				#endif
+			}
+
 			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingTemplatePass.hlsl"
 
 			ENDHLSL
@@ -2839,7 +3103,7 @@ Version=19905
 Node;AmplifyShaderEditor.RangedFloatNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;61;422.875,505.153;Inherit;False;Property;_AlphaCutoff;Alpha Cutoff;14;0;Create;True;0;0;0;False;0;False;0.5;0;0;1;0;1;FLOAT;0
 Node;AmplifyShaderEditor.RangedFloatNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;66;726.0434,672.7281;Inherit;False;Property;_CullMode;Cull Mode;15;2;[Header];[IntRange];Create;True;1;Culling Setting;0;0;False;0;False;0;0;0;2;0;1;FLOAT;0
 Node;AmplifyShaderEditor.FunctionNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;67;499.0043,303.4503;Inherit;False;HD Surface Input;0;;3;33e3ab795eaed4a4b88fda58c09eaeac;0;0;6;COLOR;0;FLOAT3;48;FLOAT;49;FLOAT;50;FLOAT;51;FLOAT;52
-Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;1;735.5916,303.83;Half;False;True;-1;2;AmplifyShaderEditor.MaterialInspector;0;17;Universal Render Pipeline/HD Lit;368b90cdf7a92c5479634d4a85261b5e;True;Forward;0;0;Forward;21;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;True;True;0;True;_CullMode;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;True;1;1;False;;0;False;;1;1;False;;0;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;True;True;0;False;;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;1;LightMode=UniversalForward;False;False;0;;0;0;Standard;50;Category;0;0;  Instanced Terrain Normals;1;0;Lighting Model;0;0;Workflow;1;0;Surface;0;0;  Keep Alpha;0;0;  Refraction Model;0;0;  Blend;0;0;Two Sided;1;0;Alpha Clipping;1;0;  Use Shadow Threshold;0;0;Fragment Normal Space;0;0;Forward Only;0;0;Transmission;0;0;  Transmission Shadow;0.5,False,;0;Translucency;0;0;  Translucency Strength;1,False,;0;  Normal Distortion;0.5,False,;0;  Scattering;2,False,;0;  Direct;0.9,False,;0;  Ambient;0.1,False,;0;  Shadow;0.5,False,;0;Cast Shadows;1;0;Receive Shadows;1;0;Specular Highlights;2;0;Environment Reflections;2;0;Receive SSAO;1;0;Motion Vectors;1;0;  Add Precomputed Velocity;0;0;  XR Motion Vectors;0;0;GPU Instancing;1;0;LOD CrossFade;1;0;Built-in Fog;1;0;_FinalColorxAlpha;0;0;Meta Pass;1;0;Override Baked GI;0;0;Tessellation;0;0;  Phong;0;0;  Strength;0.5,False,;0;  Type;0;0;  Tess;16,False,;0;  Min;10,False,;0;  Max;25,False,;0;  Edge Length;16,False,;0;  Max Displacement;25,False,;0;Write Depth;0;0;  Early Z;0;0;Vertex Position;1;0;Debug Display;0;0;Clear Coat;0;0;0;8;True;True;False;True;True;True;False;True;False;;True;0
+Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;1;735.5916,303.83;Half;False;True;-1;2;AmplifyShaderEditor.MaterialInspector;0;17;Universal Render Pipeline/HD Lit;368b90cdf7a92c5479634d4a85261b5e;True;Forward;0;0;Forward;21;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;True;True;0;True;_CullMode;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;True;1;1;False;;0;False;;1;1;False;;0;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;True;True;0;False;;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;1;LightMode=UniversalForward;False;False;0;;0;0;Standard;51;Category;0;0;  Instanced Terrain Normals;1;0;Lighting Model;0;0;Workflow;1;0;Surface;0;0;  Keep Alpha;0;0;  Refraction Model;0;0;  Blend;0;0;Two Sided;1;0;Alpha Clipping;1;0;  Use Shadow Threshold;0;0;Fragment Normal Space;0;0;Forward Only;0;0;Transmission;0;0;  Transmission Shadow;0.5,False,;0;Translucency;0;0;  Translucency Strength;1,False,;0;  Normal Distortion;0.5,False,;0;  Scattering;2,False,;0;  Direct;0.9,False,;0;  Ambient;0.1,False,;0;  Shadow;0.5,False,;0;Cast Shadows;1;0;Receive Shadows;1;0;Specular Highlights;2;0;Environment Reflections;2;0;Receive SSAO;1;0;Motion Vectors;1;0;  Add Precomputed Velocity;0;0;  XR Motion Vectors;0;0;GPU Instancing;1;0;LOD CrossFade;1;0;Built-in Fog;1;0;_FinalColorxAlpha;0;0;Meta Pass;1;0;Override Baked GI;0;0;Tessellation;0;0;  Phong;0;0;  Strength;0.5,False,;0;  Type;0;0;  Tess;16,False,;0;  Min;10,False,;0;  Max;25,False,;0;  Edge Length;16,False,;0;  Max Displacement;25,False,;0;Write Depth;0;0;  Early Z;0;0;Vertex Position;1;0;Debug Display;0;0;Clear Coat;0;0;Path Tracing Transmission;0;0;0;9;True;True;False;True;True;True;False;True;True;False;;True;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;2;0,0;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;ShadowCaster;0;1;ShadowCaster;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;False;False;True;False;False;False;False;0;False;;False;False;False;False;False;False;False;False;False;True;1;False;;True;3;False;;False;True;1;LightMode=ShadowCaster;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;4;0,0;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;DepthOnly;0;2;DepthOnly;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;False;False;True;False;False;False;False;0;False;;False;False;False;False;False;False;False;True;True;0;True;_StencilRefDepth;255;False;;255;True;_StencilWriteMaskDepth;7;False;;3;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;False;False;True;1;LightMode=DepthOnly;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;5;0,0;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;Meta;0;3;Meta;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;2;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;1;LightMode=Meta;False;False;0;;0;0;Standard;0;False;0
@@ -2858,4 +3122,4 @@ WireConnection;1;7;61;0
 WireConnection;8;42;67;0
 WireConnection;8;43;67;49
 ASEEND*/
-//CHKSM=EBFD69EF4A53272A4FF1DBBADDC1A2D40DEDA961
+//CHKSM=CC5E004CADBC50117AF2CAF57C5AC890058E7EF0
