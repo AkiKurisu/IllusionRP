@@ -11,6 +11,8 @@ namespace Illusion.Rendering.PathTracing
             var lightBaker = data.LightBaker;
             var environment = data.Environment;
 
+            cmd.SetRayTracingFloatParam(shader, "_PathTracingSubsurfaceRayBias", data.SubsurfaceRayBias);
+            ConstantBuffer.PushGlobal(cmd, data.Profiles, Shader.PropertyToID("ShaderVariablesSubsurface"));
             cmd.SetRayTracingTextureParam(shader, "_PreIntegratedFGD_GGXDisneyDiffuse", resources.GetFGD(cmd));
             cmd.SetRayTracingShaderPass(shader, MaterialPassName);
             cmd.SetRayTracingAccelerationStructure(shader, ShaderIDs.SceneBVH, data.World.Scene.AccelerationStructure);

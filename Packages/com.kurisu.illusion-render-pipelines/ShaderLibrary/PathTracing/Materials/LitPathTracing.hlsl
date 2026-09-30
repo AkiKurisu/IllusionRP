@@ -88,6 +88,10 @@ bool CreateMaterialData(PathPayload payload, BuiltinData builtinData, BSDFData b
     mtlData.bsdfWeight /= wSum;
 
 #ifdef _MATERIAL_FEATURE_SUBSURFACE_SCATTERING
+    mtlData.isSubsurface = false;
+    mtlData.subsurfaceWeightFactor = 1.0;
+    if (HasFlag(bsdfData.materialFeatures, MATERIALFEATUREFLAGS_LIT_SUBSURFACE_SCATTERING))
+    {
     float subsurfaceWeight = mtlData.bsdfWeight[0] * mtlData.bsdfData.subsurfaceMask * (1.0 - payload.maxRoughness);
 
     mtlData.isSubsurface = theSample < subsurfaceWeight;
@@ -126,6 +130,7 @@ bool CreateMaterialData(PathPayload payload, BuiltinData builtinData, BSDFData b
 
     // Rescale the sample we used for the SSS selection test
     theSample /= mtlData.subsurfaceWeightFactor;
+    }
 #endif
 
     return true;

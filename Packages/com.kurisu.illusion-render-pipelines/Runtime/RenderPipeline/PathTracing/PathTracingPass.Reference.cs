@@ -14,6 +14,8 @@ namespace Illusion.Rendering.PathTracing
         {
             internal RayTracingShader Shader;
             internal PathTracingWorld World;
+            internal PathTracingDiffusionProfiles Profiles;
+            internal float SubsurfaceRayBias;
             internal int Frame;
             internal PathTracingShaderTime TraceTime;
             internal PathTracingShaderTime CurrentTime;
@@ -79,7 +81,7 @@ namespace Illusion.Rendering.PathTracing
             var cameraConstants = PathTracingFrameConstants.BuildCamera(camera, width, height, Lens);
 
             int stateHash = HashCode.Combine(worldToView, viewToClip, world.Scene.SceneHash, _lights.Hash,
-                HashCode.Combine(PathTracingEnvironment.ComputeHash(_lights), Lens.ApertureRadius, Lens.FocusDistance),
+                HashCode.Combine(PathTracingEnvironment.ComputeHash(_lights), Lens.ApertureRadius, Lens.FocusDistance, PathTracingDiffusionProfiles.Capture(_rendererData).ComputeHash()),
                 HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
                     settings.fireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value));
             context.UpdateAccumulation(stateHash, world.Scene.TransformsChanged);
@@ -122,6 +124,8 @@ namespace Illusion.Rendering.PathTracing
         private void FillTracePassData(RenderGraph renderGraph, TracePassData passData, PathTracingCameraContext context,
             PathTracingWorld world, TextureHandle radiance, in PathTracingSampleConstants constants, UniversalCameraData cameraData, Matrix4x4 worldToClip)
         {
+            passData.SubsurfaceRayBias = _rendererData.ScaleWorldDistance(0.001f);
+            passData.Profiles = PathTracingDiffusionProfiles.Capture(_rendererData);
             passData.World = world;
             passData.Frame = PathTracingFrame.Index;
             passData.CurrentTime = PathTracingShaderTime.Current;

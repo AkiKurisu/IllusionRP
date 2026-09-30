@@ -540,7 +540,7 @@ bool RandomWalk(float3 position, float3 normal, float3 diffuseColor, float3 mean
 
     // Initialize the payload
     PathPayload payload;
-    payload.segmentID = SEGMENT_ID_RANDOM_WALK;
+
 
     // Initialize the walk parameters
     RayDesc ray;
@@ -579,8 +579,7 @@ bool RandomWalk(float3 position, float3 normal, float3 diffuseColor, float3 mean
         payload.rayTHit = FLT_INF;
 
         // Do the next step
-        TraceRay(_RaytracingAccelerationStructure, RAY_FLAG_FORCE_NON_OPAQUE | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_CULL_FRONT_FACING_TRIANGLES,
-                 RAYTRACINGRENDERERFLAG_PATH_TRACING, 0, 1, 1, ray, payload);
+        HDRPTraceRandomWalk(ray, payload.rayTHit, payload.value);
 
         // Check if we hit something
         hit = payload.rayTHit < FLT_INF;

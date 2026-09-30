@@ -3,11 +3,13 @@
 
 
 #define PT_RAY_SCATTER                  0u
+#define PT_RAY_RANDOM_WALK             2u
 #define PT_RAY_VISIBILITY               1u
 #define PT_RAY_KIND_MASK                0x3u
 #define PT_RAY_SEED_SHIFT               4u
 
 #define PT_FAMILY_LIT                   0u
+#define PT_FAMILY_SKIN                  4u
 #define PT_FAMILY_FABRIC                3u
 #define PT_FAMILY_UNLIT                 1u
 #define PT_FAMILY_DIAGNOSTIC            15u

@@ -24,7 +24,7 @@
 #include "Bindings/SamplerBindings.hlsli"
 #include "PathTracer/Materials/MaterialPT.h"
 
-RaytracingAccelerationStructure SceneBVH;
+
 
 
 uint Bridge::getSampleIndex()
@@ -185,7 +185,15 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     builtin.opacity = diffuseOpacity.a;
     Illusion::Lit::PathPayload hdrpPayload = (Illusion::Lit::PathPayload)0;
     hdrpPayload.pixelCoord = pixelPos;
-    float materialSample = 0.5;
+    g_HDRPSampleIndex = Bridge::getSampleIndex();
+    g_HDRPVertexIndex = pathVertexIndex;
+    float materialSample = RTXPTSample4D(pixelPos, g_HDRPSampleIndex, 38).x;
+    if (family == PT_FAMILY_SKIN)
+    {
+        bsdfData.subsurfaceMask = PathTracingUnpackHalf2(payload.parameters.y).x;
+        bsdfData.diffusionProfileIndex = payload.parameters.x;
+        bsdfData.materialFeatures |= MATERIALFEATUREFLAGS_LIT_SUBSURFACE_SCATTERING;
+    }
     Illusion::g_HDRPViewDirection = ptShadingData.V;
     if (family == PT_FAMILY_FABRIC)
     {
@@ -212,7 +220,15 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     else
     {
         bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
-        ptShadingData.N = Illusion::Lit::GetSpecularNormal(bsdf.material);
+        if (bsdf.material.isSubsurface)
+        {
+            // @IllusionRP: HDRP random walk moved the interaction to its exit surface.
+            ptShadingData.N = bsdf.material.bsdfData.normalWS;
+            ptShadingData.faceNCorrected = bsdf.material.bsdfData.geomNormalWS;
+            ptShadingData.vertexN = ptShadingData.N;
+        }
+        else
+            ptShadingData.N = Illusion::Lit::GetSpecularNormal(bsdf.material);
     }
 
     return PathTracer::SurfaceData::make(ptShadingData, bsdf,
