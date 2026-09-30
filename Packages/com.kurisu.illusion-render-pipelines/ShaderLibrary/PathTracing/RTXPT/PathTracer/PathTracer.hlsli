@@ -405,6 +405,21 @@ namespace PathTracer
     }
 
     // Miss shader
+    // @IllusionRP: a hit whose material has no PathTracing pass shows its diagnostic color to the camera and absorbs every
+    // other path; nothing behind it is traced.
+    inline void HandleDiagnosticHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const WorkingContext workingContext)
+    {
+        UpdatePathTravelled(path, rayOrigin, rayDir, kMaxRayTravel, workingContext);
+        lpfloat3 emission = path.getVertexIndex() == 1 ? (lpfloat3)PT_DIAGNOSTIC_RADIANCE : 0;
+#if PATH_TRACER_MODE!=PATH_TRACER_MODE_REFERENCE
+        StablePlanesHandleMiss(path, emission, rayOrigin, rayDir, kMaxRayTravel, workingContext);
+#endif
+        if (any(emission > 0))
+            AccumulatePathRadiance( workingContext, path, path.GetThp() * emission, 0, path.hasFlag(PathFlags::stablePlaneOnBranch), false );
+        path.clearHit();
+        path.terminate();
+    }
+
     inline void HandleMiss(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const WorkingContext workingContext)
     {
         UpdatePathTravelled(path, rayOrigin, rayDir, rayTCurrent, workingContext);
@@ -484,8 +499,13 @@ namespace PathTracer
 #if PATH_TRACER_MODE!=PATH_TRACER_MODE_REFERENCE
         StablePlanesHandleMiss(path, environmentEmission, rayOrigin, rayDir, rayTCurrent, workingContext);
 #else
-        // in case of reference path tracer, dump guide buffers just in case ever needed; these are dumped every frame and are not accumulated so they'll jitter
-        Bridge::ExportNonSurface(path, rayOrigin+rayDir*rayTCurrent, float3(0,0,0) );
+        // @IllusionRP: the reference path tracer exports the primary vertex only: its depth becomes the camera depth, and
+        // its depth and motion vectors feed DLSS Neural Rendering.
+        if (path.getVertexIndex() == 1)
+        {
+            const float3 skyPos = rayOrigin + rayDir * kEnvironmentMapSceneDistance;
+            Bridge::ExportNonSurface(path, rayOrigin+rayDir*rayTCurrent, Bridge::computeMotionVector(skyPos, skyPos) );
+        }
 #endif
 
         if (any(environmentEmission>0))
@@ -503,7 +523,8 @@ namespace PathTracer
         path.terminate();
     }
 
-    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, float2 barycentrics, const WorkingContext workingContext)
+    // @IllusionRP: takes the closest-hit payload instead of reading the hit from system values.
+    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
     {
         UpdatePathTravelled(path, rayOrigin, rayDir, rayTCurrent, workingContext);
         
@@ -513,7 +534,7 @@ namespace PathTracer
         const bool debugPath = false;
 #endif
 
-        SurfaceData surfaceData = Bridge::loadSurface( InstanceIndex(), GeometryIndex(), PrimitiveIndex(), barycentrics, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug);
+        SurfaceData surfaceData = Bridge::loadSurface( payload, rayOrigin, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug);  // @IllusionRP
 
         // if (surfaceData.shadingData.mtl.isPSDBlockMotionVectorsAtSurface())   // we've given up on this for now
         //     path.setFlag(PathFlags::exportSpecHitTBlocked, true);
@@ -567,8 +588,8 @@ namespace PathTracer
         }
 
         // These will not change anymore, so make const shortcuts
-        const ShadingData shadingData    = surfaceData.shadingData;
-        const ActiveBSDF bsdf   = surfaceData.bsdf;
+        const ShadingData shadingData = surfaceData.shadingData;
+        const ActiveBSDF bsdf = surfaceData.bsdf;
 
 #if ENABLE_DEBUG_VIZUALISATIONS && ENABLE_DEBUG_LINES_VIZ && PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES
         if (debugPath)
@@ -599,7 +620,7 @@ namespace PathTracer
 #if 0        
         if (workingContext.Debug.IsDebugPixel())
         {
-            DebugPrint( "vi {0}, isEn {1}, isInd {2}, zeroB {3}, n {4}, t {5}, pdf {6}", vertexIndex, (uint)misInfo.LightSamplingEnabled, (uint)misInfo.LightSamplingIsSSC, (uint)misInfo.SkipEmissiveBSDF, misInfo.CandidateSamples, misInfo.FullSamples, path.bsdfScatterPdf );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
         }
 #endif
 
@@ -681,8 +702,10 @@ namespace PathTracer
         // this needs to happen before updating throughput
         StablePlanesHandleHit(path, rayOrigin, rayDir, rayTCurrent, workingContext, surfaceData, volumeAbsorption, surfaceEmission, pathStopping);
 #else
-        // in case of reference path tracer, dump guide buffers just in case ever needed; these are dumped every frame and are not accumulated so they'll jitter
-        Bridge::ExportSurface(path, surfaceData, path.GetSceneLength(), float3(0,0,0) );
+        // @IllusionRP: primary vertex only, as in HandleMiss. The reference path tracer keeps no object motion history, so
+        // its motion vectors follow the camera.
+        if (path.getVertexIndex() == 1)
+            Bridge::ExportSurface(path, surfaceData, path.GetSceneLength(), Bridge::computeMotionVector(surfaceData.shadingData.posW, surfaceData.shadingData.posW) );
 #endif
 
         if (pathStopping)
@@ -703,7 +726,6 @@ namespace PathTracer
 
         UniformSampleSequenceGenerator uniformSG = UniformSampleSequenceGenerator::make( sampleGeneratorVertexBase, SampleGeneratorEffectSeed::Base );
 
-
         const PathState preScatterPath = path;
 
         // Generate the next path segment!
@@ -717,7 +739,7 @@ namespace PathTracer
 #if NON_PATH_TRACING_PASS || PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES || !PT_NEE_ENABLED
         NEEResult neeResult = NEEResult::empty();
 #else
-        NEEResult neeResult = HandleNEE(preScatterPath, shadingData, bsdf, uniformSG, workingContext); 
+        NEEResult neeResult = HandleNEE(preScatterPath, shadingData, bsdf, uniformSG, workingContext);
 #endif
 
 #if PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES        

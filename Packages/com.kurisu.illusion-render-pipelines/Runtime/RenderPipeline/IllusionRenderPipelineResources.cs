@@ -23,6 +23,31 @@ namespace Illusion.Rendering
 
         public Texture2D wetSurfaceBlueNoise;
 
+        [Header("Path Tracing")]
+        public UnityEngine.Rendering.RayTracingShader pathTracingRS;
+
+        public UnityEngine.Rendering.RayTracingShader pathTracingBuildRS;
+
+        public UnityEngine.Rendering.RayTracingShader pathTracingFillRS;
+
+        public ComputeShader pathTracingRealtimeCS;
+
+        public ComputeShader pathTracingMotionCS;
+
+        public ComputeShader pathTracingAccumulationCS;
+
+        public ComputeShader pathTracingLightsBakerCS;
+
+        public ComputeShader pathTracingEnvironmentCS;
+
+        public Shader pathTracingEnvironmentLightingShader;
+
+        public ComputeShader pathTracingEmissiveCS;
+
+        public Shader pathTracingOutputShader;
+
+        public Shader pathTracingRectangleLightShader;
+
         [Header("Area Lights")]
         public Shader areaLightShadowClearShader;
 

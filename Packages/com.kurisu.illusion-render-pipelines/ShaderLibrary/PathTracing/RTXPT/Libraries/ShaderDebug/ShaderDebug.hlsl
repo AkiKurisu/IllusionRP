@@ -810,9 +810,7 @@ float4 main( in float4 pos : SV_Position, in float2 uv : UV ) : SV_Target0
 
 #endif // #if defined(__HLSL_VERSION) && (__HLSL_VERSION >= 2021) 
 
-#if !defined(__HLSL_VERSION) || (__HLSL_VERSION < 2021) || !defined(ENABLE_DEBUG_PRINT)
-#define DebugPrint(str, ...) do { } while(false)
-#endif
+// @IllusionRP: no DebugPrint fallback; Unity's shader preprocessor does not support variadic macros.
 
 #endif // !defined(__cplusplus)
 

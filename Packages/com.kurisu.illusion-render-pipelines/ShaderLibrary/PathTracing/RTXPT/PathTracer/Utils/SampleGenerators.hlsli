@@ -42,47 +42,43 @@ enum class SampleGeneratorEffectSeed : uint32_t
 #include "StatelessSampleGenerators.hlsli"
     
 // Convenience functions for generating 1D/2D/3D values in the range [0,1) using a sample generator template.
-template<typename SampleGeneratorType>
-float sampleNext1D( inout SampleGeneratorType sampleGenerator )
-{
-    uint bits = sampleGenerator.Next();
-    // a.) converting the upper 24bits to [0, 1) because the higher bits have better distribution in some hash algorithms (like sobol)
-    // b.) this is a good way to guarantee [0, 1) since float32 mantissa is only 23 bits
-    return (bits>>8) / float(1 << 24); // same as '/ 16777216.0'        // in theory "(bits >> 6) / float( 1 << 26 )" guarantees < 1 as well on the CPU fp math side, but not sure on GPU
+// @IllusionRP: HLSL 2018 has no templates, so the functions are stamped out for each generator type.
+#define RTXPT_DEFINE_SAMPLE_NEXT_FUNCTIONS(SampleGeneratorType)                                                   \
+float sampleNext1D( inout SampleGeneratorType sampleGenerator )                                                  \
+{                                                                                                                \
+    uint bits = sampleGenerator.Next();                                                                          \
+    return (bits>>8) / float(1 << 24);                                                                           \
+}                                                                                                                \
+float2 sampleNext2D( inout SampleGeneratorType sampleGenerator )                                                 \
+{                                                                                                                \
+    float2 sample;                                                                                               \
+    sample.x = sampleNext1D(sampleGenerator);                                                                    \
+    sample.y = sampleNext1D(sampleGenerator);                                                                    \
+    return sample;                                                                                               \
+}                                                                                                                \
+float3 sampleNext3D( inout SampleGeneratorType sampleGenerator )                                                 \
+{                                                                                                                \
+    float3 sample;                                                                                               \
+    sample.x = sampleNext1D(sampleGenerator);                                                                    \
+    sample.y = sampleNext1D(sampleGenerator);                                                                    \
+    sample.z = sampleNext1D(sampleGenerator);                                                                    \
+    return sample;                                                                                               \
+}                                                                                                                \
+float4 sampleNext4D( inout SampleGeneratorType sampleGenerator )                                                 \
+{                                                                                                                \
+    float4 sample;                                                                                               \
+    sample.x = sampleNext1D(sampleGenerator);                                                                    \
+    sample.y = sampleNext1D(sampleGenerator);                                                                    \
+    sample.z = sampleNext1D(sampleGenerator);                                                                    \
+    sample.w = sampleNext1D(sampleGenerator);                                                                    \
+    return sample;                                                                                               \
 }
 
-template<typename SampleGeneratorType>
-float2 sampleNext2D( inout SampleGeneratorType sampleGenerator )
-{
-    float2 sample;
-    // Not using float4 initializer to ensure consistent order of evaluation.
-    sample.x = sampleNext1D(sampleGenerator);
-    sample.y = sampleNext1D(sampleGenerator);
-    return sample;
-}
-
-template<typename SampleGeneratorType>
-float3 sampleNext3D( inout SampleGeneratorType sampleGenerator )
-{
-    float3 sample;
-    // Not using float4 initializer to ensure consistent order of evaluation.
-    sample.x = sampleNext1D(sampleGenerator);
-    sample.y = sampleNext1D(sampleGenerator);
-    sample.z = sampleNext1D(sampleGenerator);
-    return sample;
-}
-
-template<typename SampleGeneratorType>
-float4 sampleNext4D( inout SampleGeneratorType sampleGenerator )
-{
-    float4 sample;
-    // Not using float4 initializer to ensure consistent order of evaluation.
-    sample.x = sampleNext1D(sampleGenerator);
-    sample.y = sampleNext1D(sampleGenerator);
-    sample.z = sampleNext1D(sampleGenerator);
-    sample.w = sampleNext1D(sampleGenerator);
-    return sample;
-}
+RTXPT_DEFINE_SAMPLE_NEXT_FUNCTIONS(SampleSequenceGenerator)
+RTXPT_DEFINE_SAMPLE_NEXT_FUNCTIONS(UniformSampleSequenceGenerator)
+#if HQ_UNIFORM_SAMPLE_SEQUENCE_GENERATOR_ENABLED
+RTXPT_DEFINE_SAMPLE_NEXT_FUNCTIONS(HQUniformSampleSequenceGenerator)
+#endif
 
 // Stochastic texture filtering white noise sampling functions.
 float STSampleUniform(inout uint hash)

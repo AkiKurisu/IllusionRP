@@ -13,6 +13,8 @@
 
 #if !defined(__cplusplus)
 #pragma pack_matrix(row_major)
+// @IllusionRP: Unity compiles with HLSL 2018.
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHlsl2018.hlsl"
 #endif
 
 #if !defined(__cplusplus)
@@ -60,7 +62,10 @@
 
 #define DEBUG_VIZ_MIP_COLORS                    false   // use to display mip-based gradient instead of base color !!! DISABLED IN THE LAST REFACTORING !!!
 
+// @IllusionRP: kernels may override the debug visualization switch.
+#ifndef ENABLE_DEBUG_VIZUALISATIONS
 #define ENABLE_DEBUG_VIZUALISATIONS             1       // global enable/disable for all debugging viz
+#endif
 #define ENABLE_DEBUG_DELTA_TREE_VIZUALISATION   0       // added cost can be over 10%; requires ENABLE_DEBUG_VIZUALISATIONS to be enabled < !!!! currently disabled because it's buggy - needs a refactor
 #define ENABLE_DEBUG_RTXDI_VIZUALISATION        0       // added cost is ~5%; requires ENABLE_DEBUG_VIZUALISATIONS to be enabled
 

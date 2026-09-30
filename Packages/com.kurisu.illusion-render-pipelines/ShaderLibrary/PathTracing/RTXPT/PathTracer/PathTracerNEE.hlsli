@@ -322,6 +322,7 @@ namespace PathTracer
         // Check if we should apply NEE.
         bool applyNEE = hasNonDeltaLobes;
         applyNEE &= !lightSampler.IsEmpty() && fullSamples > 0;
+        applyNEE &= workingContext.PtConsts.NEEEnabled != 0;  // @IllusionRP
 
         if (!applyNEE)
             return NEEResult::empty();

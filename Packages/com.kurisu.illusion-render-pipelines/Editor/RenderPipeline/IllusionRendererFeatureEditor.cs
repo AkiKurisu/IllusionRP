@@ -27,6 +27,8 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _subsurfaceScattering;
         private SerializedProperty _dlssNeuralRendering;
 
+        private SerializedProperty _pathTracing;
+
         // Shadow Settings
         private SerializedProperty _perObjectShadowRenderingLayer;
         private SerializedProperty _additionalDirectionalPerObjectShadows;
@@ -79,6 +81,7 @@ namespace Illusion.Rendering.Editor
             _wetSurfaceDecals = Properties.Find(feature => feature.wetSurfaceDecals);
             _subsurfaceScattering = Properties.Find(feature => feature.subsurfaceScattering);
             _dlssNeuralRendering = Properties.Find(feature => feature.dlssNeuralRendering);
+            _pathTracing = Properties.Find(feature => feature.pathTracing);
 
             // Shadow Settings
             _perObjectShadowRenderingLayer = Properties.Find(feature => feature.perObjectShadowRenderingLayer);
@@ -176,6 +179,7 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.PropertyField(_wetSurfaceDecals, Styles.WetSurfaceDecalsLabel);
                 EditorGUILayout.PropertyField(_subsurfaceScattering, Styles.SubsurfaceScatteringLabel);
                 EditorGUILayout.PropertyField(_dlssNeuralRendering, Styles.DLSSNeuralRenderingLabel);
+                EditorGUILayout.PropertyField(_pathTracing, Styles.PathTracingLabel);
             }
 
             EditorGUILayout.Space();
@@ -273,6 +277,8 @@ namespace Illusion.Rendering.Editor
                 "Enable Screen Space Subsurface Scattering.");
             public static readonly GUIContent DLSSNeuralRenderingLabel = new("DLSS Neural Rendering",
                 "Enable the optional full-resolution DLSS Neural Rendering pass.");
+            public static readonly GUIContent PathTracingLabel = new("Path Tracing",
+                "Enable path tracing for cameras with an active Path Tracing Volume on devices that support ray tracing.");
 
             // Shadow Settings
             public static readonly GUIContent PerObjectShadowRenderingLayerLabel = new("Per Object Shadow Rendering Layer",

@@ -10,22 +10,12 @@
 
 #include "PathTracer/Config.h" // must always be included first
 
-#include "SERUtils.hlsli"
-
-#if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES
-#define SER_USE_SORTING 0
-#else
-#define SER_USE_SORTING 1
-#endif
+// This software contains source code provided by NVIDIA Corporation.
 
 #include "PathTracer/PathTracerTypes.hlsli"
 
-#include "Bindings/ShaderResourceBindings.hlsli"
-#if PT_USE_RESTIR_GI
-#include "Bindings/ReSTIRBindings.hlsli"
-#endif
-
-#include "PathTracerBridgeDonut.hlsli"
+// @IllusionRP: the Unity bridge replaces the Donut bridge and shader execution reordering, which Unity does not compile.
+#include "PathTracerBridgeUnity.hlsli"
 #include "PathTracer/PathTracer.hlsli"
 
 // TODO: move this to PathTracer once SER is unified
@@ -114,51 +104,19 @@ void postProcessHit(inout PathState path, const PathTracer::WorkingContext worki
 
 void nextHit(inout PathState path, inout float2 tMinMax, const PathTracer::WorkingContext workingContext)
 {
-#if defined(SER_HIT_OBJECT) || defined(__INTELLISENSE__)
-    RayQuery<RAY_FLAG_NONE, RTXPT_FLAG_ALLOW_OPACITY_MICROMAPS> rayQuery;
-    Bridge::traceScatterRay(path, rayQuery, tMinMax, workingContext.Debug);   // this outputs ray and rayQuery; if there was a hit, ray.TMax is rayQuery.ComittedRayT
-
-    SER_HIT_OBJECT hit;
-    if (rayQuery.CommittedStatus() != COMMITTED_TRIANGLE_HIT)
-    {
-        #if 1 // inline miss shader!
-            PathTracer::HandleMiss(path, rayQuery.WorldRayOrigin(), rayQuery.WorldRayDirection(), kMaxRayTravel, workingContext);
-            return;
-        #else
-            SER_HIT_OBJECT_INIT_FROM_MISS( hit, rayQuery );
-        #endif
-    }
-    else
-    {
-        SER_HIT_OBJECT_INIT_FROM_RAYQ( hit, rayQuery );
-    }
-
-#if SER_SORT_ENABLED && SER_USE_SORTING || defined(__INTELLISENSE__)
-    if (path.hasFlag( PathFlags::enableThreadReorder ))
-    {
-        uint terminateAtNextBounceBit = path.isTerminatingAtNextBounce();
-        //uint inDielectricBounceBit = (path.getCounter(PackedCounters::RejectedHits)>0);
-
-    #if RTXPT_DISABLE_SER_TERMINATION_HINT
-        SER_REORDER_HIT(hit, 0, 0);
-    #else
-        SER_REORDER_HIT(hit, terminateAtNextBounceBit, 1);
-    #endif
-    }
-#endif
-
-    PathPayload payload = PathPayload::pack(path);
-    SER_INVOKE_HIT(hit, payload);
-    path = PathPayload::unpack(payload);
-#else
-    // refactor...
+    // @IllusionRP: TraceRay evaluates Unity materials in hit shaders while the path state stays in ray generation.
     RayDesc ray = path.getScatterRay().toRayDesc();
     ray.TMin = tMinMax.x;
     ray.TMax = tMinMax.y;
-    PathPayload payload = PathPayload::pack(path);
+    IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER, Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
+        path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
     TraceRay( SceneBVH, RAY_FLAG_NONE, 0xff, 0, 1, 0, ray, payload );
-    path = PathPayload::unpack(payload);
-#endif
+    if (payload.hitT == PT_NO_SURFACE_T)
+        PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
+    else if (payload.hitT < 0.0)
+        PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
+    else
+        PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
     tMinMax = float2(0, kMaxRayTravel); // reset - it's only designed to be used the first time after reading the ray from FirstHitFromVBuffer
 }
 
@@ -275,15 +233,9 @@ void DeltaTreeVizExplorePixel(PathTracer::WorkingContext workingContext)
     }
 }
 #endif
-// Miss only required for the full TraceRay support - should be compiled out normally
+// @IllusionRP: scatter rays are traced with TraceRay, so misses are reported through the payload.
 [shader("miss")]
-void MISS_ENTRY(inout PathPayload payload : SV_RayPayload)
+void MISS_ENTRY(inout IllusionPathPayload payload : SV_RayPayload)
 {
-//#if USE_NVAPI_HIT_OBJECT_EXTENSION || USE_DX_HIT_OBJECT_EXTENSION
-//    // we inline misses in rgs, so this is a no-op.
-//#else
-    PathState path = PathPayload::unpack(payload);
-    PathTracer::HandleMiss(path, WorldRayOrigin(), WorldRayDirection(), RayTCurrent(), GetWorkingContext());
-    payload = PathPayload::pack(path);
-//#endif
+    payload.hitT = PT_MISS_T;
 }

@@ -414,6 +414,7 @@ namespace Illusion.Rendering
             _exposurePass = new ExposurePass(_rendererData);
             _processingPostPass = new PostProcessingPostPass(_rendererData);
             CreateDLSSNeuralRenderingBackend();
+            CreatePathTracingPass();
 
             _setupPass = new SetupPass(this, _rendererData);
             _transparentStencilVRSPass = new StencilVRSGenerationPass(IllusionRenderPassEvent.TransparentStencilVRSPass);
@@ -512,6 +513,9 @@ namespace Illusion.Rendering
                                 && !isPreviewCamera
                                 && sunShaftsParam.IsActive();
             // ========================================= Post Processing ============================================================ //
+
+            if (TryEnqueuePathTracing(renderer, ref renderingData, config, useConvolutionBloom, isPostProcessEnabled))
+                return;
 
             bool usePrecomputedRadianceTransfer = config.EnablePrecomputedRadianceTransferGlobalIllumination
                                                   && precomputedRadianceTransferGI 
@@ -749,17 +753,7 @@ namespace Illusion.Rendering
             // AfterRenderingPostProcessing
             renderer.EnqueuePass(_processingPostPass);
 
-            var dlssNeuralRenderingVolume = VolumeManager.instance.stack.GetComponent<DLSSNeuralRendering>();
-            bool useDLSSNeuralRendering = dlssNeuralRendering
-                             && config.EnableDLSSNeuralRendering
-                             && DLSSNeuralRenderingCameraPolicy.ShouldRender(
-                                 renderingData.cameraData.cameraType,
-                                 renderingData.cameraData.resolveFinalTarget,
-                                 isPostProcessEnabled)
-                             && dlssNeuralRenderingVolume != null
-                             && dlssNeuralRenderingVolume.IsActive();
-            if (useDLSSNeuralRendering)
-                _dlssNeuralRenderingBackend?.Enqueue(renderer, ref renderingData);
+            EnqueueDLSSNeuralRendering(renderer, ref renderingData, config, isPostProcessEnabled);
         }
 
         private void PerformSetup(ContextContainer frameData, IllusionRendererData rendererData)
@@ -878,6 +872,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _prtRelightPass);
             SafeDispose(ref _setupPass);
             SafeDispose(ref _dlssNeuralRenderingBackend);
+            DisposePathTracing();
 
 #if UNITY_EDITOR
             _prtGBufferCapturePass = null;

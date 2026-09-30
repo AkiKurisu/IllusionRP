@@ -374,6 +374,8 @@ namespace Illusion.Rendering
 
         public const RenderPassEvent ColorPyramidPass = RenderPassEvent.AfterRenderingTransparents + 5;
 
+        public const RenderPassEvent PathTracingPass = RenderPassEvent.AfterRenderingTransparents + 6;
+
         // =================================== Post Processing ============================================= //
         public const RenderPassEvent SunShaftsPass = RenderPassEvent.BeforeRenderingPostProcessing - 4;
 

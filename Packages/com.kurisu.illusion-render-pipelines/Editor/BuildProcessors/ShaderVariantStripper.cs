@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Rendering;
+using Illusion.Rendering.PathTracing;
 using UnityEngine;
 using UnityEngine.Rendering;
 using ShaderKeywordStrings = UnityEngine.Rendering.Universal.ShaderKeywordStrings;
@@ -249,9 +250,8 @@ namespace Illusion.Rendering.Editor
     }
 
     /// <summary>
-    /// Removes IllusionRP-only passes after SRP Core and URP have processed regular shader variants.
     /// </summary>
-    internal sealed class IllusionShaderVariantPreprocessor : IPreprocessShaders, IOrderedCallback
+    internal sealed class IllusionShaderVariantPreprocessor : IPreprocessShaders, IPreprocessComputeShaders, IOrderedCallback
     {
         private readonly struct PassContract
         {
@@ -300,6 +300,10 @@ namespace Illusion.Rendering.Editor
                 IllusionShaderPasses.PostDepthOnly,
                 ShaderFeatures.TransparentDepthPostPass
                     | ShaderFeatures.TransparentOverdraw),
+            new(
+                PathTracingPass.MaterialPassName,
+                PathTracingPass.MaterialPassName,
+                ShaderFeatures.PathTracing),
         };
 
         public int callbackOrder => 100;
@@ -316,6 +320,12 @@ namespace Illusion.Rendering.Editor
             if (buildData == null || !buildData.IsValid || !buildData.StripUnusedVariants)
                 return;
 
+            if (IsUnusedPathTracingShader(buildData, shader))
+            {
+                compilerDataList.Clear();
+                return;
+            }
+
             if (!TryGetPassContract(snippet.passName, out PassContract contract))
                 return;
 
@@ -330,6 +340,27 @@ namespace Illusion.Rendering.Editor
                 return;
 
             compilerDataList.Clear();
+        }
+
+        public void OnProcessComputeShader(
+            ComputeShader shader,
+            string kernelName,
+            IList<ShaderCompilerData> compilerDataList)
+        {
+            if (!shader || compilerDataList == null || compilerDataList.Count == 0)
+                return;
+
+            IllusionShaderBuildData buildData = ShaderBuildPreprocessor.CurrentData;
+            if (buildData == null || !buildData.IsValid || !buildData.StripUnusedVariants)
+                return;
+
+            if (IsUnusedPathTracingShader(buildData, shader))
+                compilerDataList.Clear();
+        }
+
+        private static bool IsUnusedPathTracingShader(IllusionShaderBuildData buildData, UnityEngine.Object shader)
+        {
+            return buildData.IsPathTracingShader(shader) && !buildData.AnyRendererSupports(ShaderFeatures.PathTracing);
         }
 
         private static bool TryGetPassContract(string passName, out PassContract contract)

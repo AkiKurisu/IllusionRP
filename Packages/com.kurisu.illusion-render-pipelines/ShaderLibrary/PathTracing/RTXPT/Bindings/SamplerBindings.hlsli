@@ -11,11 +11,10 @@
 #ifndef __SAMPLER_BINDINGS_HLSLI__    // using instead of "#pragma once" due to https://github.com/microsoft/DirectXShaderCompiler/issues/3943
 #define __SAMPLER_BINDINGS_HLSLI__
 
-#include <donut/shaders/bindless.h>
-#include <donut/shaders/binding_helpers.hlsli>
-
-SamplerState s_MaterialSampler                              : register(s0);
-SamplerState s_EnvironmentMapSampler                        : register(s1);
-SamplerState s_EnvironmentMapImportanceSampler              : register(s2);
+// @IllusionRP: Unity inline sampler states; materials sample in their own hit shaders.
+SamplerState s_EnvironmentMapSampler_Trilinear_Repeat;
+SamplerState s_EnvironmentMapImportanceSampler_Point_Clamp;
+#define s_EnvironmentMapSampler s_EnvironmentMapSampler_Trilinear_Repeat
+#define s_EnvironmentMapImportanceSampler s_EnvironmentMapImportanceSampler_Point_Clamp
 
 #endif //__SAMPLER_BINDINGS_HLSLI__

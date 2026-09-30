@@ -32,6 +32,7 @@ namespace Illusion.Rendering.Editor
         AreaLights = 1L << 14,
         AreaShadowMedium = 1L << 15,
         AreaShadowHigh = 1L << 16,
+        PathTracing = 1L << 17,
         All = ~0
     }
 
@@ -39,16 +40,20 @@ namespace Illusion.Rendering.Editor
     {
         private readonly ShaderFeatures[] _rendererFeatures;
 
+        private readonly HashSet<int> _pathTracingShaders;
+
         internal IllusionShaderBuildData(
             BuildTarget target,
             bool isValid,
             bool stripUnusedVariants,
-            ShaderFeatures[] rendererFeatures)
+            ShaderFeatures[] rendererFeatures,
+            HashSet<int> pathTracingShaders = null)
         {
             Target = target;
             IsValid = isValid;
             StripUnusedVariants = stripUnusedVariants;
             _rendererFeatures = rendererFeatures ?? Array.Empty<ShaderFeatures>();
+            _pathTracingShaders = pathTracingShaders ?? new HashSet<int>();
         }
 
         internal BuildTarget Target { get; }
@@ -69,6 +74,11 @@ namespace Illusion.Rendering.Editor
             }
 
             return false;
+        }
+
+        internal bool IsPathTracingShader(UnityEngine.Object shader)
+        {
+            return _pathTracingShaders.Contains(shader.GetInstanceID());
         }
     }
 
@@ -216,8 +226,34 @@ namespace Illusion.Rendering.Editor
                 target,
                 valid,
                 stripUnusedVariants,
-                rendererFeatures.ToArray());
+                rendererFeatures.ToArray(),
+                GetPathTracingShaders());
+        }
 
+        private static HashSet<int> GetPathTracingShaders()
+        {
+            var shaders = new HashSet<int>();
+            var resources = Resources.Load<IllusionRenderPipelineResources>(nameof(IllusionRenderPipelineResources));
+            if (!resources)
+                return shaders;
+            UnityEngine.Object[] candidates =
+            {
+                resources.pathTracingAccumulationCS,
+                resources.pathTracingLightsBakerCS,
+                resources.pathTracingEnvironmentCS,
+                resources.pathTracingEmissiveCS,
+                resources.pathTracingRealtimeCS,
+                resources.pathTracingMotionCS,
+                resources.pathTracingOutputShader,
+                resources.pathTracingEnvironmentLightingShader,
+                resources.pathTracingRectangleLightShader
+            };
+            foreach (UnityEngine.Object shader in candidates)
+            {
+                if (shader)
+                    shaders.Add(shader.GetInstanceID());
+            }
+            return shaders;
         }
 
         private static ShaderFeatures GetFeatures(IllusionRendererFeature feature)
@@ -249,6 +285,8 @@ namespace Illusion.Rendering.Editor
                 features |= ShaderFeatures.TransparentOverdraw;
             if (feature.screenSpaceReflection && feature.transparentScreenSpaceReflection)
                 features |= ShaderFeatures.TransparentScreenSpaceReflection;
+            if (feature.pathTracing)
+                features |= ShaderFeatures.PathTracing;
             if (feature.areaLights)
             {
                 features |= ShaderFeatures.AreaLights;

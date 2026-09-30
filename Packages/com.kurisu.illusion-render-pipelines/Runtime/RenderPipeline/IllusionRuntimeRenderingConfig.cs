@@ -90,6 +90,9 @@ namespace Illusion.Rendering
         [ConfigVariable("r.bloom")]
         public bool EnableConvolutionBloom { get; set; } = true;
 
+        [ConfigVariable("r.pathtracing")]
+        public bool EnablePathTracing { get; set; } = true;
+
         /// <summary>Global capability switch for Experimental DLSS 5 NR.</summary>
         [ConfigVariable("r.dlssnr")]
         public bool EnableDLSSNeuralRendering { get; set; } = true;

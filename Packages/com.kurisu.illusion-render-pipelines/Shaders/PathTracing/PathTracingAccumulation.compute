@@ -1,0 +1,20 @@
+#pragma kernel Accumulate
+
+Texture2D<float4> _PathTracingRadiance;
+RWTexture2D<float4> _PathTracingAccumulation;
+uint2 _PathTracingSize;
+float _PathTracingSampleWeight;
+
+[numthreads(8, 8, 1)]
+void Accumulate(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= _PathTracingSize))
+        return;
+
+    float4 current = _PathTracingRadiance[id.xy];
+    if (any((asuint(current) & 0x7F800000u) == 0x7F800000u))
+        current = 0;
+
+    float4 accumulated = _PathTracingAccumulation[id.xy];
+    _PathTracingAccumulation[id.xy] = _PathTracingSampleWeight >= 1.0 ? current : lerp(accumulated, current, _PathTracingSampleWeight);
+}
