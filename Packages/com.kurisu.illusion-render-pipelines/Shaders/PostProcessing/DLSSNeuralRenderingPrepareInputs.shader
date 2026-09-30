@@ -25,6 +25,8 @@ Shader "Hidden/IllusionRP/DLSSNeuralRendering/PrepareInputs"
             TEXTURE2D_X(_DLSSNeuralRenderingInputColor);
             TEXTURE2D_X(_DLSSNeuralRenderingInputDepth);
             TEXTURE2D_X(_DLSSNeuralRenderingInputMotion);
+            // @IllusionRP: convert external motion inputs to URP's convention; URP uses (1, 1).
+            float2 _DLSSNeuralRenderingInputMotionScale;
 
             struct Attributes
             {
@@ -72,7 +74,7 @@ Shader "Hidden/IllusionRP/DLSSNeuralRendering/PrepareInputs"
                 // URP motion is previous-to-current UV/NDC. The C# dispatch scale
                 // flips direction and converts it to full-resolution pixels.
                 output.motion = SAMPLE_TEXTURE2D_X(_DLSSNeuralRenderingInputMotion,
-                    sampler_PointClamp, input.uv).xy;
+                    sampler_PointClamp, input.uv).xy * _DLSSNeuralRenderingInputMotionScale;
                 return output;
             }
             ENDHLSL

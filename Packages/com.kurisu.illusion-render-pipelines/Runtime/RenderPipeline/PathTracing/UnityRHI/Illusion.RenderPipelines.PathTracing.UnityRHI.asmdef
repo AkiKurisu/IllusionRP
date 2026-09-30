@@ -1,0 +1,30 @@
+{
+  "name": "Illusion.RenderPipelines.PathTracing.UnityRHI",
+  "rootNamespace": "Illusion.Rendering.PathTracing.UnityRHI",
+  "references": [
+    "Illusion.RenderPipelines",
+    "UnityRhi.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor",
+    "WindowsStandalone64"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "ILLUSION_PATH_TRACING_RAY_RECONSTRUCTION"
+  ],
+  "versionDefines": [
+    {
+      "name": "top.kuanmi.unityrhi",
+      "expression": "[1.0.0,2.0.0)",
+      "define": "ILLUSION_PATH_TRACING_RAY_RECONSTRUCTION"
+    }
+  ],
+  "noEngineReferences": false
+}

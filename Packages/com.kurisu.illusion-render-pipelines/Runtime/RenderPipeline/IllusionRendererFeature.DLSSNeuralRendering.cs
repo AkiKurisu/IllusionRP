@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace Illusion.Rendering
 {
@@ -19,6 +21,19 @@ namespace Illusion.Rendering
                 _dlssNeuralRenderingBackend = DLSSNeuralRenderingBackendLoader.Create(
                     _renderPipelineResources.dlssNeuralRenderingPrepareInputsShader);
 #endif
+        }
+
+        private void EnqueueDLSSNeuralRendering(ScriptableRenderer renderer, ref RenderingData renderingData,
+            IllusionRuntimeRenderingConfig config, bool isPostProcessEnabled)
+        {
+            var volume = VolumeManager.instance.stack.GetComponent<DLSSNeuralRendering>();
+            if (dlssNeuralRendering
+                && config.EnableDLSSNeuralRendering
+                && DLSSNeuralRenderingCameraPolicy.ShouldRender(renderingData.cameraData.cameraType,
+                    renderingData.cameraData.resolveFinalTarget, isPostProcessEnabled)
+                && volume != null
+                && volume.IsActive())
+                _dlssNeuralRenderingBackend?.Enqueue(renderer, ref renderingData);
         }
 
         public void ResetDLSSNeuralRenderingHistory()

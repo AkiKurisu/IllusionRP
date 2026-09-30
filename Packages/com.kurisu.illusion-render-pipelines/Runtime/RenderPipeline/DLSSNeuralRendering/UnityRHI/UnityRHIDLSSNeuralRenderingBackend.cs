@@ -11,7 +11,6 @@ namespace Illusion.Rendering.UnityRHI
 {
     /// <summary>
     /// Full-resolution DLSS Neural Rendering post-process for Unity 6.3 URP.
-    /// It consumes raster color, depth and motion vectors and has no RTXPT dependency.
     /// </summary>
     [Preserve]
     internal sealed class UnityRHIDLSSNeuralRenderingBackend : IDLSSNeuralRenderingBackend
@@ -151,6 +150,7 @@ namespace Illusion.Rendering.UnityRHI
             private static readonly int InputColorId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingInputColor");
             private static readonly int InputDepthId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingInputDepth");
             private static readonly int InputMotionId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingInputMotion");
+            private static readonly int InputMotionScaleId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingInputMotionScale");
             private static readonly int OutputId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingOutput");
             private static readonly int DebugModeId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingDebugMode");
             private static readonly int DebugMotionScaleXId = UnityEngine.Shader.PropertyToID("_DLSSNeuralRenderingDebugMotionScaleX");
@@ -164,6 +164,7 @@ namespace Illusion.Rendering.UnityRHI
                 public TextureHandle Color;
                 public TextureHandle Depth;
                 public TextureHandle Motion;
+                public Vector2 MotionScale;
                 public Material Material;
             }
 
@@ -236,6 +237,17 @@ namespace Illusion.Rendering.UnityRHI
                 TextureHandle sourceColor = resources.activeColorTexture;
                 TextureHandle sourceDepth = resources.cameraDepthTexture;
                 TextureHandle sourceMotion = resources.motionVectorColor;
+                Vector2 motionScale = Vector2.one;
+                if (frameData.Contains<DLSSNeuralRenderingInputs>())
+                {
+                    DLSSNeuralRenderingInputs inputs = frameData.Get<DLSSNeuralRenderingInputs>();
+                    if (inputs.IsValid)
+                    {
+                        sourceDepth = inputs.Depth;
+                        sourceMotion = inputs.Motion;
+                        motionScale = inputs.MotionScale;
+                    }
+                }
                 if (!sourceColor.IsValid() || !sourceDepth.IsValid() || !sourceMotion.IsValid())
                     return;
 
@@ -273,6 +285,7 @@ namespace Illusion.Rendering.UnityRHI
                     passData.Color = sourceColor;
                     passData.Depth = sourceDepth;
                     passData.Motion = sourceMotion;
+                    passData.MotionScale = motionScale;
                     passData.Material = _feature._prepareMaterial;
                     builder.UseTexture(sourceColor, AccessFlags.Read);
                     builder.UseTexture(sourceDepth, AccessFlags.Read);
@@ -289,6 +302,7 @@ namespace Illusion.Rendering.UnityRHI
                         data.Material.SetTexture(InputColorId, data.Color);
                         data.Material.SetTexture(InputDepthId, data.Depth);
                         data.Material.SetTexture(InputMotionId, data.Motion);
+                        data.Material.SetVector(InputMotionScaleId, data.MotionScale);
                         rgContext.cmd.DrawProcedural(Matrix4x4.identity, data.Material, 0,
                             MeshTopology.Triangles, 3, 1);
                     });
