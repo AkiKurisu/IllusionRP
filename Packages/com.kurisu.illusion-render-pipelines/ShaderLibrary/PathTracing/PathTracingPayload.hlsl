@@ -9,6 +9,7 @@
 #define PT_RAY_SEED_SHIFT               4u
 
 #define PT_FAMILY_LIT                   0u
+#define PT_FAMILY_HAIR                  5u
 #define PT_FAMILY_SKIN                  4u
 #define PT_FAMILY_FABRIC                3u
 #define PT_FAMILY_UNLIT                 1u

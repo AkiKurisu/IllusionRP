@@ -195,6 +195,24 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         bsdfData.materialFeatures |= MATERIALFEATUREFLAGS_LIT_SUBSURFACE_SCATTERING;
     }
     Illusion::g_HDRPViewDirection = ptShadingData.V;
+    if (family == PT_FAMILY_HAIR)
+    {
+        Illusion::Hair::SurfaceData hairSurface = (Illusion::Hair::SurfaceData)0;
+        hairSurface.materialFeatures = MATERIALFEATUREFLAGS_HAIR_MARSCHNER;
+        hairSurface.diffuseColor = bsdfDataDiffuse;
+        hairSurface.normalWS = ptShadingData.N;
+        hairSurface.geomNormalWS = ptShadingData.faceNCorrected;
+        hairSurface.hairStrandDirectionWS = shadingT;
+        hairSurface.perceptualSmoothness = 1.0 - bsdfDataRoughness;
+        // @IllusionRP: use HDRP Hair graph defaults for inputs absent from the raster material.
+        hairSurface.perceptualRadialSmoothness = 0.7;
+        hairSurface.cuticleAngle = 3.0;
+        hairSurface.ambientOcclusion = 1.0;
+        Illusion::Hair::BSDFData hairData = Illusion::Hair::ConvertSurfaceDataToBSDFData(pixelPos, hairSurface);
+        bsdf.valid = Illusion::Hair::CreateMaterialData(hdrpPayload, builtin, hairData, ptShadingData.posW, materialSample, bsdf.hair);
+        bsdf.hair.Nv = hairData.normalWS;
+    }
+    else
     if (family == PT_FAMILY_FABRIC)
     {
         Illusion::Fabric::BSDFData fabricData = (Illusion::Fabric::BSDFData)0;

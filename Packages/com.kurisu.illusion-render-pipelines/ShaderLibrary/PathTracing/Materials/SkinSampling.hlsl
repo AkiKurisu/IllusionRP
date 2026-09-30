@@ -3,8 +3,6 @@
 #include "../PathTracingPayload.hlsl"
 #include "../RTXPT/PathTracer/Utils/SampleGenerators.hlsli"
 RaytracingAccelerationStructure SceneBVH;
-static uint g_HDRPSampleIndex;
-static uint g_HDRPVertexIndex;
 
 // @IllusionRP: HDRP's random walk uses RTXPT's per-vertex sample generator and Unity's material payload.
 float4 RTXPTSample4D(uint2 pixel, uint index, uint dimension)

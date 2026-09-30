@@ -1,4 +1,4 @@
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/Material/Hair/Reference/HairReferenceCommon.hlsl"
+#include "HairReferenceCommon.hlsl"
 
 // Reference implementation of a Marschner-based energy conserving hair reflectance model with concepts from:
 // "The Implementation of a Hair Scattering Model" (Pharr 2016)
@@ -139,6 +139,42 @@ CBSDF EvaluateHairReference(float3 wo, float3 wi, BSDFData bsdfData)
     return HairFtoCBSDF(max(F, 0));
 }
 
+// @IllusionRP: expose the same HDRP sampling PDF to RTXPT's NEE/MIS evaluator.
+float EvaluateHairReferencePDF(float3 wo, float3 wi, BSDFData bsdfData)
+{
+    ReferenceBSDFData data = GetReferenceBSDFData(bsdfData);
+    ReferenceAngles angles = GetReferenceAngles(wi, wo);
+    float APDF[PATH_MAX + 1];
+    ComputeFiberAttenuationsPDF(angles.cosThetaO, data.sigmaA, data.eta, data.h, APDF);
+    float etaP = sqrt(Sq(data.eta) - Sq(angles.sinThetaO)) / angles.cosThetaO;
+    float sinGammaT = data.h / etaP;
+    float gammaT = clamp(FastASin(sinGammaT), -1, 1);
+    float cosThetaI = angles.cosThetaI;
+    float sinThetaI = angles.sinThetaI;
+    float phi = angles.phi;
+    float pdf;
+    int p;
+    // Solve the overall PDF
+    pdf = 0;
+
+    for (p = 0; p < PATH_MAX; p++)
+    {
+        float sinThetaOp, cosThetaOp;
+        ApplyCuticleTilts(p, angles, data, sinThetaOp, cosThetaOp);
+
+        pdf += LongitudinalScattering(cosThetaI, cosThetaOp, sinThetaI, sinThetaOp, data.v[p]) * APDF[p] *
+               AzimuthalScattering(phi, p, data.s, data.gammaO, gammaT);
+    }
+
+    // Don't forget the residual lobe
+    pdf += LongitudinalScattering(cosThetaI, angles.cosThetaO, sinThetaI, angles.sinThetaO, data.v[PATH_MAX]) * APDF[PATH_MAX] * INV_TWO_PI;
+
+    // Enforce a maximum pdf to prevent divide-by-zeros and NaN propagation in path tracer.
+    pdf = max(pdf, 1e-3);
+
+    return pdf;
+}
+
 CBSDF SampleHairReference(float3 wo, out float3 wi, out float pdf, float4 u, BSDFData bsdfData)
 {
     // Initialize the BSDF invocation.
@@ -199,23 +235,7 @@ CBSDF SampleHairReference(float3 wo, out float3 wi, out float pdf, float4 u, BSD
     float phiI = angles.phiO + phi;
     wi = float3(sinThetaI, cosThetaI * cos(phiI), cosThetaI * sin(phiI));
 
-    // Solve the overall PDF
-    pdf = 0;
-
-    for (p = 0; p < PATH_MAX; p++)
-    {
-        float sinThetaOp, cosThetaOp;
-        ApplyCuticleTilts(p, angles, data, sinThetaOp, cosThetaOp);
-
-        pdf += LongitudinalScattering(cosThetaI, cosThetaOp, sinThetaI, sinThetaOp, data.v[p]) * APDF[p] *
-               AzimuthalScattering(phi, p, data.s, data.gammaO, gammaT);
-    }
-
-    // Don't forget the residual lobe
-    pdf += LongitudinalScattering(cosThetaI, angles.cosThetaO, sinThetaI, angles.sinThetaO, data.v[PATH_MAX]) * APDF[PATH_MAX] * INV_TWO_PI;
-
-    // Enforce a maximum pdf to prevent divide-by-zeros and NaN propagation in path tracer.
-    pdf = max(pdf, 1e-3);
+    pdf = EvaluateHairReferencePDF(wo, wi, bsdfData);
 
     return EvaluateHairReference(wo, wi, bsdfData);
 }

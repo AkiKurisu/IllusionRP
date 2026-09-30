@@ -1,4 +1,4 @@
-﻿Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
+Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 {
 	Properties
 	{
@@ -3340,6 +3340,179 @@
 
 			ENDHLSL
 		}
+		Pass
+		{
+			/*ase_hide_pass*/
+			Name "PathTracing"
+			Tags
+			{
+				"LightMode" = "PathTracing"
+				"PathTracingAnyHit" = "True"
+			}
+
+			HLSLPROGRAM
+
+			#pragma raytracing PathTracing
+            // @IllusionRP: ASE locates the graph input functions from these stage declarations.
+            // #pragma vertex vert
+            // #pragma fragment frag
+
+
+
+
+			#define SHADERPASS SHADERPASS_PATH_TRACING
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Hair/Lighting.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHairSurface.hlsl"
+
+			/*ase_pragma*/
+
+			struct Attributes
+			{
+				float4 positionOS : POSITION;
+				half3 normalOS : NORMAL;
+				half4 tangentOS : TANGENT;
+				float4 texcoord : TEXCOORD0;
+				float4 texcoord1 : TEXCOORD1;
+				float4 texcoord2 : TEXCOORD2;
+				float4 texcoord3 : TEXCOORD3;
+				float4 color : COLOR;
+				/*ase_vdata:p=p;n=n;t=t;uv0=tc0;uv1=tc1;uv2=tc2;uv3=tc3;c=c*/
+			};
+
+			struct PackedVaryings
+			{
+				float4 positionCS : SV_POSITION;
+				float3 positionWS : TEXCOORD0;
+				/*ase_interp(1,):sp=sp;wp=tc0.xyz*/
+			};
+
+			CBUFFER_START(UnityPerMaterial)
+			half _OpaqueAlphaCutoff;
+			half _TransparentAlphaCutoff;
+			CBUFFER_END
+
+			/*ase_globals*/
+
+			/*ase_funcs*/
+
+			PackedVaryings VertexFunction( Attributes input /*ase_vert_input*/ )
+			{
+				PackedVaryings output = (PackedVaryings)0;
+
+				/*ase_vert_code:input=Attributes;output=PackedVaryings*/
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					float3 defaultVertexValue = input.positionOS.xyz;
+				#else
+					float3 defaultVertexValue = float3(0, 0, 0);
+				#endif
+
+				float3 vertexValue = /*ase_vert_out:Vertex Offset;Float3;8;-1;_Vertex*/defaultVertexValue/*end*/;
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					input.positionOS.xyz = vertexValue;
+				#else
+					input.positionOS.xyz += vertexValue;
+				#endif
+
+				input.normalOS = /*ase_vert_out:Vertex Normal;Float3;10;-1;_Normal*/input.normalOS/*end*/;
+				input.tangentOS = /*ase_vert_out:Vertex Tangent;Float4;30;-1;_Tangent*/input.tangentOS/*end*/;
+
+				output.positionWS = g_PathTracingHit.positionWS;
+				return output;
+			}
+
+			PackedVaryings vert ( Attributes input )
+			{
+				return VertexFunction( input );
+			}
+
+			#define PATH_TRACING_TEMPLATE_SURFACE PathTracingHairSurface
+
+			PathTracingHairSurface frag ( PackedVaryings input /*ase_frag_input*/ )
+			{
+				/*ase_local_var:wp*/float3 PositionWS = g_PathTracingHit.positionWS;
+				/*ase_local_var:rwp*/float3 PositionRWS = GetCameraRelativePositionWS( PositionWS );
+				/*ase_local_var:wvd*/float3 ViewDirWS = g_PathTracingHit.viewDirWS;
+				/*ase_local_var:sc*/float4 ShadowCoord = float4( 0, 0, 0, 0 );
+				/*ase_local_var:spn*/float4 ScreenPosNorm = g_PathTracingScreenPosition;
+				/*ase_local_var:sp*/float4 ClipPos = ComputeClipSpacePosition( ScreenPosNorm.xy, ScreenPosNorm.z );
+				/*ase_local_var:spu*/float4 ScreenPos = ComputeScreenPos( ClipPos );
+				/*ase_local_var:wt*/float3 TangentWS = g_PathTracingHit.tangentWS.xyz;
+				/*ase_local_var:wbt*/float3 BitangentWS = cross( g_PathTracingHit.vertexNormalWS, g_PathTracingHit.tangentWS.xyz ) * g_PathTracingHit.tangentWS.w;
+				/*ase_local_var:wn*/float3 NormalWS = g_PathTracingHit.vertexNormalWS;
+				/*ase_local_var:vf*/float FaceSign = g_PathTracingHit.frontFacing ? 1.0 : -1.0;
+
+				/*ase_frag_code:input=PackedVaryings*/
+
+				float3 BaseColor = /*ase_frag_out:Base Color;Float3;0;-1;_BaseColor*/float3(0.5, 0.5, 0.5)/*end*/;
+				float3 Normal = /*ase_frag_out:Normal;Float3;1;-1;_FragNormal*/float3(0, 0, 1)/*end*/;
+				float3 Tint = /*ase_frag_out:Tint;Float3;2;-1;_Tint*/0.5/*end*/;
+				float3 Specular = /*ase_frag_out:Specular;Float3;9;-1;_Specular*/0.5/*end*/;
+				float Metallic = /*ase_frag_out:Metallic;Float;3;-1;_Metallic*/0/*end*/;
+				float Smoothness = /*ase_frag_out:Smoothness;Float;4;-1;_Smoothness*/0.5/*end*/;
+				float Alpha = /*ase_frag_out:Alpha;Float;6;-1;_Alpha*/1/*end*/;
+				float AlphaClipThreshold = /*ase_frag_out:Alpha Clip Threshold;Float;7;-1;_AlphaClip*/0.5/*end*/;
+				float3 Tangent = /*ase_frag_out:Tangent;Float3;21;-1;_TangentWS*/TangentWS/*end*/;
+				float Noise = /*ase_frag_out:Noise;Float;22;-1;_Noise*/0/*end*/;
+				float HighLight = /*ase_frag_out:HighLight;Float;23;-1;_HighLight*/1/*end*/;
+				float Wet = /*ase_frag_out:Wet;Float;24;-1;_Wet*/0/*end*/;
+				float Backlit = /*ase_frag_out:Backlit;Float;25;-1;_Backlit*/0.5f/*end*/;
+				float Shadow = /*ase_frag_out:Shadow;Float;26;-1;_Shadow*/1.0f/*end*/;
+
+				PathTracingHairSurface surface = PathTracingInitHairSurface();
+
+
+				#if defined( _ALPHATEST_ON )
+					#if defined( _HAIR_ORDER_INDEPENDENT )
+						AlphaDiscard( Alpha, _TransparentAlphaCutoff );
+						surface.coverage = Alpha >= _OpaqueAlphaCutoff ? 1.0 : saturate( Alpha );
+					#else
+						ClipHair( ScreenPos, Alpha, _OpaqueAlphaCutoff );
+					#endif
+				#endif
+
+				#ifdef _NORMALMAP
+					#if _NORMAL_DROPOFF_TS
+						surface.normalWS = TransformTangentToWorld( Normal, half3x3( TangentWS, BitangentWS, NormalWS ) );
+					#elif _NORMAL_DROPOFF_OS
+						surface.normalWS = TransformObjectToWorldNormal( Normal );
+					#elif _NORMAL_DROPOFF_WS
+						surface.normalWS = Normal;
+					#endif
+					surface.normalWS = SafeNormalize( surface.normalWS );
+				#else
+					surface.normalWS = NormalWS;
+				#endif
+
+				float metallic = saturate( Metallic );
+				surface.tangentWS = SafeNormalize( Tangent );
+				surface.baseColor = BaseColor;
+				surface.smoothness = saturate( Smoothness );
+				surface.alpha = saturate( Alpha );
+				return surface;
+			}
+
+			void PathTracingWriteTemplateSurface( inout IllusionPathPayload payload, PathTracingHitContext hit, PathTracingHairSurface surface )
+			{
+				PathTracingWriteHairSurface( payload, hit, surface );
+			}
+
+			float PathTracingTemplateCoverage( PathTracingHairSurface surface )
+			{
+				return surface.coverage;
+			}
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingTemplatePass.hlsl"
+
+			ENDHLSL
+		}
+
 		/*ase_pass_end*/
 	}
 	/*ase_lod*/

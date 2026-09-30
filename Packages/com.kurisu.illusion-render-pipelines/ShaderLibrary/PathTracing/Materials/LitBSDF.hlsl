@@ -2,23 +2,33 @@
 #define ILLUSION_HDRP_LIT_BSDF_INCLUDED
 
 #include "../PathTracingPayload.hlsl"
-#include "FabricMaterial.hlsl"
+#define ILLUSION_HDRP_ENABLE_SSS
+#include "HairMaterial.hlsl"
+#undef ILLUSION_HDRP_ENABLE_SSS
 
 struct HDRPBSDF
 {
     static const uint cRandomNumberCountForSampling = 3;
     Illusion::Lit::MaterialData material;
     Illusion::Fabric::MaterialData fabric;
+    Illusion::Hair::MaterialData hair;
     uint family;
     bool valid;
 
     float getRoughness()
     {
+        if (family == PT_FAMILY_HAIR) return hair.bsdfData.perceptualRoughness;
         return family == PT_FAMILY_FABRIC ? fabric.bsdfData.perceptualRoughness : material.bsdfData.perceptualRoughness;
     }
 
     float4 eval(const ShadingData shadingData, const float3 wo)
     {
+        if (family == PT_FAMILY_HAIR)
+        {
+            Illusion::Hair::MaterialResult value;
+            Illusion::Hair::EvaluateMaterial(hair, wo, value);
+            return float4(value.specValue, Average(value.specValue));
+        }
         if (family == PT_FAMILY_FABRIC)
         {
             Illusion::Fabric::MaterialResult value;
@@ -32,6 +42,12 @@ struct HDRPBSDF
 
     float evalPdf(const ShadingData shadingData, const float3 wo, bool useImportanceSampling)
     {
+        if (family == PT_FAMILY_HAIR)
+        {
+            Illusion::Hair::MaterialResult value;
+            Illusion::Hair::EvaluateMaterial(hair, wo, value);
+            return value.specPdf;
+        }
         if (family == PT_FAMILY_FABRIC)
         {
             Illusion::Fabric::MaterialResult value;
@@ -47,6 +63,17 @@ struct HDRPBSDF
     {
         result = (BSDFSample)0;
         if (!valid) return false;
+        if (family == PT_FAMILY_HAIR)
+        {
+            Illusion::Hair::MaterialResult value;
+            if (!Illusion::Hair::SampleMaterial(hair, inputSample.xyz, result.wo, value)) return false;
+            result.pdf = value.specPdf;
+            if (!(result.pdf > 0.0)) return false;
+            result.weight = value.specValue / result.pdf;
+            result.lobe = (uint)(Illusion::Hair::IsAbove(hair, result.wo) ? LobeType::SpecularReflection : LobeType::SpecularTransmission);
+            result.lobeP = 1.0;
+            return all(isfinite(result.weight));
+        }
         if (family == PT_FAMILY_FABRIC)
         {
             Illusion::Fabric::MaterialResult value;
@@ -75,6 +102,7 @@ struct HDRPBSDF
 
     uint getLobes(const ShadingData shadingData)
     {
+        if (family == PT_FAMILY_HAIR) return (uint)LobeType::SpecularReflection | (uint)LobeType::SpecularTransmission;
         if (family == PT_FAMILY_FABRIC)
             return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection | (fabric.bsdfWeight[2] > 0.0 ? (uint)LobeType::DiffuseTransmission : 0u);
         return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection
@@ -89,6 +117,12 @@ struct HDRPBSDF
             specular = fabric.bsdfData.fresnel0;
             return;
         }
+        if (family == PT_FAMILY_HAIR)
+        {
+            diffuse = 0.0;
+            specular = hair.bsdfData.diffuseColor;
+            return;
+        }
         diffuse = material.bsdfData.diffuseColor * (1.0 - material.bsdfData.transmittanceMask);
         float2 uv = Illusion::Remap01ToHalfTexelCoord(float2(sqrt(saturate(dot(normal, view))), material.bsdfData.perceptualRoughness), FGDTEXTURE_RESOLUTION);
         float2 fgd = Illusion::_PreIntegratedFGD_GGXDisneyDiffuse.SampleLevel(Illusion::s_linear_clamp_sampler, uv, 0).xy;
@@ -100,7 +134,7 @@ struct HDRPBSDF
         count = 0;
         nonDeltaPart = 1.0;
         [unroll] for (uint i = 0; i < cMaxDeltaLobes; ++i) lobes[i] = (DeltaLobe)0;
-        if (family == PT_FAMILY_FABRIC || Illusion::Lit::IsAbove(material)) return;
+        if (family == PT_FAMILY_FABRIC || family == PT_FAMILY_HAIR || Illusion::Lit::IsAbove(material)) return;
         float3 direction, value; float pdf;
         if (material.bsdfWeight[2] > BSDF_WEIGHT_EPSILON && Illusion::Lit::BRDF::SampleDelta(material, Illusion::Lit::GetSpecularNormal(material), material.bsdfData.ior, direction, value, pdf))
         {

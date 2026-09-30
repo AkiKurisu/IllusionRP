@@ -1,7 +1,11 @@
 #ifndef ILLUSION_HDRP_LIT_MATERIAL_INCLUDED
 #define ILLUSION_HDRP_LIT_MATERIAL_INCLUDED
 
+static uint g_HDRPSampleIndex;
+static uint g_HDRPVertexIndex;
+#if defined(ILLUSION_HDRP_ENABLE_SSS)
 #include "SkinSampling.hlsl"
+#endif
 
 // @IllusionRP: isolate HDRP helpers from RTXPT helpers with the same names.
 #ifdef FLT_MIN
@@ -22,9 +26,11 @@ namespace Illusion
 Texture2D<float4> _PreIntegratedFGD_GGXDisneyDiffuse;
 SamplerState s_linear_clamp_sampler;
 static float3 g_HDRPViewDirection;
+#if defined(ILLUSION_HDRP_ENABLE_SSS)
 #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/SubsurfaceScattering/ShaderVariablesSubsurface.hlsl"
 #include "SubSurface.hlsl"
 #include "PathTracingSampling.hlsl"
+#endif
 #define _RaytracingSampleIndex g_HDRPSampleIndex
 float _PathTracingSubsurfaceRayBias;
 #define _RayTracingRayBias _PathTracingSubsurfaceRayBias
@@ -54,8 +60,10 @@ struct AOVData
 #define LIT_USE_GGX_ENERGY_COMPENSATION
 #define _SURFACE_TYPE_TRANSPARENT
 #define HAS_REFRACTION 1
+#if defined(ILLUSION_HDRP_ENABLE_SSS)
 #define ILLUSION_PATH_TRACING_SSS
 #define _MATERIAL_FEATURE_SUBSURFACE_SCATTERING
+#endif
 #include "PathTracingBSDF.hlsl"
 #include "LitPathTracing.hlsl"
 #undef _MATERIAL_FEATURE_SUBSURFACE_SCATTERING

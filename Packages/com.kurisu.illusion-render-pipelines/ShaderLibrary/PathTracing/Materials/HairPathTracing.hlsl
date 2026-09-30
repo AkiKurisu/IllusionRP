@@ -4,10 +4,6 @@
 // setting and ensure that their hair strands are a typical width (~0.12 millimeters).
 // #define _PATH_TRACED_DUAL_SCATTERING
 
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingPayload.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingMaterial.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingBSDF.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingAOV.hlsl"
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceFillingCurves.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Random.hlsl"
@@ -103,12 +99,14 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
     // Transform to the local frame for spherical coordinates,
     // Note that the strand direction is assumed to lie pointing down the X axis, as this is expected by the BSDF.
     float3x3 frame = GetLocalFrame(mtlData.bsdfData.normalWS, mtlData.bsdfData.hairStrandDirectionWS);
-    float3 wo = mul(sampleDir, transpose(frame));
-    float3 wi = mul(mtlData.V, transpose(frame));
+    float3 wo = mul(mtlData.V, transpose(frame));
+    float3 wi = mul(sampleDir, transpose(frame));
 
     CBSDF cbsdf = EvaluateHairReference(wo, wi, mtlData.bsdfData);
 
+    // @IllusionRP: evaluation and sampling use the same incident direction and solid-angle PDF.
     result.specValue = cbsdf.specR * abs(wi.z);
+    result.specPdf = EvaluateHairReferencePDF(wo, wi, mtlData.bsdfData);
 
 #ifdef _PATH_TRACED_DUAL_SCATTERING
     // Dual-scattering approximation rather than brute-forcing with a high path depth.
