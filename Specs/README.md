@@ -18,4 +18,5 @@ Contracts for IllusionRP features: what each feature must do, not how it is impl
 
 | Specification | Scope |
 |---|---|
+| [Path Tracing](path-tracing.md) | Reference and Realtime path traced cameras on DXR with HDRP material models. |
 | [Wet Surface Decals](wet-surface-decals.md) | Screen-space wet and dry projection volumes and the wet response of Forward opaque materials. |
