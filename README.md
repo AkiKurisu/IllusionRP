@@ -266,6 +266,9 @@ See [Contributing](CONTRIBUTING) for more details.
 
 Thanks to the following great works and articles.
 
+- Skin: Lee Perry-Smith head from [InfiniteScan](https://github.com/keijiro/InfiniteScan), with textures from [three.js](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/LeePerrySmith) ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)).
+- Hair: [hair33.png by OwlishMedia](https://opengameart.org/content/hair-alphas-for-days-hair33png) ([CC0](https://creativecommons.org/publicdomain/zero/1.0/)).
+
 [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR)
 
 [bladesero/GTAO_URP](https://github.com/bladesero/GTAO_URP)
