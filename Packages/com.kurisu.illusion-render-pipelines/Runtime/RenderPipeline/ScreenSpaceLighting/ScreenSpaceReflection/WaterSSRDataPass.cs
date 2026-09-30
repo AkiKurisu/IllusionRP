@@ -70,12 +70,14 @@ namespace Illusion.Rendering
             TextureHandle waterDepth = transparentDepthData.PostDepthTexture;
             if (!waterDepth.IsValid())
                 return;
+            TextureHandle preWaterDepth = transparentDepthData.PreDepthTexture;
 
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(
                        "Water SSR Data", out var passData, profilingSampler))
             {
                 builder.SetRenderAttachment(normal, 0, AccessFlags.Write);
                 builder.SetRenderAttachmentDepth(waterDepth, AccessFlags.ReadWrite);
+                builder.UseTexture(preWaterDepth, AccessFlags.Read);
 
                 SortingCriteria sorting = SortingCriteria.CommonTransparent;
                 DrawingSettings drawingSettings = UniversalRenderingUtility.CreateDrawingSettings(
