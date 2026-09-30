@@ -1,0 +1,8 @@
+#pragma use_dxc
+#pragma only_renderers d3d11
+
+#pragma kernel BuildMIPDescentImportanceMapCS
+
+#define TARGET_D3D12
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/Lighting/Distant/EnvMapImportanceSamplingBaker.hlsl"

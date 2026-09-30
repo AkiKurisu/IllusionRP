@@ -35,23 +35,26 @@ struct EnvMapImportanceSamplingBakerConstants
 #if !defined(__cplusplus)
 
 #define EMIS_ENABLE_CORE_ONLY 1
-#include "../../Shaders/PathTracer/Utils/Math/MathHelpers.hlsli"
-#include "../../Shaders/PathTracer/Lighting/EnvMap.hlsli"
+// @IllusionRP: package include paths; Unity binds resources by name, so the constants come from a structured buffer and typed RW buffers are structured buffers.
+#include "../../PathTracer/Utils/Math/MathHelpers.hlsli"
+#include "../../PathTracer/Lighting/EnvMap.hlsli"
 
-#include "../../Shaders/PathTracer/Utils/SampleGenerators.hlsli"
-#include "../../Shaders/PathTracer/Utils/Utils.hlsli"
+#include "../../PathTracer/Utils/SampleGenerators.hlsli"
+#include "../../PathTracer/Utils/Utils.hlsli"
 
-ConstantBuffer<EnvMapImportanceSamplingBakerConstants>  g_BuilderConsts  : register(b0);
+StructuredBuffer<EnvMapImportanceSamplingBakerConstants> t_BuilderConstants;
+#define g_BuilderConsts (t_BuilderConstants[0])
 
-SamplerState                            s_PointClamp                : register(s0);
-SamplerState                            s_LinearWrap                : register(s1);
+SamplerState                            s_PointClamp;
+SamplerState                            s_LinearRepeat;
+#define s_LinearWrap s_LinearRepeat
 
-TextureCube<float4>                     t_EnvMapCube                : register(t0);
-RWTexture2D<float>                      u_ImportanceMap             : register(u0);
-RWTexture2D<float4>                     u_RadianceMap               : register(u1);
+TextureCube<float4>                     t_EnvMapCube;
+RWTexture2D<float>                      u_ImportanceMap;
+RWTexture2D<float4>                     u_RadianceMap;
 
-Texture2D<float>                        t_ImportanceMap             : register(t1);
-RWBuffer<uint2>                         u_PresampledBuffer          : register(u0);
+Texture2D<float>                        t_ImportanceMap;
+RWStructuredBuffer<uint2>                         u_PresampledBuffer;
 
 [numthreads(EMISB_NUM_COMPUTE_THREADS_PER_DIM, EMISB_NUM_COMPUTE_THREADS_PER_DIM, 1)]
 void BuildMIPDescentImportanceMapCS(uint3 dispatchThreadID : SV_DispatchThreadID)

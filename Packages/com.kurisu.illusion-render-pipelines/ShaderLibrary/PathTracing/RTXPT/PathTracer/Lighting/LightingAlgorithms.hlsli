@@ -14,7 +14,8 @@
 #include "../Utils/NoiseAndSequences.hlsli"
 
 // This is a slow, reference only 
-template<uint _MaxSize/*, typename _Key = uint, typename _Payload = uint*/>
+// @IllusionRP: HLSL 2018 has no templates; the only instantiation is the local proxy list size.
+#define _MaxSize RTXPT_LIGHTING_LOCAL_PROXY_COUNT
 class SortedLightList   
 {
     // static_assert( _MaxSize <= 255 ); // note, _MaxSize must always be <= 255
@@ -29,7 +30,7 @@ class SortedLightList
 
     // int         RootIndex;
 
-    static SortedLightList<_MaxSize> empty()    { SortedLightList<_MaxSize> ret; ret.Count = 0; return ret; }
+    static SortedLightList empty()    { SortedLightList ret; ret.Count = 0; return ret; }  // @IllusionRP
 
     void        InsertOrIncCounter(uint key)
     {
@@ -79,7 +80,7 @@ class SortedLightList
         for( int i = 1; i < Count; i++ )
             if( Items[i - 1].Key > Items[i].Key )
                 {
-                    DebugPrint("Sort failed {0}, {1}, {2}", i, Items[i - 1].Key, Items[i].Key );
+                    { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
                     return;
                 }
         #endif
@@ -115,7 +116,7 @@ class SortedLightList
                 {
 #if NEEAT_ENABLE_DEBUG_DRAW
                     if ( debugPrint )
-                        DebugPrint("SortedLightList::Validate failed, index {0}, count {1}", lightIndex, thisCount);
+                        { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
 #endif
                     sallGoodMan = false;
                 }
@@ -124,13 +125,15 @@ class SortedLightList
         {
 #if NEEAT_ENABLE_DEBUG_DRAW
             if ( debugPrint )
-                DebugPrint("SortedLightList::Validate failed, count different");
+                { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
 #endif
             return false;
         }
         return sallGoodMan;
     }
 };
+
+#undef _MaxSize  // @IllusionRP
 
 #if 0 // no longer used & maintained
 
@@ -242,7 +245,7 @@ class HashBucketSortTable
 
             if( !Buckets[_BucketCount].SortInsertOrIncCounter(key) ) // primary bucket filled, use fallback bucket
             {
-                DebugPrint("Fallback bucket overflow when adding {0}", key);
+                { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
                 // 
                 // DebugPrint("--list of counters--");
                 // for (uint i = 0; i < _BucketCount+1; i++) 
@@ -529,17 +532,17 @@ class SortedLightLLRBTree
 
     void Print()
     {
-        DebugPrint("DEBUG PRINTING LIST {0}", Count);
+        { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
 
         uint2 listOfKeyValuePairs[_MaxSize];
         uint count = 0;
         WriteToList(listOfKeyValuePairs, count, RootIndex);
 
         if( count != Count )
-            DebugPrint("WRONG COUNT");
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
 
         for( int i = 0; i < count; i++ )
-            DebugPrint("  key {0}, count {1}", listOfKeyValuePairs[i].x, listOfKeyValuePairs[i].y);
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
     }
     #endif
 
@@ -651,7 +654,8 @@ class SortedLightLLRBTree
 
 // Expects elements of storageBuffer[tileAddress, x] to be sorted and 'localLightCount' is the depth of storageBuffer.
 // Note: returning value that consists both of key and counter (which needs unpacking to get actual global index); if not found, RTXPT_INVALID_LIGHT_INDEX returned
-inline uint LocalLightBinarySearch(Buffer<uint> storageBuffer, const uint tileAddress, const uint globalLightIndexToFind, const uint localLightCount, uniform const uint BINARY_SEARCH_STEPS)
+// @IllusionRP: Unity binds 32-bit buffers as structured buffers, so typed buffers are declared as StructuredBuffer.
+inline uint LocalLightBinarySearch(StructuredBuffer<uint> storageBuffer, const uint tileAddress, const uint globalLightIndexToFind, const uint localLightCount, uniform const uint BINARY_SEARCH_STEPS)
 {
     uint indexLeft = tileAddress; 
     uint indexRight = tileAddress + localLightCount-1;

@@ -57,6 +57,8 @@ namespace Illusion.Rendering.AreaLights
 
         private readonly int[] _finalAtlasTexture = new int[AreaLightManager.k_MaxShadowRequests];
 
+        internal AreaLightCookieManager CookieManager => _cookieManager;
+
         public AreaLightsPass(IllusionRendererData rendererData, CookieAtlasResolution cookieAtlasSize, CookieAtlasGraphicsFormat cookieFormat)
         {
             _rendererData = rendererData;

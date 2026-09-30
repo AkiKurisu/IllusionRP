@@ -26,14 +26,15 @@
 #define RTXPT_NEE_MIS_HEURISTIC      MISHeuristic::Balance  // MISHeuristic::PowerTwo
 
 // Note: make sure to check IsEmpty() for case where there are no lights. Sampling when 'IsEmpty( ) == true' will result in undefined behaviour (NaNs and etc.)
+// @IllusionRP: Unity binds 32-bit buffers as structured buffers, so typed buffers are declared as StructuredBuffer.
 struct LightSampler
 {
     StructuredBuffer<LightingControlData>       ControlBuffer;              ///< control buffer containts constants like numbers of lights and importance sampling stuff; could be converted to ConstantBuffer
     StructuredBuffer<PolymorphicLightInfo>      LightsBuffer;               ///< all scene lights, encoded; NOTE: some can be unused light slots with uninitialized/old data, do not sample directly!
     StructuredBuffer<PolymorphicLightInfoEx>    LightsExBuffer;
-    Buffer<uint>                                ProxyCounters;              ///< per light sampling proxy counters
-    Buffer<uint>                                ProxyIndices;               ///< indices for proxies pointing to LightsBuffer, sorted 
-    Buffer<uint>                                LocalSamplingBuffer;
+    StructuredBuffer<uint>                                ProxyCounters;              ///< per light sampling proxy counters
+    StructuredBuffer<uint>                                ProxyIndices;               ///< indices for proxies pointing to LightsBuffer, sorted
+    StructuredBuffer<uint>                                LocalSamplingBuffer;
     Texture2D<uint>                             EnvLookupMap;
     RWTexture2D<float>                          FeedbackTotalWeight;
     RWTexture2D<uint>  FeedbackCandidates;
@@ -53,9 +54,9 @@ struct LightSampler
           // ConstantBuffer<LightingControlData>       constants            // there seems to be a compiler error when using this approach
         , StructuredBuffer<PolymorphicLightInfo>        lightsBuffer
         , StructuredBuffer<PolymorphicLightInfoEx>      lightsExBuffer
-        , Buffer<uint>                                  proxyCounters
-        , Buffer<uint>                                  proxyIndices
-        , Buffer<uint>                                  localSamplingBuffer
+        , StructuredBuffer<uint>                                  proxyCounters  // @IllusionRP
+        , StructuredBuffer<uint>                                  proxyIndices
+        , StructuredBuffer<uint>                                  localSamplingBuffer
         , Texture2D<uint>                               envLookupMap
         , RWTexture2D<float>                            feedbackTotalWeight
         , RWTexture2D<uint>                             feedbackCandidates
@@ -159,11 +160,11 @@ struct LightSampler
             if( lightIndex == lightIndexR )
             {
                 if( packedValue == RTXPT_INVALID_LIGHT_INDEX )
-                    DebugPrint("Sort validation failed (not found in binary search but exists)");
+                    { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
                 else
                     if( UnpackMiniListLight(packedValue) != lightIndexR )
                     {
-                        DebugPrint("Sort validation failed (different found)");
+                        { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
                         // return float(proxyCountR) / float(localProxyCount);
                         break;
                     }
@@ -299,7 +300,7 @@ struct LightSampler
                 TriangleLight triangleLight = TriangleLight::Create(lightInfo);
                 float solidAnglePdfTest = triangleLight.CalcSolidAnglePdfForMIS(surfacePosW, surfacePosW + lightSample.Direction * lightSample.Distance);
                 if( !RelativelyEqual(solidAnglePdf, solidAnglePdfTest, 2e-2f ))
-                    DebugPrint( "ERROR: lightIdx {0} solidAngle {1} solidAngleTest {2}", lightSample.LightIndex, solidAnglePdf, solidAnglePdfTest );
+                    { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             }
 #if POLYLIGHT_QT_ENV_ENABLE
             else if ( PolymorphicLight::DecodeType(lightInfo) == PolymorphicLightType::kEnvironmentQuad )
@@ -307,7 +308,7 @@ struct LightSampler
                 EnvironmentQuadLight eqLight = EnvironmentQuadLight::Create(lightInfo);
                 float solidAnglePdfTest = eqLight.CalcSolidAnglePdfForMIS(surfacePosW, surfacePosW + lightSample.Direction * lightSample.Distance);
                 if( !RelativelyEqual(solidAnglePdf, solidAnglePdfTest, 2e-2f ))
-                    DebugPrint( "ERROR: lightIdx {0} solidAngle {1} solidAngleTest {2}", lightSample.LightIndex, solidAnglePdf, solidAnglePdfTest );
+                    { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             }
 #endif
         }
@@ -408,8 +409,16 @@ struct LightSampler
 
 #define RTXPT_LIGHTING_NEEAT_ENABLE_WORLDSPACE_LOCAL_LAYER 0
 
-    template<typename T>
-    void GetCandidateSampleCounts(const uint totalCandidateSamples, out T localCount, out T globalCount)
+    // @IllusionRP: HLSL 2018 has no templates; callers use uint and float counts.
+    void GetCandidateSampleCounts(const uint totalCandidateSamples, out float localCount, out float globalCount)
+    {
+        uint localCountU, globalCountU;
+        GetCandidateSampleCounts(totalCandidateSamples, localCountU, globalCountU);
+        localCount = localCountU;
+        globalCount = globalCountU;
+    }
+
+    void GetCandidateSampleCounts(const uint totalCandidateSamples, out uint localCount, out uint globalCount)
     {
 #if RTXPT_LIGHTING_NEEAT_ENABLE_WORLDSPACE_LOCAL_LAYER
         localCount = ::ComputeCandidateSampleLocalCount(ControlBuffer[0].LocalToGlobalSampleRatio, totalCandidateSamples);
@@ -437,14 +446,14 @@ struct LightSampler
     {
         if ( lightIndex >= ControlBuffer[0].TotalLightCount )
         {
-            DebugPrint( "Bad light index {0}", lightIndex );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             return false;
         }
         PolymorphicLightInfoFull lightPacked = LoadLight(lightIndex);
         
         if ( PolymorphicLight::DecodeType(lightPacked) != PolymorphicLightType::kTriangle )
         {
-            DebugPrint( "Good light index {0}, bad light type", lightIndex );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             return false;
         }
 
@@ -461,15 +470,15 @@ struct LightSampler
         float maxDist = max( max( dist0, dist1 ), dist2 );
         if( maxDist > (scale * 0.03 + 0.03) ) // edge1 & edge2 are stored in fp16
         {
-            DebugPrint( "v0-{0} 1-{1} 2-{2} : l0-{3} 1-{4} 2-{5} : s:{6}, md {7} ", v0, v1, v2, l0, l1, l2, scale, maxDist );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             return false;
         }
 
         float normDotNorm = dot(faceNormal, light.normal);
         if( normDotNorm < 0.98 && maxDist > 0.01 ) // light normals are not correct for tiny triangles due to fp16 packing errors
         {
-            DebugPrint( "v0-{0} 1-{1} 2-{2} : l0-{3} 1-{4} 2-{5} : s:{6}, md {7} ", v0, v1, v2, l0, l1, l2, scale, maxDist );
-            DebugPrint( "d-{0} 1-{1} 2-{2}", normDotNorm, faceNormal, light.normal );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             return false;
         }
         
@@ -481,14 +490,14 @@ struct LightSampler
         #if POLYLIGHT_QT_ENV_ENABLE
         if ( lightIndex >= ControlBuffer[0].TotalLightCount )
         {
-            DebugPrint( "Bad light index {0}", lightIndex );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             return false;
         }
         PolymorphicLightInfoFull lightPacked = LoadLight(lightIndex);
         
         if ( PolymorphicLight::DecodeType(lightPacked) != PolymorphicLightType::kEnvironmentQuad )
         {
-            DebugPrint( "Good light index {0}, bad light type (not kEnvironmentQuad)", lightIndex );
+            { /* @IllusionRP: no DebugPrint, see ShaderDebug.hlsl */ }
             return false;
         }
 
@@ -515,10 +524,5 @@ struct LightSampler
 
 };
 
-inline void DebugDrawLight(PolymorphicLightInfo lightInfo, float size, float3 color)
-{
-    // TODO: draw actual triangle or whatever the light is
-    DebugCross( lightInfo.Center, size, float4(color, 1.0f) );
-}
-
+// @IllusionRP: DebugDrawLight is removed with the RTXPT debug drawing.
 #endif // #define __LIGHT_SAMPLER_HLSLI__

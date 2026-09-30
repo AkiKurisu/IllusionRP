@@ -1,0 +1,152 @@
+/*
+* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+*
+* NVIDIA CORPORATION and its licensors retain all intellectual property
+* and proprietary rights in and to this software, related documentation
+* and any modifications thereto. Any use, reproduction, disclosure or
+* distribution of this software and related documentation without an express
+* license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
+
+// @IllusionRP: Unity mesh buffers for RTXPT BakeEmissiveTriangles.
+#pragma use_dxc
+#pragma only_renderers d3d11
+#pragma kernel BakeTriangleLights
+
+#define TARGET_D3D12
+#define NON_PATH_TRACING_PASS 1
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Utils/Math/MathHelpers.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Utils/NoiseAndSequences.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Lighting/LightingTypes.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Lighting/LightingConfig.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Lighting/PolymorphicLightPTConfig.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Lighting/PolymorphicLight.hlsli"
+
+ByteAddressBuffer t_EmissiveIndices;
+ByteAddressBuffer t_EmissivePositions;
+ByteAddressBuffer t_EmissiveUVs;
+Texture2D<float4> _EmissionMap;
+SamplerState sampler_EmissionMap;
+RWStructuredBuffer<PolymorphicLightInfo> u_lightsBuffer;
+RWStructuredBuffer<PolymorphicLightInfoEx> u_lightsExBuffer;
+
+uint _EmissiveIndexSize;
+uint _EmissiveIndexStart;
+int _EmissiveBaseVertex;
+uint _EmissivePositionStride;
+uint _EmissivePositionOffset;
+uint _EmissiveUVStride;
+uint _EmissiveUVOffset;
+uint _EmissiveUVHalf;
+uint _EmissiveUseTexture;
+uint _EmissiveTriangleCount;
+uint _EmissiveDestinationBase;
+uint _EmissiveInstanceIndex;
+uint _EmissiveGeometryIndex;
+float4 _EmissiveTransform0;
+float4 _EmissiveTransform1;
+float4 _EmissiveTransform2;
+float4 _EmissiveColor;
+float4 _EmissiveBaseMapST;
+
+uint LoadIndex(uint index)
+{
+    uint offset = index * _EmissiveIndexSize;
+    uint word = t_EmissiveIndices.Load(offset & ~3u);
+    uint value = _EmissiveIndexSize == 4u ? word : ((word >> ((offset & 2u) * 8u)) & 0xFFFFu);
+    return (uint)((int)value + _EmissiveBaseVertex);
+}
+
+float2 LoadUV(uint index)
+{
+    uint offset = _EmissiveUVOffset + index * _EmissiveUVStride;
+    float2 uv;
+    if (_EmissiveUVHalf != 0)
+    {
+        uint value = t_EmissiveUVs.Load(offset);
+        uv = float2(f16tof32(value & 0xFFFFu), f16tof32(value >> 16u));
+    }
+    else
+        uv = asfloat(t_EmissiveUVs.Load2(offset));
+    return uv * _EmissiveBaseMapST.xy + _EmissiveBaseMapST.zw;
+}
+
+[numthreads(256, 1, 1)]
+void BakeTriangleLights(uint3 id : SV_DispatchThreadID)
+{
+    uint triangleIdx = id.x;
+    if (triangleIdx >= _EmissiveTriangleCount)
+        return;
+
+    uint indexStart = _EmissiveIndexStart + triangleIdx * 3u;
+    uint3 indices = uint3(LoadIndex(indexStart), LoadIndex(indexStart + 1u), LoadIndex(indexStart + 2u));
+    float3x4 transform = float3x4(_EmissiveTransform0, _EmissiveTransform1, _EmissiveTransform2);
+    float3 positions[3];
+    positions[0] = asfloat(t_EmissivePositions.Load3(_EmissivePositionOffset + indices[0] * _EmissivePositionStride));
+    positions[1] = asfloat(t_EmissivePositions.Load3(_EmissivePositionOffset + indices[1] * _EmissivePositionStride));
+    positions[2] = asfloat(t_EmissivePositions.Load3(_EmissivePositionOffset + indices[2] * _EmissivePositionStride));
+    positions[0] = mul(transform, float4(positions[0], 1)).xyz;
+    positions[1] = mul(transform, float4(positions[1], 1)).xyz;
+    positions[2] = mul(transform, float4(positions[2], 1)).xyz;
+
+    float3 radiance = _EmissiveColor.rgb;
+    if (_EmissiveUseTexture != 0)
+    {
+        float2 uvs[3];
+        uvs[0] = LoadUV(indices[0]);
+        uvs[1] = LoadUV(indices[1]);
+        uvs[2] = LoadUV(indices[2]);
+
+        float2 edges[3];
+        edges[0] = uvs[1] - uvs[0];
+        edges[1] = uvs[2] - uvs[1];
+        edges[2] = uvs[0] - uvs[2];
+        float3 edgeLengths;
+        edgeLengths[0] = length(edges[0]);
+        edgeLengths[1] = length(edges[1]);
+        edgeLengths[2] = length(edges[2]);
+
+        float2 shortEdge, longEdge1, longEdge2;
+        if (edgeLengths[0] < edgeLengths[1] && edgeLengths[0] < edgeLengths[2])
+        {
+            shortEdge = edges[0];
+            longEdge1 = edges[1];
+            longEdge2 = edges[2];
+        }
+        else if (edgeLengths[1] < edgeLengths[2])
+        {
+            shortEdge = edges[1];
+            longEdge1 = edges[2];
+            longEdge2 = edges[0];
+        }
+        else
+        {
+            shortEdge = edges[2];
+            longEdge1 = edges[0];
+            longEdge2 = edges[1];
+        }
+
+        float2 shortGradient = shortEdge * (2.0 / 3.0);
+        float2 longGradient = (longEdge1 + longEdge2) / 3.0;
+        float2 centerUV = (uvs[0] + uvs[1] + uvs[2]) / 3.0;
+        radiance *= _EmissionMap.SampleGrad(sampler_EmissionMap, centerUV, shortGradient, longGradient).rgb;
+    }
+    radiance = max(0, radiance);
+
+    bool isFlipped = determinant((float3x3)transform) < 0.0;
+    TriangleLight triLight;
+    triLight.base = positions[0];
+    triLight.edge1 = (isFlipped ? positions[2] : positions[1]) - positions[0];
+    triLight.edge2 = (isFlipped ? positions[1] : positions[2]) - positions[0];
+    float maxR = max(radiance.x, max(radiance.y, radiance.z));
+    if (maxR < 1e-7f)
+        radiance = float3(0, 0, 0);
+    triLight.radiance = radiance;
+
+    uint subIndex = triangleIdx % 32u;
+    uint uniqueID = Hash32CombineSimple(Hash32CombineSimple(Hash32(subIndex), Hash32(_EmissiveInstanceIndex)), Hash32(_EmissiveGeometryIndex));
+    PolymorphicLightInfoFull lightFull = triLight.Store(uniqueID);
+    uint lightIndex = _EmissiveDestinationBase + triangleIdx;
+    u_lightsBuffer[lightIndex] = lightFull.Base;
+    u_lightsExBuffer[lightIndex] = lightFull.Extended;
+}

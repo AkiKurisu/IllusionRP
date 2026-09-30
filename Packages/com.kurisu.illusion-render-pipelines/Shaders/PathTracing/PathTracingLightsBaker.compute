@@ -1,0 +1,27 @@
+#pragma use_dxc
+#pragma require WaveBasic WaveVote WaveBallot WaveMath WaveMultiPrefix
+#pragma only_renderers d3d11
+
+#pragma kernel ResetPastToCurrentHistory
+#pragma kernel EnvLightsBackupPast
+#pragma kernel EnvLightsSubdivideBase
+#pragma kernel EnvLightsSubdivideBoost
+#pragma kernel EnvLightsFillLookupMap
+#pragma kernel EnvLightsMapPastToCurrent
+#pragma kernel ResetLightProxyCounters
+#pragma kernel ComputeWeights
+#pragma kernel ComputeProxyCounts
+#pragma kernel ComputeProxyBaselineOffsets
+#pragma kernel CreateProxyJobs
+#pragma kernel ExecuteProxyJobs
+#pragma kernel ProcessFeedbackHistoryPreFilter
+#pragma kernel ProcessFeedbackHistoryP0
+#pragma kernel ProcessFeedbackHistoryP1a
+#pragma kernel ProcessFeedbackHistoryP1b LLB_READ_ONLY_SAMPLING_BUFFERS=1
+#pragma kernel ProcessFeedbackHistoryP2
+#pragma kernel ProcessFeedbackHistoryP3
+#pragma kernel ClearFeedbackHistory
+
+#define TARGET_D3D12
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/Lighting/LightsBaker.hlsl"

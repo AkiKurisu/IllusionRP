@@ -11,25 +11,25 @@
 #ifndef __LIGHTING_BINDINGS_HLSLI__    // using instead of "#pragma once" due to https://github.com/microsoft/DirectXShaderCompiler/issues/3943
 #define __LIGHTING_BINDINGS_HLSLI__
 
-#include <donut/shaders/bindless.h>
-#include <donut/shaders/binding_helpers.hlsli>
+// @IllusionRP: registers are assigned by Unity.
 
 #include "../PathTracer/Lighting/LightingTypes.hlsli"
 
 // Bindings 10-19 are scene lighting: environment map (distant lights) sampling, local lights sampling, etc.
-TextureCube<float4> t_EnvironmentMap                                                : register(t10);
-Texture2D<float>    t_EnvironmentMapImportanceMap                                   : register(t11);
+TextureCube<float4> t_EnvironmentMap;
+Texture2D<float>    t_EnvironmentMapImportanceMap;
 
-StructuredBuffer<LightingControlData>       t_LightsCB                              : register(t12);
-StructuredBuffer<PolymorphicLightInfo>      t_Lights                                : register(t13);
-StructuredBuffer<PolymorphicLightInfoEx>    t_LightsEx                              : register(t14);
+StructuredBuffer<LightingControlData>       t_LightsCB;
+StructuredBuffer<PolymorphicLightInfo>      t_Lights;
+StructuredBuffer<PolymorphicLightInfoEx>    t_LightsEx;
 
-Buffer<uint>                                t_LightProxyCounters                    : register(t15);
-Buffer<uint>                                t_LightProxyIndices                     : register(t16);
-Buffer<uint>                                t_LightLocalSamplingBuffer              : register(t17);
-Texture2D<uint>                             t_EnvLookupMap                          : register(t18);
+// @IllusionRP: Unity binds 32-bit buffers as structured buffers, so typed buffers are declared as StructuredBuffer.
+StructuredBuffer<uint>                                t_LightProxyCounters;
+StructuredBuffer<uint>                                t_LightProxyIndices;
+StructuredBuffer<uint>                                t_LightLocalSamplingBuffer;
+Texture2D<uint>                             t_EnvLookupMap;
 
-RWTexture2D<float>                          u_LightFeedbackTotalWeight              : register(u20);
-RWTexture2D<uint>  u_LightFeedbackCandidates               : register(u21);
+RWTexture2D<float>                          u_LightFeedbackTotalWeight;
+RWTexture2D<uint>  u_LightFeedbackCandidates;
 
 #endif //__LIGHTING_BINDINGS_HLSLI__

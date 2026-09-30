@@ -11,75 +11,71 @@
 #ifndef __LIGHTS_BAKER_HLSL__
 #define __LIGHTS_BAKER_HLSL__
 
-#define NEEAT_ENABLE_DEBUG_DRAW 1
+// @IllusionRP: debug drawing needs the RTXPT ShaderDebug buffers, which are not bound here.
+#define NEEAT_ENABLE_DEBUG_DRAW 0
 
-#if NEEAT_ENABLE_DEBUG_DRAW && !defined(__cplusplus)
-#include "../Shaders/Libraries/ShaderDebug/ShaderDebug.hlsl"
-#endif
-
-#include "..\Shaders\Libraries\NEE-AT\NEEATBaker.hlsli"
+#include "../Libraries/NEE-AT/NEEATBaker.hlsli"
 
 #if !defined(__cplusplus) || defined(__INTELLISENSE__)
 
 #define NON_PATH_TRACING_PASS 1
 #define NEEAT_BAKER_ONLY 1
 
-#include <donut/shaders/bindless.h>
-#include <donut/shaders/binding_helpers.hlsli>
+// @IllusionRP: PathTracingEmissive.compute bakes Unity mesh buffers instead of Donut scene and bindless resources.
+#include "../PathTracer/Utils/Math/MathHelpers.hlsli"
+#include "../PathTracer/Lighting/LightingTypes.hlsli"
+#include "../PathTracer/Lighting/LightingConfig.h"
+#include "../PathTracer/Lighting/PolymorphicLightPTConfig.h"
+#include "../PathTracer/Lighting/PolymorphicLight.hlsli"
+#include "../PathTracer/Lighting/LightingAlgorithms.hlsli"
 
-#include "../Shaders/SubInstanceData.h"
-#include "../Shaders/PathTracer/Materials/MaterialPT.h"
-
-#include "../Shaders/PathTracer/Utils/Math/MathHelpers.hlsli"
-#include "../Shaders/PathTracer/Lighting/LightingTypes.hlsli"
-#include "../Shaders/PathTracer/Lighting/LightingConfig.h"
-#include "../Shaders/PathTracer/Lighting/PolymorphicLightPTConfig.h"
-#include "../Shaders/PathTracer/Lighting/PolymorphicLight.hlsli"
-#include "../Shaders/PathTracer/Lighting/LightingAlgorithms.hlsli"
-
-RWStructuredBuffer<LightingControlData>     u_controlBuffer                 : register(u0);
+RWStructuredBuffer<LightingControlData>     u_controlBuffer;
+// @IllusionRP: Unity binds at most 8 UAVs per compute kernel. Kernels compiled with LLB_READ_ONLY_SAMPLING_BUFFERS read the
+// control, proxy and tile buffers through SRV aliases, so the unused UAV declarations drop out of them.
+#if LLB_READ_ONLY_SAMPLING_BUFFERS
+StructuredBuffer<LightingControlData>       t_controlBufferReadOnly;
+StructuredBuffer<uint>                      t_lightSamplingProxiesReadOnly;
+StructuredBuffer<uint>                      t_localSamplingBufferReadOnly;
+#define g_bakerConsts t_controlBufferReadOnly[0].BakerConstants
+#define g_controlInfo t_controlBufferReadOnly[0]
+#define LLB_LIGHT_SAMPLING_PROXIES t_lightSamplingProxiesReadOnly
+#define LLB_LOCAL_SAMPLING_BUFFER t_localSamplingBufferReadOnly
+#else
 #define g_bakerConsts u_controlBuffer[0].BakerConstants
 #define g_controlInfo u_controlBuffer[0]
+#define LLB_LIGHT_SAMPLING_PROXIES u_lightSamplingProxies
+#define LLB_LOCAL_SAMPLING_BUFFER u_localSamplingBuffer
+#endif
 
-RWStructuredBuffer<PolymorphicLightInfo>    u_lightsBuffer                  : register(u1);
-RWStructuredBuffer<PolymorphicLightInfoEx>  u_lightsExBuffer                : register(u2);
+RWStructuredBuffer<PolymorphicLightInfo>    u_lightsBuffer;
+RWStructuredBuffer<PolymorphicLightInfoEx>  u_lightsExBuffer;
 
-RWByteAddressBuffer                         u_scratchBuffer                 : register(u3);
-RWBuffer<uint>                              u_scratchList                   : register(u4);
+RWByteAddressBuffer                         u_scratchBuffer;
+// @IllusionRP: Unity binds 32-bit buffers as structured buffers, so typed buffers are declared as StructuredBuffer.
+RWStructuredBuffer<uint>                              u_scratchList;
 
-RWBuffer<float>                             u_lightWeights                  : register(u5);
-RWBuffer<uint>                              u_historyRemapCurrentToPast     : register(u6);
-RWBuffer<uint>                              u_historyRemapPastToCurrent     : register(u7);
-RWBuffer<uint>                              u_perLightProxyCounters         : register(u8);
-RWBuffer<uint>                              u_lightSamplingProxies          : register(u9);
-RWTexture2D<uint>                           u_envLightLookupMap             : register(u10);
+RWStructuredBuffer<float>                             u_lightWeights;
+RWStructuredBuffer<uint>                              u_historyRemapCurrentToPast;
+RWStructuredBuffer<uint>                              u_historyRemapPastToCurrent;
+RWStructuredBuffer<uint>                              u_perLightProxyCounters;
+RWStructuredBuffer<uint>                              u_lightSamplingProxies;
+RWTexture2D<uint>                           u_envLightLookupMap;
 
 // feedback reservoirs
-RWTexture2D<float>                          u_feedbackTotalWeight           : register(u11);    // these are the main reservoir working surfaces
-RWTexture2D<uint>                           u_feedbackCandidates            : register(u12);    // these are the main reservoir working surfaces
-RWTexture2D<float>                          u_feedbackTotalWeightScratch    : register(u13);    // these are temporary surfaces used to reproject into in P1 and consumed by P2 (and in some cases Clear)
-RWTexture2D<uint>                           u_feedbackCandidatesScratch     : register(u14);    // these are temporary surfaces used to reproject into in P1 and consumed by P2 (and in some cases Clear)
-RWTexture2D<float>                          u_feedbackTotalWeightBlended    : register(u15);    // this is where the early feedback is blended together
-RWTexture2D<uint>                           u_feedbackCandidatesBlended     : register(u16);    // this is where the early feedback is blended together
+RWTexture2D<float>                          u_feedbackTotalWeight;    // these are the main reservoir working surfaces
+RWTexture2D<uint>                           u_feedbackCandidates;    // these are the main reservoir working surfaces
+RWTexture2D<float>                          u_feedbackTotalWeightScratch;    // these are temporary surfaces used to reproject into in P1 and consumed by P2 (and in some cases Clear)
+RWTexture2D<uint>                           u_feedbackCandidatesScratch;    // these are temporary surfaces used to reproject into in P1 and consumed by P2 (and in some cases Clear)
+RWTexture2D<float>                          u_feedbackTotalWeightBlended;    // this is where the early feedback is blended together
+RWTexture2D<uint>                           u_feedbackCandidatesBlended;    // this is where the early feedback is blended together
 
-RWTexture2D<float>                          u_historyDepth                  : register(u17);
-RWBuffer<uint>                              u_localSamplingBuffer           : register(u18);
+RWTexture2D<float>                          u_historyDepth;
+RWStructuredBuffer<uint>                              u_localSamplingBuffer;
 
-Texture2D<float>                            t_depthBuffer                   : register(t10);    // engine's depth buffer
-Texture2D<float3>                           t_motionVectors                 : register(t11);
-Texture2D<float4>                           t_envRadianceAndImportanceMap   : register(t12);
+Texture2D<float>                            t_depthBuffer;    // engine's depth buffer
+Texture2D<float3>                           t_motionVectors;
+Texture2D<float4>                           t_envRadianceAndImportanceMap;
 
-StructuredBuffer<SubInstanceData>           t_SubInstanceData               : register(t1);
-StructuredBuffer<InstanceData>              t_InstanceData                  : register(t2);
-StructuredBuffer<GeometryData>              t_GeometryData                  : register(t3);
-StructuredBuffer<PTMaterialData>            t_PTMaterialData                : register(t5);
-
-VK_BINDING(0, 1) ByteAddressBuffer          t_BindlessBuffers[]             : register(t0, space1);
-VK_BINDING(1, 1) Texture2D                  t_BindlessTextures[]            : register(t0, space2);
-
-SamplerState                                s_point                         : register(s0);
-SamplerState                                s_linear                        : register(s1);
-SamplerState                                s_materialSampler               : register(s2);
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -541,180 +537,8 @@ void EnvLightsMapPastToCurrent( uint historicIndex : SV_DispatchThreadID )
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-[numthreads(8*LLB_MAX_TRIANGLES_PER_TASK, 1, 1)]
-void BakeEmissiveTriangles( uint dispatchThreadID : SV_DispatchThreadID, uint groupThreadID : SV_GroupThreadID ) // note, this is adding triangle lights only - analytic lights have been added on the CPU side already
-{
-    if( dispatchThreadID.x/LLB_MAX_TRIANGLES_PER_TASK >= g_bakerConsts.TriangleLightTaskCount )
-        return;
 
-    EmissiveTrianglesProcTask task = u_scratchBuffer.Load<EmissiveTrianglesProcTask>((dispatchThreadID.x/LLB_MAX_TRIANGLES_PER_TASK) * sizeof(EmissiveTrianglesProcTask));
-
-    InstanceData instance = t_InstanceData[task.InstanceIndex];
-    //uint geometryInstanceIndex = instance.firstGeometryIndex + task.geometryIndex;
-    GeometryData geometry = t_GeometryData[instance.firstGeometryIndex + task.GeometryIndex];   // <- can precompute this into task.geometryIndex
-
-    uint materialIndex = t_SubInstanceData[instance.firstGeometryInstanceIndex + task.GeometryIndex].GlobalGeometryIndex_PTMaterialDataIndex & 0xFFFF;
-    PTMaterialData material = t_PTMaterialData[materialIndex];
-
-    //DebugPrint( "tID {0}; fgii {1}, fgi {2}, ng {3}", dispatchThreadID, instance.firstGeometryInstanceIndex, instance.firstGeometryIndex, instance.numGeometries  );
-    // if( task.EmissiveLightMappingOffset != (instance.firstGeometryInstanceIndex + task.GeometryIndex) )
-    //     DebugPrint( "ELMO {0}, FGII {1}, GI{2}", task.EmissiveLightMappingOffset, instance.firstGeometryIndex, task.GeometryIndex );
-
-    int triangleCount = task.TriangleIndexTo-task.TriangleIndexFrom;
-
-    // culling removed unfortunately to maintain fixed memory allocation and track it from the CPU side
-    uint subIndex = dispatchThreadID.x%LLB_MAX_TRIANGLES_PER_TASK;
-
-    ByteAddressBuffer indexBuffer = t_BindlessBuffers[NonUniformResourceIndex(geometry.indexBufferIndex)];
-    ByteAddressBuffer vertexBuffer = t_BindlessBuffers[NonUniformResourceIndex(geometry.vertexBufferIndex)];
-
-    //for( uint triangleIdx = task.TriangleIndexFrom; triangleIdx < task.TriangleIndexTo; triangleIdx++ )
-    uint triangleIdx = task.TriangleIndexFrom+subIndex;
-    if ( triangleIdx < task.TriangleIndexTo )
-    {
-        // DebugPrint( "NEW: ii {0}; gi {1}, gii {2}, ti {3}, T0{4}, T1{5}, T2{6}", task.instanceIndex, task.geometryIndex, geometryInstanceIndex, triangleIdx, instance.transform[0], instance.transform[1], instance.transform[2] );
-
-        uint3 indices = indexBuffer.Load3(geometry.indexOffset + triangleIdx * c_SizeOfTriangleIndices);
-
-        float3 positions[3];
-
-        positions[0] = asfloat(vertexBuffer.Load3(geometry.positionOffset + indices[0] * c_SizeOfPosition));
-        positions[1] = asfloat(vertexBuffer.Load3(geometry.positionOffset + indices[1] * c_SizeOfPosition));
-        positions[2] = asfloat(vertexBuffer.Load3(geometry.positionOffset + indices[2] * c_SizeOfPosition));
-
-        // DebugTriangle( positions[0], positions[1], positions[2], float4( 1, 0, 0, 0.1 ) );
-
-        positions[0] = mul(instance.transform, float4(positions[0], 1)).xyz;
-        positions[1] = mul(instance.transform, float4(positions[1], 1)).xyz;
-        positions[2] = mul(instance.transform, float4(positions[2], 1)).xyz;
-
-        float3 radiance = material.EmissiveColor;
-
-        if ((material.EmissiveTextureIndex != 0xFFFFFFFF) && (geometry.texCoord1Offset != ~0u) && ((material.Flags & PTMaterialFlags_UseEmissiveTexture) != 0))
-        {
-            Texture2D emissiveTexture = t_BindlessTextures[NonUniformResourceIndex(material.EmissiveTextureIndex & 0xFFFF)];
-
-            // Load the vertex UVs
-            float2 uvs[3];
-            uvs[0] = asfloat(vertexBuffer.Load2(geometry.texCoord1Offset + indices[0] * c_SizeOfTexcoord));
-            uvs[1] = asfloat(vertexBuffer.Load2(geometry.texCoord1Offset + indices[1] * c_SizeOfTexcoord));
-            uvs[2] = asfloat(vertexBuffer.Load2(geometry.texCoord1Offset + indices[2] * c_SizeOfTexcoord));
-
-            // Calculate the triangle edges and edge lengths in UV space
-            float2 edges[3];
-            edges[0] = uvs[1] - uvs[0];
-            edges[1] = uvs[2] - uvs[1];
-            edges[2] = uvs[0] - uvs[2];
-
-            float3 edgeLengths;
-            edgeLengths[0] = length(edges[0]);
-            edgeLengths[1] = length(edges[1]);
-            edgeLengths[2] = length(edges[2]);
-
-            // Find the shortest edge and the other two (longer) edges
-            float2 shortEdge;
-            float2 longEdge1;
-            float2 longEdge2;
-
-            if (edgeLengths[0] < edgeLengths[1] && edgeLengths[0] < edgeLengths[2])
-            {
-                shortEdge = edges[0];
-                longEdge1 = edges[1];
-                longEdge2 = edges[2];
-            }
-            else if (edgeLengths[1] < edgeLengths[2])
-            {
-                shortEdge = edges[1];
-                longEdge1 = edges[2];
-                longEdge2 = edges[0];
-            }
-            else
-            {
-                shortEdge = edges[2];
-                longEdge1 = edges[0];
-                longEdge2 = edges[1];
-            }
-
-            // Use anisotropic sampling with the sample ellipse axes parallel to the short edge
-            // and the median from the opposite vertex to the short edge.
-            // This ellipse is roughly inscribed into the triangle and approximates long or skinny
-            // triangles with highly anisotropic sampling, and is mostly round for usual triangles.
-            float2 shortGradient = shortEdge * (2.0 / 3.0);
-            float2 longGradient = (longEdge1 + longEdge2) / 3.0;
-
-            // Sample
-            float2 centerUV = (uvs[0] + uvs[1] + uvs[2]) / 3.0;
-            float3 emissiveMask = emissiveTexture.SampleGrad(s_materialSampler, centerUV, shortGradient, longGradient).rgb;
-
-            radiance *= emissiveMask;
-        }
-
-        radiance.rgb = max(0, radiance.rgb);
-
-        // radiance.rgb *= 0;
-
-        // Check if the transform flips the coordinate system handedness (its determinant is negative).
-        float3x3 transform;
-        transform._m00_m01_m02 = (instance.transform._m00_m01_m02);
-        transform._m10_m11_m12 = (instance.transform._m10_m11_m12);
-        transform._m20_m21_m22 = (instance.transform._m20_m21_m22);
-
-        bool isFlipped = determinant(transform) < 0.f;
-
-        TriangleLight triLight;
-        triLight.base = positions[0];
-        if (!isFlipped)
-        {
-            triLight.edge1 = positions[1] - positions[0];
-            triLight.edge2 = positions[2] - positions[0];
-        }
-        else
-        {
-            triLight.edge1 = positions[2] - positions[0];
-            triLight.edge2 = positions[1] - positions[0];
-        }
-
-        float maxR = max(radiance.x, max(radiance.y, radiance.z));
-        if( maxR < 1e-7f )
-        {
-            radiance = float3(0,0,0);
-            maxR = 0;
-        }
-
-        triLight.radiance = radiance;
-
-        // debugging        
-        // if( dispatchThreadID.x % 10 == 0 )
-        // {
-        //     //DebugPrint( "tID {0}; base {1}, radiance: {2}", dispatchThreadID, triLight.base, triLight.radiance );
-        //     // DebugTriangle( triLight.base, triLight.base+float3(0.5, 0.0, 0.0), triLight.base+float3(0.0, 0.5, 0.5), float4( 1, 0, 0, 1 ) );
-        //     // DebugTriangle( triLight.base, triLight.base+float3(0.0, 0.5, 0.0), triLight.base+float3(0.5, 0.0, 0.5), float4( 0, 1, 0, 1 ) );
-        //     // DebugTriangle( triLight.base, triLight.base+float3(0.0, 0.0, 0.5), triLight.base+float3(0.5, 0.5, 0.0), float4( 0, 0, 1, 1 ) );
-        // }
-
-        uint uniqueID = Hash32CombineSimple( Hash32CombineSimple(Hash32(subIndex), Hash32(task.InstanceIndex)), Hash32(task.GeometryIndex) );
-
-        uint lightIndex = task.DestinationBufferOffset+subIndex;
-
-        PolymorphicLightInfoFull lightFull = triLight.Store(uniqueID);
-        u_lightsBuffer[lightIndex] = lightFull.Base;
-        u_lightsExBuffer[lightIndex] = lightFull.Extended;
-
-        uint historicIndex = RTXPT_INVALID_LIGHT_INDEX;
-        if( task.HistoricBufferOffset != RTXPT_INVALID_LIGHT_INDEX )
-        {
-            historicIndex = task.HistoricBufferOffset+subIndex;
-            u_historyRemapPastToCurrent[historicIndex] = lightIndex;
-        }
-
-        u_historyRemapCurrentToPast[lightIndex] = historicIndex;
-    }
-
-    // this is how we used to do it, but introduces non-determinism in the order of lights and messes up ordering
-    // uint outLightIndex;
-    // InterlockedAdd(u_controlBuffer[0].TotalLightCount, collectedLightCount, outLightIndex);   
-}
-
+// @IllusionRP: BakeEmissiveTriangles is replaced by PathTracingEmissive.compute.
 // from https://www.gamedev.net/forums/topic/613648-dx11-interlockedadd-on-floats-in-pixel-shader-workaround/
 void InterlockedAddFloat_WeightSum( float value ) // Works perfectly! <- original comment, I won't remove because it inspires confidence
 { 
@@ -1324,7 +1148,7 @@ uint SampleLightGlobal(inout MicroRng sampleGenerator)
     uint totalProxyCount = g_controlInfo.SamplingProxyCount;                            // TODO: fix the case where all lights are dark or there's no lights - this could be zero; could be fixed just by adding one null light
     uint indexInIndex = clamp( uint(rnd * totalProxyCount), 0, totalProxyCount-1 );     // when rnd guaranteed to be [0, 1), clamp is unnecessary
 
-    return u_lightSamplingProxies[indexInIndex];
+    return LLB_LIGHT_SAMPLING_PROXIES[indexInIndex];  // @IllusionRP
 }
 
 int2 MirrorCoord( const int2 inCoord, const int2 maxResolution )
@@ -1346,7 +1170,7 @@ uint SampleLightLocalHistoric(uint2 pixelPos, inout MicroRng sampleGenerator)
 
     uint indexInIndex = sampleGenerator.Next() % RTXPT_LIGHTING_LOCAL_PROXY_COUNT;
 
-    return RemapPastToCurrent(UnpackMiniListLight(u_localSamplingBuffer[ LSB_Address(tilePos.xy, indexInIndex) ]));
+    return RemapPastToCurrent(UnpackMiniListLight(LLB_LOCAL_SAMPLING_BUFFER[ LSB_Address(tilePos.xy, indexInIndex) ]));  // @IllusionRP
 }
 
 // returns false if disoccluded

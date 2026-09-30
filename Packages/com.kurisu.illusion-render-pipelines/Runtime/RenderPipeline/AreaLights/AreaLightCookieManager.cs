@@ -245,6 +245,17 @@ namespace Illusion.Rendering.AreaLights
 
         public RTHandle atlasTexture => m_CookieAtlas.AtlasTexture;
 
+        public Vector4 GetAtlasTransform(Texture cookie)
+        {
+            if (!m_CookieAtlas.IsCached(out var scaleOffset, cookie))
+                return Vector4.zero;
+            float rcpPadding = GetCookieAtlasDatas().y;
+            float scaleX = scaleOffset.x / (scaleOffset.x + rcpPadding);
+            float scaleY = scaleOffset.y / (scaleOffset.y + rcpPadding);
+            return new Vector4(scaleX * scaleOffset.x, scaleY * scaleOffset.y,
+                0.5f * (1.0f - scaleX) * scaleOffset.x + scaleOffset.z, 0.5f * (1.0f - scaleY) * scaleOffset.y + scaleOffset.w);
+        }
+
         public Vector4 GetCookieAtlasSize()
         {
             return new Vector4(
