@@ -1,8 +1,7 @@
 #ifndef UNITY_PATH_TRACING_BSDF_INCLUDED
 #define UNITY_PATH_TRACING_BSDF_INCLUDED
 
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingSampling.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/Raytracing/Shaders/SubSurface.hlsl"
+
 
 #define DELTA_PDF 1000000.0
 #define MIN_GGX_ROUGHNESS 0.00001
@@ -518,6 +517,7 @@ void EvaluateLambert(MaterialData mtlData,
 
 } // namespace BTDF
 
+#if defined(ILLUSION_PATH_TRACING_SSS)
 namespace SSS
 {
 
@@ -640,5 +640,6 @@ bool RandomWalk(float3 position, float3 normal, float3 diffuseColor, float3 mean
 }
 
 } // namespace SSS
+#endif
 
 #endif // UNITY_PATH_TRACING_BSDF_INCLUDED

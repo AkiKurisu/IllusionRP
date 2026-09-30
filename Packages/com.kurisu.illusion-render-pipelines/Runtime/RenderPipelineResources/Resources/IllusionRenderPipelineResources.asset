@@ -92,3 +92,4 @@ MonoBehaviour:
   rankingTile8SPP: {fileID: 2800000, guid: af4bd638a4b3eb14781e6441adcdfbb9, type: 3}
   scramblingTex: {fileID: 2800000, guid: bf25cd6288e2c8d43854a61a8496a830, type: 3}
   debugFontTex: {fileID: 2800000, guid: a3ad2df0e49aaa341a3b3a80f93b3f66, type: 3}
+  pathTracingFGDShader: {fileID: 4800000, guid: 2372742957ed3bf8cbf008a701b9b36c, type: 3}

@@ -11,6 +11,7 @@ namespace Illusion.Rendering.PathTracing
             var lightBaker = data.LightBaker;
             var environment = data.Environment;
 
+            cmd.SetRayTracingTextureParam(shader, "_PreIntegratedFGD_GGXDisneyDiffuse", resources.GetFGD(cmd));
             cmd.SetRayTracingShaderPass(shader, MaterialPassName);
             cmd.SetRayTracingAccelerationStructure(shader, ShaderIDs.SceneBVH, data.World.Scene.AccelerationStructure);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_PathTracingConstants, resources.Constants);

@@ -291,7 +291,7 @@ namespace PathTracer
             float3 motionVectors = Bridge::computeMotionVector(virtualWorldPos, virtualWorldPos+virtualWorldMotion);
             
             // denoising guide helpers
-            float roughness     = saturate(surfaceData.bsdf.data.Roughness());
+            float roughness     = saturate(surfaceData.bsdf.getRoughness());  // @IllusionRP
             float3 worldNormal  = surfaceData.shadingData.N;
             worldNormal = normalize(mul((float3x3)imageXform, worldNormal));
 

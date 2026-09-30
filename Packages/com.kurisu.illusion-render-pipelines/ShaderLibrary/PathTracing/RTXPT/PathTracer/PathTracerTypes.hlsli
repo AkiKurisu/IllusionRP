@@ -20,7 +20,8 @@
 #include "Scene/Material/ShadingUtils.hlsli"
 #include "Rendering/Materials/LobeType.hlsli"
 #include "Rendering/Materials/IBSDF.hlsli"
-#include "Rendering/Materials/StandardBSDF.hlsli"
+// @IllusionRP: the HDRP BSDFs replace StandardBSDF.
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Materials/LitBSDF.hlsl"
 #include "PathState.hlsli"
 #include "PathTracerDebug.hlsli"
 #include "PathTracerHelpers.hlsli"

@@ -16,6 +16,37 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly PathTracingSampleMiniConstants[] _miniConstants = new PathTracingSampleMiniConstants[1];
 
+        private readonly Shader _fgdShader;
+        private Material _fgdMaterial;
+        private RenderTexture _fgd;
+        private bool _fgdReady;
+
+        public RenderTexture GetFGD(CommandBuffer commandBuffer)
+        {
+            if (!_fgd)
+            {
+                var shader = _fgdShader;
+                if (!shader) throw new InvalidOperationException("Path tracing FGD shader is missing.");
+                _fgdMaterial = CoreUtils.CreateEngineMaterial(shader);
+                _fgd = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
+                {
+                    name = "PathTracingFGD",
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp
+                };
+                _fgd.Create();
+                _textures.Add(_fgd);
+            }
+            if (!_fgdReady)
+            {
+                commandBuffer.SetRenderTarget(_fgd);
+                commandBuffer.DrawProcedural(Matrix4x4.identity, _fgdMaterial, 0, MeshTopology.Triangles, 3);
+                _fgdReady = true;
+            }
+            return _fgd;
+        }
+
         public GraphicsBuffer Constants { get; }
 
         public GraphicsBuffer MiniConstants { get; }
@@ -30,8 +61,9 @@ namespace Illusion.Rendering.PathTracing
 
         public GraphicsBuffer DummyStructured { get; }
 
-        public PathTracingResources()
+        public PathTracingResources(Shader fgdShader)
         {
+            _fgdShader = fgdShader;
             Constants = CreateBuffer(GraphicsBuffer.Target.Structured, 1, PathTracingSampleConstants.Stride);
             MiniConstants = CreateBuffer(GraphicsBuffer.Target.Structured, 1, PathTracingSampleMiniConstants.Stride);
             DummyStructured = CreateBuffer(GraphicsBuffer.Target.Structured, 1, 256);
@@ -78,6 +110,7 @@ namespace Illusion.Rendering.PathTracing
 
         public void Dispose()
         {
+            CoreUtils.Destroy(_fgdMaterial);
             foreach (var buffer in _buffers)
                 buffer.Release();
             _buffers.Clear();

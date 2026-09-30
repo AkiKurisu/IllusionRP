@@ -46,6 +46,8 @@ namespace Illusion.Rendering
 
         public Shader pathTracingOutputShader;
 
+        public Shader pathTracingFGDShader;
+
         public Shader pathTracingRectangleLightShader;
 
         [Header("Area Lights")]

@@ -131,8 +131,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     ptShadingData.mtl.setPSDDominantDeltaLobeP1((materialFlags & PTMaterialFlags_PSDDominantDeltaLobeP1Mask) >> PTMaterialFlags_PSDDominantDeltaLobeP1Shift);
     ptShadingData.mtl.setPSDBlockMotionVectorsAtSurface( false );
 
-    // Helper function to adjust the shading normal to reduce black pixels due to back-facing view direction. Note: This breaks the reciprocity of the BSDF!
-    adjustShadingNormal( ptShadingData, float4(ptShadingData.T, 1.0), true, false );
+
 
     ptShadingData.shadowNoLFadeout = 0;
 
@@ -165,8 +164,30 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     if (ptShadingData.frontFacing && any(emissionMetallic.rgb > 0))
         neeTriangleLightIndex = IllusionEmissiveTriangleLightIndex(payload.instanceID, payload.triangleIndex);
 
-    StandardBSDFData bsdfData = StandardBSDFData::make( bsdfDataDiffuse, bsdfDataSpecular, bsdfDataRoughness, bsdfDataMetallic, bsdfDataEta, bsdfDataTransmission, bsdfDataDiffuseTransmission, bsdfDataSpecularTransmission );
-    StandardBSDF bsdf = StandardBSDF::make( bsdfData );
+    // @IllusionRP: Unity's material pass has already evaluated the surface inputs; HDRP owns all material calculations.
+    HDRPBSDF bsdf = (HDRPBSDF)0;
+    Illusion::Lit::BSDFData bsdfData = (Illusion::Lit::BSDFData)0;
+    bsdfData.diffuseColor = bsdfDataDiffuse;
+    bsdfData.fresnel0 = bsdfDataSpecular;
+    bsdfData.fresnel90 = 1.0;
+    bsdfData.ambientOcclusion = 1.0;
+    bsdfData.normalWS = ptShadingData.N;
+    bsdfData.geomNormalWS = frontFacing ? ptShadingData.faceNCorrected : -ptShadingData.faceNCorrected;
+    bsdfData.tangentWS = ptShadingData.T;
+    bsdfData.bitangentWS = ptShadingData.B;
+    bsdfData.perceptualRoughness = bsdfDataRoughness;
+    bsdfData.roughnessT = bsdfDataRoughness * bsdfDataRoughness;
+    bsdfData.roughnessB = bsdfData.roughnessT;
+    bsdfData.ior = matIoR;
+    bsdfData.transmittanceMask = bsdfDataSpecularTransmission;
+    Illusion::Lit::BuiltinData builtin = (Illusion::Lit::BuiltinData)0;
+    builtin.opacity = diffuseOpacity.a;
+    Illusion::Lit::PathPayload hdrpPayload = (Illusion::Lit::PathPayload)0;
+    hdrpPayload.pixelCoord = pixelPos;
+    float materialSample = 0.5;
+    Illusion::g_HDRPViewDirection = ptShadingData.V;
+    bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
+    ptShadingData.N = Illusion::Lit::GetSpecularNormal(bsdf.material);
 
     return PathTracer::SurfaceData::make(ptShadingData, bsdf,
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES // otherwise motion vectors not needed
@@ -180,7 +201,7 @@ void Bridge::updateOutsideIoR(inout PathTracer::SurfaceData surfaceData, lpfloat
     surfaceData.shadingData.IoR = outsideIoR;
 
     ///< Relative index of refraction (incident IoR / transmissive IoR), dependent on whether we're exiting or entering
-    surfaceData.bsdf.data.SetEta( surfaceData.shadingData.frontFacing ? (surfaceData.shadingData.IoR / surfaceData.interiorIoR) : (surfaceData.interiorIoR / surfaceData.shadingData.IoR) );
+    surfaceData.bsdf.setOutsideIoR(surfaceData.interiorIoR / surfaceData.shadingData.IoR);
 }
 
 lpfloat Bridge::loadIoR(const uint materialID)

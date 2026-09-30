@@ -1,8 +1,8 @@
-Shader "Hidden/HDRP/preIntegratedFGD_GGXDisneyDiffuse"
+Shader "Hidden/Illusion/PathTracingFGD"
 {
     SubShader
     {
-        Tags{ "RenderPipeline" = "HDRenderPipeline" }
+        Tags{ "RenderPipeline" = "UniversalPipeline" }
         Pass
         {
             ZTest Always Cull Off ZWrite Off
@@ -18,8 +18,7 @@ Shader "Hidden/HDRP/preIntegratedFGD_GGXDisneyDiffuse"
             #define PREFER_HALF 0
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl"
-            #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
-            #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Material/PreIntegratedFGD/PreIntegratedFGD.cs.hlsl"
+            #include "PreIntegratedFGD.cs.hlsl"
 
             struct Attributes
             {

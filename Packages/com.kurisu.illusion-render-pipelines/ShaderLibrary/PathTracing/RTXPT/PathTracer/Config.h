@@ -49,7 +49,8 @@
 #define HIT_INFO_USE_COMPRESSION                0
 
 // we use static specialization for BSDFs at the moment (even though parts can be compile-time removed with )
-#define ActiveBSDF                              StandardBSDF
+// @IllusionRP: materials are evaluated with the HDRP BSDFs.
+#define ActiveBSDF                              HDRPBSDF
 
 #define LOD_TEXTURE_SAMPLER_EXPLICIT            1
 #define LOD_TEXTURE_SAMPLER_RAY_CONES           2

@@ -32,7 +32,7 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly IllusionRendererData _rendererData;
 
-        private readonly PathTracingResources _resources = new();
+        private readonly PathTracingResources _resources;
 
         private readonly PathTracingEnvironment _environment;
 
@@ -68,6 +68,7 @@ namespace Illusion.Rendering.PathTracing
 
         public PathTracingPass(IllusionRenderPipelineResources resources, IllusionRendererData rendererData)
         {
+            _resources = new PathTracingResources(resources.pathTracingFGDShader);
             profilingSampler = new ProfilingSampler("Path Tracing");
             renderPassEvent = IllusionRenderPassEvent.PathTracingPass;
             _outputMaterial = CoreUtils.CreateEngineMaterial(resources.pathTracingOutputShader);

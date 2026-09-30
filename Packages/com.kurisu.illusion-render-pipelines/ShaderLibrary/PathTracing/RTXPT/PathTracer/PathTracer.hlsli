@@ -250,7 +250,7 @@ namespace PathTracer
         // Compute ray origin for next ray segment.
         path.SetOrigin(shadingData.computeNewRayOrigin(bs.isLobe(LobeType::Reflection)));
         
-        const float roughness = bsdf.data.Roughness();
+        const float roughness = bsdf.getRoughness();  // @IllusionRP
 
         // Handle reflection events.
         //if (bs.isLobe(LobeType::Reflection)) <- let's remove this and allow diffuse transmission to be classified as diffuse (makes sense, no?)

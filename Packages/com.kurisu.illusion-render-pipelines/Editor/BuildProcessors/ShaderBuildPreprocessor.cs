@@ -238,6 +238,7 @@ namespace Illusion.Rendering.Editor
                 return shaders;
             UnityEngine.Object[] candidates =
             {
+                resources.pathTracingFGDShader,
                 resources.pathTracingAccumulationCS,
                 resources.pathTracingLightsBakerCS,
                 resources.pathTracingEnvironmentCS,
