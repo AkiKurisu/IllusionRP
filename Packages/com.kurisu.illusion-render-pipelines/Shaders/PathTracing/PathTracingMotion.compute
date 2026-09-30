@@ -1,0 +1,21 @@
+#pragma use_dxc
+#pragma only_renderers d3d11
+
+#pragma kernel GatherPositions
+
+ByteAddressBuffer   t_Vertices;
+RWByteAddressBuffer u_Positions;
+
+uint _VertexStride;
+uint _PositionOffset;
+uint _VertexCount;
+uint _DestinationBase;
+
+[numthreads(64, 1, 1)]
+void GatherPositions(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _VertexCount)
+        return;
+    uint3 position = t_Vertices.Load3(id.x * _VertexStride + _PositionOffset);
+    u_Positions.Store3((_DestinationBase + id.x) * 12, position);
+}

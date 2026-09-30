@@ -1,0 +1,248 @@
+/*
+* Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+*
+* NVIDIA CORPORATION and its licensors retain all intellectual property
+* and proprietary rights in and to this software, related documentation
+* and any modifications thereto.  Any use, reproduction, disclosure or
+* distribution of this software and related documentation without an express
+* license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
+
+// @IllusionRP: Realtime passes after the stable planes are filled, from RTXPT ProcessingPasses/DenoisingGuidesBaker.hlsl
+#pragma use_dxc
+#pragma only_renderers d3d11
+
+#pragma kernel DenoiseSpecHitT
+#pragma kernel PrepareRayReconstructionInputs
+#pragma kernel MergeStablePlanes
+
+#define TARGET_D3D12
+#define NON_PATH_TRACING_PASS 1
+#define PATH_TRACER_MODE PATH_TRACER_MODE_FILL_STABLE_PLANES
+#define RTXPT_ACTIVE_STABLE_PLANE_COUNT 3
+#define ENABLE_DEBUG_VIZUALISATIONS 0
+#define ENABLE_DEBUG_LINES_VIZ 0
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/SampleConstantBuffer.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/StablePlanes.hlsli"
+
+StructuredBuffer<SampleConstants>   t_PathTracingConstants;
+#define g_Const (t_PathTracingConstants[0])
+
+Texture2DArray<uint>                t_StablePlanesHeader;
+StructuredBuffer<StablePlane>       t_StablePlanesBuffer;
+Texture2D<float4>                   t_StableRadiance;
+Texture2D<float>                    t_Depth;
+Texture2D<float4>                   t_MotionVectors;
+Texture2D<float>                    t_SpecularHitT;
+
+RWTexture2D<float>                  u_SpecularHitT;
+RWTexture2D<float4>                 u_OutputColor;
+RWTexture2D<float4>                 u_RRDiffuseAlbedo;
+RWTexture2D<float4>                 u_RRSpecAlbedo;
+RWTexture2D<float4>                 u_RRNormalsAndRoughness;
+RWTexture2D<float2>                 u_RRSpecMotionVectors;
+
+static const float kSpecularRoughnessThreshold = 0.25f;
+
+uint2 ImageSize() { return uint2(g_Const.ptConsts.imageWidth, g_Const.ptConsts.imageHeight); }
+
+uint PlaneAddress(uint2 pixelPos, uint planeIndex)
+{
+    return GenericTSPixelToAddress(pixelPos, planeIndex, g_Const.ptConsts.genericTSLineStride, g_Const.ptConsts.genericTSPlaneStride);
+}
+
+uint BranchID(uint2 pixelPos, uint planeIndex)  { return t_StablePlanesHeader[uint3(pixelPos, planeIndex)]; }
+uint DominantIndex(uint2 pixelPos)              { return t_StablePlanesHeader[uint3(pixelPos, 3)] & 0x3; }
+StablePlane LoadPlane(uint2 pixelPos, uint planeIndex) { return t_StablePlanesBuffer[PlaneAddress(pixelPos, planeIndex)]; }
+
+[numthreads(8, 8, 1)]
+void DenoiseSpecHitT(uint3 id : SV_DispatchThreadID)
+{
+    const int2 pixelPos = id.xy;
+    if (any(pixelPos >= (int2)ImageSize()))
+        return;
+
+    float centerD = t_Depth[pixelPos];
+    float prevHitT = max(0, t_SpecularHitT[pixelPos]);
+    float minSpecHitT = 5e-2f;
+    if (prevHitT < minSpecHitT)
+        prevHitT = 0;
+
+    const int neigS = 2;
+    float vAvg = prevHitT;
+    float sumW = prevHitT > 0;
+    for (int x = -neigS; x <= neigS; x++)
+        for (int y = -neigS; y <= neigS; y++)
+        {
+            if (x == 0 && y == 0)
+                continue;
+            int2 npixelPos = pixelPos + int2(x, y);
+            if (all(npixelPos >= 0) && all(npixelPos < (int2)ImageSize()))
+            {
+                float v = min(t_SpecularHitT[npixelPos], HLF_MAX);
+                float d = max(0, t_Depth[npixelPos]);
+                const float depthThreshold = 0.025;
+                float weight = v > 0;
+                weight *= abs(d - centerD) <= (d + centerD + 1e-5f) * depthThreshold;
+                if (weight > 0)
+                {
+                    vAvg += v * weight;
+                    sumW += weight;
+                }
+            }
+        }
+
+    float result = prevHitT;
+    if (sumW > 0)
+    {
+        vAvg /= sumW;
+        result = (prevHitT <= 0) ? vAvg : min(prevHitT * 1.5 + 0.5, vAvg);
+    }
+    u_SpecularHitT[pixelPos] = result;
+}
+
+float2 ComputeSpecularMotionVector(float3 primaryHitPosWorld, float3 primaryRayDirWorld, float3 primaryHitNormalWorld,
+    float3 reflectionRayWorld, float4x4 worldToClipMatrix, float4x4 prevWorldToClipMatrix)
+{
+    float3 principalAxis = primaryHitNormalWorld;
+    float zObj = dot(principalAxis, reflectionRayWorld);
+    if (zObj < 0.0f)
+    {
+        principalAxis = -principalAxis;
+        zObj = -zObj;
+    }
+    zObj = max(zObj, 1e-5f);
+
+    float3 n = principalAxis;
+    float s = n.z < 0.0f ? -1.0f : 1.0f;
+    float a = -1.0f / (s + n.z);
+    float b = n.x * n.y * a;
+    float3 xAxis = float3(1.0f + s * n.x * n.x * a, s * b, -s * n.x);
+    float3 yAxis = float3(b, s + n.y * n.y * a, -n.y);
+
+    float xObj = dot(xAxis, reflectionRayWorld);
+    float yObj = dot(yAxis, reflectionRayWorld);
+    float3 imagePosInReflectorSpace = float3(xObj, yObj, -zObj);
+    float3 imageInWorld = primaryHitPosWorld + primaryRayDirWorld * length(imagePosInReflectorSpace);
+
+    float4 prevClipPos = mul(float4(imageInWorld, 1.0f), prevWorldToClipMatrix);
+    float2 prevNdc = prevClipPos.xy / prevClipPos.w;
+    float4 currClipPos = mul(float4(imageInWorld, 1.0f), worldToClipMatrix);
+    float2 currNdc = currClipPos.xy / currClipPos.w;
+
+    return (prevNdc - currNdc) * g_Const.view.clipToWindowScale;
+}
+
+[numthreads(8, 8, 1)]
+void PrepareRayReconstructionInputs(uint3 id : SV_DispatchThreadID)
+{
+    const uint2 pixelPos = id.xy;
+    if (any(pixelPos >= ImageSize()))
+        return;
+
+    const uint planeCount = g_Const.ptConsts.GetActiveStablePlaneCount();
+    uint dominantStablePlaneIndex = DominantIndex(pixelPos);
+    float3 combinedRadiance = t_StableRadiance[pixelPos].xyz;
+
+    float3 stableAlbedo = sqrt(ReinhardMax(combinedRadiance));
+    float stableAlbedoAvg = Average(stableAlbedo);
+
+    float3 guideNormals = float3(0, 0, 1e-6);
+    float3 diffAlbedo = 0;
+    float3 specAlbedo = 0;
+    float roughness = 0;
+
+    float3 spWeights = 0;
+    {
+        const float kTW = 0.2;
+        const float kNW = 0.01;
+        const float kDW = 0.05;
+
+        float3 spAvailable = float3(1, 0, 0);
+        float3 thpWeights = float3(1, 0, 0);
+        for (uint stablePlaneIndex = 1; stablePlaneIndex < planeCount; stablePlaneIndex++)
+        {
+            if (BranchID(pixelPos, stablePlaneIndex) != cStablePlaneInvalidBranchID)
+            {
+                float3 throughput, motionVectors;
+                UnpackTwoFp32ToFp16(LoadPlane(pixelPos, stablePlaneIndex).PackedThpAndMVs, throughput, motionVectors);
+                float weight = saturate(Average(throughput));
+                thpWeights[stablePlaneIndex] = weight;
+                thpWeights[0] = saturate(thpWeights[0] - weight);
+                spAvailable[stablePlaneIndex] = 1;
+            }
+        }
+        spWeights += thpWeights * kTW;
+        spWeights += float3(1, 1, 1) * kNW;
+        spWeights[dominantStablePlaneIndex] += kDW;
+        spWeights *= spAvailable;
+        spWeights /= spWeights.x + spWeights.y + spWeights.z;
+    }
+
+    for (uint stablePlaneIndex = 0; stablePlaneIndex < planeCount; stablePlaneIndex++)
+    {
+        if (BranchID(pixelPos, stablePlaneIndex) == cStablePlaneInvalidBranchID)
+            continue;
+        StablePlane sp = LoadPlane(pixelPos, stablePlaneIndex);
+        if (!isfinite(sp.SceneLength))
+            continue;
+
+        combinedRadiance += sp.GetNoisyRadiance();
+        float weight = spWeights[stablePlaneIndex];
+        if (weight > 1e-6)
+        {
+            float3 diffBSDFEstimate, specBSDFEstimate;
+            UnpackTwoFp32ToFp16(sp.DenoiserPackedBSDFEstimate, diffBSDFEstimate, specBSDFEstimate);
+            guideNormals += weight * sp.GetNormal();
+            roughness += weight * sp.GetRoughness();
+            diffAlbedo += weight * diffBSDFEstimate;
+            specAlbedo += weight * specBSDFEstimate;
+        }
+    }
+
+    float3 stableAlbedoGreyMix = lerp(stableAlbedo, 0.5.xxx, 0.2);
+    diffAlbedo = lerp(diffAlbedo, stableAlbedoGreyMix, stableAlbedoAvg / (Average(diffAlbedo) + sqrt(stableAlbedoAvg) + 1e-7));
+
+    float guideNormalsLength = length(guideNormals);
+    guideNormals = guideNormalsLength < 1e-5 ? float3(0, 0, 1) : guideNormals / guideNormalsLength;
+
+    const float minAlbedo = 0.05;
+    if (Average(diffAlbedo + specAlbedo) < minAlbedo)
+        diffAlbedo += minAlbedo;
+
+    float maxRadiance = max3(combinedRadiance);
+    if (g_Const.ptConsts.DLSSRRBrightnessClampK > 0 && maxRadiance > g_Const.ptConsts.DLSSRRBrightnessClampK)
+        combinedRadiance *= g_Const.ptConsts.DLSSRRBrightnessClampK / maxRadiance;
+
+    u_OutputColor[pixelPos] = float4(combinedRadiance, 1.0);
+    u_RRDiffuseAlbedo[pixelPos] = float4(diffAlbedo, 1);
+    u_RRSpecAlbedo[pixelPos] = float4(specAlbedo, 1);
+    u_RRNormalsAndRoughness[pixelPos] = float4(guideNormals, roughness);
+
+    StablePlane sp = LoadPlane(pixelPos, 0);
+    float3 primaryHitPosWorld = sp.RayOrigin + sp.RayDir * sp.SceneLength;
+    float3 primaryHitNormalWorld = sp.GetNormal();
+    float specHitT = t_SpecularHitT[pixelPos];
+    float3 reflectionRayWorld = reflect(sp.RayDir, primaryHitNormalWorld) * specHitT;
+    float2 specMotionVector = t_MotionVectors[pixelPos].xy;
+    if (specHitT > 1e-3 && roughness < kSpecularRoughnessThreshold)
+        specMotionVector = ComputeSpecularMotionVector(primaryHitPosWorld, sp.RayDir, primaryHitNormalWorld, reflectionRayWorld,
+            g_Const.view.matWorldToClipNoOffset, g_Const.previousView.matWorldToClipNoOffset);
+    u_RRSpecMotionVectors[pixelPos] = specMotionVector;
+}
+
+[numthreads(8, 8, 1)]
+void MergeStablePlanes(uint3 id : SV_DispatchThreadID)
+{
+    const uint2 pixelPos = id.xy;
+    if (any(pixelPos >= ImageSize()))
+        return;
+    float3 radiance = t_StableRadiance[pixelPos].xyz;
+    for (uint i = 0; i < cStablePlaneCount; i++)
+    {
+        if (BranchID(pixelPos, i) != cStablePlaneInvalidBranchID)
+            radiance += LoadPlane(pixelPos, i).GetNoisyRadiance();
+    }
+    u_OutputColor[pixelPos] = float4(radiance, 1.0);
+}
