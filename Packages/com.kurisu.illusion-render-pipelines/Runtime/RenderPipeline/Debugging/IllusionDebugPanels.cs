@@ -11,6 +11,8 @@ namespace Illusion.Rendering
 
         public const string DebugPanelName = "Illusion Debug";
 
+        public const string PathTracingPanelName = "Illusion Path Tracing";
+
         private const int GroupIndex = 100;
 
         private static readonly HashSet<IllusionRendererFeature> Features = new();
@@ -29,6 +31,7 @@ namespace Illusion.Rendering
         {
             AddPanel(FeaturesPanelName, CreateFeatureWidgets());
             AddPanel(DebugPanelName, CreateDebugWidgets());
+            AddPanel(PathTracingPanelName, CreatePathTracingWidgets());
             DebugManager.instance.RegisterData(this);
         }
 
@@ -113,9 +116,11 @@ namespace Illusion.Rendering
                     c => c.EnableConvolutionBloom, (c, v) => c.EnableConvolutionBloom = v),
                 Toggle("Sun Shafts", "Screen space sun shafts.",
                     c => c.EnableSunShafts, (c, v) => c.EnableSunShafts = v));
-            yield return Section("Neural Rendering",
+            yield return Section("Neural Rendering and Path Tracing",
                 Toggle("DLSS Neural Rendering", "The optional full-resolution DLSS Neural Rendering pass.",
-                    c => c.EnableDLSSNeuralRendering, (c, v) => c.EnableDLSSNeuralRendering = v));
+                    c => c.EnableDLSSNeuralRendering, (c, v) => c.EnableDLSSNeuralRendering = v),
+                Toggle("Path Tracing", "Path tracing for cameras with an active Path Tracing Volume.",
+                    c => c.EnablePathTracing, (c, v) => c.EnablePathTracing = v));
             yield return Section("Graphics API",
                 Toggle("Compute Shader", "Prefer compute shader passes where available.",
                     c => c.EnableComputeShader, (c, v) => c.EnableComputeShader = v),
