@@ -1,21 +1,30 @@
 #ifndef ILLUSION_HDRP_LIT_BSDF_INCLUDED
 #define ILLUSION_HDRP_LIT_BSDF_INCLUDED
 
-#include "LitMaterial.hlsl"
+#include "../PathTracingPayload.hlsl"
+#include "FabricMaterial.hlsl"
 
 struct HDRPBSDF
 {
     static const uint cRandomNumberCountForSampling = 3;
     Illusion::Lit::MaterialData material;
+    Illusion::Fabric::MaterialData fabric;
+    uint family;
     bool valid;
 
     float getRoughness()
     {
-        return material.bsdfData.perceptualRoughness;
+        return family == PT_FAMILY_FABRIC ? fabric.bsdfData.perceptualRoughness : material.bsdfData.perceptualRoughness;
     }
 
     float4 eval(const ShadingData shadingData, const float3 wo)
     {
+        if (family == PT_FAMILY_FABRIC)
+        {
+            Illusion::Fabric::MaterialResult value;
+            Illusion::Fabric::EvaluateMaterial(fabric, wo, value);
+            return float4(value.diffValue + value.specValue, Average(value.specValue));
+        }
         Illusion::Lit::MaterialResult result;
         Illusion::Lit::EvaluateMaterial(material, wo, result);
         return float4(result.diffValue + result.specValue, Average(result.specValue));
@@ -23,6 +32,12 @@ struct HDRPBSDF
 
     float evalPdf(const ShadingData shadingData, const float3 wo, bool useImportanceSampling)
     {
+        if (family == PT_FAMILY_FABRIC)
+        {
+            Illusion::Fabric::MaterialResult value;
+            Illusion::Fabric::EvaluateMaterial(fabric, wo, value);
+            return value.diffPdf + value.specPdf;
+        }
         Illusion::Lit::MaterialResult result;
         Illusion::Lit::EvaluateMaterial(material, wo, result);
         return result.diffPdf + result.specPdf;
@@ -32,6 +47,18 @@ struct HDRPBSDF
     {
         result = (BSDFSample)0;
         if (!valid) return false;
+        if (family == PT_FAMILY_FABRIC)
+        {
+            Illusion::Fabric::MaterialResult value;
+            if (!Illusion::Fabric::SampleMaterial(fabric, inputSample.xyz, result.wo, value)) return false;
+            result.pdf = value.diffPdf + value.specPdf;
+            if (!(result.pdf > 0.0)) return false;
+            result.weight = (value.diffValue + value.specValue) / result.pdf;
+            result.lobe = !Illusion::Fabric::IsAbove(fabric, result.wo) ? (uint)LobeType::DiffuseTransmission
+                : (uint)(inputSample.z < fabric.bsdfWeight[0] ? LobeType::DiffuseReflection : LobeType::SpecularReflection);
+            result.lobeP = 1.0;
+            return all(isfinite(result.weight));
+        }
         Illusion::Lit::MaterialResult value;
         if (!Illusion::Lit::SampleMaterial(material, inputSample.xyz, result.wo, value)) return false;
         result.pdf = value.diffPdf + value.specPdf;
@@ -48,12 +75,20 @@ struct HDRPBSDF
 
     uint getLobes(const ShadingData shadingData)
     {
+        if (family == PT_FAMILY_FABRIC)
+            return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection | (fabric.bsdfWeight[2] > 0.0 ? (uint)LobeType::DiffuseTransmission : 0u);
         return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection
             | (material.bsdfData.transmittanceMask > 0.0 ? (uint)LobeType::SpecularTransmission : 0u);
     }
 
     void estimateSpecDiffBSDF(out float3 diffuse, out float3 specular, const float3 normal, const float3 view)
     {
+        if (family == PT_FAMILY_FABRIC)
+        {
+            diffuse = fabric.bsdfData.diffuseColor;
+            specular = fabric.bsdfData.fresnel0;
+            return;
+        }
         diffuse = material.bsdfData.diffuseColor * (1.0 - material.bsdfData.transmittanceMask);
         float2 uv = Illusion::Remap01ToHalfTexelCoord(float2(sqrt(saturate(dot(normal, view))), material.bsdfData.perceptualRoughness), FGDTEXTURE_RESOLUTION);
         float2 fgd = Illusion::_PreIntegratedFGD_GGXDisneyDiffuse.SampleLevel(Illusion::s_linear_clamp_sampler, uv, 0).xy;
@@ -65,7 +100,7 @@ struct HDRPBSDF
         count = 0;
         nonDeltaPart = 1.0;
         [unroll] for (uint i = 0; i < cMaxDeltaLobes; ++i) lobes[i] = (DeltaLobe)0;
-        if (Illusion::Lit::IsAbove(material)) return;
+        if (family == PT_FAMILY_FABRIC || Illusion::Lit::IsAbove(material)) return;
         float3 direction, value; float pdf;
         if (material.bsdfWeight[2] > BSDF_WEIGHT_EPSILON && Illusion::Lit::BRDF::SampleDelta(material, Illusion::Lit::GetSpecularNormal(material), material.bsdfData.ior, direction, value, pdf))
         {

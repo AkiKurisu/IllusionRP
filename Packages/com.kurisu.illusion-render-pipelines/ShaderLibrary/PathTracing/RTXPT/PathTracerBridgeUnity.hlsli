@@ -166,6 +166,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
 
     // @IllusionRP: Unity's material pass has already evaluated the surface inputs; HDRP owns all material calculations.
     HDRPBSDF bsdf = (HDRPBSDF)0;
+    bsdf.family = family;
     Illusion::Lit::BSDFData bsdfData = (Illusion::Lit::BSDFData)0;
     bsdfData.diffuseColor = bsdfDataDiffuse;
     bsdfData.fresnel0 = bsdfDataSpecular;
@@ -186,8 +187,33 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     hdrpPayload.pixelCoord = pixelPos;
     float materialSample = 0.5;
     Illusion::g_HDRPViewDirection = ptShadingData.V;
-    bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
-    ptShadingData.N = Illusion::Lit::GetSpecularNormal(bsdf.material);
+    if (family == PT_FAMILY_FABRIC)
+    {
+        Illusion::Fabric::BSDFData fabricData = (Illusion::Fabric::BSDFData)0;
+        fabricData.materialFeatures = payload.parameters.x == 0u ? MATERIALFEATUREFLAGS_FABRIC_COTTON_WOOL : 0u;
+        float2 anisotropyTransmissionR = PathTracingUnpackHalf2(payload.parameters.y);
+        float2 transmissionGB = PathTracingUnpackHalf2(payload.parameters.z);
+        fabricData.transmittance = float3(anisotropyTransmissionR.y, transmissionGB);
+        if (any(fabricData.transmittance > 0.0)) fabricData.materialFeatures |= MATERIALFEATUREFLAGS_FABRIC_TRANSMISSION;
+        fabricData.diffuseColor = bsdfDataDiffuse;
+        fabricData.fresnel0 = bsdfDataSpecular;
+        fabricData.ambientOcclusion = 1.0;
+        fabricData.normalWS = ptShadingData.N;
+        fabricData.geomNormalWS = ptShadingData.faceNCorrected;
+        fabricData.tangentWS = ptShadingData.T;
+        fabricData.bitangentWS = ptShadingData.B;
+        fabricData.perceptualRoughness = bsdfDataRoughness;
+        fabricData.anisotropy = anisotropyTransmissionR.x;
+        Illusion::ConvertAnisotropyToRoughness(fabricData.perceptualRoughness, fabricData.anisotropy, fabricData.roughnessT, fabricData.roughnessB);
+        if (payload.parameters.x == 0u) fabricData.roughnessT = fabricData.roughnessB = Illusion::PerceptualRoughnessToRoughness(fabricData.perceptualRoughness);
+        bsdf.valid = Illusion::Fabric::CreateMaterialData(hdrpPayload, builtin, fabricData, ptShadingData.posW, materialSample, bsdf.fabric);
+        ptShadingData.N = Illusion::Fabric::GetSpecularNormal(bsdf.fabric);
+    }
+    else
+    {
+        bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
+        ptShadingData.N = Illusion::Lit::GetSpecularNormal(bsdf.material);
+    }
 
     return PathTracer::SurfaceData::make(ptShadingData, bsdf,
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES // otherwise motion vectors not needed

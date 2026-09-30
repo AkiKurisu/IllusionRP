@@ -1,7 +1,3 @@
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingPayload.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingMaterial.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingBSDF.hlsl"
-#include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/PathTracing/Shaders/PathTracingAOV.hlsl"
 
 // Fabric Material Data:
 //
@@ -65,6 +61,7 @@ bool CreateMaterialData(PathPayload payload, BuiltinData builtinData, BSDFData b
 
     mtlData.bsdfWeight /= wSum;
 
+#if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
     if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
     {
         float subsurfaceWeight = mtlData.bsdfWeight[0] * mtlData.bsdfData.subsurfaceMask * (1.0 - payload.maxRoughness);
@@ -101,6 +98,7 @@ bool CreateMaterialData(PathPayload payload, BuiltinData builtinData, BSDFData b
         // Rescale the sample we used for the SSS selection test
         theSample /= mtlData.subsurfaceWeightFactor;
     }
+#endif
 
     return true;
 }
@@ -109,6 +107,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
 {
     Init(result);
 
+#if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
     if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
     {
         if (mtlData.isSubsurface)
@@ -121,6 +120,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
             return true;
         }
     }
+#endif
 
     if (!IsAbove(mtlData))
         return false;
@@ -179,11 +179,13 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
             }
         }
 
-        if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
+    #if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
+    if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
         {
             // We compensate for the fact that there is no spec when computing SSS
             result.specValue /= mtlData.subsurfaceWeightFactor;
         }
+#endif
     }
     else // Diffuse BTDF
     {
@@ -193,11 +195,13 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
         result.diffValue *= mtlData.bsdfData.transmittance * mtlData.bsdfData.ambientOcclusion;
         result.diffPdf *= mtlData.bsdfWeight[2];
 
-        if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
+    #if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
+    if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
         {
             // We compensate for the fact that there is no transmission when computing SSS
             result.diffValue /= mtlData.subsurfaceWeightFactor;
         }
+#endif
     }
 
     return result.diffPdf + result.specPdf > 0.0;
@@ -207,6 +211,7 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
 {
     Init(result);
 
+#if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
     if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
     {
         if (mtlData.isSubsurface)
@@ -216,9 +221,13 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
             return;
         }
     }
+#endif
 
     if (IsAbove(mtlData))
     {
+        // @IllusionRP: reflection lobes cannot contribute to the opposite hemisphere selected by SampleMaterial.
+        if (IsAbove(GetDiffuseNormal(mtlData), sampleDir))
+        {
         if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_COTTON_WOOL))
         {
             if (mtlData.bsdfWeight[0] > BSDF_WEIGHT_EPSILON)
@@ -250,6 +259,8 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
             }
         }
 
+        }
+
         if (IsBelow(GetDiffuseNormal(mtlData), sampleDir) && mtlData.bsdfWeight[2] > BSDF_WEIGHT_EPSILON)
         {
             BTDF::EvaluateLambert(mtlData, GetDiffuseNormal(mtlData), sampleDir, result.diffValue, result.diffPdf);
@@ -257,18 +268,22 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
             result.diffValue *= mtlData.bsdfData.ambientOcclusion; // Take into account AO the same way as in SampleMaterial
             result.diffPdf *= mtlData.bsdfWeight[2];
 
-            if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
+        #if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
+    if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
             {
                 // We compensate for the fact that there is no transmission when computing SSS
                 result.diffValue /= mtlData.subsurfaceWeightFactor;
             }
+#endif
         }
 
-        if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
+    #if defined(ILLUSION_PATH_TRACING_FABRIC_SSS)
+    if (HasFlag(mtlData.bsdfData.materialFeatures, MATERIALFEATUREFLAGS_FABRIC_SUBSURFACE_SCATTERING))
         {
             // We compensate for the fact that there is no spec when computing SSS
             result.specValue /= mtlData.subsurfaceWeightFactor;
         }
+#endif
     }
 }
 

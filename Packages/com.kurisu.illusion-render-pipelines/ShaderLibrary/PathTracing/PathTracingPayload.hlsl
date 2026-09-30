@@ -8,6 +8,7 @@
 #define PT_RAY_SEED_SHIFT               4u
 
 #define PT_FAMILY_LIT                   0u
+#define PT_FAMILY_FABRIC                3u
 #define PT_FAMILY_UNLIT                 1u
 #define PT_FAMILY_DIAGNOSTIC            15u
 #define PT_FAMILY_MASK                  0xFu

@@ -2844,6 +2844,259 @@ Shader "Universal Render Pipeline/HD Fabric"
 			ENDHLSL
 		}
 		
+		Pass
+		{
+
+			Name "PathTracing"
+			Tags { "LightMode"="PathTracing" "PathTracingAnyHit"="True" }
+
+			HLSLPROGRAM
+
+			#define ASE_GEOMETRY
+			#define _ALPHATEST_ON
+			#define _NORMAL_DROPOFF_TS 1
+			#define ASE_FOG 1
+			#define _TRANSPARENT_WRITE_DEPTH 1
+			#define _NORMALMAP 1
+			#define ASE_VERSION 19905
+			#define ASE_SRP_VERSION 170300
+			#define ASE_USING_SAMPLING_MACROS 1
+
+
+			#pragma raytracing PathTracing
+            // @IllusionRP: ASE uses these stage declarations to locate the shared graph input functions.
+            // #pragma vertex vert
+            // #pragma fragment frag
+
+
+
+
+			#pragma shader_feature_local_raytracing _ANISOTROPY_ON
+			#pragma shader_feature_local_raytracing _SHEEN_VELET
+
+			#define SHADERPASS SHADERPASS_PATH_TRACING
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Fabric/Lighting.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingFabricSurface.hlsl"
+
+			#define ASE_NEEDS_TEXTURE_COORDINATES0
+			#define ASE_NEEDS_FRAG_TEXTURE_COORDINATES0
+
+
+			struct Attributes
+			{
+				float4 positionOS : POSITION;
+				half3 normalOS : NORMAL;
+				half4 tangentOS : TANGENT;
+				float4 texcoord : TEXCOORD0;
+				float4 texcoord1 : TEXCOORD1;
+				float4 texcoord2 : TEXCOORD2;
+				float4 texcoord3 : TEXCOORD3;
+				float4 color : COLOR;
+
+			};
+
+			struct PackedVaryings
+			{
+				float4 positionCS : SV_POSITION;
+				float3 positionWS : TEXCOORD0;
+				float4 ase_texcoord1 : TEXCOORD1;
+			};
+
+			CBUFFER_START(UnityPerMaterial)
+			half4 _BaseColor;
+			half4 _BaseColorMap_ST;
+			half4 _NormalMap_ST;
+			half4 _MaskMap_ST;
+			half _NormalScale;
+			half _MetallicRemapMin;
+			half _MetallicRemapMax;
+			half _SmoothnessRemapMin;
+			half _SmoothnessRemapMax;
+			half _AORemapMin;
+			half _AORemapMax;
+			half _AlphaRemapMin;
+			half _AlphaRemapMax;
+			half _AlphaCutoff;
+			#ifdef ASE_TRANSMISSION
+				float _TransmissionShadow;
+			#endif
+			#ifdef ASE_TRANSLUCENCY
+				float _TransNormal;
+				float _TransScattering;
+				float _TransDirect;
+				float _TransAmbient;
+				float _TransShadow;
+			#endif
+			#ifdef ASE_TESSELLATION
+				float _TessPhongStrength;
+				float _TessValue;
+				float _TessMin;
+				float _TessMax;
+				float _TessEdgeLength;
+				float _TessMaxDisp;
+			#endif
+			half _Anisotropy_On;
+			half _Anisotropy_Intensity;
+			half _Sheen_Intensity;
+			half _NormalAniso;
+			half4 _Sheen_Color;
+			CBUFFER_END
+
+			TEXTURE2D(_BaseColorMap);
+			SAMPLER(sampler_BaseColorMap);
+			TEXTURE2D(_NormalMap);
+			SAMPLER(sampler_NormalMap);
+			TEXTURE2D(_MaskMap);
+			SAMPLER(sampler_MaskMap);
+
+
+
+			PackedVaryings VertexFunction( Attributes input  )
+			{
+				PackedVaryings output = (PackedVaryings)0;
+
+				output.ase_texcoord1.xy = input.texcoord.xy;
+
+				output.ase_texcoord1.zw = 0;
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					float3 defaultVertexValue = input.positionOS.xyz;
+				#else
+					float3 defaultVertexValue = float3(0, 0, 0);
+				#endif
+
+				float3 vertexValue = defaultVertexValue;
+
+				#ifdef ASE_ABSOLUTE_VERTEX_POS
+					input.positionOS.xyz = vertexValue;
+				#else
+					input.positionOS.xyz += vertexValue;
+				#endif
+
+				input.normalOS = input.normalOS;
+				input.tangentOS = input.tangentOS;
+
+				output.positionWS = g_PathTracingHit.positionWS;
+				return output;
+			}
+
+			PackedVaryings vert ( Attributes input )
+			{
+				return VertexFunction( input );
+			}
+
+			#define PATH_TRACING_TEMPLATE_SURFACE PathTracingFabricSurface
+
+			PathTracingFabricSurface frag ( PackedVaryings input  )
+			{
+				float3 PositionWS = g_PathTracingHit.positionWS;
+				float3 PositionRWS = GetCameraRelativePositionWS( PositionWS );
+				float3 ViewDirWS = g_PathTracingHit.viewDirWS;
+				float4 ShadowCoord = float4( 0, 0, 0, 0 );
+				float4 ScreenPosNorm = g_PathTracingScreenPosition;
+				float4 ClipPos = ComputeClipSpacePosition( ScreenPosNorm.xy, ScreenPosNorm.z );
+				float4 ScreenPos = ComputeScreenPos( ClipPos );
+				float3 TangentWS = g_PathTracingHit.tangentWS.xyz;
+				float3 BitangentWS = cross( g_PathTracingHit.vertexNormalWS, g_PathTracingHit.tangentWS.xyz ) * g_PathTracingHit.tangentWS.w;
+				float3 NormalWS = g_PathTracingHit.vertexNormalWS;
+				float FaceSign = g_PathTracingHit.frontFacing ? 1.0 : -1.0;
+
+				half2 uv_BaseColorMap = input.ase_texcoord1.xy * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;
+				half4 temp_output_18_0_g3 = ( _BaseColor * SAMPLE_TEXTURE2D( _BaseColorMap, sampler_BaseColorMap, uv_BaseColorMap ) );
+				half4 FinalBaseColor39_g3 = temp_output_18_0_g3;
+
+				half2 uv_NormalMap = input.ase_texcoord1.xy * _NormalMap_ST.xy + _NormalMap_ST.zw;
+				half3 unpack36_g3 = UnpackNormalScale( SAMPLE_TEXTURE2D( _NormalMap, sampler_NormalMap, uv_NormalMap ), _NormalScale );
+				unpack36_g3.z = lerp( 1, unpack36_g3.z, saturate(_NormalScale) );
+				half3 FinalNormal37_g3 = unpack36_g3;
+				half3 temp_output_73_48 = FinalNormal37_g3;
+
+				half2 uv_MaskMap = input.ase_texcoord1.xy * _MaskMap_ST.xy + _MaskMap_ST.zw;
+				half4 tex2DNode19_g3 = SAMPLE_TEXTURE2D( _MaskMap, sampler_MaskMap, uv_MaskMap );
+				half MetallicMask20_g3 = tex2DNode19_g3.r;
+				half lerpResult31_g3 = lerp( _MetallicRemapMin , _MetallicRemapMax , MetallicMask20_g3);
+				half FinalMetallic33_g3 = lerpResult31_g3;
+
+				half SmoothnessMask21_g3 = tex2DNode19_g3.a;
+				half lerpResult28_g3 = lerp( _SmoothnessRemapMin , _SmoothnessRemapMax , SmoothnessMask21_g3);
+				half FinalSmoothness29_g3 = lerpResult28_g3;
+
+				half BaseAlpha40_g3 = (temp_output_18_0_g3).a;
+				half lerpResult45_g3 = lerp( _AlphaRemapMin , _AlphaRemapMax , BaseAlpha40_g3);
+				half FinalAlpha47_g3 = lerpResult45_g3;
+
+
+				float3 BaseColor = FinalBaseColor39_g3.rgb;
+				float3 Normal = temp_output_73_48;
+				float3 Specular = 0.5;
+				float Metallic = FinalMetallic33_g3;
+				float Smoothness = FinalSmoothness29_g3;
+				float3 Emission = 0;
+				float Alpha = FinalAlpha47_g3;
+				float AlphaClipThreshold = _AlphaCutoff;
+				float3 Transmission = 1;
+				float3 Translucency = 1;
+				float3 SheenNormal = temp_output_73_48;
+
+				#if defined( _ALPHATEST_ON )
+					AlphaDiscard( Alpha, AlphaClipThreshold );
+				#endif
+
+				PathTracingFabricSurface surface = PathTracingInitFabricSurface();
+				#ifdef _NORMALMAP
+					#if _NORMAL_DROPOFF_TS
+						surface.normalWS = TransformTangentToWorld( Normal, half3x3( TangentWS, BitangentWS, NormalWS ) );
+					#elif _NORMAL_DROPOFF_OS
+						surface.normalWS = TransformObjectToWorldNormal( Normal );
+					#elif _NORMAL_DROPOFF_WS
+						surface.normalWS = Normal;
+					#endif
+					surface.normalWS = SafeNormalize( surface.normalWS );
+				#else
+					surface.normalWS = NormalWS;
+				#endif
+
+				surface.albedo = BaseColor;
+				surface.specular = Specular;
+				surface.metallic = saturate( Metallic );
+				surface.smoothness = saturate( Smoothness );
+				surface.emission = Emission;
+				surface.alpha = saturate( Alpha );
+                surface.sheen = _Sheen_Color.rgb * BaseColor * _Sheen_Intensity;
+#if defined(_ANISOTROPY_ON)
+                surface.silk = true;
+                surface.anisotropy = _Anisotropy_Intensity;
+#endif
+#if defined(ASE_TRANSMISSION)
+                surface.transmission = Transmission;
+#endif
+				return surface;
+			}
+
+			void PathTracingWriteTemplateSurface( inout IllusionPathPayload payload, PathTracingHitContext hit, PathTracingFabricSurface surface )
+			{
+				PathTracingWriteFabricSurface( payload, hit, surface );
+			}
+
+			float PathTracingTemplateCoverage( PathTracingFabricSurface surface )
+			{
+				#if defined( _SURFACE_TYPE_TRANSPARENT )
+					return surface.alpha;
+				#else
+					return 1.0;
+				#endif
+			}
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingTemplatePass.hlsl"
+
+			ENDHLSL
+		}
+
 	}
 	
 //	FallBack "Hidden/Shader Graph/FallbackError"
