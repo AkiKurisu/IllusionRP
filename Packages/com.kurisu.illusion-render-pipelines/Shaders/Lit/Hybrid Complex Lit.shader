@@ -1,4 +1,4 @@
-﻿// @IllusionRP: Fork of Complex Lit (URP 17.3) with hybrid lighting features
+// @IllusionRP: Fork of Complex Lit (URP 17.3) with hybrid lighting features
 // Complex Lit is superset of Lit, but provides
 // advanced material properties and is always forward rendered.
 // It also has higher hardware and shader model requirements.
@@ -90,6 +90,7 @@ Shader "Universal Render Pipeline/Hybrid Complex Lit"
         {
             "RenderType" = "Opaque"
             "RenderPipeline" = "UniversalPipeline"
+            "PathTracingEmission" = "PBR"
             "UniversalMaterialType" = "ComplexLit"
             "IgnoreProjector" = "True"
         }
@@ -585,6 +586,38 @@ Shader "Universal Render Pipeline/Hybrid Complex Lit"
             // Includes
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Universal2D.hlsl"
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "PathTracing"
+            Tags
+            {
+                "LightMode" = "PathTracing"
+            }
+
+            HLSLPROGRAM
+            #pragma raytracing PathTracing
+
+            // -------------------------------------
+            // Material Keywords
+            #pragma shader_feature_local_raytracing _NORMALMAP
+            #pragma shader_feature_local_raytracing _PARALLAXMAP
+            #pragma shader_feature_local_raytracing _ _DETAIL_MULX2 _DETAIL_SCALED
+            #pragma shader_feature_local_raytracing _SURFACE_TYPE_TRANSPARENT
+            #pragma shader_feature_local_raytracing _ALPHAPREMULTIPLY_ON
+            #pragma shader_feature_local_raytracing _ALPHATEST_ON
+            #pragma shader_feature_local_raytracing _EMISSION
+            #pragma shader_feature_local_raytracing _METALLICSPECGLOSSMAP
+            #pragma shader_feature_local_raytracing _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+            #pragma shader_feature_local_raytracing _OCCLUSIONMAP
+            #pragma shader_feature_local_raytracing _ _CLEARCOAT _CLEARCOATMAP
+            #pragma shader_feature_local_raytracing _SPECULAR_SETUP
+
+            #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
+            #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/HybridLitPathTracingPass.hlsl"
             ENDHLSL
         }
 

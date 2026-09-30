@@ -14,6 +14,7 @@
 #include "PathTracer/Config.h"
 #include "Libraries/ShaderDebug/ShaderDebug.hlsl"
 #include "PathTracer/PathTracerTypes.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"   // @IllusionRP
 #include "PathTracer/Rendering/Volumes/HomogeneousVolumeSampler.hlsli"
 #include "PathTracer/Lighting/EnvMap.hlsli"
 #include "PathTracer/Lighting/LightSampler.hlsli"
@@ -57,11 +58,9 @@ namespace Bridge
 #endif
     );
 
-    static PathTracer::SurfaceData loadSurface( const uint instanceIndex, const uint geometryIndex, const uint triangleIndex, const float2 barycentrics,
-        const float3 rayDir, const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPosition, DebugContext debug );
-
-    static PathTracer::SurfaceData loadSurface( const TriangleHit triangleHit, 
-        const float3 rayDir, const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPosition, DebugContext debug );
+    // @IllusionRP: the surface is evaluated by the material closest-hit shader and returned in the payload.
+    static PathTracer::SurfaceData loadSurface( const IllusionPathPayload payload, const float3 rayOrigin, const float3 rayDir,
+        const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPosition, DebugContext debug );
 
     static void updateOutsideIoR(inout PathTracer::SurfaceData surfaceData, lpfloat outsideIoR);
 
@@ -75,28 +74,14 @@ namespace Bridge
     // 2.5D motion vectors
     static float3 computeSkyMotionVector(const uint2 pixelPos);
 
-    // The normal AlphaTest
-    static bool AlphaTest(
-        uint instanceID, 
-        uint instanceIndex, 
-        uint geometryIndex, 
-        uint triangleIndex, 
-        float2 rayBarycentrics);
-
-    // The alpha test function used for visibility rays.
-    static bool AlphaTestVisibilityRay(
-        uint instanceID,
-        uint instanceIndex,
-        uint geometryIndex,
-        uint triangleIndex,
-        float2 rayBarycentrics);
+    // @IllusionRP: alpha testing runs in the material any-hit shaders, so there are no bridge alpha test functions.
 
     // There's a relatively high cost to this when used in large shaders just due to register allocation required for alphaTest, even if all geometries are opaque.
     // Consider simplifying alpha testing - perhaps splitting it up from the main geometry path, load it with fewer indirections or something like that.
     // fix: pixelPos added for the ENABLE_DEBUG_LINES_VIZ debug-line path (stale no-arg IsDebugPixel() did not compile)
     static bool traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos);
 
-    static void traceScatterRay(const PathState path, inout RayQuery<RAY_FLAG_NONE, RTXPT_FLAG_ALLOW_OPACITY_MICROMAPS> rayQuery, const float2 tMinMax, DebugContext debug);
+    // @IllusionRP: scatter rays are traced with TraceRay by the ray generation shader to invoke the material hit shaders.
 
 #if PT_USE_RESTIR_GI
     static void StoreSecondarySurfacePositionAndNormal(uint2 pixelCoordinate, float3 worldPos, float3 normal);

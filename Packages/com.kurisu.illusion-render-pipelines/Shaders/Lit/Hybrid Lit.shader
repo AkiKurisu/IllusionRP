@@ -1,4 +1,4 @@
-﻿// @IllusionRP: Fork of Lit (URP 17.3) with hybrid lighting features
+// @IllusionRP: Fork of Lit (URP 17.3) with hybrid lighting features
 Shader "Universal Render Pipeline/Hybrid Lit"
 {
     Properties
@@ -85,6 +85,7 @@ Shader "Universal Render Pipeline/Hybrid Lit"
         {
             "RenderType" = "Opaque"
             "RenderPipeline" = "UniversalPipeline"
+            "PathTracingEmission" = "PBR"
             "UniversalMaterialType" = "Lit"
             "IgnoreProjector" = "True"
         }
@@ -583,6 +584,37 @@ Shader "Universal Render Pipeline/Hybrid Lit"
             // Includes
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Universal2D.hlsl"
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "PathTracing"
+            Tags
+            {
+                "LightMode" = "PathTracing"
+            }
+
+            HLSLPROGRAM
+            #pragma raytracing PathTracing
+
+            // -------------------------------------
+            // Material Keywords
+            #pragma shader_feature_local_raytracing _NORMALMAP
+            #pragma shader_feature_local_raytracing _PARALLAXMAP
+            #pragma shader_feature_local_raytracing _ _DETAIL_MULX2 _DETAIL_SCALED
+            #pragma shader_feature_local_raytracing _SURFACE_TYPE_TRANSPARENT
+            #pragma shader_feature_local_raytracing _ALPHAPREMULTIPLY_ON
+            #pragma shader_feature_local_raytracing _ALPHATEST_ON
+            #pragma shader_feature_local_raytracing _EMISSION
+            #pragma shader_feature_local_raytracing _METALLICSPECGLOSSMAP
+            #pragma shader_feature_local_raytracing _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+            #pragma shader_feature_local_raytracing _OCCLUSIONMAP
+            #pragma shader_feature_local_raytracing _SPECULAR_SETUP
+
+            #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
+            #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/HybridLitPathTracingPass.hlsl"
             ENDHLSL
         }
 
