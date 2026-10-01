@@ -30,6 +30,8 @@ namespace Illusion.Rendering
 
         public Shader areaLightEmissiveMeshShader;
 
+        public Mesh areaLightEmissiveQuadMesh;
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         // ReSharper disable once UnusedMember.Global
         public Shader[] debugShaders;

@@ -39,6 +39,7 @@ MonoBehaviour:
   areaLightShadowClearShader: {fileID: 4800000, guid: 32b46714b5c24e46b554b9f31b673958, type: 3}
   filterAreaLightCookiesShader: {fileID: 4800000, guid: 7f323cb18e9e629060cebadd3c2b7f64, type: 3}
   areaLightEmissiveMeshShader: {fileID: 4800000, guid: 5dac763599bb42239ac8c22b5ebae63b, type: 3}
+  areaLightEmissiveQuadMesh: {fileID: 4300000, guid: 05e9834c74784a009b509d8a7fc5b302, type: 3}
   debugShaders:
   - {fileID: 4800000, guid: 8bbd92567fd5ceb458f6f0317acc0bc7, type: 3}
   - {fileID: 4800000, guid: 7746387bc7e49cd4fa068adfcb7b1fc6, type: 3}
