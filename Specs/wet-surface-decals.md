@@ -47,10 +47,10 @@ Wet surfaces need a blendable RGBA8 Forward GBuffer. When the platform lacks it,
 
 ## Projection
 
-- **Layer modes.** None wets surfaces by how much they face the volume's Y axis, raised to the face sharpness. Single multiplies that by the Y layer. Triplanar blends the X, Y and Z layers by the surface normal in volume space divided by the diagonal of the volume's local-to-world matrix, so rotation changes the weights, raised to the face sharpness and normalized.
+- **Layer modes.** None wets surfaces by how much they face the volume's Y axis, raised to the face sharpness. Single multiplies that by the Y layer. Triplanar blends the X, Y and Z layers by the surface normal in volume space, raised to the face sharpness and normalized.
 - **Channels.** Each layer remaps every RGBA channel from its input range to its output range and takes the largest channel. A channel with a zero input extent is disabled and contributes exactly zero.
 - **Local projection.** Layer textures follow the volume transform.
-- **World projection.** Layer textures stay aligned to the world: the texture coordinate is the world position divided by the diagonal of the world-to-local matrix, which scales with squared length. The world projection scale is applied once, as a squared distance scale; volume positions always come from the real transform.
+- **World projection.** Layer textures stay aligned to the world: the texture coordinate is the world position multiplied by the volume's axis scales, which scales with squared length and does not depend on the volume's rotation. The world projection scale is applied once, as a squared distance scale; volume positions always come from the real transform.
 - **Jitter.** Sample jitter offsets every layer sample by the red and green channels of a tiled blue noise, minus 0.5, times the jitter amount in texels. The tiling is (29, 31), and the texel size is the smallest among the active layer textures.
 
 ## Material response
