@@ -413,6 +413,7 @@ namespace Illusion.Rendering
             _stencilVRSDebugPass = new StencilVRSDebugPass();
             _transparentSSRDebugPass = new TransparentSSRDebugPass(_rendererData);
             _areaLightShadowAtlasDebugPass = new AreaLights.AreaLightShadowAtlasDebugPass();
+            IllusionDebugPanels.Register(this);
 #endif
         }
 
@@ -843,6 +844,7 @@ namespace Illusion.Rendering
 #endif
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+            IllusionDebugPanels.Unregister(this);
             SafeDispose(ref _stencilVRSDebugPass);
             SafeDispose(ref _transparentSSRDebugPass);
             SafeDispose(ref _areaLightShadowAtlasDebugPass);

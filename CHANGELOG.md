@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.3.2] - Unreleased
 
+### Changed
+
+- Move the Illusion Rendering Debugger into Unity's Rendering Debugger as the Illusion Features and Illusion Debug panels; its menu item now opens the Rendering Debugger on the Illusion Features panel.
+
 ### Fixed
 
 - Fix the velvet Fabric sheen, whose Ashikhmin distribution multiplied by its normalization and sin⁴ terms instead of dividing: it left almost no sheen facing the light and an overbright rim at grazing angles.
