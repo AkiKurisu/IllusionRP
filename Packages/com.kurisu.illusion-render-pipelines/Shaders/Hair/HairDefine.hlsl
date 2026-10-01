@@ -52,5 +52,5 @@ struct HairData
     half Backlit;
     half Area;
     half Wet;
+    half WetDiffuseFactor;
 };
-// ============================ Shader Define for Hair =============================== //

@@ -8,6 +8,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DBuffer.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurface.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RealtimeLights.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/EvaluateMaterial.hlsl"
@@ -369,7 +370,8 @@ half3 HairLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
         directSpecularT *= shadow;
     }
     
-    half3 brdf = (directSpecularR * shadow + directSpecularT) * radiance + directDiffuseR * radiance * shadow;
+    half3 brdf = (directSpecularR * shadow + directSpecularT) * radiance +
+        directDiffuseR * HairData.WetDiffuseFactor * radiance * shadow;
     brdf = -min(-brdf, 0);
     return brdf;
 }
@@ -493,7 +495,8 @@ half3 EvaluateBSDF_Rect_MRP(BRDFData brdfData, float2 positionSS, float3 positio
 #endif
 
 half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFactor aoFactor, float3 positionWS,
-    half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, HairData hairData, uint renderingLayers)
+    half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, HairData hairData, uint renderingLayers,
+    BRDFData ambientBRDF, half3 ambientNormalWS, half ambientFactor)
 {
     half3 indirectLighting = 0;
     float3 N = normalWS;
@@ -504,7 +507,7 @@ half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFact
     
     half3 iblR = reflect(-viewDirectionWS, N);
     // ============================ Diffuse Part ================================== //
-    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI);
+    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, ambientNormalWS, normalizedScreenSpaceUV, bakedGI);
     half normalizationFactor = SampleProbeVolumeReflectionNormalize(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI, iblR);
     // ============================ Diffuse Part ================================== //
     
@@ -525,10 +528,10 @@ half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFact
     GetPreIntegratedFGDGGXAndDisneyDiffuse(NoV, roughness, brdfData.specular,
         specularFGD, diffuseFGD, reflectivity);
     diffuseFGD = 1;
-    indirectDiffuse *= diffuseFGD * brdfData.diffuse;
+    indirectDiffuse *= diffuseFGD * ambientBRDF.diffuse * ambientFactor;
     indirectSpecular *= specularFGD;
 #else
-    indirectDiffuse *= brdfData.diffuse;
+    indirectDiffuse *= ambientBRDF.diffuse * ambientFactor;
     // Reference: BRDF.hlsl EnvironmentBRDF
     half fresnelTerm = Pow4(1.0 - NoV);
     indirectSpecular *= EnvironmentBRDFSpecular(brdfData, fresnelTerm);
@@ -558,6 +561,16 @@ half4 HairPBR(InputData inputData, SurfaceData surfaceData, HairData HairData)
 
     // NOTE: can modify "surfaceData"...
     InitializeBRDFData(surfaceData, brdfData);
+    WetSurfaceLightingState wetSurface = ApplyWetSurface(inputData.normalizedScreenSpaceUV,
+        surfaceData, inputData, brdfData);
+    HairData.WetDiffuseFactor = 1 - wetSurface.darkness;
+    if (wetSurface.hasWet)
+    {
+        half secondarySmoothness = 1 - HairData.Roughness;
+        secondarySmoothness = ApplyWetSurfaceSmoothness(secondarySmoothness, wetSurface.darkness,
+            wetSurface.specularWeight);
+        HairData.Roughness = 1 - secondarySmoothness;
+    }
 
     #if defined(DEBUG_DISPLAY)
     half4 debugColor;
@@ -582,13 +595,15 @@ half4 HairPBR(InputData inputData, SurfaceData surfaceData, HairData HairData)
     Light mainLight = IllusionGetMainLight(inputData, shadowMask);
 
     // NOTE: We don't apply AO to the GI here because it's done in the lighting calculation below...
-    MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
+    MixRealtimeAndBakedGI(mainLight, wetSurface.originalNormal, inputData.bakedGI);
 
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     lightingData.giColor = HairGlobalIllumination(brdfData, inputData.bakedGI, brdfOcclusionFactor,
                                               inputData.positionWS,
                                               inputData.normalWS, inputData.viewDirectionWS,
-                                              inputData.normalizedScreenSpaceUV, HairData, meshRenderingLayers);
+                                              inputData.normalizedScreenSpaceUV, HairData, meshRenderingLayers,
+                                              wetSurface.originalBRDF, wetSurface.originalNormal,
+                                              wetSurface.ambientFactor);
     
     #ifdef _LIGHT_LAYERS
     if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))

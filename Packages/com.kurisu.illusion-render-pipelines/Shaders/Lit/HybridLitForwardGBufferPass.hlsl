@@ -1,6 +1,9 @@
 ﻿#ifndef HYBRID_LIT_GBUFFER_PASS_INCLUDED
 #define HYBRID_LIT_GBUFFER_PASS_INCLUDED
 
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurfaceResponse.hlsl"
+float _WetSurfacePackedEnabled;
+
 #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
 // Smoothness sampling always needs UV; depth-normals only conditionally adds UV to Varyings.
 #define REQUIRES_UV_INTERPOLATOR
@@ -48,16 +51,33 @@ void LitForwardGBufferMRTFragment(
     ApplyPerPixelDisplacement(viewDirTS, input.uv);
 #endif
 
-    half alpha;
     half3 normalTS;
     half smoothness;
-    InitializeLitForwardGBufferData(input.uv, alpha, normalTS, smoothness);
 
 #if defined(LOD_FADE_CROSSFADE)
     LODFadeCrossFade(input.positionCS);
 #endif
 
-    outSmoothness = half4(smoothness, smoothness, smoothness, smoothness);
+    if (_WetSurfacePackedEnabled > 0.5)
+    {
+        SurfaceData wetSource;
+        InitializeStandardLitSurfaceData(input.uv, wetSource);
+        normalTS = wetSource.normalTS;
+        smoothness = wetSource.smoothness;
+        #ifdef _SPECULAR_SETUP
+            half3 sourceSpecular = wetSource.specular;
+        #else
+            half3 sourceSpecular = lerp(half3(0.04h, 0.04h, 0.04h),
+                wetSource.albedo, wetSource.metallic);
+        #endif
+        outSmoothness = PackWetSurfaceForwardData(smoothness, wetSource.smoothness, sourceSpecular);
+    }
+    else
+    {
+        half alpha;
+        InitializeLitForwardGBufferData(input.uv, alpha, normalTS, smoothness);
+        outSmoothness = half4(smoothness, smoothness, smoothness, smoothness);
+    }
 
 #if defined(_NORMALMAP) || defined(_DETAIL)
     half sgn = input.tangentWS.w;

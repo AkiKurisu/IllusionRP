@@ -119,6 +119,60 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &386800060
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 386800062}
+  - component: {fileID: 386800061}
+  m_Layer: 0
+  m_Name: Wet Surface Mask
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &386800061
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 386800060}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 967dabad208c397448d1921b1e1f4e51, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WetSurfaceDecalExample
+  mask: {fileID: 2800000, guid: 07823a7aa4928a64b84b3f226b4770ff, type: 3}
+  tiling: {x: 1, y: 1}
+  offset: {x: 0, y: 0}
+  threshold: 0.43
+  softness: 0.13
+  saturation: 1
+  edgeFade: 0.05
+  faceSharpness: 1
+  dry: 0
+  sphere: 0
+--- !u!4 &386800062
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 386800060}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: -3.86, y: 0.5, z: 0.17}
+  m_LocalScale: {x: 10, y: 1.2, z: 5.5}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
 --- !u!1 &396842727
 GameObject:
   m_ObjectHideFlags: 0
@@ -995,3 +1049,4 @@ SceneRoots:
   - {fileID: 1937236114}
   - {fileID: 1686891059}
   - {fileID: 463618504}
+  - {fileID: 386800062}

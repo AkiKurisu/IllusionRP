@@ -63,6 +63,9 @@ namespace Illusion.Rendering
         [ConfigVariable("r.ssao")]
         public bool EnableScreenSpaceAmbientOcclusion { get; set; } = true;
 
+        [ConfigVariable("r.wetsurface")]
+        public bool EnableWetSurfaceDecals { get; set; } = true;
+
         /// <summary>
         /// Whether enable Volumetric Fog.
         /// </summary>

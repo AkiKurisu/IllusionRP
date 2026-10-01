@@ -18,6 +18,25 @@ namespace Illusion.Rendering
         private readonly RenderStateBlock _renderStateBlock;
 
         private readonly IllusionRendererData _rendererData;
+        private bool _wetSurfaceEnabled;
+        private static readonly int WetSourceBufferId = Shader.PropertyToID("_WetSurfaceSourceBuffer");
+
+        internal void SetWetSurfaceEnabled(bool enabled) => _wetSurfaceEnabled = enabled;
+
+        internal static bool SupportsWetSurfaceFormat() => WetSurfaceFormat() != GraphicsFormat.None;
+
+        private static GraphicsFormat WetSurfaceFormat()
+        {
+            if (SupportsWetSurfaceFormat(GraphicsFormat.R8G8B8A8_UNorm))
+                return GraphicsFormat.R8G8B8A8_UNorm;
+            return SupportsWetSurfaceFormat(GraphicsFormat.B8G8R8A8_UNorm)
+                ? GraphicsFormat.B8G8R8A8_UNorm
+                : GraphicsFormat.None;
+        }
+
+        private static bool SupportsWetSurfaceFormat(GraphicsFormat format) =>
+            SystemInfo.IsFormatSupported(format, GraphicsFormatUsage.Render) &&
+            SystemInfo.IsFormatSupported(format, GraphicsFormatUsage.Blend);
 
         public ForwardGBufferPass(IllusionRendererData rendererData)
         {
@@ -59,18 +78,24 @@ namespace Illusion.Rendering
             var desc = cameraData.cameraTargetDescriptor;
             desc.depthBufferBits = 0;
             desc.msaaSamples = 1;
-            desc.graphicsFormat = SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
-                ? GraphicsFormat.R8_UNorm
-                : GraphicsFormat.B8G8R8A8_UNorm;
-
-            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ForwardGBufferRT, desc, FilterMode.Point, TextureWrapMode.Clamp,
-                name: "_ForwardGBuffer");
+            desc.graphicsFormat = _wetSurfaceEnabled
+                ? WetSurfaceFormat()
+                : SystemInfo.IsFormatSupported(GraphicsFormat.R8_UNorm, GraphicsFormatUsage.Blend)
+                    ? GraphicsFormat.R8_UNorm
+                    : GraphicsFormat.B8G8R8A8_UNorm;
+            RenderingUtils.ReAllocateHandleIfNeeded(ref _rendererData.ForwardGBufferRT, desc,
+                FilterMode.Point, TextureWrapMode.Clamp, name: "_ForwardGBuffer");
 
             TextureHandle depthTexture = frameData.GetDepthWriteTextureHandle();
             TextureHandle normalsTexture = resource.cameraNormalsTexture;
             if (!depthTexture.IsValid() || !normalsTexture.IsValid()) return;
 
             TextureHandle forwardGBufferHandle = renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
+            if (_wetSurfaceEnabled)
+            {
+                WetSurfaceFrameData wetData = frameData.GetOrCreate<WetSurfaceFrameData>();
+                wetData.ForwardBuffer = forwardGBufferHandle;
+            }
 
             using (var builder = renderGraph.AddUnsafePass<PassData>("Clear Forward GBuffer", out var passData, profilingSampler))
             {
@@ -104,6 +129,8 @@ namespace Illusion.Rendering
 
                 builder.SetGlobalTextureAfterPass(forwardGBufferHandle, IllusionShaderProperties._ForwardGBuffer);
                 builder.SetGlobalTextureAfterPass(normalsTexture, IllusionShaderProperties._CameraNormalsTexture);
+                if (_wetSurfaceEnabled)
+                    builder.SetGlobalTextureAfterPass(forwardGBufferHandle, WetSourceBufferId);
 
                 builder.SetRenderFunc(static (PassData data, RasterGraphContext context) =>
                 {

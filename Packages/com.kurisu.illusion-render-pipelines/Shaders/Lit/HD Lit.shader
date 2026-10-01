@@ -614,6 +614,7 @@ Shader "Universal Render Pipeline/HD Lit"
 				half2 uv_BaseColorMap = input.ase_texcoord7.xy * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;
 				half4 temp_output_18_0_g3 = ( _BaseColor * SAMPLE_TEXTURE2D( _BaseColorMap, sampler_BaseColorMap, uv_BaseColorMap ) );
 				half4 FinalBaseColor39_g3 = temp_output_18_0_g3;
+				half4 temp_output_67_0 = FinalBaseColor39_g3;
 				
 				half2 uv_NormalMap = input.ase_texcoord7.xy * _NormalMap_ST.xy + _NormalMap_ST.zw;
 				half3 unpack36_g3 = UnpackNormalScale( SAMPLE_TEXTURE2D( _NormalMap, sampler_NormalMap, uv_NormalMap ), _NormalScale );
@@ -625,6 +626,7 @@ Shader "Universal Render Pipeline/HD Lit"
 				half MetallicMask20_g3 = tex2DNode19_g3.r;
 				half lerpResult31_g3 = lerp( _MetallicRemapMin , _MetallicRemapMax , MetallicMask20_g3);
 				half FinalMetallic33_g3 = lerpResult31_g3;
+				half temp_output_67_49 = FinalMetallic33_g3;
 				
 				half SmoothnessMask21_g3 = tex2DNode19_g3.a;
 				half lerpResult28_g3 = lerp( _SmoothnessRemapMin , _SmoothnessRemapMax , SmoothnessMask21_g3);
@@ -639,10 +641,10 @@ Shader "Universal Render Pipeline/HD Lit"
 				half FinalAlpha47_g3 = lerpResult45_g3;
 				
 
-				float3 BaseColor = FinalBaseColor39_g3.rgb;
+				float3 BaseColor = temp_output_67_0.rgb;
 				float3 Normal = FinalNormal37_g3;
 				float3 Specular = 0.5;
-				float Metallic = FinalMetallic33_g3;
+				float Metallic = temp_output_67_49;
 				float Smoothness = FinalSmoothness29_g3;
 				float Occlusion = FinalOcclusion46_g3;
 				float3 Emission = 0;
@@ -1501,13 +1503,14 @@ Shader "Universal Render Pipeline/HD Lit"
 				half2 uv_BaseColorMap = input.ase_texcoord3.xy * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;
 				half4 temp_output_18_0_g3 = ( _BaseColor * SAMPLE_TEXTURE2D( _BaseColorMap, sampler_BaseColorMap, uv_BaseColorMap ) );
 				half4 FinalBaseColor39_g3 = temp_output_18_0_g3;
+				half4 temp_output_67_0 = FinalBaseColor39_g3;
 				
 				half BaseAlpha40_g3 = (temp_output_18_0_g3).a;
 				half lerpResult45_g3 = lerp( _AlphaRemapMin , _AlphaRemapMax , BaseAlpha40_g3);
 				half FinalAlpha47_g3 = lerpResult45_g3;
 				
 
-				float3 BaseColor = FinalBaseColor39_g3.rgb;
+				float3 BaseColor = temp_output_67_0.rgb;
 				float3 Emission = 0;
 				float Alpha = FinalAlpha47_g3;
 				float AlphaClipThreshold = _AlphaCutoff;
@@ -1934,6 +1937,7 @@ Shader "Universal Render Pipeline/HD Lit"
 				half2 uv_BaseColorMap = input.ase_texcoord7.xy * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;
 				half4 temp_output_18_0_g3 = ( _BaseColor * SAMPLE_TEXTURE2D( _BaseColorMap, sampler_BaseColorMap, uv_BaseColorMap ) );
 				half4 FinalBaseColor39_g3 = temp_output_18_0_g3;
+				half4 temp_output_67_0 = FinalBaseColor39_g3;
 				
 				half2 uv_NormalMap = input.ase_texcoord7.xy * _NormalMap_ST.xy + _NormalMap_ST.zw;
 				half3 unpack36_g3 = UnpackNormalScale( SAMPLE_TEXTURE2D( _NormalMap, sampler_NormalMap, uv_NormalMap ), _NormalScale );
@@ -1945,6 +1949,7 @@ Shader "Universal Render Pipeline/HD Lit"
 				half MetallicMask20_g3 = tex2DNode19_g3.r;
 				half lerpResult31_g3 = lerp( _MetallicRemapMin , _MetallicRemapMax , MetallicMask20_g3);
 				half FinalMetallic33_g3 = lerpResult31_g3;
+				half temp_output_67_49 = FinalMetallic33_g3;
 				
 				half SmoothnessMask21_g3 = tex2DNode19_g3.a;
 				half lerpResult28_g3 = lerp( _SmoothnessRemapMin , _SmoothnessRemapMax , SmoothnessMask21_g3);
@@ -1959,10 +1964,10 @@ Shader "Universal Render Pipeline/HD Lit"
 				half FinalAlpha47_g3 = lerpResult45_g3;
 				
 
-				float3 BaseColor = FinalBaseColor39_g3.rgb;
+				float3 BaseColor = temp_output_67_0.rgb;
 				float3 Normal = FinalNormal37_g3;
 				float3 Specular = 0.5;
-				float Metallic = FinalMetallic33_g3;
+				float Metallic = temp_output_67_49;
 				float Smoothness = FinalSmoothness29_g3;
 				float Occlusion = FinalOcclusion46_g3;
 				float3 Emission = 0;
@@ -2690,6 +2695,9 @@ Shader "Universal Render Pipeline/HD Lit"
 			}
 			#endif
 
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurfaceResponse.hlsl"
+			float _WetSurfacePackedEnabled;
+
 			void frag ( PackedVaryings input
 								#if defined( ASE_DEPTH_WRITE_ON )
 								,out float outputDepth : ASE_SV_DEPTH
@@ -2749,11 +2757,22 @@ Shader "Universal Render Pipeline/HD Lit"
 				half lerpResult45_g3 = lerp( _AlphaRemapMin , _AlphaRemapMax , BaseAlpha40_g3);
 				half FinalAlpha47_g3 = lerpResult45_g3;
 				
+				half4 FinalBaseColor39_g3 = temp_output_18_0_g3;
+				half4 temp_output_67_0 = FinalBaseColor39_g3;
+				
+				half MetallicMask20_g3 = tex2DNode19_g3.r;
+				half lerpResult31_g3 = lerp( _MetallicRemapMin , _MetallicRemapMax , MetallicMask20_g3);
+				half FinalMetallic33_g3 = lerpResult31_g3;
+				half temp_output_67_49 = FinalMetallic33_g3;
+				
 
 				float3 Normal = FinalNormal37_g3;
 				float Smoothness = FinalSmoothness29_g3;
 				float3 GBufferNormalTS = float3(0, 0, 1);
 				float GBufferSmoothness = 0.5;
+				float3 WetBaseColor = temp_output_67_0.rgb;
+				float WetMetallic = temp_output_67_49;
+				float3 WetSpecular = float3(0.5, 0.5, 0.5);
 				float Alpha = FinalAlpha47_g3;
 				float AlphaClipThreshold = _AlphaCutoff;
 
@@ -2775,6 +2794,15 @@ Shader "Universal Render Pipeline/HD Lit"
 					half s = Smoothness;
 				#endif
 				outSmoothness = half4(s, s, s, s);
+				if (_WetSurfacePackedEnabled > 0.5)
+				{
+					#ifdef _SPECULAR_SETUP
+						half3 sourceSpecular = WetSpecular;
+					#else
+						half3 sourceSpecular = lerp(half3(0.04, 0.04, 0.04), WetBaseColor, WetMetallic);
+					#endif
+					outSmoothness = PackWetSurfaceForwardData(s, Smoothness, sourceSpecular);
+				}
 
 				// Connected GBuffer ports replace the Forward chain for screen-space consumers only.
 				#if defined(_GBUFFER_NORMAL_OVERRIDE)
@@ -2814,7 +2842,7 @@ Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Versi
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;4;0,0;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;DepthOnly;0;2;DepthOnly;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;False;False;True;False;False;False;False;0;False;;False;False;False;False;False;False;False;True;True;0;True;_StencilRefDepth;255;False;;255;True;_StencilWriteMaskDepth;7;False;;3;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;False;False;True;1;LightMode=DepthOnly;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;5;0,0;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;Meta;0;3;Meta;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;2;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;1;LightMode=Meta;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;7;0,0;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;GBuffer;0;4;GBuffer;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;True;1;1;False;;0;False;;1;1;False;;0;False;;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;True;True;0;False;;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;1;LightMode=UniversalGBuffer;False;True;12;d3d11;gles;metal;vulkan;xboxone;xboxseries;playstation;ps4;ps5;switch;switch2;webgpu;0;;0;0;Standard;0;False;0
-Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;8;735.5916,649.83;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;17;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;ForwardGBuffer;0;7;ForwardGBuffer;2;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;4;False;;255;False;;4;False;;7;False;;3;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;2;False;;True;5;False;;False;True;1;LightMode=ForwardGBuffer;False;True;12;d3d11;gles;metal;vulkan;xboxone;xboxseries;playstation;ps4;ps5;switch;switch2;webgpu;0;;0;0;Standard;0;False;0
+Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;8;735.5916,649.83;Float;False;False;-1;2;AmplifyShaderEditor.MaterialInspector;0;17;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;ForwardGBuffer;0;7;ForwardGBuffer;5;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;3;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;4;False;;255;False;;4;False;;7;False;;3;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;2;False;;True;5;False;;False;True;1;LightMode=ForwardGBuffer;False;True;12;d3d11;gles;metal;vulkan;xboxone;xboxseries;playstation;ps4;ps5;switch;switch2;webgpu;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;68;735.5916,363.83;Float;False;False;-1;3;Illusion.Rendering.Editor.HybridLitShader;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;MotionVectors;0;5;MotionVectors;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;5;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;False;False;0;False;;False;False;False;False;False;False;False;False;False;False;False;False;True;1;LightMode=MotionVectors;False;False;0;;0;0;Standard;0;False;0
 Node;AmplifyShaderEditor.TemplateMultiPassMasterNode, AmplifyShaderEditor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null;69;735.5916,363.83;Float;False;False;-1;3;Illusion.Rendering.Editor.HybridLitShader;0;1;New Amplify Shader;368b90cdf7a92c5479634d4a85261b5e;True;XRMotionVectors;0;6;XRMotionVectors;0;False;False;False;False;False;False;False;False;False;False;False;False;True;0;False;;False;True;0;False;;False;False;False;False;False;False;False;False;False;True;False;0;False;;255;False;;255;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;True;1;False;;True;3;False;;True;True;0;False;;0;False;;True;4;RenderPipeline=UniversalPipeline;RenderType=Opaque=RenderType;Queue=Geometry=Queue=0;UniversalMaterialType=Lit;True;5;True;14;all;0;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;False;True;True;True;True;True;0;False;;False;False;False;False;False;False;False;True;True;1;False;;255;False;;1;False;;7;False;;3;False;;0;False;;0;False;;0;False;;0;False;;0;False;;0;False;;False;False;False;False;True;1;LightMode=XRMotionVectors;False;False;0;;0;0;Standard;0;False;0
 WireConnection;1;0;67;0
@@ -2824,5 +2852,7 @@ WireConnection;1;4;67;50
 WireConnection;1;5;67;51
 WireConnection;1;6;67;52
 WireConnection;1;7;61;0
+WireConnection;8;42;67;0
+WireConnection;8;43;67;49
 ASEEND*/
-//CHKSM=C4928E029EC841F852CE1528F047176BD715B77B
+//CHKSM=EBFD69EF4A53272A4FF1DBBADDC1A2D40DEDA961

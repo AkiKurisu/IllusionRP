@@ -55,11 +55,16 @@ namespace Illusion.Rendering
             if (!depthTexture.IsValid())
                 return;
 
-            TextureHandle forwardGBufferHandle = renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
+            WetSurfaceFrameData wetData = frameData.GetOrCreate<WetSurfaceFrameData>();
+            TextureHandle forwardGBufferHandle = wetData.ModifiedForwardBuffer.IsValid()
+                ? wetData.ModifiedForwardBuffer
+                : wetData.ForwardBuffer.IsValid()
+                    ? wetData.ForwardBuffer
+                    : renderGraph.ImportTexture(_rendererData.ForwardGBufferRT);
 
             using (var builder = renderGraph.AddRasterRenderPass<PassData>(DepthProfilerTag, out var passData, profilingSampler))
             {
-                builder.SetRenderAttachment(forwardGBufferHandle, 0);
+                builder.SetRenderAttachment(forwardGBufferHandle, 0, AccessFlags.ReadWrite);
                 builder.SetRenderAttachmentDepth(depthTexture, AccessFlags.ReadWrite);
 
                 var drawSettings = UniversalRenderingUtility.CreateDrawingSettings(ShaderTagIds, frameData, cameraData.defaultOpaqueSortFlags);

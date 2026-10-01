@@ -8,6 +8,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DBuffer.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurface.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RealtimeLights.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/EvaluateMaterial.hlsl"
@@ -173,14 +174,15 @@ half3 FabricLighting(BRDFData brdfData, Light light,
 
 half3 FabricGlobalIllumination(BRDFData brdfData, half3 bakedGI,
     BRDFOcclusionFactor aoFactor, float3 positionWS,
-    half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, uint renderingLayers)
+    half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, uint renderingLayers,
+    BRDFData ambientBRDF, half3 ambientNormalWS, half ambientFactor, bool hasWet)
 {
     half3 reflectVector = reflect(-viewDirectionWS, normalWS);
     half NoV = saturate(dot(normalWS, viewDirectionWS));
     half fresnelTerm = Pow4(1.0 - NoV);
     
     // ============================ Diffuse Part ================================== //
-    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI);
+    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, ambientNormalWS, normalizedScreenSpaceUV, bakedGI);
     half normalizationFactor = SampleProbeVolumeReflectionNormalize(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI, reflectVector);
     // ============================ Diffuse Part ================================== //
     
@@ -201,10 +203,27 @@ half3 FabricGlobalIllumination(BRDFData brdfData, half3 bakedGI,
         GetPreIntegratedFGDCharlieAndFabricLambert(NoV, brdfData.perceptualRoughness, brdfData.specular,
             specularFGD, diffuseFGD, reflectivity);
     #endif
-    indirectDiffuse *= diffuseFGD * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
+    if (hasWet)
+    {
+        float3 originalSpecularFGD;
+        float3 originalReflectivity;
+        #ifdef _SHEEN_VELET
+            GetPreIntegratedFGDGGXAndDisneyDiffuse(saturate(dot(ambientNormalWS, viewDirectionWS)),
+                ambientBRDF.perceptualRoughness, ambientBRDF.specular,
+                originalSpecularFGD, diffuseFGD, originalReflectivity);
+        #else
+            GetPreIntegratedFGDCharlieAndFabricLambert(saturate(dot(ambientNormalWS, viewDirectionWS)),
+                ambientBRDF.perceptualRoughness, ambientBRDF.specular,
+                originalSpecularFGD, diffuseFGD, originalReflectivity);
+        #endif
+        #if USE_DIFFUSE_LAMBERT_BRDF
+            diffuseFGD = 1;
+        #endif
+    }
+    indirectDiffuse *= diffuseFGD * ambientBRDF.diffuse * ambientFactor * aoFactor.indirectAmbientOcclusion;
     indirectSpecular *= specularFGD * aoFactor.indirectSpecularOcclusion;
 #else
-    indirectDiffuse *= brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
+    indirectDiffuse *= ambientBRDF.diffuse * ambientFactor * aoFactor.indirectAmbientOcclusion;
     // Reference: BRDF.hlsl EnvironmentBRDF
     indirectSpecular *= EnvironmentBRDFSpecular(brdfData, fresnelTerm) * aoFactor.indirectSpecularOcclusion;
 #endif
@@ -238,6 +257,8 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
 
     // NOTE: can modify "surfaceData"...
     InitializeBRDFData(surfaceData, brdfData);
+    WetSurfaceLightingState wetSurface = ApplyWetSurface(inputData.normalizedScreenSpaceUV,
+        surfaceData, inputData, brdfData);
 
     #if defined(DEBUG_DISPLAY)
     half4 debugColor;
@@ -266,13 +287,15 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
     Light mainLight = IllusionGetMainLight(inputData, shadowMask);
 
     // NOTE: We don't apply AO to the GI here because it's done in the lighting calculation below...
-    MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
+    MixRealtimeAndBakedGI(mainLight, wetSurface.originalNormal, inputData.bakedGI);
 
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     lightingData.giColor = FabricGlobalIllumination(brdfData, inputData.bakedGI,
                                               brdfOcclusionFactor, inputData.positionWS,
                                               inputData.normalWS, inputData.viewDirectionWS,
-                                              inputData.normalizedScreenSpaceUV, meshRenderingLayers);
+                                              inputData.normalizedScreenSpaceUV, meshRenderingLayers,
+                                              wetSurface.originalBRDF, wetSurface.originalNormal,
+                                              wetSurface.ambientFactor, wetSurface.hasWet);
     
 #ifdef _ANISOTROPY_ON
     // Calculate anisotropy bent normal

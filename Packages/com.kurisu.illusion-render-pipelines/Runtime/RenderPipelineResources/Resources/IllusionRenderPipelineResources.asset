@@ -32,6 +32,10 @@ MonoBehaviour:
   preIntegratedFGD_CharlieFabricLambertShader: {fileID: 4800000, guid: 6b5875a88815e6546ac591e537e0a211, type: 3}
   preIntegratedFGD_GGXDisneyDiffuseShader: {fileID: 4800000, guid: 202f6c6e19a562c439f3f0fe581e80cf, type: 3}
   dlssNeuralRenderingPrepareInputsShader: {fileID: 4800000, guid: fa83229e14a546d882f6994fe630c564, type: 3}
+  wetSurfaceMaskShader: {fileID: 4800000, guid: 2cf9b07a3bdf4a7c916662cc57d81885, type: 3}
+  wetSurfaceBlurNormalsShader: {fileID: 4800000, guid: a0daef4086fc4367bb61798faefc5a36, type: 3}
+  wetSurfaceSmoothnessShader: {fileID: 4800000, guid: 91a1584b9b8e448b85bc110e56016639, type: 3}
+  wetSurfaceBlueNoise: {fileID: 2800000, guid: ef935f144fe14c57a17bcfb739c25b8f, type: 3}
   areaLightShadowClearShader: {fileID: 4800000, guid: 32b46714b5c24e46b554b9f31b673958, type: 3}
   filterAreaLightCookiesShader: {fileID: 4800000, guid: 7f323cb18e9e629060cebadd3c2b7f64, type: 3}
   areaLightEmissiveMeshShader: {fileID: 4800000, guid: 5dac763599bb42239ac8c22b5ebae63b, type: 3}

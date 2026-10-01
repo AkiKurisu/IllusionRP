@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -79,6 +80,9 @@ namespace Illusion.Rendering
         #endregion Transparency
 
         #region Lighting
+
+        [SerializeField]
+        internal bool wetSurfaceDecals;
 
         /// <summary>
         /// Enable Screen Space Subsurface Scattering.
@@ -251,6 +255,13 @@ namespace Illusion.Rendering
         private SetKeywordPass _disableScreenSpaceGlobalIlluminationPass;
 
         private ForwardGBufferPass _forwardGBufferPass;
+
+        private WetSurfaceMaskPass _wetSurfaceMaskPass;
+
+        private WetSurfaceResetPass _wetSurfaceResetPass;
+
+        private readonly List<WetSurfaceDecalData> _wetSurfaceDecals = new();
+        private bool _reportedUnsupportedWetFormat;
         
         private StencilVRSGenerationPass _transparentStencilVRSPass;
 
@@ -383,6 +394,10 @@ namespace Illusion.Rendering
             _enableDeferredPass = new SetKeywordPass(IllusionShaderKeywords._DEFERRED_RENDERING_PATH, true, RenderPassEvent.BeforeRendering);
             _disableDeferredPass = new SetKeywordPass(IllusionShaderKeywords._DEFERRED_RENDERING_PATH, false, RenderPassEvent.BeforeRendering);
             _forwardGBufferPass = new ForwardGBufferPass(_rendererData);
+            _wetSurfaceMaskPass = new WetSurfaceMaskPass(_rendererData, _renderPipelineResources.wetSurfaceMaskShader,
+                _renderPipelineResources.wetSurfaceBlurNormalsShader,
+                _renderPipelineResources.wetSurfaceSmoothnessShader, _renderPipelineResources.wetSurfaceBlueNoise);
+            _wetSurfaceResetPass = new WetSurfaceResetPass();
             _depthPyramidPass = new DepthPyramidPass(_rendererData);
             _colorPyramidPass = new ColorPyramidPass(_rendererData);
             _copyHistoryColorPass = CopyHistoryColorPass.Create(_rendererData);
@@ -515,6 +530,25 @@ namespace Illusion.Rendering
             bool useTransparentOverdrawPass = orderIndependentTransparency && oitTransparentOverdrawPass && !isPreviewCamera;
 
             bool isOffscreenDepth = UniversalRenderingUtility.IsOffscreenDepthTexture(in renderingData.cameraData);
+            WetSurfaceDecalRegistry.Collect(_wetSurfaceDecals);
+            bool isWetCamera = renderingData.cameraData.cameraType == CameraType.SceneView ||
+                               (isGameCamera &&
+                                (!renderingData.cameraData.camera.TryGetComponent(out UniversalAdditionalCameraData wetCameraData) ||
+                                 wetCameraData.renderType == CameraRenderType.Base));
+            bool wetSurfaceRequested = wetSurfaceDecals && config.EnableWetSurfaceDecals &&
+                                       !isDeferred && isWetCamera && !isOffscreenDepth &&
+                                       _wetSurfaceDecals.Count > 0;
+            bool wetFormatSupported = !wetSurfaceRequested || ForwardGBufferPass.SupportsWetSurfaceFormat();
+            if (wetSurfaceRequested && !wetFormatSupported && !_reportedUnsupportedWetFormat)
+            {
+                Debug.LogError("Wet Surface requires a blendable RGBA8 Forward GBuffer format.");
+                _reportedUnsupportedWetFormat = true;
+            }
+            bool useWetSurface = wetSurfaceRequested && wetFormatSupported;
+            if (useWetSurface)
+                _wetSurfaceMaskPass.SetDecals(_wetSurfaceDecals);
+            _forwardGBufferPass.SetWetSurfaceEnabled(useWetSurface);
+            _wetSurfaceResetPass.SetEnabled(useWetSurface);
             bool prepareTransparentDepth = useDepthPostPass
                                            || (useTransparentScreenSpaceReflection && !isOffscreenDepth);
             bool useVrs = enableStencilVrs && ShadingRateInfo.supportsPerImageTile && config.EnableVrs;
@@ -531,6 +565,7 @@ namespace Illusion.Rendering
             renderer.EnqueuePass(screenSpaceReflection ? _enableScreenSpaceReflectionPass : _disableScreenSpaceReflectionPass);
             renderer.EnqueuePass(screenSpaceGlobalIllumination ? _enableScreenSpaceGlobalIlluminationPass : _disableScreenSpaceGlobalIlluminationPass);
             renderer.EnqueuePass(isDeferred ? _enableDeferredPass : _disableDeferredPass);
+            renderer.EnqueuePass(_wetSurfaceResetPass);
             renderer.EnqueuePass(precomputedRadianceTransferGI ? _enablePRTGIPass : _disablePRTGIPass);
             renderer.EnqueuePass(fragmentShadowBias ? _enableFragmentShadowBiasPass : _disableFragmentShadowBiasPass);
             // @IllusionRP: the tier keyword stays resident while the feature is on; volume / config only zero the light count.
@@ -560,6 +595,10 @@ namespace Illusion.Rendering
             if (useForwardGBuffer)
             {
                 renderer.EnqueuePass(_forwardGBufferPass);
+            }
+            if (useWetSurface)
+            {
+                renderer.EnqueuePass(_wetSurfaceMaskPass);
             }
 
             if (useVrs)
@@ -827,6 +866,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _waterSSRDataPass);
             SafeDispose(ref _screenSpaceGlobalIlluminationPass);
             SafeDispose(ref _forwardGBufferPass);
+            SafeDispose(ref _wetSurfaceMaskPass);
             SafeDispose(ref _transparentStencilVRSPass);
             SafeDispose(ref _depthPyramidPass);
             SafeDispose(ref _convolutionBloomPass);

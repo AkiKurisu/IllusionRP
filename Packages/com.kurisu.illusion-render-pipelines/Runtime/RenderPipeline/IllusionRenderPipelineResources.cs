@@ -14,6 +14,15 @@ namespace Illusion.Rendering
         [Header("DLSS Neural Rendering")]
         public Shader dlssNeuralRenderingPrepareInputsShader;
 
+        [Header("Wet Surface")]
+        public Shader wetSurfaceMaskShader;
+
+        public Shader wetSurfaceBlurNormalsShader;
+
+        public Shader wetSurfaceSmoothnessShader;
+
+        public Texture2D wetSurfaceBlueNoise;
+
         [Header("Area Lights")]
         public Shader areaLightShadowClearShader;
 
