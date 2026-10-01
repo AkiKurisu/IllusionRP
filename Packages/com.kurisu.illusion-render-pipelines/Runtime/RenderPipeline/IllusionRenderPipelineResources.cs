@@ -19,6 +19,8 @@ namespace Illusion.Rendering
 
         public Shader filterAreaLightCookiesShader;
 
+        public Shader areaLightEmissiveMeshShader;
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         // ReSharper disable once UnusedMember.Global
         public Shader[] debugShaders;
