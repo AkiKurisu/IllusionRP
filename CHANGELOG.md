@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add Display Emissive Mesh to rectangle area lights, as in HDRP: a generated mesh shows the emitting face with the light's radiance and cookie.
+- Add wet surface decals: registered box and sphere volumes wet or dry Forward opaque surfaces through a screen-space mask that darkens and smooths Lit, Skin, Fabric and Hair materials and patches the normals and smoothness read by SSR, SSGI and ambient occlusion.
 
 ### Changed
 

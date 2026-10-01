@@ -97,6 +97,8 @@ namespace Illusion.Rendering
                     c => c.EnablePrecomputedRadianceTransferGlobalIllumination, (c, v) => c.EnablePrecomputedRadianceTransferGlobalIllumination = v),
                 Toggle("Screen Space Ambient Occlusion", "Screen space ambient occlusion.",
                     c => c.EnableScreenSpaceAmbientOcclusion, (c, v) => c.EnableScreenSpaceAmbientOcclusion = v),
+                Toggle("Wet Surface Decals", "Project wet and dry surface decals in Forward rendering.",
+                    c => c.EnableWetSurfaceDecals, (c, v) => c.EnableWetSurfaceDecals = v),
                 Toggle("Area Lights", "Rectangle area lights.",
                     c => c.EnableAreaLights, (c, v) => c.EnableAreaLights = v));
             yield return Section("Shadows",

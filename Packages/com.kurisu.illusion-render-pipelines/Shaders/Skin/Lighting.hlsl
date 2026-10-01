@@ -11,6 +11,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DBuffer.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurface.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RealtimeLights.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Core.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/EvaluateMaterial.hlsl"
@@ -216,6 +217,13 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
 
     // NOTE: can modify "surfaceData"...
     InitializeBRDFData(surfaceData, brdfData);
+    WetSurfaceLightingState wetSurface = ApplyWetSurface(inputData.normalizedScreenSpaceUV,
+        surfaceData, inputData, brdfData, skinData.WetSourceSpecular);
+    if (wetSurface.hasWet)
+    {
+        skinData.F0 = brdfData.specular;
+        brdfData.albedo *= 1 - wetSurface.darkness;
+    }
 
 #if defined(DEBUG_DISPLAY)
     half4 debugColor;
@@ -236,23 +244,24 @@ half4 SkinDiffuse(InputData inputData, SurfaceData surfaceData, SkinData skinDat
     Light mainLight = IllusionGetMainLight(inputData, shadowMask);
 
     // NOTE: We don't apply AO to the GI here because it's done in the lighting calculation below...
-    MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
+    MixRealtimeAndBakedGI(mainLight, wetSurface.originalNormal, inputData.bakedGI);
     
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     
     // Calculate low frequency normal for diffuse GI
     InputData inputDataLowFreq = inputData;
     half normalMix = lerp(skinData.LobeWeight, 1, skinData.Wet);
-    half3 normalWS_low = lerp(inputData.normalWS, skinData.GeomNormal, normalMix);
+    half3 normalWS_low = lerp(wetSurface.originalNormal, skinData.GeomNormal, normalMix);
     inputDataLowFreq.normalWS = normalize(normalWS_low);
     
 #if PRE_INTEGRATED_FGD && !USE_DIFFUSE_LAMBERT_BRDF
-    lightingData.giColor = SkinIBLDiffuse(brdfData, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
+    lightingData.giColor = SkinIBLDiffuse(wetSurface.originalBRDF, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
         inputDataLowFreq, skinData.PerceptualRoughnessMix, meshRenderingLayers);
 #else
-    lightingData.giColor = SkinEnvironmentDiffuse(brdfData, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
+    lightingData.giColor = SkinEnvironmentDiffuse(wetSurface.originalBRDF, inputData.bakedGI, brdfAOFactor.indirectAmbientOcclusion,
         inputDataLowFreq, meshRenderingLayers);
 #endif
+    lightingData.giColor *= wetSurface.ambientFactor;
 
 #ifdef _LIGHT_LAYERS
     if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))
@@ -350,6 +359,18 @@ half4 SkinSpecular(InputData inputData, SurfaceData surfaceData, SkinData SkinDa
 
     // NOTE: can modify "surfaceData"...
     InitializeBRDFData(surfaceData, brdfData);
+    WetSurfaceLightingState wetSurface = ApplyWetSurface(inputData.normalizedScreenSpaceUV,
+        surfaceData, inputData, brdfData);
+    if (wetSurface.hasWet)
+    {
+        half secondarySmoothness = 1 - SkinData.PerceptualRoughness;
+        secondarySmoothness = ApplyWetSurfaceSmoothness(secondarySmoothness, wetSurface.darkness,
+            wetSurface.specularWeight);
+        SkinData.PerceptualRoughness = 1 - secondarySmoothness;
+        SkinData.PerceptualRoughnessMix = lerp(brdfData.perceptualRoughness,
+            SkinData.PerceptualRoughness, SkinData.LobeWeight);
+        SkinData.F0 = brdfData.specular;
+    }
 
 #if defined(DEBUG_DISPLAY)
     half4 debugColor;
@@ -371,7 +392,7 @@ half4 SkinSpecular(InputData inputData, SurfaceData surfaceData, SkinData SkinDa
     Light mainLight = IllusionGetMainLight(inputData, shadowMask);
 
     // NOTE: We don't apply AO to the GI here because it's done in the lighting calculation below...
-    MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
+    MixRealtimeAndBakedGI(mainLight, wetSurface.originalNormal, inputData.bakedGI);
     
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     

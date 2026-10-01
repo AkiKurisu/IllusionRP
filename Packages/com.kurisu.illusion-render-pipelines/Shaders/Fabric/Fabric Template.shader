@@ -3602,6 +3602,9 @@
 			}
 			#endif
 
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurfaceResponse.hlsl"
+			float _WetSurfacePackedEnabled;
+
 			void frag ( PackedVaryings input
 								#if defined( ASE_DEPTH_WRITE_ON )
 								,out float outputDepth : ASE_SV_DEPTH
@@ -3650,6 +3653,9 @@
 				float Smoothness = /*ase_frag_out:Smoothness;Float;0;-1;_Smoothness*/0.5/*end*/;
 				float3 GBufferNormalTS = /*ase_frag_out:GBuffer Normal;Float3;40;40*/float3(0, 0, 1)/*end*/;
 				float GBufferSmoothness = /*ase_frag_out:GBuffer Smoothness;Float;41;41*/0.5/*end*/;
+				float3 WetBaseColor = /*ase_frag_out:Wet Base Color;Float3;42;42*/float3(0.5, 0.5, 0.5)/*end*/;
+				float WetMetallic = /*ase_frag_out:Wet Metallic;Float;43;43*/0/*end*/;
+				float3 WetSpecular = /*ase_frag_out:Wet Specular;Float3;44;44*/float3(0.5, 0.5, 0.5)/*end*/;
 				float Alpha = /*ase_frag_out:Alpha;Float;6;-1;_Alpha*/1/*end*/;
 				float AlphaClipThreshold = /*ase_frag_out:Alpha Clip Threshold;Float;7;-1;_AlphaClip*/0.5/*end*/;
 
@@ -3671,6 +3677,15 @@
 					half s = Smoothness;
 				#endif
 				outSmoothness = half4(s, s, s, s);
+				if (_WetSurfacePackedEnabled > 0.5)
+				{
+					#ifdef _SPECULAR_SETUP
+						half3 sourceSpecular = WetSpecular;
+					#else
+						half3 sourceSpecular = lerp(half3(0.04, 0.04, 0.04), WetBaseColor, WetMetallic);
+					#endif
+					outSmoothness = PackWetSurfaceForwardData(s, Smoothness, sourceSpecular);
+				}
 
 				// Connected GBuffer ports replace the Forward chain for screen-space consumers only.
 				#if defined(_GBUFFER_NORMAL_OVERRIDE)

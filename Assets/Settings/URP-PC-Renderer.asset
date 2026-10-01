@@ -75,6 +75,7 @@ MonoBehaviour:
   preferComputeShader: 1
   enableStencilVrs: 0
   worldScale: 1
+  wetSurfaceDecals: 1
   orderIndependentTransparency: 1
   oitFilterLayer:
     serializedVersion: 2

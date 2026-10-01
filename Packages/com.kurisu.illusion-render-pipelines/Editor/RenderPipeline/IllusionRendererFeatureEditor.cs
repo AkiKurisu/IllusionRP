@@ -22,7 +22,8 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _transparentScreenSpaceReflection;
         private SerializedProperty _oitTransparentOverdrawPass;
 
-        // Character Rendering Settings
+        // Lighting Settings
+        private SerializedProperty _wetSurfaceDecals;
         private SerializedProperty _subsurfaceScattering;
         private SerializedProperty _dlssNeuralRendering;
 
@@ -74,7 +75,8 @@ namespace Illusion.Rendering.Editor
             _transparentScreenSpaceReflection = Properties.Find(feature => feature.transparentScreenSpaceReflection);
             _oitTransparentOverdrawPass = Properties.Find(feature => feature.oitTransparentOverdrawPass);
 
-            // Character Rendering Settings
+            // Lighting Settings
+            _wetSurfaceDecals = Properties.Find(feature => feature.wetSurfaceDecals);
             _subsurfaceScattering = Properties.Find(feature => feature.subsurfaceScattering);
             _dlssNeuralRendering = Properties.Find(feature => feature.dlssNeuralRendering);
 
@@ -117,8 +119,8 @@ namespace Illusion.Rendering.Editor
             // Transparency Settings
             DrawTransparencySettings();
 
-            // Character Rendering Settings
-            DrawCharacterRenderingSettings();
+            // Lighting Settings
+            DrawLightingSettings();
 
             // Shadow Settings
             DrawShadowSettings();
@@ -167,10 +169,11 @@ namespace Illusion.Rendering.Editor
             EditorGUILayout.Space();
         }
 
-        private void DrawCharacterRenderingSettings()
+        private void DrawLightingSettings()
         {
             if (Foldout("Lighting", true))
             {
+                EditorGUILayout.PropertyField(_wetSurfaceDecals, Styles.WetSurfaceDecalsLabel);
                 EditorGUILayout.PropertyField(_subsurfaceScattering, Styles.SubsurfaceScatteringLabel);
                 EditorGUILayout.PropertyField(_dlssNeuralRendering, Styles.DLSSNeuralRenderingLabel);
             }
@@ -264,6 +267,8 @@ namespace Illusion.Rendering.Editor
                 "Enable to overdraw universal transparent objects after rendering OIT objects.");
 
             // Lighting Settings
+            public static readonly GUIContent WetSurfaceDecalsLabel = new("Wet Surface Decals",
+                "Enable wet and dry surface projection in Forward rendering.");
             public static readonly GUIContent SubsurfaceScatteringLabel = new("Subsurface Scattering",
                 "Enable Screen Space Subsurface Scattering.");
             public static readonly GUIContent DLSSNeuralRenderingLabel = new("DLSS Neural Rendering",

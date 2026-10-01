@@ -15,6 +15,7 @@ struct SkinData
     half3 Scatter;
     half3 Transmittance;
     half3 F0;
+    half3 WetSourceSpecular;
     half Thickness;
     half LobeWeight;                            // Dual lobes mix weight.
     half Smoothness;                            // Lobe 2 smoothness.

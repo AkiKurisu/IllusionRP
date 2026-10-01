@@ -11,14 +11,15 @@
 half3 HybridGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, float clearCoatMask,
                                half3 bakedGI, BRDFOcclusionFactor aoFactor, float3 positionWS,
                                half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV,
-                               uint renderingLayers)
+                               uint renderingLayers, BRDFData ambientBRDFData,
+                               half3 ambientNormalWS, half ambientFactor, bool hasWet)
 {
     half3 reflectVector = reflect(-viewDirectionWS, normalWS);
     half NoV = saturate(dot(normalWS, viewDirectionWS));
     half fresnelTerm = Pow4(1.0 - NoV);
 
     // ============================ Diffuse Part ================================== //
-    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI);
+    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, ambientNormalWS, normalizedScreenSpaceUV, bakedGI);
     half normalizationFactor = SampleProbeVolumeReflectionNormalize(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI, reflectVector);
     // ============================ Diffuse Part ================================== //
 
@@ -55,13 +56,23 @@ half3 HybridGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, fl
     #if USE_DIFFUSE_LAMBERT_BRDF
         diffuseFGD = 1;
     #endif
-    indirectDiffuse = indirectDiffuse * diffuseFGD * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
+    if (hasWet)
+    {
+        float3 originalSpecularFGD;
+        float3 originalReflectivity;
+        GetPreIntegratedFGDGGXAndDisneyDiffuse(saturate(dot(ambientNormalWS, viewDirectionWS)),
+            ambientBRDFData.perceptualRoughness, ambientBRDFData.specular,
+            originalSpecularFGD, diffuseFGD, originalReflectivity);
+    }
+    indirectDiffuse = indirectDiffuse * diffuseFGD * ambientBRDFData.diffuse *
+        ambientFactor * aoFactor.indirectAmbientOcclusion;
     indirectSpecular = ApplyGGXEnvironmentEnergyCompensation(
         indirectSpecular * specularFGD,
         brdfData.specular,
         reflectivity) * aoFactor.indirectSpecularOcclusion;
 #else
-    indirectDiffuse = indirectDiffuse * brdfData.diffuse * aoFactor.indirectAmbientOcclusion;
+    indirectDiffuse = indirectDiffuse * ambientBRDFData.diffuse *
+        ambientFactor * aoFactor.indirectAmbientOcclusion;
     // Reference: BRDF.hlsl EnvironmentBRDF
     indirectSpecular = indirectSpecular * EnvironmentBRDFSpecular(brdfData, fresnelTerm) * aoFactor.indirectSpecularOcclusion;
 #endif
@@ -89,6 +100,16 @@ half3 HybridGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, fl
 #else
     return color;
 #endif
+}
+
+half3 HybridGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, float clearCoatMask,
+                               half3 bakedGI, BRDFOcclusionFactor aoFactor, float3 positionWS,
+                               half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV,
+                               uint renderingLayers)
+{
+    return HybridGlobalIllumination(brdfData, brdfDataClearCoat, clearCoatMask, bakedGI,
+        aoFactor, positionWS, normalWS, viewDirectionWS, normalizedScreenSpaceUV,
+        renderingLayers, brdfData, normalWS, 1, false);
 }
 
 #endif

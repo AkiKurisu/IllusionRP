@@ -24,6 +24,7 @@ namespace Illusion.Rendering
         private int _screenWidth;
 
         private readonly IllusionRendererData _rendererData;
+        private TextureHandle _wetForwardBuffer;
 
         private readonly bool _transparent;
 
@@ -404,6 +405,8 @@ namespace Illusion.Rendering
         {
             using (var builder = renderGraph.AddRasterRenderPass<TracingPassData>("SSR Tracing (Raster)", out var passData))
             {
+                if (!_transparent && _wetForwardBuffer.IsValid())
+                    builder.UseTexture(_wetForwardBuffer, AccessFlags.Read);
                 var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceReflection>();
                 var passIndex = (int)volume.mode.value;
 
@@ -613,6 +616,8 @@ namespace Illusion.Rendering
             using (var builder = renderGraph.AddComputePass<CombinedSSRPassData>(
                        _transparent ? "Render Transparent SSR" : "Render SSR", out var passData))
             {
+                if (!_transparent && _wetForwardBuffer.IsValid())
+                    builder.UseTexture(_wetForwardBuffer, AccessFlags.Read);
                 builder.EnableAsyncCompute(useAsyncCompute);
                 
                 var volume = VolumeManager.instance.stack.GetComponent<ScreenSpaceReflection>();
@@ -821,6 +826,14 @@ namespace Illusion.Rendering
         
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            WetSurfaceFrameData wetData = frameData.GetOrCreate<WetSurfaceFrameData>();
+            _wetForwardBuffer = wetData.ModifiedForwardBuffer.IsValid()
+                ? wetData.ModifiedForwardBuffer
+                : wetData.ForwardBuffer.IsValid()
+                    ? wetData.ForwardBuffer
+                    : _rendererData.ForwardGBufferRT != null
+                        ? renderGraph.ImportTexture(_rendererData.ForwardGBufferRT)
+                        : TextureHandle.nullHandle;
             if (_transparent)
             {
                 RecordTransparentRenderGraph(renderGraph, frameData);

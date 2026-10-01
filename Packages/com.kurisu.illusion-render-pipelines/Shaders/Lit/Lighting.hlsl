@@ -15,6 +15,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/LightingData.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/BRDF.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/GlobalIllumination.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurface.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
 
 
@@ -115,6 +116,8 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
 
     // NOTE: can modify "surfaceData"...
     InitializeBRDFData(surfaceData, brdfData);
+    WetSurfaceLightingState wetSurface = ApplyWetSurface(inputData.normalizedScreenSpaceUV,
+        surfaceData, inputData, brdfData);
 
     #if defined(DEBUG_DISPLAY)
     half4 debugColor;
@@ -145,14 +148,16 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
     Light mainLight = IllusionGetMainLight(inputData, shadowMask);
 
     // NOTE: We don't apply AO to the GI here because it's done in the lighting calculation below...
-    MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
+    MixRealtimeAndBakedGI(mainLight, wetSurface.originalNormal, inputData.bakedGI);
 
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     
     lightingData.giColor = HybridGlobalIllumination(brdfData, brdfDataClearCoat, surfaceData.clearCoatMask,
                                               inputData.bakedGI, brdfOcclusionFactor, inputData.positionWS,
                                               inputData.normalWS, inputData.viewDirectionWS,
-                                              inputData.normalizedScreenSpaceUV, meshRenderingLayers);
+                                              inputData.normalizedScreenSpaceUV, meshRenderingLayers,
+                                              wetSurface.originalBRDF, wetSurface.originalNormal,
+                                              wetSurface.ambientFactor, wetSurface.hasWet);
 
 #ifdef _LIGHT_LAYERS
     if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))
