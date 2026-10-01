@@ -81,14 +81,18 @@ Shader "Hidden/IllusionRP/WetSurfaceMask"
                 _WetYInputStart, _WetYInputExtent, _WetYOutputStart, _WetYOutputEnd);
         }
 
+        float3 AxisScale()
+        {
+            return float3(length(_WetLocalToWorld._m00_m10_m20), length(_WetLocalToWorld._m01_m11_m21),
+                length(_WetLocalToWorld._m02_m12_m22));
+        }
+
         float EvaluateLayers(float3 coordinates, float3 normalWS)
         {
             float result = 0;
             if (_WetLayerMode == 2)
             {
-                float3 localNormal = mul(transpose((float3x3)_WetLocalToWorld), normalWS);
-                // Divide by the matrix diagonal, not the axis scale: rotation intentionally changes the weights.
-                localNormal /= float3(_WetLocalToWorld._m00, _WetLocalToWorld._m11, _WetLocalToWorld._m22);
+                float3 localNormal = mul(transpose((float3x3)_WetLocalToWorld), normalWS) / AxisScale();
                 float3 weights = pow(abs(normalize(localNormal)), _WetFaceSharpness);
                 weights /= dot(weights, float3(1, 1, 1));
                 float2 uvX = coordinates.zy * _WetXScaleOffset.xy + _WetXScaleOffset.zw;
@@ -125,8 +129,7 @@ Shader "Hidden/IllusionRP/WetSurfaceMask"
             edge = edge * edge * (3 - 2 * edge);
             float3 coordinates = local;
             if (_WetProjectionMode == 1)
-                coordinates = worldPosition / float3(_WetWorldToLocal._m00, _WetWorldToLocal._m11, _WetWorldToLocal._m22)
-                    * _WetWorldProjectionScale;
+                coordinates = worldPosition * AxisScale() * _WetWorldProjectionScale;
             float3 normalWS = normalize(LOAD_TEXTURE2D_X(_WetSourceNormal, pixel).xyz);
             float wetness = edge * EvaluateLayers(coordinates + 0.5, normalWS) * _WetSaturation;
             FragmentOutput output;
