@@ -49,6 +49,14 @@ struct IllusionPathPayload
     uint2   motion;
 };
 
+struct PathTracingInstance
+{
+    uint previousPositionBase;
+    uint culledSubMeshes;
+    uint scatteringGroup;
+};
+StructuredBuffer<PathTracingInstance> _PathTracingInstanceData;
+
 struct PathTracingMaterialData
 {
     float3 AttenuationColor;

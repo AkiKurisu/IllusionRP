@@ -198,6 +198,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     hdrpPayload.pixelCoord = pixelPos;
     g_HDRPSampleIndex = Bridge::getSampleIndex();
     g_HDRPVertexIndex = pathVertexIndex;
+    g_HDRPScatteringGroup = _PathTracingInstanceData[payload.instanceID].scatteringGroup;  // @IllusionRP
     // @IllusionRP: RTXPT vertex 1 is HDRP segment 0; retain the conditionally remapped Skin sample.
     float4 materialSamples = family == PT_FAMILY_SKIN
         ? Illusion::GetSample4D(pixelPos, g_HDRPSampleIndex, 4 * (pathVertexIndex - 1))

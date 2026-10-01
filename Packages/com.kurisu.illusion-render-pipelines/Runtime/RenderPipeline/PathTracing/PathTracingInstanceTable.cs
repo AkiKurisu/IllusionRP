@@ -14,6 +14,7 @@ namespace Illusion.Rendering.PathTracing
 
         public uint PreviousPositionBase;
         public uint CulledSubMeshes;
+        public uint ScatteringGroup;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -94,12 +95,15 @@ namespace Illusion.Rendering.PathTracing
                 int culledStart = _culledSubMeshes.Count;
                 AddCulledSubMeshes(renderer, _materials);
                 int culledCount = _culledSubMeshes.Count - culledStart;
+                var group = renderer.GetComponentInParent<PathTracingScatteringGroup>();
+                uint scatteringGroup = unchecked((uint)(group ? group.GetInstanceID() : renderer.GetInstanceID()));
                 _data.Add(new PathTracingInstanceData
                 {
                     PreviousPositionBase = PathTracingInstanceData.NoPositionHistory,
-                    CulledSubMeshes = culledCount > 0 ? (uint)culledStart << 8 | (uint)culledCount : 0u
+                    CulledSubMeshes = culledCount > 0 ? (uint)culledStart << 8 | (uint)culledCount : 0u,
+                    ScatteringGroup = scatteringGroup
                 });
-                hash = HashCode.Combine(hash, culledCount);
+                hash = HashCode.Combine(hash, culledCount, scatteringGroup);
                 for (int j = culledStart; j < _culledSubMeshes.Count; j++)
                     hash = HashCode.Combine(hash, _culledSubMeshes[j].IndexStart, _culledSubMeshes[j].Faces);
                 foreach (var material in _materials)

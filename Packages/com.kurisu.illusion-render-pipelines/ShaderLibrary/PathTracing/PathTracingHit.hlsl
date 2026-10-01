@@ -51,9 +51,7 @@ struct PathTracingHitContext
     float3 barycentrics;
 };
 
-// @IllusionRP: instance ABI: x = previous-position base (or PT_NO_POSITION_HISTORY), y = packed sub-mesh culling range.
 ByteAddressBuffer _PathTracingPreviousPositions;
-StructuredBuffer<uint2> _PathTracingInstanceData;
 StructuredBuffer<uint2> _PathTracingCulledSubMeshes;
 StructuredBuffer<uint2> _PathTracingMaterialRanges;
 StructuredBuffer<uint2> _PathTracingSubMeshMaterials;
@@ -221,7 +219,7 @@ float4 PathTracingPseudoScreenPosition(IllusionPathPayload payload)
 float3 PathTracingPreviousPositionWS(PathTracingHitContext hit)
 {
     float3 positionOS = hit.vertex.positionOS;
-    uint historyBase = _PathTracingInstanceData[InstanceID()].x;
+    uint historyBase = _PathTracingInstanceData[InstanceID()].previousPositionBase;
     if (historyBase != PT_NO_POSITION_HISTORY)
     {
         float3 p0 = asfloat(_PathTracingPreviousPositions.Load3((historyBase + hit.indices.x) * 12));
@@ -256,7 +254,7 @@ void PathTracingWriteGeometry(inout IllusionPathPayload payload, PathTracingHitC
 
 bool PathTracingIsCulledFace()
 {
-    uint range = _PathTracingInstanceData[InstanceID()].y;
+    uint range = _PathTracingInstanceData[InstanceID()].culledSubMeshes;
     uint first = range >> 8u;
     uint end = first + (range & 0xFFu);
     uint indexStart = GetMeshInfo().indexStart;
@@ -281,10 +279,17 @@ bool PathTracingIsCulledFace()
     return (culled & (frontFacing ? PT_CULL_FRONT : PT_CULL_BACK)) != 0u;
 }
 
-// @IllusionRP: all Unity material passes contribute the nearest exit normal to HDRP random walks.
+// Random walks exit through the nearest surface of their own scattering group; payload.parameters.w holds the group.
 void PathTracingRecordRandomWalk(inout IllusionPathPayload payload, AttributeData attributes)
 {
-    if (PathTracingGetRayKind(payload) == PT_RAY_RANDOM_WALK && RayTCurrent() < payload.hitT)
+    if (PathTracingGetRayKind(payload) != PT_RAY_RANDOM_WALK)
+        return;
+    if (_PathTracingInstanceData[InstanceID()].scatteringGroup != payload.parameters.w)
+    {
+        IgnoreHit();
+        return;
+    }
+    if (RayTCurrent() < payload.hitT)
     {
         PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
         payload.hitT = RayTCurrent();

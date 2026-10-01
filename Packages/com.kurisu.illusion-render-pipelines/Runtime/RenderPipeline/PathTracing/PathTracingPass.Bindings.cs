@@ -24,6 +24,7 @@ namespace Illusion.Rendering.PathTracing
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_PathTracingMiniConstants, resources.MiniConstants);
             data.World.Emissive.Bind(cmd, shader);
             data.World.Scene.Instances.MaterialTable.Bind(cmd, shader);
+            cmd.SetRayTracingBufferParam(shader, ShaderIDs._PathTracingInstanceData, data.World.Scene.Instances.Buffer);
 
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_OutputColor, data.Radiance);
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_Depth, data.Depth);
@@ -77,6 +78,7 @@ namespace Illusion.Rendering.PathTracing
         private static class ShaderIDs
         {
             public static readonly int SceneBVH = Shader.PropertyToID("SceneBVH");
+            public static readonly int _PathTracingInstanceData = Shader.PropertyToID("_PathTracingInstanceData");
             public static readonly int t_PathTracingConstants = Shader.PropertyToID("t_PathTracingConstants");
             public static readonly int t_PathTracingMiniConstants = Shader.PropertyToID("t_PathTracingMiniConstants");
             public static readonly int u_OutputColor = Shader.PropertyToID("u_OutputColor");

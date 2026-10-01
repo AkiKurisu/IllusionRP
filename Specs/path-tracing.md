@@ -161,6 +161,8 @@ A Diffusion Profile defines the scale, scattering properties, and transmission p
 
 Unassigned or unmatched profiles use neutral semantics and must not accidentally select the first valid profile. The number of valid profiles must remain within supported capacity. Each camera must receive a complete valid state rather than depend on values left by a previous camera.
 
+A Random Walk exits only through surfaces of its own scattering group. A renderer is its own group by default; a `PathTracingScatteringGroup` component joins the renderers below it into one group, so meshes that together bound one volume share exits, while unrelated objects stay separate even when they touch or overlap. Group assignment is scene input: it does not change free-path sampling, scattering coefficients, or the volume model, and the exit surface still applies its coverage. This is a deliberate difference from HDRP, whose random walks exit through any surface.
+
 Random Walk free paths, throughput, and probability densities must come from the same volume model. Random samples conditionally remapped during material selection must continue into the corresponding sampling step without changing their probability semantics between selection and sampling.
 
 Random sampling depends on camera pixel, sample, and path segment identity. Subsurface scattering does not use screen-space convolution as its volume propagation process. Viewport size changes or world translations must not create fixed hard boundaries in scattering.
