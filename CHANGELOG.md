@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix the velvet Fabric sheen, whose Ashikhmin distribution multiplied by its normalization and sin⁴ terms instead of dividing: it left almost no sheen facing the light and an overbright rim at grazing angles.
 - Fix Water SSR data reading the pre-water depth without declaring it as a render graph input.
 - Fix reflection probe cubemap captures applying the camera exposure, which left probe radiance display-exposed instead of scene-linear.
+- Fix the HD Lit, HD Fabric, HD Hair and HD Skin shaders lagging behind their templates: regenerated, they gain the GBuffer and PostDepthOnly passes, the GBuffer override ports and the area light shadow variants.
 
 ## [1.3.1] - 2026-9-19
 
