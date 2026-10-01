@@ -68,7 +68,7 @@ namespace Illusion.Rendering.AreaLights
             var meshTransform = _emissiveMesh.transform;
             var lossyScale = transform.lossyScale;
             meshTransform.localPosition = Vector3.zero;
-            meshTransform.localRotation = Quaternion.Euler(0.0f, 180.0f, 0.0f);
+            meshTransform.localRotation = Quaternion.identity;
             meshTransform.localScale = new Vector3(light.areaSize.x / lossyScale.x, light.areaSize.y / lossyScale.y, 1.0f);
             _emissiveMesh.layer = gameObject.layer;
             _emissiveMeshRenderer.enabled = isActiveAndEnabled && light.enabled;
@@ -94,8 +94,9 @@ namespace Illusion.Rendering.AreaLights
             if (PrefabUtility.IsPartOfPrefabAsset(this))
                 return false;
 #endif
-            var shader = Resources.Load<IllusionRenderPipelineResources>(nameof(IllusionRenderPipelineResources))?.areaLightEmissiveMeshShader;
-            if (!shader)
+            var resources = Resources.Load<IllusionRenderPipelineResources>(nameof(IllusionRenderPipelineResources));
+            var shader = resources ? resources.areaLightEmissiveMeshShader : null;
+            if (!shader || !resources.areaLightEmissiveQuadMesh)
                 return false;
 
             if (!_emissiveMesh)
@@ -112,7 +113,7 @@ namespace Illusion.Rendering.AreaLights
                 _emissiveMesh.transform.SetParent(transform, false);
             }
 
-            _emissiveMesh.GetComponent<MeshFilter>().sharedMesh = Resources.GetBuiltinResource<Mesh>("Quad.fbx");
+            _emissiveMesh.GetComponent<MeshFilter>().sharedMesh = resources.areaLightEmissiveQuadMesh;
             _emissiveMeshRenderer = _emissiveMesh.GetComponent<MeshRenderer>();
             _emissiveMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
             _emissiveMeshRenderer.receiveShadows = false;
