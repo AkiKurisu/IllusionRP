@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Move the Illusion Rendering Debugger into Unity's Rendering Debugger as the Illusion Features and Illusion Debug panels; its menu item now opens the Rendering Debugger on the Illusion Features panel.
+- Show the rectangle area light sample through Display Emissive Mesh instead of an Unlit stand-in.
 
 ### Fixed
 
