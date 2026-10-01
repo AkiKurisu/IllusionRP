@@ -11,7 +11,7 @@ namespace Illusion.Rendering.AreaLights
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Light))]
     [AddComponentMenu("Rendering/Illusion Additional Light Data")]
-    public class IllusionAdditionalLightData : MonoBehaviour
+    public partial class IllusionAdditionalLightData : MonoBehaviour
     {
         internal const float k_MinEvsmExponent = 5.0f;
         internal const float k_MaxEvsmExponent = 42.0f;
@@ -147,6 +147,18 @@ namespace Illusion.Rendering.AreaLights
         {
             get => m_AreaLightCookie;
             set => m_AreaLightCookie = value;
+        }
+
+        [SerializeField]
+        bool m_DisplayAreaLightEmissiveMesh = false;
+
+        /// <summary>
+        /// Whether a generated mesh shows the emitting face of a rectangle light: its radiance times its cookie.
+        /// </summary>
+        public bool displayAreaLightEmissiveMesh
+        {
+            get => m_DisplayAreaLightEmissiveMesh;
+            set => m_DisplayAreaLightEmissiveMesh = value;
         }
 
         [SerializeField, Range(k_MinShadowResolution, k_MaxShadowResolution)]

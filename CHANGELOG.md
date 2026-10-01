@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.3.2] - Unreleased
 
+### Added
+
+- Add Display Emissive Mesh to rectangle area lights, as in HDRP: a generated mesh shows the emitting face with the light's radiance and cookie.
+
 ### Changed
 
 - Move the Illusion Rendering Debugger into Unity's Rendering Debugger as the Illusion Features and Illusion Debug panels; its menu item now opens the Rendering Debugger on the Illusion Features panel.

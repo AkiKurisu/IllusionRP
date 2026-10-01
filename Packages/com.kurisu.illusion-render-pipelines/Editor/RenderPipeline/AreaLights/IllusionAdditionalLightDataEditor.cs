@@ -21,6 +21,8 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _barnDoorLength;
         private SerializedProperty _areaLightCookie;
 
+        private SerializedProperty _displayAreaLightEmissiveMesh;
+
         private SerializedProperty _shadowResolution;
         private SerializedProperty _areaLightShadowCone;
         private SerializedProperty _shadowNearPlane;
@@ -56,6 +58,7 @@ namespace Illusion.Rendering.Editor
             _barnDoorAngle = serializedObject.FindProperty("m_BarnDoorAngle");
             _barnDoorLength = serializedObject.FindProperty("m_BarnDoorLength");
             _areaLightCookie = serializedObject.FindProperty("m_AreaLightCookie");
+            _displayAreaLightEmissiveMesh = serializedObject.FindProperty("m_DisplayAreaLightEmissiveMesh");
 
             _shadowResolution = serializedObject.FindProperty("m_ShadowResolution");
             _areaLightShadowCone = serializedObject.FindProperty("m_AreaLightShadowCone");
@@ -114,6 +117,7 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.PropertyField(_barnDoorLength, Styles.BarnDoorLength);
                 EditorGUILayout.PropertyField(_areaLightCookie, Styles.AreaLightCookie);
                 ShowCookieTextureWarnings(_areaLightCookie.objectReferenceValue as Texture);
+                EditorGUILayout.PropertyField(_displayAreaLightEmissiveMesh, Styles.DisplayAreaLightEmissiveMesh);
             }
 
             EditorGUILayout.Space();
@@ -276,6 +280,7 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent BarnDoorAngle = new("Barn Door Angle", "Angle of the barn doors, 90 disables them.");
             public static readonly GUIContent BarnDoorLength = new("Barn Door Length", "Length of the barn doors.");
             public static readonly GUIContent AreaLightCookie = new("Cookie", "Cookie mask currently assigned to the area light.");
+            public static readonly GUIContent DisplayAreaLightEmissiveMesh = new("Display Emissive Mesh", "Shows the emitting face of the light through a generated mesh: its radiance times its cookie.");
             public static readonly GUIContent CookieTextureTypeError = new("IllusionRP does not support the Cookie Texture type, only Default is supported.", EditorGUIUtility.IconContent("console.warnicon").image);
             public static readonly string CookieNot2D = "Area light cookies must be 2D textures.";
             public static readonly string CookieNonPOT = "IllusionRP does not support non power of two cookie textures.";
