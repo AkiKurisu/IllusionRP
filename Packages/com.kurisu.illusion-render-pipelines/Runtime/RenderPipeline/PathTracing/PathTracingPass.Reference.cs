@@ -85,7 +85,7 @@ namespace Illusion.Rendering.PathTracing
             int stateHash = HashCode.Combine(worldToView, viewToClip, world.Scene.SceneHash, _lights.Hash,
                 HashCode.Combine(PathTracingEnvironment.ComputeHash(_lights), PathTracingEnvironment.CameraBackground(camera), Lens.ApertureRadius, Lens.FocusDistance, PathTracingDiffusionProfiles.Capture(_rendererData).ComputeHash()),
                 HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
-                    settings.fireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value));
+                    settings.referenceFireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value));
             context.UpdateAccumulation(stateHash, world.Scene.TransformsChanged);
 
             var radiance = renderGraph.ImportTexture(context.Radiance);

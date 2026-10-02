@@ -484,10 +484,16 @@ void Bridge::ExportSpecHitTStop(const PathState path)
     }
 }
 
+Texture2D<float2> _ExposureTexture;  // @IllusionRP
+
 PathTracer::WorkingContext GetWorkingContext()
 {
     PathTracer::WorkingContext ret;
     ret.PtConsts = g_Const.ptConsts;
+    // @IllusionRP: as RTXPT's sample does on the CPU, scale the firefly threshold by the radiance that exposure maps to middle gray.
+    float exposure = _ExposureTexture.Load(int3(0, 0, 0)).x;
+    ret.PtConsts.preExposedGrayLuminance = exposure > 0.0 ? 0.18 / exposure : 1.0;
+    ret.PtConsts.fireflyFilterThreshold *= sqrt(ret.PtConsts.preExposedGrayLuminance) * 1e3;
     ret.Debug.Init( g_Const.debug, u_FeedbackBuffer, u_DebugLinesBuffer, u_DebugDeltaPathTree, u_DeltaPathSearchStack );
     ret.StablePlanes = StablePlanesContext::make(u_StablePlanesHeader, u_StablePlanesBuffer, u_StableRadiance, g_Const.ptConsts);
     ret.OutputColor = u_OutputColor;

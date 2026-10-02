@@ -63,7 +63,7 @@ namespace Illusion.Rendering.PathTracing
                 EnvironmentMapDiffuseSampleMIPLevel = settings.environmentDiffuseMipOffset.value,
                 TexLODBias = 0.0f,
                 InvSubSampleCount = 1.0f,
-                FireflyFilterThreshold = settings.fireflyFilterThreshold.value,
+                FireflyFilterThreshold = settings.referenceFireflyFilterThreshold.value,
                 PreExposedGrayLuminance = 1.0f,
                 FrameIndex = (uint)PathTracingFrame.Index,
                 StablePlanesSplitStopThreshold = 0.95f,
@@ -98,6 +98,7 @@ namespace Illusion.Rendering.PathTracing
         {
             int samplesPerPixel = settings.realtimeSamplesPerPixel.value;
             var constants = BuildPathTracer(settings, context, camera, settings.lightSampling.value);
+            constants.FireflyFilterThreshold = settings.realtimeFireflyFilterThreshold.value;
             constants.SampleBaseIndex = context.RealtimeFrameIndex * (uint)samplesPerPixel;
             constants.InvSubSampleCount = 1.0f / samplesPerPixel;
             constants.PerPixelJitterAAScale = RealtimeMicroJitter;

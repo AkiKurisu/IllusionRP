@@ -96,7 +96,7 @@ namespace Illusion.Rendering.PathTracing
             var quality = settings.rayReconstructionQuality.value;
 
             int settingsHash = HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
-                settings.fireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value,
+                settings.realtimeFireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value,
                 settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight));
             context.BeginRealtimeFrame(settingsHash, camera.transform);
 

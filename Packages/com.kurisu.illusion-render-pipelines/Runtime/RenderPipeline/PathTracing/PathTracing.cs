@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.Serialization;
 
 namespace Illusion.Rendering.PathTracing
 {
@@ -77,9 +78,13 @@ namespace Illusion.Rendering.PathTracing
         [Tooltip("Angular diameter of directional lights in degrees; the sun is about 0.5.")]
         public ClampedFloatParameter directionalAngularDiameter = new(0.5f, 0.0f, 10.0f);
 
+        [AdditionalProperty, FormerlySerializedAs("fireflyFilterThreshold")]
+        [Tooltip("Reference firefly filter threshold, relative to the radiance that exposure maps to middle gray as in RTXPT: it clamps rare, very bright paths such as caustics off mirrors onto small lights. 0 keeps the result unbiased.")]
+        public MinFloatParameter referenceFireflyFilterThreshold = new(5f, 0f);
+
         [AdditionalProperty]
-        [Tooltip("Firefly filter strength, like HDRP's Maximum Intensity: it clamps rare, very bright paths such as caustics off mirrors onto small lights. 0 keeps the result unbiased.")]
-        public MinFloatParameter fireflyFilterThreshold = new(10f, 0f);
+        [Tooltip("Realtime firefly filter threshold, relative to the radiance that exposure maps to middle gray as in RTXPT. 0 disables the filter.")]
+        public MinFloatParameter realtimeFireflyFilterThreshold = new(0.1f, 0f);
 
         [AdditionalProperty]
         [Tooltip("Environment MIP bias after the first diffuse bounce; 0 keeps the result unbiased.")]

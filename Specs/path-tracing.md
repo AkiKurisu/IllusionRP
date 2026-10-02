@@ -142,7 +142,7 @@ Visibility must be evaluated from the actual scattering position. After subsurfa
 
 Path length and rough-surface bounce budgets must have explicit, consistent counting semantics. Budgets, termination policies, and direct light sampling settings must not be silently replaced based on material or rendering mode.
 
-Firefly clamping and environment sampling smoothing are optional stability measures that change the estimate. They must be distinguishable from material parameters, and it must be possible to disable them. Disabling them does not make a finite path budget or finite sample count equivalent to a fully converged result.
+Firefly clamping and environment sampling smoothing are optional stability measures that change the estimate. They must be distinguishable from material parameters, and it must be possible to disable them. Disabling them does not make a finite path budget or finite sample count equivalent to a fully converged result. As in RTXPT, the firefly threshold is relative to the radiance that the current exposure maps to middle gray, and Reference and Realtime each have their own threshold.
 
 ## Camera Chains and Presentation
 

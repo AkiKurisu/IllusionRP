@@ -36,6 +36,7 @@ namespace Illusion.Rendering.PathTracing
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvironmentMap, environment.Cube);
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_PathTracingBackground, environment.Background);
             cmd.SetRayTracingVectorParam(shader, ShaderIDs._PathTracingBackgroundColor, PathTracingEnvironment.CameraBackground(data.Camera));
+            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._ExposureTexture, data.ExposureTexture);
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvironmentMapImportanceMap, environment.ImportanceMap);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightsCB, lightBaker.ControlBuffer);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_Lights, lightBaker.LightsBuffer);
