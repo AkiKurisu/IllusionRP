@@ -83,6 +83,13 @@ float LongitudinalScattering(float cosThetaI, float cosThetaO, float sinThetaI, 
     return M;
 }
 
+// @IllusionRP: a card stands for a volume of hair, which returns the light a fiber transmits through it (TT)
+// to the incident side; that lobe scatters with a cosine distribution about the card normal instead.
+float CardVolumeScattering(float3 wo, float3 wi)
+{
+    return wo.z * wi.z > 0 ? abs(wi.z) * INV_PI : 0;
+}
+
 float AzimuthalScattering(float phi, uint p, float s, float gammaO, float gammaT)
 {
     float dphi = phi - AzimuthalDirection(p, gammaO, gammaT);
@@ -123,6 +130,12 @@ CBSDF EvaluateHairReference(float3 wo, float3 wi, BSDFData bsdfData)
 
     for (uint p = 0; p < PATH_MAX; ++p)
     {
+        if (p == 1)
+        {
+            F += A[p] * CardVolumeScattering(wo, wi);  // @IllusionRP
+            continue;
+        }
+
         float sinThetaO, cosThetaO;
         ApplyCuticleTilts(p, angles, data, sinThetaO, cosThetaO);
 
@@ -159,6 +172,12 @@ float EvaluateHairReferencePDF(float3 wo, float3 wi, BSDFData bsdfData)
 
     for (p = 0; p < PATH_MAX; p++)
     {
+        if (p == 1)
+        {
+            pdf += APDF[p] * CardVolumeScattering(wo, wi);  // @IllusionRP
+            continue;
+        }
+
         float sinThetaOp, cosThetaOp;
         ApplyCuticleTilts(p, angles, data, sinThetaOp, cosThetaOp);
 
@@ -200,6 +219,15 @@ CBSDF SampleHairReference(float3 wo, out float3 wi, out float pdf, float4 u, BSD
             break;
 
         u.x -= APDF[p];
+    }
+
+    // @IllusionRP: the transmitted lobe returns to the incident side of the card.
+    if (p == 1)
+    {
+        wi = SampleHemisphereCosine(u.y, u.z);
+        wi.z = wo.z < 0 ? -wi.z : wi.z;
+        pdf = EvaluateHairReferencePDF(wo, wi, bsdfData);
+        return EvaluateHairReference(wo, wi, bsdfData);
     }
 
     float sinThetaO, cosThetaO;
