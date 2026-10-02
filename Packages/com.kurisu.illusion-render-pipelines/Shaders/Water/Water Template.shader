@@ -25,6 +25,11 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 		[ToggleOff] _EnvironmentReflections("Environment Reflections", Float) = 1.0
 		[ToggleUI] _ReceiveShadows("Receive Shadows", Float) = 1.0
 		[WaterReflectionMode] _WaterReflectionMode("Water Reflection Mode", Float) = 0
+		[Header(Path Tracing)]
+		_Ior("IOR", Range(1, 2)) = 1.333
+		_PathTracingSmoothness("Smoothness", Range(0, 1)) = 0.95
+		_TransmittanceColor("Absorption Color", Color) = (0.67, 0.94, 0.98, 1)
+		_TransmittanceDistance("Absorption Distance", Float) = 2
 
         // Depth passes
         [HideInInspector] _StencilRefDepth("_StencilRefDepth", Int) = 4 // IllusionStencilUsage.TraceReflectionRay
@@ -723,6 +728,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -1309,6 +1318,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -1609,6 +1622,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -1875,6 +1892,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -2208,6 +2229,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -2663,6 +2688,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -2893,6 +2922,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -3139,6 +3172,10 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 			};
 
 			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
 			#ifdef ASE_TRANSMISSION
 				float _TransmissionShadow;
 			#endif
@@ -3413,6 +3450,167 @@ Shader /*ase_name*/ "Hidden/Universal/Water" /*end*/
 
 				outWaterSSRData = half4(NormalizeNormalPerPixel(waterNormalWS), saturate(Smoothness));
 			}
+
+			ENDHLSL
+		}
+
+		/*ase_pass*/
+		Pass
+		{
+			/*ase_hide_pass*/
+			Name "PathTracing"
+			Tags
+			{
+				"LightMode" = "PathTracing"
+				"PathTracingAnyHit" = "True"
+			}
+
+			HLSLPROGRAM
+
+			#pragma raytracing PathTracing
+			// @IllusionRP: ASE locates the graph input functions from these stage declarations.
+			// #pragma vertex vert
+			// #pragma fragment frag
+
+			#define SHADERPASS SHADERPASS_PATH_TRACING
+			#define _PATH_TRACING_TRANSMISSION_REFRACTIVE 1
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
+			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/Lighting.hlsl"
+			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Water/WaterShaderGraphFunctions.hlsl"
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingLitSurface.hlsl"
+
+			/*ase_pragma*/
+
+			struct Attributes
+			{
+				float4 positionOS : POSITION;
+				half3 normalOS : NORMAL;
+				half4 tangentOS : TANGENT;
+				float4 texcoord : TEXCOORD0;
+				float4 texcoord1 : TEXCOORD1;
+				float4 texcoord2 : TEXCOORD2;
+				float4 texcoord3 : TEXCOORD3;
+				float4 color : COLOR;
+				/*ase_vdata:p=p;n=n;t=t;uv0=tc0;uv1=tc1;uv2=tc2;uv3=tc3;c=c*/
+			};
+
+			struct PackedVaryings
+			{
+				float4 positionCS : SV_POSITION;
+				float3 positionWS : TEXCOORD0;
+				/*ase_interp(1,):sp=sp;wp=tc0.xyz*/
+			};
+
+			CBUFFER_START(UnityPerMaterial)
+				float _Ior;
+				float _PathTracingSmoothness;
+				float4 _TransmittanceColor;
+				float _TransmittanceDistance;
+			#ifdef ASE_TRANSMISSION
+				float _TransmissionShadow;
+			#endif
+			#ifdef ASE_TRANSLUCENCY
+				float _TransStrength;
+				float _TransNormal;
+				float _TransScattering;
+				float _TransDirect;
+				float _TransAmbient;
+				float _TransShadow;
+			#endif
+			#ifdef ASE_TESSELLATION
+				float _TessPhongStrength;
+				float _TessValue;
+				float _TessMin;
+				float _TessMax;
+				float _TessEdgeLength;
+				float _TessMaxDisp;
+			#endif
+			CBUFFER_END
+
+			/*ase_globals*/
+
+			/*ase_funcs*/
+
+			PackedVaryings VertexFunction( Attributes input /*ase_vert_input*/ )
+			{
+				PackedVaryings output = (PackedVaryings)0;
+
+				/*ase_vert_code:input=Attributes;output=PackedVaryings*/
+
+				input.normalOS = /*ase_vert_out:Vertex Normal;Float3;10;-1;_Normal*/input.normalOS/*end*/;
+				input.tangentOS = /*ase_vert_out:Vertex Tangent;Float4;30;-1;_Tangent*/input.tangentOS/*end*/;
+
+				output.positionWS = g_PathTracingHit.positionWS;
+				return output;
+			}
+
+			PackedVaryings vert ( Attributes input )
+			{
+				return VertexFunction( input );
+			}
+
+			#define PATH_TRACING_TEMPLATE_SURFACE PathTracingLitSurface
+
+			// Water is a smooth dielectric interface over an absorbing medium, as in UE's path tracer. The raster screen-space
+			// composition, depth colors and edge fade have no path tracing counterpart.
+			PathTracingLitSurface frag ( PackedVaryings input /*ase_frag_input*/ )
+			{
+				/*ase_local_var:wp*/float3 PositionWS = g_PathTracingHit.positionWS;
+				/*ase_local_var:rwp*/float3 PositionRWS = GetCameraRelativePositionWS( PositionWS );
+				/*ase_local_var:wvd*/float3 ViewDirWS = g_PathTracingHit.viewDirWS;
+				/*ase_local_var:sc*/float4 ShadowCoord = float4( 0, 0, 0, 0 );
+				/*ase_local_var:spn*/float4 ScreenPosNorm = g_PathTracingScreenPosition;
+				/*ase_local_var:sp*/float4 ClipPos = ComputeClipSpacePosition( ScreenPosNorm.xy, ScreenPosNorm.z );
+				/*ase_local_var:spu*/float4 ScreenPos = ComputeScreenPos( ClipPos );
+				/*ase_local_var:wt*/float3 TangentWS = g_PathTracingHit.tangentWS.xyz;
+				/*ase_local_var:wbt*/float3 BitangentWS = cross( g_PathTracingHit.vertexNormalWS, g_PathTracingHit.tangentWS.xyz ) * g_PathTracingHit.tangentWS.w;
+				/*ase_local_var:wn*/float3 NormalWS = g_PathTracingHit.vertexNormalWS;
+				/*ase_local_var:vf*/float FaceSign = g_PathTracingHit.frontFacing ? 1.0 : -1.0;
+
+				/*ase_frag_code:input=PackedVaryings*/
+
+				float3 Normal = /*ase_frag_out:Normal;Float3;1;-1;_FragNormal*/float3(0, 0, 1)/*end*/;
+
+				PathTracingLitSurface surface = PathTracingInitLitSurface();
+				#ifdef _NORMALMAP
+					#if _NORMAL_DROPOFF_TS
+						surface.normalWS = TransformTangentToWorld( Normal, half3x3( TangentWS, BitangentWS, NormalWS ) );
+					#elif _NORMAL_DROPOFF_OS
+						surface.normalWS = TransformObjectToWorldNormal( Normal );
+					#elif _NORMAL_DROPOFF_WS
+						surface.normalWS = Normal;
+					#endif
+					surface.normalWS = SafeNormalize( surface.normalWS );
+				#else
+					surface.normalWS = NormalWS;
+				#endif
+				surface.albedo = 0.0;
+				surface.specular = 0.0;
+				surface.metallic = 0.0;
+				surface.smoothness = _PathTracingSmoothness;
+				surface.emission = 0.0;
+				surface.alpha = 1.0;
+				surface.specularTransmission = 1.0;
+				surface.transmissionTint = 1.0;
+				surface.ior = _Ior;
+				return surface;
+			}
+
+			void PathTracingWriteTemplateSurface( inout IllusionPathPayload payload, PathTracingHitContext hit, PathTracingLitSurface surface )
+			{
+				PathTracingWriteLitSurface( payload, hit, surface );
+			}
+
+			float PathTracingTemplateCoverage( PathTracingLitSurface surface )
+			{
+				return 1.0;
+			}
+
+			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingTemplatePass.hlsl"
 
 			ENDHLSL
 		}

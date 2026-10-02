@@ -120,6 +120,8 @@ Fabric keeps the inputs of the raster lighting, which blends the specular lobe i
 
 A hair card stands for a whole volume of hair collapsed into one surface, so its base color is the color of that volume. The fiber absorption is chosen so that a single card interaction, averaged across the fiber at normal incidence, returns the base color as its total albedo. This deliberately differs from HDRP, whose mapping assumes the light bounces many times between strands and leaves single-layer cards nearly white. The scattering lobes, their distributions, and the fiber refraction stay those of HDRP.
 
+[Water](water.md) is a refractive Lit interface over an absorbing medium, as in UE's path tracer; it has no dedicated water model. A path that leaves the scene while inside an absorbing medium returns no light, since it would cross that medium without end.
+
 Skin volume scattering requires closed geometry as valid input. A screen-space thickness approximation must not replace propagation through the volume.
 
 Shaders without a path tracing material evaluation entry point must produce a clear diagnostic. A diagnostic surface must not be treated as a correct material result.

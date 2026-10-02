@@ -23,7 +23,7 @@ Contracts for IllusionRP features: what each feature must do, not how it is impl
 | [Materials and Shaders](materials-and-shaders.md) | Shader families, passes and LightMode tags, the Forward GBuffer, stencil, `UnityPerMaterial`, keywords and cross-family lighting rules. |
 | [Shader Variant Stripping](shader-variant-stripping.md) | Build-target capability aggregation, keyword prefiltering and IllusionRP pass stripping. |
 | [Transparency](transparency.md) | Transparent depth, pre-refraction color, water SSR data, transparent SSR, weighted blended OIT and the overdraw. |
-| [Water](water.md) | The Water shader and template, reflection modes and refraction. |
+| [Water](water.md) | The Water shader and template, reflection modes, refraction and path traced water. |
 | [Wet Surface Decals](wet-surface-decals.md) | Screen-space wet and dry projection volumes and the wet response of Forward opaque materials. |
 | [Directional Per-Object Shadows](directional-per-object-shadows.md) | Per-camera directional light authority, the per-object shadow atlas and screen-space shadow consumption. |
 | [Sun Shafts](sun-shafts.md) | Screen-space sun shafts: Volume, anchor, passes and the porting boundary. |

@@ -4,12 +4,12 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
-| Related Specs | [Transparency](transparency.md), [Materials and Shaders](materials-and-shaders.md) |
+| Date | 2026-10-02 |
+| Related Specs | [Transparency](transparency.md), [Materials and Shaders](materials-and-shaders.md), [Path Tracing](path-tracing.md) |
 
 IllusionRP ships a transparent water shader, `Universal Render Pipeline/Water`, and the Amplify Shader Editor template it is built from, `Hidden/Universal/Water`. Water refracts the pre-refraction color, reflects through the pipeline's transparent screen-space reflections with an environment fallback, and can switch per material to a legacy in-shader raymarch. The pipeline stages Water consumes, and the contracts any third-party water shader must meet to use them, are defined in [Transparency](transparency.md).
 
-Out of scope: wave simulation, waterlines, underwater volumes, planar reflections and ray-traced reflections, none of which IllusionRP provides.
+Out of scope: wave simulation, waterlines, underwater volumes, planar reflections and raster ray-traced reflections, none of which IllusionRP provides.
 
 ## Template
 
@@ -70,9 +70,26 @@ The package's Water shader include provides the sampling functions the template 
 - **Surface.** Two scrolling normal layers, projected on world XZ and blended by a blend map, drive refraction and reflection. The refracted color is tinted between shallow and deep colors by water thickness, and the refraction offset fades with the distance of the scene behind the water. The final color is written as emission, a Fresnel blend `lerp(body, reflection, 0.01 + 0.99 (1 - N.V)^5)`; the base color is black.
 - **Alpha.** Alpha fades the shoreline only: `saturate((sceneEyeDepth - surfaceEyeDepth) / _EdgeFade)`, clipped below 0.5. Elsewhere the surface is see-through because the refracted background is already in its color. A shader that composites the background into its color must not also lower alpha for the same transparency, or the camera color is blended over that background a second time.
 
+## Path tracing
+
+The template and the shipped shader provide a [path tracing](path-tracing.md) material entry point. As in UE's path tracer, path traced water is a refractive Lit interface over an absorbing medium, not a dedicated water model:
+
+| Property | Display name | Meaning |
+|---|---|---|
+| `_Ior` | IOR | Index of refraction of the interface, 1.333 by default |
+| `_PathTracingSmoothness` | Smoothness | Smoothness of the interface, 0.95 by default |
+| `_TransmittanceColor` | Absorption Color | Color that light keeps after crossing Absorption Distance of water |
+| `_TransmittanceDistance` | Absorption Distance | Distance at which light keeps Absorption Color |
+
+- **Interface.** The interface takes the graph's Normal port, as raster does. Reflection and refraction follow Fresnel at the IOR; the interface has no diffuse or emissive response.
+- **Medium.** Water absorbs and does not scatter. A path that leaves the scene inside the water returns no light.
+- **Shadows.** Shadow paths cross the interface and the medium without attenuation.
+- **Raster terms.** The pre-refraction color, depth and thickness tint, shoreline fade, reflection modes and Fresnel blend have no path tracing counterpart; the shoreline is where the water geometry meets the scene.
+
 ## Validation
 
 - **Frame order.** Water's Forward pass draws in URP transparents after the pre-refraction copy, Water SSR data and transparent SSR, and no water pass reads URP's camera opaque texture.
 - **Content.** Refraction shows the current frame's opaque scene without the water itself; with SSR off, reflections fall back to the environment while refraction keeps working.
 - **Scenes.** Water at several heights, rotated and overlapping; on-screen reflections, probe and sky fallback, and screen-edge fade; the first frame, fast camera motion, disocclusion and the Scene View; opaque walls, transparent objects and water in each queue and depth relation; both reflection modes in one scene.
 - **Platforms.** A compute-capable desktop API, Vulkan on mobile, and an API without transparent SSR to confirm the environment fallback.
+- **Path tracing.** Water in a uniform white environment conserves energy at every smoothness; light crossing a known depth keeps Absorption Color raised to depth over Absorption Distance; reflectance at the interface follows Fresnel at the IOR.

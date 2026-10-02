@@ -499,6 +499,12 @@ namespace PathTracer
             environmentEmission = lpfloat3(misWeight * Le + EvaluateDirectionalMiss(rayDir, bsdfScatterPdf, misInfo, path.receiverInstanceID));  // @IllusionRP
         }
 
+#if RTXPT_NESTED_DIELECTRICS_QUALITY > 0
+        // @IllusionRP: a ray that leaves the scene inside an absorbing medium crosses it without end, as in UE.
+        if (!path.interiorList.isEmpty() && any(Bridge::loadHomogeneousVolumeData(path.interiorList.getTopMaterialID()).sigmaA > 0.0))
+            environmentEmission = 0.0;
+#endif
+
 #if RTXPT_FIREFLY_FILTER && PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES
             lpfloat baseFFThreshold = (lpfloat)workingContext.PtConsts.fireflyFilterThreshold;
             if( baseFFThreshold != 0 )
