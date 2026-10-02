@@ -114,7 +114,11 @@ Model selection must come from the material evaluation entry point, not object n
 
 Coverage, alpha clipping, and physical transmission are distinct inputs. Coverage determines whether a ray accepts a geometric hit; transmission determines scattering after that hit is accepted. Main, shadow, and subsurface paths must follow their respective geometric tests while retaining consistent material coverage semantics. A shadow path returns colored transmission rather than a binary result: partial coverage passes the uncovered fraction, and a transparent, thin, or refractive surface passes its transmission. Shadow paths continue in a straight line through such surfaces.
 
-The Hair model does not change the input geometry type. Hair cards remain cards and must not be treated as strand geometry merely because they use a hair scattering model. Skin volume scattering requires closed geometry as valid input. A screen-space thickness approximation must not replace propagation through the volume.
+The Hair model does not change the input geometry type. Hair cards remain cards and must not be treated as strand geometry merely because they use a hair scattering model.
+
+A hair card stands for a whole volume of hair collapsed into one surface, so its base color is the color of that volume. The fiber absorption is chosen so that a single card interaction, averaged across the fiber at normal incidence, returns the base color as its total albedo. This deliberately differs from HDRP, whose mapping assumes the light bounces many times between strands and leaves single-layer cards nearly white. The scattering lobes, their distributions, and the fiber refraction stay those of HDRP.
+
+Skin volume scattering requires closed geometry as valid input. A screen-space thickness approximation must not replace propagation through the volume.
 
 Shaders without a path tracing material evaluation entry point must produce a clear diagnostic. A diagnostic surface must not be treated as a correct material result.
 

@@ -29,6 +29,14 @@ float3 AbsorptionFromReflectance(float3 diffuseColor, float azimuthalRoughness)
     return Sq(log(diffuseColor) / GetAbsorptionDenominator(azimuthalRoughness));
 }
 
+// @IllusionRP: a hair card stands for a whole hair volume collapsed into one hit, so the fiber's single-hit albedo
+// (averaged over h at normal incidence) matches the base color; HDRP's fit assumes the bounces of a strand volume.
+float3 AbsorptionFromCardColor(float3 baseColor)
+{
+    float3 x = -log(clamp(baseColor, 1e-4, 1.0));
+    return x * (0.45108 + x * (0.35077 + x * (-0.29762 + x * 0.0928)));
+}
+
 float RoughnessToBlinnPhongSpecularExponent(float roughness)
 {
     return clamp(2 * rcp(max(roughness * roughness, FLT_EPS)) - 2, FLT_EPS, rcp(FLT_EPS));
@@ -101,7 +109,7 @@ BSDFData ConvertSurfaceDataToBSDFData(uint2 positionSS, SurfaceData surfaceData)
 
         // Absorption. Note: We require diffuse color to parameterize LUTs and for approximation purposes.
     #if _ABSORPTION_FROM_COLOR
-        bsdfData.absorption   = AbsorptionFromReflectance(surfaceData.diffuseColor, bsdfData.perceptualRoughnessRadial);
+        bsdfData.absorption   = AbsorptionFromCardColor(surfaceData.diffuseColor);  // @IllusionRP
     #elif _ABSORPTION_FROM_MELANIN
         bsdfData.absorption   = AbsorptionFromMelanin(surfaceData.eumelanin, surfaceData.pheomelanin);
         bsdfData.diffuseColor = ReflectanceFromMelanin(surfaceData.eumelanin, surfaceData.pheomelanin, bsdfData.perceptualRoughnessRadial);
