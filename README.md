@@ -228,6 +228,12 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 > [!NOTE]
 > Advanced Tonemapping only works in `High Dynamic Range` grading mode.
 
+## Path Tracing
+
+Include <b>Path Tracing</b> based on [NVIDIA-RTX/RTXPT](https://github.com/NVIDIA-RTX/RTXPT) and [Kuan-Mi/UnityPathTracing](https://github.com/Kuan-Mi/UnityPathTracing), with <b>Reference</b> and <b>Realtime</b> (DLSS Ray Reconstruction) modes.
+
+![Path Tracing](Documentations/images/path_tracing.png)
+
 ## Experimental DLSS Neural Rendering
 
 Include DLSS Neural Rendering integration based on [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR). `nvngx_dlssnr.dll` is not included. See [Experimental DLSS Neural Rendering](Documentations/DLSSNeuralRendering.md) for setup and limitations.
