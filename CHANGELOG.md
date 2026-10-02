@@ -5,24 +5,26 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [1.3.2] - Unreleased
+## [1.3.2] - 2026-10-2
 
 ### Added
 
-- Add Display Emissive Mesh to rectangle area lights, as in HDRP: a generated mesh shows the emitting face with the light's radiance and cookie.
-- Add wet surface decals: registered box and sphere volumes wet or dry Forward opaque surfaces through a screen-space mask that darkens and smooths Lit, Skin, Fabric and Hair materials and patches the normals and smoothness read by SSR, SSGI and ambient occlusion.
+- Add Path Tracing based on RTXPT, with Reference (progressive accumulation) and Realtime (DLSS Ray Reconstruction) modes, path traced Lit, Fabric, Skin, Hair and Water materials, and a Path Tracing Rendering Debugger panel.
+- Add Display Emissive Mesh to rectangle area lights, as in HDRP.
+- Add wet surface decals for Lit, Skin, Fabric and Hair, consistent with SSR, SSGI and ambient occlusion.
+- Add `DiffusionProfileMaterialUtility` for assigning diffusion profiles to materials from editor scripts.
 
 ### Changed
 
-- Move the Illusion Rendering Debugger into Unity's Rendering Debugger as the Illusion Features and Illusion Debug panels; its menu item now opens the Rendering Debugger on the Illusion Features panel.
-- Show the rectangle area light sample through Display Emissive Mesh instead of an Unlit stand-in.
+- Move the Illusion Rendering Debugger into Unity's Rendering Debugger as the Illusion Features and Illusion Debug panels.
+- Align subsurface scattering with HDRP diffusion profiles: a Volume holds up to 15 profiles, and materials without a matching profile use the first one.
 
 ### Fixed
 
-- Fix the velvet Fabric sheen, whose Ashikhmin distribution multiplied by its normalization and sin⁴ terms instead of dividing: it left almost no sheen facing the light and an overbright rim at grazing angles.
+- Fix the velvet Fabric sheen distribution and the Fabric anisotropic roughness and specular normalization.
 - Fix Water SSR data reading the pre-water depth without declaring it as a render graph input.
-- Fix reflection probe cubemap captures applying the camera exposure, which left probe radiance display-exposed instead of scene-linear.
-- Fix the HD Lit, HD Fabric, HD Hair and HD Skin shaders lagging behind their templates: regenerated, they gain the GBuffer and PostDepthOnly passes, the GBuffer override ports and the area light shadow variants.
+- Fix reflection probe captures applying the camera exposure.
+- Fix the HD Lit, HD Fabric, HD Hair and HD Skin shaders lagging behind their templates.
 
 ## [1.3.1] - 2026-9-19
 
