@@ -10,21 +10,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add Path Tracing based on RTXPT, with Reference (progressive accumulation) and Realtime (DLSS Ray Reconstruction) modes, path traced Lit, Fabric, Skin, Hair and Water materials, and a Path Tracing Rendering Debugger panel.
-- Add Display Emissive Mesh to rectangle area lights, as in HDRP.
+- Add Display Emissive Mesh to rectangle area lights.
 - Add wet surface decals for Lit, Skin, Fabric and Hair, consistent with SSR, SSGI and ambient occlusion.
 - Add `DiffusionProfileMaterialUtility` for assigning diffusion profiles to materials from editor scripts.
 
 ### Changed
 
 - Move the Illusion Rendering Debugger into Unity's Rendering Debugger as the Illusion Features and Illusion Debug panels.
-- Align subsurface scattering with HDRP diffusion profiles: a Volume holds up to 15 profiles, and materials without a matching profile use the first one.
 
 ### Fixed
 
 - Fix the velvet Fabric sheen distribution and the Fabric anisotropic roughness and specular normalization.
 - Fix Water SSR data reading the pre-water depth without declaring it as a render graph input.
 - Fix reflection probe captures applying the camera exposure.
-- Fix the HD Lit, HD Fabric, HD Hair and HD Skin shaders lagging behind their templates.
 
 ## [1.3.1] - 2026-9-19
 
