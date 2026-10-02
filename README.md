@@ -234,11 +234,16 @@ Include <b>Path Tracing</b> based on [NVIDIA-RTX/RTXPT](https://github.com/NVIDI
 
 ![Path Tracing](Documentations/images/path_tracing.png)
 
-## Experimental DLSS Neural Rendering
+## Neural Rendering
 
-Include DLSS Neural Rendering integration based on [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR). `nvngx_dlssnr.dll` is not included. See [Experimental DLSS Neural Rendering](Documentations/DLSSNeuralRendering.md) for setup and limitations.
+Include DLSS Neural Rendering integration based on [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR).
 
 ![DLSS Neural Rendering](Documentations/images/dlss_neural_rendering.png)
+
+> [!NOTE]
+>  `nvngx_dlssnr.dll` is not included. 
+> 
+> See [Experimental DLSS Neural Rendering](Documentations/DLSSNeuralRendering.md) for setup and limitations.
 
 # Debugging
 
