@@ -3822,7 +3822,11 @@ Shader /*ase_name*/ "Hidden/Universal/Skin" /*end*/
 					surface.f0 = lerp( 0.04, BaseColor, metallic );
 				#endif
 				surface.albedo = albedo;
-				surface.smoothness = saturate( Smoothness );
+				half lobe1Smoothness, lobe2Smoothness;
+				DualLobeSmoothness( saturate( Smoothness ), _Smoothness1, _Smoothness2, lobe1Smoothness, lobe2Smoothness );
+				surface.smoothness = lobe1Smoothness;
+				surface.secondarySmoothness = lobe2Smoothness;
+				surface.lobeMix = _LobeWeight;
 				surface.metallic = metallic;
 				surface.emission = Emission;
 				surface.alpha = saturate( Alpha );

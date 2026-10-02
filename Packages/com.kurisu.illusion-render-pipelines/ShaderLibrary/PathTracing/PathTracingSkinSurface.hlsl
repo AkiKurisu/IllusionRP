@@ -8,6 +8,8 @@ struct PathTracingSkinSurface
     float3 albedo;
     float3 f0;
     float smoothness;
+    float secondarySmoothness;
+    float lobeMix;
     float metallic;
     float3 emission;
     float alpha;
@@ -21,6 +23,7 @@ PathTracingSkinSurface PathTracingInitSkinSurface()
     s.albedo = 0.5;
     s.f0 = 0.028;
     s.smoothness = 0.5;
+    s.secondarySmoothness = 0.5;
     s.alpha = 1.0;
     s.subsurfaceMask = 1.0;
     return s;
@@ -31,6 +34,7 @@ void PathTracingWriteSkinSurface(inout IllusionPathPayload payload, PathTracingH
     payload.diffuseOpacity = PathTracingPackHalf4(float4(s.albedo, s.alpha));
     payload.specularRoughness = PathTracingPackHalf4(float4(s.f0, 1.0 - s.smoothness));
     payload.emissionMetallic = PathTracingPackHalf4(float4(s.emission, s.metallic));
-    payload.parameters = uint4(s.diffusionProfileIndex, PathTracingPackHalf2(s.subsurfaceMask, 0.0), 0u, 0u);
+    payload.parameters = uint4(s.diffusionProfileIndex, PathTracingPackHalf2(s.subsurfaceMask, 0.0),
+        PathTracingPackHalf2(1.0 - s.secondarySmoothness, s.lobeMix), 0u);
 }
 #endif

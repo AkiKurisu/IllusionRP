@@ -122,7 +122,7 @@ A hair card stands for a whole volume of hair collapsed into one surface, so its
 
 [Water](water.md) is a refractive Lit interface over an absorbing medium, as in UE's path tracer; it has no dedicated water model. A path that leaves the scene while inside an absorbing medium returns no light, since it would cross that medium without end.
 
-Skin volume scattering requires closed geometry as valid input. A screen-space thickness approximation must not replace propagation through the volume.
+Skin reflection mixes two GGX lobes by the material's lobe weight, with the two smoothnesses of the raster dual-lobe lighting, as UE mixes two specular lobes for subsurface profiles. Skin volume scattering requires closed geometry as valid input. A screen-space thickness approximation must not replace propagation through the volume.
 
 Shaders without a path tracing material evaluation entry point must produce a clear diagnostic. A diagnostic surface must not be treated as a correct material result.
 

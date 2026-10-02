@@ -210,6 +210,9 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     {
         bsdfData.subsurfaceMask = PathTracingUnpackHalf2(payload.parameters.y).x;
         bsdfData.diffusionProfileIndex = payload.parameters.x;
+        const float2 secondaryLobe = PathTracingUnpackHalf2(payload.parameters.z);  // @IllusionRP
+        bsdfData.secondaryRoughness = secondaryLobe.x * secondaryLobe.x;
+        bsdfData.lobeMix = saturate(secondaryLobe.y);
         bsdfData.materialFeatures |= MATERIALFEATUREFLAGS_LIT_SUBSURFACE_SCATTERING;
     }
     Illusion::g_HDRPViewDirection = ptShadingData.V;

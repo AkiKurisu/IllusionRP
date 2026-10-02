@@ -16,6 +16,7 @@ void ProcessBSDFData(PathPayload payload, BuiltinData builtinData, MaterialData 
     // Adjust roughness to reduce fireflies
     bsdfData.roughnessT = max(payload.maxRoughness, bsdfData.roughnessT);
     bsdfData.roughnessB = max(payload.maxRoughness, bsdfData.roughnessB);
+    bsdfData.secondaryRoughness = max(payload.maxRoughness, bsdfData.secondaryRoughness);  // @IllusionRP
 
     float NdotV = abs(dot(GetSpecularNormal(mtlData), mtlData.V));
 
@@ -137,6 +138,20 @@ bool CreateMaterialData(PathPayload payload, BuiltinData builtinData, BSDFData b
 }
 
 // @IllusionRP: thin refraction is a per-material-pass input in the shared RTXPT raygen library.
+// @IllusionRP: like UE's dual specular for subsurface profiles, lobeMix blends in a second GGX lobe of its own roughness.
+void EvaluateSpecularLobes(MaterialData mtlData, float3 sampleDir, out float3 value, out float pdf)
+{
+    BRDF::EvaluateAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.roughnessT, mtlData.bsdfData.roughnessB, mtlData.bsdfData.fresnel0, sampleDir, value, pdf);
+    if (mtlData.bsdfData.lobeMix > 0.0)
+    {
+        float3 value2;
+        float pdf2;
+        BRDF::EvaluateAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.secondaryRoughness, mtlData.bsdfData.secondaryRoughness, mtlData.bsdfData.fresnel0, sampleDir, value2, pdf2);
+        value = lerp(value, value2, mtlData.bsdfData.lobeMix);
+        pdf = lerp(pdf, pdf2, mtlData.bsdfData.lobeMix);
+    }
+}
+
 bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleDir, out MaterialResult result, bool thinSurface = false)
 {
     Init(result);
@@ -178,7 +193,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
 
             if (mtlData.bsdfWeight[2] > BSDF_WEIGHT_EPSILON)
             {
-                BRDF::EvaluateAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.roughnessT, mtlData.bsdfData.roughnessB, mtlData.bsdfData.fresnel0, sampleDir, value, pdf);
+                EvaluateSpecularLobes(mtlData, sampleDir, value, pdf);
                 result.specValue += value * (1.0 - fresnelClearCoat) * GetSpecularCompensation(mtlData);
                 result.specPdf += mtlData.bsdfWeight[2] * pdf;
             }
@@ -201,15 +216,21 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
 
             if (mtlData.bsdfWeight[2] > BSDF_WEIGHT_EPSILON)
             {
-                BRDF::EvaluateAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.roughnessT, mtlData.bsdfData.roughnessB, mtlData.bsdfData.fresnel0, sampleDir, value, pdf);
+                EvaluateSpecularLobes(mtlData, sampleDir, value, pdf);
                 result.specValue += value * (1.0 - fresnelClearCoat) * GetSpecularCompensation(mtlData);
                 result.specPdf += mtlData.bsdfWeight[2] * pdf;
             }
         }
         else if (inputSample.z < mtlData.bsdfWeight[0] + mtlData.bsdfWeight[1] + mtlData.bsdfWeight[2]) // Specular BRDF
         {
-            if (!BRDF::SampleAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.roughnessT, mtlData.bsdfData.roughnessB, mtlData.bsdfData.fresnel0, inputSample, sampleDir, result.specValue, result.specPdf))
+            // @IllusionRP: the rescaled lobe sample picks the secondary lobe with probability lobeMix.
+            bool secondary = (inputSample.z - mtlData.bsdfWeight[0] - mtlData.bsdfWeight[1]) < mtlData.bsdfWeight[2] * mtlData.bsdfData.lobeMix;
+            float sampleRoughnessT = secondary ? mtlData.bsdfData.secondaryRoughness : mtlData.bsdfData.roughnessT;
+            float sampleRoughnessB = secondary ? mtlData.bsdfData.secondaryRoughness : mtlData.bsdfData.roughnessB;
+            if (!BRDF::SampleAnisoGGX(mtlData, GetSpecularNormal(mtlData), sampleRoughnessT, sampleRoughnessB, mtlData.bsdfData.fresnel0, inputSample, sampleDir, result.specValue, result.specPdf))
                 return false;
+            if (mtlData.bsdfData.lobeMix > 0.0)
+                EvaluateSpecularLobes(mtlData, sampleDir, result.specValue, result.specPdf);
 
             result.specValue *= GetSpecularCompensation(mtlData);
             result.specPdf *= mtlData.bsdfWeight[2];
@@ -329,7 +350,7 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
 
         if (mtlData.bsdfWeight[2] > BSDF_WEIGHT_EPSILON)
         {
-            BRDF::EvaluateAnisoGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.roughnessT, mtlData.bsdfData.roughnessB, mtlData.bsdfData.fresnel0, sampleDir, value, pdf);
+            EvaluateSpecularLobes(mtlData, sampleDir, value, pdf);
             result.specValue += value * (1.0 - fresnelClearCoat) * GetSpecularCompensation(mtlData);
             result.specPdf += mtlData.bsdfWeight[2] * pdf;
         }

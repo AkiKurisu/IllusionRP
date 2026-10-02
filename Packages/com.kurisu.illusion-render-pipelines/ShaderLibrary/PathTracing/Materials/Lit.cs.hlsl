@@ -106,6 +106,8 @@ struct BSDFData
     real ior;
     real3 absorptionCoefficient;
     real transmittanceMask;
+    real secondaryRoughness;  // @IllusionRP
+    real lobeMix;  // @IllusionRP
 };
 
 // Generated from UnityEngine.Rendering.HighDefinition.Lit+SurfaceData

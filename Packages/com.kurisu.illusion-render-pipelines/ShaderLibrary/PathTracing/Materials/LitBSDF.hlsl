@@ -109,7 +109,8 @@ struct HDRPBSDF
         bool below = !material.isSubsurface && Illusion::Lit::IsBelow(material);
         bool diffuse = material.isSubsurface || (!below && materialSample.z < material.bsdfWeight[0]);
         bool coat = !diffuse && !below && materialSample.z < material.bsdfWeight[0] + material.bsdfWeight[1];
-        bool delta = below || (!diffuse && !coat && max(material.bsdfData.roughnessT, material.bsdfData.roughnessB) < kIllusionMinGGXAlpha);
+        float specularRoughness = max(max(material.bsdfData.roughnessT, material.bsdfData.roughnessB), material.bsdfData.lobeMix > 0.0 ? material.bsdfData.secondaryRoughness : 0.0);
+        bool delta = below || (!diffuse && !coat && specularRoughness < kIllusionMinGGXAlpha);
         result.lobe = transmission ? (uint)(delta ? LobeType::DeltaTransmission : (diffuse ? LobeType::DiffuseTransmission : LobeType::SpecularTransmission))
                                    : (uint)(delta ? LobeType::DeltaReflection : (diffuse ? LobeType::DiffuseReflection : LobeType::SpecularReflection));
         result.lobeP = !delta ? 1.0 : below ? value.specPdf / DELTA_PDF : material.bsdfWeight[transmission ? 3 : 2];
