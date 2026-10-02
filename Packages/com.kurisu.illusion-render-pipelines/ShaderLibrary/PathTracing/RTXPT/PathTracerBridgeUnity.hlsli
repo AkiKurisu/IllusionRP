@@ -229,7 +229,11 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         Illusion::Hair::SurfaceData hairSurface = (Illusion::Hair::SurfaceData)0;
         hairSurface.materialFeatures = MATERIALFEATUREFLAGS_HAIR_MARSCHNER;
         hairSurface.diffuseColor = bsdfDataDiffuse;
-        hairSurface.normalWS = ptShadingData.N;
+        // @IllusionRP: the hair frame needs a normal orthogonal to the strand, which keeps the direction the material gives it.
+        float3 strandN = ptShadingData.N - shadingT * dot(ptShadingData.N, shadingT);
+        if (dot(strandN, strandN) < 1e-6)
+            strandN = cross(shadingT, abs(shadingT.y) < 0.999 ? float3(0, 1, 0) : float3(1, 0, 0));
+        hairSurface.normalWS = normalize(strandN);
         hairSurface.geomNormalWS = ptShadingData.faceNCorrected;
         hairSurface.hairStrandDirectionWS = shadingT;
         hairSurface.perceptualSmoothness = 1.0 - bsdfDataRoughness;
