@@ -6,6 +6,9 @@
 #include "HairMaterial.hlsl"
 #undef ILLUSION_HDRP_ENABLE_SSS
 
+// As in RTXPT, specular lobes smoother than this GGX alpha count as delta.
+static const float kIllusionMinGGXAlpha = 0.0064;
+
 struct HDRPBSDF
 {
     static const uint cRandomNumberCountForSampling = 3;
@@ -103,11 +106,13 @@ struct HDRPBSDF
         bool transmission = !material.isSubsurface && Illusion::Lit::IsAbove(material) != Illusion::Lit::IsAbove(material, result.wo);
         if (thin && transmission)
             result.weight *= Illusion::Lit::GetMaterialAbsorption(material, (Illusion::Lit::SurfaceData)0, 0.0, Illusion::Lit::IsBelow(material, result.wo), true);
-        bool diffuse = material.isSubsurface || materialSample.z < material.bsdfWeight[0];
-        bool delta = value.specPdf >= DELTA_PDF * BSDF_WEIGHT_EPSILON;
+        bool below = !material.isSubsurface && Illusion::Lit::IsBelow(material);
+        bool diffuse = material.isSubsurface || (!below && materialSample.z < material.bsdfWeight[0]);
+        bool coat = !diffuse && !below && materialSample.z < material.bsdfWeight[0] + material.bsdfWeight[1];
+        bool delta = below || (!diffuse && !coat && max(material.bsdfData.roughnessT, material.bsdfData.roughnessB) < kIllusionMinGGXAlpha);
         result.lobe = transmission ? (uint)(delta ? LobeType::DeltaTransmission : (diffuse ? LobeType::DiffuseTransmission : LobeType::SpecularTransmission))
                                    : (uint)(delta ? LobeType::DeltaReflection : (diffuse ? LobeType::DiffuseReflection : LobeType::SpecularReflection));
-        result.lobeP = delta ? value.specPdf / DELTA_PDF : 1.0;
+        result.lobeP = !delta ? 1.0 : below ? value.specPdf / DELTA_PDF : material.bsdfWeight[transmission ? 3 : 2];
         return all(isfinite(result.weight));
     }
 

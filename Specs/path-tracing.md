@@ -84,7 +84,7 @@ The integrator owns path state and transport decisions. The material model owns 
 | BSDF evaluation | Return the scattering contribution for a specified direction, using the selected model and the prepared interaction |
 | Direction sampling | Return a valid continuation direction, its probability, and the corresponding throughput multiplier |
 | PDF evaluation | Return the probability density of the same sampling distribution for a specified direction, including the applicable mixture probabilities |
-| Lobe classification | Distinguish diffuse and specular transport, reflection and transmission, and delta and non-delta events for transport decisions |
+| Lobe classification | Distinguish diffuse and specular transport, reflection and transmission, and delta and non-delta events for transport decisions; a specular event is delta only when its lobe is perfectly smooth or below the reference renderer's minimum roughness, never because its sampled density is large |
 | Delta branches | Describe discrete reflection or transmission branches and their weights for stable path organization; they must not be treated as ordinary continuous densities |
 | Interaction and guide information | Describe the actual interaction and model response used by transport; guide estimates must not replace the BSDF |
 
