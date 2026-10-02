@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-7166201167598155048
+--- !u!114 &-7277471836788224261
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
@@ -9,60 +9,121 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f871c9001bb043f4397c50202e142452, type: 3}
-  m_Name: ConvolutionBloom
-  m_EditorClassIdentifier: 
+  m_Script: {fileID: 11500000, guid: 6e83f8d4570f49a4b1c7d278a118f5ca, type: 3}
+  m_Name: DLSSNeuralRendering
+  m_EditorClassIdentifier: Illusion.RenderPipelines::Illusion.Rendering.DLSSNeuralRendering
   active: 1
   enable:
-    m_OverrideState: 0
-    m_Value: 1
-  quality:
+    m_OverrideState: 1
+    m_Value: 0
+  preset:
     m_OverrideState: 0
     m_Value: 0
-  threshold:
-    m_OverrideState: 1
-    m_Value: 0.7
+  style:
+    m_OverrideState: 0
+    m_Value: 0
   intensity:
+    m_OverrideState: 0
+    m_Value: 1
+  localToneStrength:
+    m_OverrideState: 0
+    m_Value: 1
+  localStructureStrength:
+    m_OverrideState: 0
+    m_Value: 1
+  skinStructureStrength:
+    m_OverrideState: 0
+    m_Value: -1
+  useAutoMask:
+    m_OverrideState: 0
+    m_Value: 0
+  uiCorrection:
+    m_OverrideState: 0
+    m_Value: 0
+  motionVectorScale:
+    m_OverrideState: 0
+    m_Value: {x: 1, y: 1}
+  cameraCutDistance:
+    m_OverrideState: 0
+    m_Value: 5
+  cameraCutAngle:
+    m_OverrideState: 0
+    m_Value: 45
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7fd9488000d3734a9e00ee676215985, type: 3}
+  m_Name: Volume
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.VolumeProfile
+  components:
+  - {fileID: 2233971821979401399}
+  - {fileID: 8976238525677881706}
+  - {fileID: 698550563502853120}
+  - {fileID: -7277471836788224261}
+--- !u!114 &698550563502853120
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b555fc3b60d58f469b1f34a7eeda3a8, type: 3}
+  m_Name: PathTracing
+  m_EditorClassIdentifier: Illusion.RenderPipelines::Illusion.Rendering.PathTracing.PathTracing
+  active: 1
+  enable:
     m_OverrideState: 1
-    m_Value: 50
-  scatter:
-    m_OverrideState: 0
-    m_Value: 0.7
-  clamp:
-    m_OverrideState: 0
-    m_Value: 65472
-  disableDispatchMergeOptimization:
-    m_OverrideState: 0
+    m_Value: 1
+  mode:
+    m_OverrideState: 1
     m_Value: 0
-  disableReadWriteOptimization:
+  layerMask:
     m_OverrideState: 0
-    m_Value: 0
-  fftExtend:
-    m_OverrideState: 0
-    m_Value: {x: 0.1, y: 0.1}
-  updateOTF:
+    m_Value:
+      serializedVersion: 2
+      m_Bits: 4294967295
+  maximumSamples:
+    m_OverrideState: 1
+    m_Value: 1024
+  realtimeSamplesPerPixel:
     m_OverrideState: 0
     m_Value: 1
-  generatePSF:
-    m_OverrideState: 0
-    m_Value: 0
-  imagePSF:
-    m_OverrideState: 0
-    m_Value: {fileID: 0}
-    dimension: 1
-  imagePSFScale:
+  rayReconstruction:
     m_OverrideState: 0
     m_Value: 1
-  imagePSFMinClamp:
+  rayReconstructionQuality:
     m_OverrideState: 0
-    m_Value: 0
-  imagePSFMaxClamp:
+    m_Value: 2
+  bounceCount:
     m_OverrideState: 0
-    m_Value: 65472
-  imagePSFPow:
+    m_Value: 16
+  diffuseBounceCount:
+    m_OverrideState: 0
+    m_Value: 2
+  lightSampling:
     m_OverrideState: 0
     m_Value: 1
---- !u!114 &-3636735664450312457
+  directionalAngularDiameter:
+    m_OverrideState: 0
+    m_Value: 0.5
+  referenceFireflyFilterThreshold:
+    m_OverrideState: 0
+    m_Value: 5
+  realtimeFireflyFilterThreshold:
+    m_OverrideState: 0
+    m_Value: 0.1
+  environmentDiffuseMipOffset:
+    m_OverrideState: 0
+    m_Value: 0
+--- !u!114 &2233971821979401399
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
@@ -73,26 +134,26 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f28210f02e814406adde15b7fa1bb67b, type: 3}
   m_Name: Exposure
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: Illusion.RenderPipelines::Illusion.Rendering.PostProcessing.Exposure
   active: 1
   mode:
     m_OverrideState: 1
-    m_Value: 1
+    m_Value: 0
   meteringMode:
     m_OverrideState: 0
     m_Value: 2
   fixedExposure:
     m_OverrideState: 1
-    m_Value: 0.2
+    m_Value: 0.8
   compensation:
-    m_OverrideState: 1
+    m_OverrideState: 0
     m_Value: 0
   limitMin:
-    m_OverrideState: 1
-    m_Value: -0.5
+    m_OverrideState: 0
+    m_Value: -1
   limitMax:
-    m_OverrideState: 1
-    m_Value: 2
+    m_OverrideState: 0
+    m_Value: 14
   curveMap:
     m_OverrideState: 0
     m_Value:
@@ -193,7 +254,7 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 0
   sceneViewPreferFixedExposure:
-    m_OverrideState: 1
+    m_OverrideState: 0
     m_Value: 0
   proceduralCenter:
     m_OverrideState: 0
@@ -210,81 +271,7 @@ MonoBehaviour:
   proceduralSoftness:
     m_OverrideState: 0
     m_Value: 0.5
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d7fd9488000d3734a9e00ee676215985, type: 3}
-  m_Name: Volume
-  m_EditorClassIdentifier: 
-  components:
-  - {fileID: 7167922329323935407}
-  - {fileID: -3636735664450312457}
-  - {fileID: -7166201167598155048}
-  - {fileID: 3538124031983365258}
---- !u!114 &3538124031983365258
-MonoBehaviour:
-  m_ObjectHideFlags: 3
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6b555fc3b60d58f469b1f34a7eeda3a8, type: 3}
-  m_Name: PathTracing
-  m_EditorClassIdentifier: Illusion.RenderPipelines::Illusion.Rendering.PathTracing.PathTracing
-  active: 1
-  enable:
-    m_OverrideState: 1
-    m_Value: 0
-  mode:
-    m_OverrideState: 0
-    m_Value: 0
-  layerMask:
-    m_OverrideState: 0
-    m_Value:
-      serializedVersion: 2
-      m_Bits: 4294967295
-  maximumSamples:
-    m_OverrideState: 0
-    m_Value: 256
-  realtimeSamplesPerPixel:
-    m_OverrideState: 0
-    m_Value: 1
-  rayReconstruction:
-    m_OverrideState: 0
-    m_Value: 1
-  rayReconstructionQuality:
-    m_OverrideState: 0
-    m_Value: 2
-  bounceCount:
-    m_OverrideState: 0
-    m_Value: 16
-  diffuseBounceCount:
-    m_OverrideState: 0
-    m_Value: 2
-  lightSampling:
-    m_OverrideState: 0
-    m_Value: 1
-  directionalAngularDiameter:
-    m_OverrideState: 0
-    m_Value: 0.5
-  referenceFireflyFilterThreshold:
-    m_OverrideState: 0
-    m_Value: 5
-  realtimeFireflyFilterThreshold:
-    m_OverrideState: 0
-    m_Value: 0.1
-  environmentDiffuseMipOffset:
-    m_OverrideState: 0
-    m_Value: 0
---- !u!114 &7167922329323935407
+--- !u!114 &8976238525677881706
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
@@ -295,14 +282,14 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a074ec59f6e910b4e8c49f57e56cf95a, type: 3}
   m_Name: VolumetricFog
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: Illusion.RenderPipelines::Illusion.Rendering.PostProcessing.VolumetricFog
   active: 1
   enable:
     m_OverrideState: 1
-    m_Value: 1
+    m_Value: 0
   distance:
-    m_OverrideState: 1
-    m_Value: 50
+    m_OverrideState: 0
+    m_Value: 64
   baseHeight:
     m_OverrideState: 0
     m_Value: 0
@@ -316,8 +303,8 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: 0
   density:
-    m_OverrideState: 1
-    m_Value: 1
+    m_OverrideState: 0
+    m_Value: 0.2
   attenuationDistance:
     m_OverrideState: 0
     m_Value: 128
@@ -340,8 +327,8 @@ MonoBehaviour:
     m_OverrideState: 0
     m_Value: {r: 1, g: 1, b: 1, a: 1}
   enableAdditionalLightsContribution:
-    m_OverrideState: 1
-    m_Value: 1
+    m_OverrideState: 0
+    m_Value: 0
   maxSteps:
     m_OverrideState: 0
     m_Value: 128

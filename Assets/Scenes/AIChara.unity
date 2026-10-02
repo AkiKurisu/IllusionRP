@@ -1007,7 +1007,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
   m_IsGlobal: 1
-  priority: 0
+  priority: 100
   blendDistance: 0
   weight: 1
   sharedProfile: {fileID: 11400000, guid: c4c994e60572a3342bb521faffa8ebf7, type: 2}
