@@ -83,7 +83,7 @@ namespace Illusion.Rendering.PathTracing
             var cameraConstants = PathTracingFrameConstants.BuildCamera(camera, width, height, Lens);
 
             int stateHash = HashCode.Combine(worldToView, viewToClip, world.Scene.SceneHash, _lights.Hash,
-                HashCode.Combine(PathTracingEnvironment.ComputeHash(_lights), Lens.ApertureRadius, Lens.FocusDistance, PathTracingDiffusionProfiles.Capture(_rendererData).ComputeHash()),
+                HashCode.Combine(PathTracingEnvironment.ComputeHash(_lights), PathTracingEnvironment.CameraBackground(camera), Lens.ApertureRadius, Lens.FocusDistance, PathTracingDiffusionProfiles.Capture(_rendererData).ComputeHash()),
                 HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
                     settings.fireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value));
             context.UpdateAccumulation(stateHash, world.Scene.TransformsChanged);

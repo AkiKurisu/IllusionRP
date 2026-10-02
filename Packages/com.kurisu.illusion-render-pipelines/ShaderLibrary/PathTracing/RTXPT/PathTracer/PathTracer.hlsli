@@ -466,7 +466,14 @@ namespace PathTracer
 
             // convert to environment map's local dir (as it supports its own rotation matrix)
             float3 localDir = envMap.ToLocal(rayDir);     
-            float3 Le = envMap.EvalLocal(localDir, mipLevel);
+            // @IllusionRP: camera chains see the camera background; scattered paths see the lighting environment.
+            float3 Le;
+            if (!path.isDeltaOnlyPath())
+                Le = envMap.EvalLocal(localDir, mipLevel);
+            else if (Bridge::BackgroundColor().w > 0.0)
+                Le = Bridge::BackgroundColor().rgb;
+            else
+                Le = Bridge::CreateBackgroundEnvMap().EvalLocal(localDir, 0);
 
             // figure out MIS vs our lighting technique, if any
             float misWeight = 1.0f;
@@ -573,6 +580,15 @@ namespace PathTracer
             UpdatePathThroughput(path, transmittance);
         }
 #endif
+
+        // @IllusionRP: a multiply overlay filters the camera chain, which continues behind it without a new vertex.
+        if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
+        {
+            UpdatePathThroughput(path, PathTracingUnpackHalf4(payload.diffuseOpacity).rgb);
+            path.SetOrigin( ComputeRayOrigin( surfaceData.shadingData.posW, -surfaceData.shadingData.faceNCorrected ) );
+            path.decrementVertexIndex();
+            return;
+        }
 
         // Reject false hits in nested dielectrics but also updates 'outside index of refraction' and dependent data
         bool rejectedFalseHit = !HandleNestedDielectrics(surfaceData, path, workingContext);

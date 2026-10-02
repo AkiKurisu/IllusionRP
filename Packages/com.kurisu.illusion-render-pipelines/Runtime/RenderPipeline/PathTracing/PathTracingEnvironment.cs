@@ -47,6 +47,8 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly RenderTexture _sourceCube;
 
+        private RenderTexture _background;
+
         private int _hash;
 
         public RenderTexture Cube { get; }
@@ -54,6 +56,8 @@ namespace Illusion.Rendering.PathTracing
         public RenderTexture ImportanceMap { get; }
 
         public RenderTexture RadianceMap { get; }
+
+        public RenderTexture Background { get; private set; }
 
         public int ImportanceMapMipCount => ImportanceMap.mipmapCount;
 
@@ -90,10 +94,19 @@ namespace Illusion.Rendering.PathTracing
 
         private static bool LightsWithSkybox => RenderSettings.ambientMode == AmbientMode.Skybox;
 
+        public static Vector4 CameraBackground(Camera camera)
+        {
+            if (camera.clearFlags == CameraClearFlags.Skybox)
+                return Vector4.zero;
+            var color = camera.backgroundColor.linear;
+            return new Vector4(color.r, color.g, color.b, 1.0f);
+        }
+
         public void Update(CommandBuffer cmd, PathTracingLightCollector lights, RenderTargetIdentifier exposureTexture)
         {
             int hash = ComputeHash(lights);
-            if (hash == _hash && Cube.IsCreated() && _sourceCube.IsCreated() && ImportanceMap.IsCreated() && RadianceMap.IsCreated() && Version != 0)
+            if (hash == _hash && Cube.IsCreated() && _sourceCube.IsCreated() && ImportanceMap.IsCreated() && RadianceMap.IsCreated()
+                && Background && Background.IsCreated() && Version != 0)
                 return;
             _hash = hash; Version++;
             if (!Cube.IsCreated()) Cube.Create();
@@ -105,13 +118,19 @@ namespace Illusion.Rendering.PathTracing
             cmd.SetGlobalTexture(ShaderIDs._ExposureTexture, Texture2D.whiteTexture);
             cmd.SetGlobalVector(ShaderIDs._WorldSpaceLightPos0, new Vector4(sunDirection.x, sunDirection.y, sunDirection.z, 0));
             cmd.SetGlobalVector(ShaderIDs._LightColor0, SunColor(lights.Sun));
+            var skybox = RenderSettings.skybox;
+            var skyMaterial = skybox ? GetBakeMaterial(skybox, lights.HasDirectionalLights) : null;
             if (LightsWithSkybox)
             {
-                var skybox = RenderSettings.skybox;
-                DrawFaces(cmd, _sourceCube, skybox ? GetBakeMaterial(skybox, lights.HasDirectionalLights) : null, 0);
+                DrawFaces(cmd, _sourceCube, skyMaterial, 0);
+                Background = _sourceCube;
             }
             else
             {
+                _background ??= CreateTexture("_PathTracingEnvironmentBackground", CubeSize, GraphicsFormat.R16G16B16A16_SFloat, TextureDimension.Cube, false);
+                if (!_background.IsCreated()) _background.Create();
+                DrawFaces(cmd, _background, skyMaterial, 0);
+                Background = _background;
                 ProjectAmbientProbe();
                 DrawFaces(cmd, _sourceCube, _lightingMaterial, LightingProbePass);
             }
@@ -301,6 +320,7 @@ namespace Illusion.Rendering.PathTracing
             ImportanceMap.Release();
             RadianceMap.Release();
             _sourceCube.Release();
+            _background?.Release();
         }
 
         public void Dispose()
@@ -309,6 +329,7 @@ namespace Illusion.Rendering.PathTracing
             CoreUtils.Destroy(_bakeMaterial);
             CoreUtils.Destroy(_lightingMaterial);
             CoreUtils.Destroy(_sourceCube);
+            CoreUtils.Destroy(_background);
             CoreUtils.Destroy(_skyMesh);
             CoreUtils.Destroy(Cube);
             CoreUtils.Destroy(ImportanceMap);

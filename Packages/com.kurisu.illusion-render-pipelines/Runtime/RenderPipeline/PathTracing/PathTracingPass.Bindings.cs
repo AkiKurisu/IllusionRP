@@ -34,6 +34,8 @@ namespace Illusion.Rendering.PathTracing
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_SpecularHitT, data.SpecularHitT);
 
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvironmentMap, environment.Cube);
+            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_PathTracingBackground, environment.Background);
+            cmd.SetRayTracingVectorParam(shader, ShaderIDs._PathTracingBackgroundColor, PathTracingEnvironment.CameraBackground(data.Camera));
             cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvironmentMapImportanceMap, environment.ImportanceMap);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightsCB, lightBaker.ControlBuffer);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_Lights, lightBaker.LightsBuffer);
@@ -105,6 +107,8 @@ namespace Illusion.Rendering.PathTracing
             public static readonly int u_RRTransparencyLayer = Shader.PropertyToID("u_RRTransparencyLayer");
             public static readonly int u_DenoisingAvgLayerRadiance = Shader.PropertyToID("u_DenoisingAvgLayerRadiance");
             public static readonly int t_EnvironmentMap = Shader.PropertyToID("t_EnvironmentMap");
+            public static readonly int t_PathTracingBackground = Shader.PropertyToID("t_PathTracingBackground");
+            public static readonly int _PathTracingBackgroundColor = Shader.PropertyToID("_PathTracingBackgroundColor");
             public static readonly int t_EnvironmentMapImportanceMap = Shader.PropertyToID("t_EnvironmentMapImportanceMap");
             public static readonly int t_LightsCB = Shader.PropertyToID("t_LightsCB");
             public static readonly int t_Lights = Shader.PropertyToID("t_Lights");

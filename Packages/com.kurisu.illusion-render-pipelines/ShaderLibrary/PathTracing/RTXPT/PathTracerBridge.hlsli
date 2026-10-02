@@ -97,6 +97,8 @@ namespace Bridge
     
     // Used for evaluating environment map in given direction (but no importance sampling); available if HasEnvMap() returns true
     static EnvMap CreateEnvMap();
+    static EnvMap CreateBackgroundEnvMap();  // @IllusionRP
+    static float4 BackgroundColor();  // @IllusionRP
 
     // Used for environment map (distant lights) importance sampling; available if HasEnvMap() returns true
     static EnvMapSampler CreateEnvMapImportanceSampler();

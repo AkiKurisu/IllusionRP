@@ -136,6 +136,15 @@ Path length and rough-surface bounce budgets must have explicit, consistent coun
 
 Firefly clamping and environment sampling smoothing are optional stability measures that change the estimate. They must be distinguishable from material parameters, and it must be possible to disable them. Disabling them does not make a finite path budget or finite sample count equivalent to a fully converged result.
 
+## Camera Chains and Presentation
+
+A camera chain is the camera ray together with its continuation through delta reflection and delta transmission events; it ends at the first non-delta scattering event. Camera chains carry what raster presents to the viewer, while scattered paths carry lighting.
+
+- A camera chain that leaves the scene sees the camera background: the skybox when the camera clears to the skybox, otherwise the camera background color. Both are scene-linear radiance and take exposure like the rest of the image. The background does not follow the Environment Lighting source or its intensity multiplier; scattered paths that leave the scene see the lighting environment.
+- An Unlit surface does not scatter. A camera chain that reaches it sees its display color; every other path sees only its baked emission, which takes part in light sampling like other emissive geometry. This deliberately differs from HDRP, where the unlit color also lights the scene.
+- A multiply overlay is a presentation layer that raster multiplies over the surfaces behind it, such as an eye shadow. A camera chain reaching its front face takes its factor and continues behind it without counting a bounce; every other ray passes through it, so it neither occludes, emits, nor scatters, and it gives no thickness to volume scattering.
+- A material may limit its visibility to camera chains, as a backdrop does; every other ray passes through it.
+
 ## Camera Rendering Flow
 
 Each camera render follows this order:
@@ -203,7 +212,7 @@ A conforming implementation must demonstrate at least the following behaviors:
 
 - Raster/PT switching uses the same material assets and restores camera state afterward.
 - Reference and Realtime retain consistent material and lighting semantics without mixing incompatible history.
-- Hits, misses, alpha, point lights, spotlights, and emissive geometry follow their input contracts.
+- Hits, misses, alpha, point lights, spotlights, and emissive geometry follow their input contracts; camera chains see the camera background, Unlit display colors, and multiply overlays.
 - Lit, Fabric, Skin, and Hair inputs, evaluation, sampling, and probability densities are mutually consistent.
 - Valid, unassigned, and unmatched Diffusion Profiles behave correctly; subsurface scattering exits have no fixed hard boundaries.
 - Camera motion, viewport changes, and material or transform updates correctly update output and affected history.

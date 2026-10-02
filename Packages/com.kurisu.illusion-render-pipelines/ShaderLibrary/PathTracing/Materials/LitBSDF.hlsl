@@ -26,6 +26,7 @@ struct HDRPBSDF
 
     float4 eval(const ShadingData shadingData, const float3 wo)
     {
+        if (family == PT_FAMILY_UNLIT) return 0.0.xxxx;
         if (family == PT_FAMILY_HAIR)
         {
             Illusion::Hair::MaterialResult value;
@@ -46,6 +47,7 @@ struct HDRPBSDF
 
     float evalPdf(const ShadingData shadingData, const float3 wo, bool useImportanceSampling)
     {
+        if (family == PT_FAMILY_UNLIT) return 0.0;
         if (family == PT_FAMILY_HAIR)
         {
             Illusion::Hair::MaterialResult value;
@@ -110,6 +112,7 @@ struct HDRPBSDF
 
     uint getLobes(const ShadingData shadingData)
     {
+        if (family == PT_FAMILY_UNLIT) return 0u;
         if (family == PT_FAMILY_HAIR) return (uint)LobeType::SpecularReflection | (uint)LobeType::SpecularTransmission;
         if (family == PT_FAMILY_FABRIC)
             return (uint)LobeType::DiffuseReflection | (uint)LobeType::SpecularReflection | (fabric.bsdfWeight[2] > 0.0 ? (uint)LobeType::DiffuseTransmission : 0u);
@@ -120,6 +123,12 @@ struct HDRPBSDF
 
     void estimateSpecDiffBSDF(out float3 diffuse, out float3 specular, const float3 normal, const float3 view)
     {
+        if (family == PT_FAMILY_UNLIT)
+        {
+            diffuse = 0.0;
+            specular = 0.0;
+            return;
+        }
         if (family == PT_FAMILY_FABRIC)
         {
             diffuse = fabric.bsdfData.diffuseColor;
@@ -143,6 +152,11 @@ struct HDRPBSDF
         count = 0;
         nonDeltaPart = 1.0;
         [unroll] for (uint i = 0; i < cMaxDeltaLobes; ++i) lobes[i] = (DeltaLobe)0;
+        if (family == PT_FAMILY_UNLIT)
+        {
+            nonDeltaPart = 0.0;
+            return;
+        }
         if (family == PT_FAMILY_FABRIC || family == PT_FAMILY_HAIR || Illusion::Lit::IsAbove(material)) return;
         if (thin && material.bsdfData.transmittanceMask > 0.0)
         {

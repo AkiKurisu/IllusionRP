@@ -213,6 +213,17 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         bsdfData.materialFeatures |= MATERIALFEATUREFLAGS_LIT_SUBSURFACE_SCATTERING;
     }
     Illusion::g_HDRPViewDirection = ptShadingData.V;
+    // @IllusionRP: Unlit surfaces do not scatter; camera chains see their display color, other paths their baked emission.
+    if (family == PT_FAMILY_UNLIT)
+    {
+        if (PathTracingIsCameraChain(payload))
+        {
+            ptShadingData.emission = (lpfloat3)diffuseOpacity.rgb;
+            neeTriangleLightIndex = RTXPT_INVALID_LIGHT_INDEX;
+        }
+        bsdf.valid = false;
+    }
+    else
     if (family == PT_FAMILY_HAIR)
     {
         Illusion::Hair::SurfaceData hairSurface = (Illusion::Hair::SurfaceData)0;
@@ -370,6 +381,20 @@ float3 Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int 
 EnvMap Bridge::CreateEnvMap()
 {
     return EnvMap::make( t_EnvironmentMap, s_EnvironmentMapSampler, g_Const.envMapSceneParams );
+}
+
+// @IllusionRP: camera chains see the camera background: the skybox, or the camera color when .w is set.
+TextureCube<float4> t_PathTracingBackground;
+float4 _PathTracingBackgroundColor;
+
+EnvMap Bridge::CreateBackgroundEnvMap()
+{
+    return EnvMap::make( t_PathTracingBackground, s_EnvironmentMapSampler, g_Const.envMapSceneParams );
+}
+
+float4 Bridge::BackgroundColor()
+{
+    return _PathTracingBackgroundColor;
 }
 
 EnvMapSampler Bridge::CreateEnvMapImportanceSampler()

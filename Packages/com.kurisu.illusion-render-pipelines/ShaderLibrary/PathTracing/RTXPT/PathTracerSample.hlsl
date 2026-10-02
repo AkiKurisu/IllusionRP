@@ -110,6 +110,8 @@ void nextHit(inout PathState path, inout float2 tMinMax, const PathTracer::Worki
     ray.TMax = tMinMax.y;
     IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER, Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
         path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
+    if (path.isDeltaOnlyPath())
+        PathTracingMarkCameraChain(payload);  // @IllusionRP
     TraceRay( SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload );  // @IllusionRP
     if (payload.hitT == PT_NO_SURFACE_T)
         PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
