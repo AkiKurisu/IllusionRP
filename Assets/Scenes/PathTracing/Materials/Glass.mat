@@ -25,9 +25,10 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
+    - _MetallicRemapMax: 0
     - _SmoothnessRemapMax: 1
     - _SmoothnessRemapMin: 1
     m_Colors:
-    - _BaseColor: {r: 0.9, g: 0.95, b: 1, a: 0}
+    - _BaseColor: {r: 0.9, g: 0.95, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
