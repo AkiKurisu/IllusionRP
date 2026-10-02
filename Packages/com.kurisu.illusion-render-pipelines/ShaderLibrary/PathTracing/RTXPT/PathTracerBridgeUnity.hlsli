@@ -242,6 +242,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         hairSurface.cuticleAngle = 3.0;
         hairSurface.ambientOcclusion = 1.0;
         Illusion::Hair::BSDFData hairData = Illusion::Hair::ConvertSurfaceDataToBSDFData(pixelPos, hairSurface);
+        hairData.fresnel0 = bsdfDataSpecular;  // @IllusionRP
         bsdf.valid = Illusion::Hair::CreateMaterialData(hdrpPayload, builtin, hairData, ptShadingData.posW, materialSample, bsdf.hair);
         bsdf.hair.Nv = hairData.normalWS;
     }

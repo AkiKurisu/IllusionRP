@@ -8,6 +8,7 @@ struct PathTracingHairSurface
     float3 tangentWS;
     float3 baseColor;
     float smoothness;
+    float specular;
     float alpha;
     float coverage;
 };
@@ -18,6 +19,7 @@ PathTracingHairSurface PathTracingInitHairSurface()
     s.tangentWS = float3(0, 1, 0);
     s.baseColor = 0.5;
     s.smoothness = 0.5;
+    s.specular = 0.5;
     s.alpha = s.coverage = 1.0;
     return s;
 }
@@ -25,7 +27,8 @@ void PathTracingWriteHairSurface(inout IllusionPathPayload payload, PathTracingH
 {
     PathTracingWriteGeometry(payload, hit, PT_FAMILY_HAIR, PT_SURFACE_THIN, s.normalWS, float4(s.tangentWS, hit.tangentWS.w));
     payload.diffuseOpacity = PathTracingPackHalf4(float4(s.baseColor, s.alpha));
-    payload.specularRoughness = PathTracingPackHalf4(float4(0.0465.xxx, 1.0 - s.smoothness));
+    // As in UE's path tracer, the fiber reflects 0.08 * specular at normal incidence.
+    payload.specularRoughness = PathTracingPackHalf4(float4((0.08 * saturate(s.specular)).xxx, 1.0 - s.smoothness));
     payload.emissionMetallic = 0;
     payload.parameters = 0;
 }

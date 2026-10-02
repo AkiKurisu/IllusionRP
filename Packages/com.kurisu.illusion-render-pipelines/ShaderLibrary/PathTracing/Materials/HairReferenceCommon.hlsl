@@ -176,7 +176,9 @@ ReferenceBSDFData GetReferenceBSDFData(BSDFData bsdfData)
 
     data.h      = bsdfData.h;
     data.gammaO = FastASin(data.h);
-    data.eta    = 1.55;
+    // @IllusionRP: the fiber index of refraction follows its normal-incidence reflectance, as in UE's path tracer.
+    float sqrtF0 = sqrt(clamp(bsdfData.fresnel0.x, 1e-4, 0.5));
+    data.eta    = (1.0 + sqrtF0) / (1.0 - sqrtF0);
     data.sigmaA = bsdfData.absorption;
     data.betaM  = bsdfData.perceptualRoughness;
     data.betaN  = bsdfData.perceptualRoughnessRadial;

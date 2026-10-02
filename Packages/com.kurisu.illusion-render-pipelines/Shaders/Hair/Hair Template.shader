@@ -3492,9 +3492,11 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				#endif
 
 				float metallic = saturate( Metallic );
-				surface.tangentWS = SafeNormalize( Tangent );
+				surface.tangentWS = SafeNormalize( ShiftTangent( Tangent, surface.normalWS, Noise ) );
 				surface.baseColor = BaseColor;
-				surface.smoothness = saturate( Smoothness );
+				// The fiber takes the roughness and specular tint of the raster Marschner lobes, as UE feeds one roughness and specular to both.
+				surface.smoothness = 1.0 - saturate( 0.25 - HighLight * 0.1334 );
+				surface.specular = Luminance( Tint );
 				surface.alpha = saturate( Alpha );
 				return surface;
 			}
