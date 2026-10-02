@@ -105,7 +105,7 @@ Supported material semantics are:
 | Model | Semantics |
 |---|---|
 | Lit | Surface reflection, plus coatings, thin or refractive transmission, and medium absorption expressed by the inputs |
-| Fabric | Cotton/Wool and Silk, using their respective surface scattering and sampling rules |
+| Fabric | A GGX lobe blended into a cloth lobe by the sheen intensity, following UE's Cloth model; Silk makes the GGX lobe anisotropic along its tangent |
 | Skin | Surface reflection and volumetric subsurface scattering, with Random Walk and Diffusion Profile inputs for volume scattering |
 | Hair | Marschner hair scattering, with response determined by material inputs and hair direction |
 | Unlit | Visible color and emission for unlit materials, without presenting them as a lit scattering model |
@@ -115,6 +115,8 @@ Model selection must come from the material evaluation entry point, not object n
 Coverage, alpha clipping, and physical transmission are distinct inputs. Coverage determines whether a ray accepts a geometric hit; transmission determines scattering after that hit is accepted. Main, shadow, and subsurface paths must follow their respective geometric tests while retaining consistent material coverage semantics. A shadow path returns colored transmission rather than a binary result: partial coverage passes the uncovered fraction, and a transparent, thin, or refractive surface passes its transmission. Shadow paths continue in a straight line through such surfaces.
 
 The Hair model does not change the input geometry type. Hair cards remain cards and must not be treated as strand geometry merely because they use a hair scattering model.
+
+Fabric keeps the inputs of the raster lighting, which blends the specular lobe into the sheen lobe by the sheen intensity. The cloth lobe uses the sheen color, the Charlie distribution, and the inverted GGX distribution of UE's Cloth model when the material is velvet. Silk takes its tangent from the same normal-map tilt as raster anisotropy. A separate sheen normal is not supported: no reference path tracer gives the cloth lobe its own normal.
 
 A hair card stands for a whole volume of hair collapsed into one surface, so its base color is the color of that volume. The fiber absorption is chosen so that a single card interaction, averaged across the fiber at normal incidence, returns the base color as its total albedo. This deliberately differs from HDRP, whose mapping assumes the light bounces many times between strands and leaves single-layer cards nearly white. The scattering lobes, their distributions, and the fiber refraction stay those of HDRP.
 

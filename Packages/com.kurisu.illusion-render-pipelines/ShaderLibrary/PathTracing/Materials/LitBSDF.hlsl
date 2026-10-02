@@ -88,8 +88,9 @@ struct HDRPBSDF
             result.pdf = value.diffPdf + value.specPdf;
             if (!(result.pdf > 0.0)) return false;
             result.weight = (value.diffValue + value.specValue) / result.pdf;
+            bool sampledSpecular = inputSample.z >= fabric.bsdfWeight[0] && inputSample.z < fabric.bsdfWeight[0] + fabric.bsdfWeight[1];
             result.lobe = !Illusion::Fabric::IsAbove(fabric, result.wo) ? (uint)LobeType::DiffuseTransmission
-                : (uint)(inputSample.z < fabric.bsdfWeight[0] ? LobeType::DiffuseReflection : LobeType::SpecularReflection);
+                : (uint)(sampledSpecular ? LobeType::SpecularReflection : LobeType::DiffuseReflection);
             result.lobeP = 1.0;
             return all(isfinite(result.weight));
         }
@@ -132,7 +133,7 @@ struct HDRPBSDF
         if (family == PT_FAMILY_FABRIC)
         {
             diffuse = fabric.bsdfData.diffuseColor;
-            specular = fabric.bsdfData.fresnel0;
+            specular = lerp(fabric.bsdfData.fresnel0, fabric.bsdfData.sheenColor, fabric.bsdfData.sheenAmount);
             return;
         }
         if (family == PT_FAMILY_HAIR)

@@ -77,6 +77,9 @@ struct BSDFData
     float roughnessT;
     float roughnessB;
     float anisotropy;
+    float3 sheenColor;  // @IllusionRP: color of the cloth lobe
+    float sheenAmount;  // @IllusionRP: blend from the GGX lobe to the cloth lobe
+    bool velvet;        // @IllusionRP: the cloth lobe uses the inverted GGX distribution
 };
 
 // Generated from UnityEngine.Rendering.HighDefinition.Fabric+SurfaceData

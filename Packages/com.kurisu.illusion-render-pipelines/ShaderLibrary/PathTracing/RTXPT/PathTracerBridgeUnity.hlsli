@@ -245,7 +245,8 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     if (family == PT_FAMILY_FABRIC)
     {
         Illusion::Fabric::BSDFData fabricData = (Illusion::Fabric::BSDFData)0;
-        fabricData.materialFeatures = payload.parameters.x == 0u ? MATERIALFEATUREFLAGS_FABRIC_COTTON_WOOL : 0u;
+        const bool silk = (payload.parameters.x & PT_FABRIC_SILK) != 0u;
+        fabricData.materialFeatures = silk ? 0u : MATERIALFEATUREFLAGS_FABRIC_COTTON_WOOL;
         float2 anisotropyTransmissionR = PathTracingUnpackHalf2(payload.parameters.y);
         float2 transmissionGB = PathTracingUnpackHalf2(payload.parameters.z);
         fabricData.transmittance = float3(anisotropyTransmissionR.y, transmissionGB);
@@ -259,8 +260,13 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         fabricData.bitangentWS = ptShadingData.B;
         fabricData.perceptualRoughness = bsdfDataRoughness;
         fabricData.anisotropy = anisotropyTransmissionR.x;
+        const float2 sheenRG = PathTracingUnpackHalf2(payload.familyParameters.x);
+        const float2 sheenBAmount = PathTracingUnpackHalf2(payload.familyParameters.y);
+        fabricData.sheenColor = float3(sheenRG, sheenBAmount.x);
+        fabricData.sheenAmount = saturate(sheenBAmount.y);
+        fabricData.velvet = (payload.parameters.x & PT_FABRIC_VELVET) != 0u;
         Illusion::ConvertAnisotropyToRoughness(fabricData.perceptualRoughness, fabricData.anisotropy, fabricData.roughnessT, fabricData.roughnessB);
-        if (payload.parameters.x == 0u) fabricData.roughnessT = fabricData.roughnessB = Illusion::PerceptualRoughnessToRoughness(fabricData.perceptualRoughness);
+        if (!silk) fabricData.roughnessT = fabricData.roughnessB = Illusion::PerceptualRoughnessToRoughness(fabricData.perceptualRoughness);
         bsdf.valid = Illusion::Fabric::CreateMaterialData(hdrpPayload, builtin, fabricData, ptShadingData.posW, materialSample, bsdf.fabric);
         ptShadingData.N = Illusion::Fabric::GetSpecularNormal(bsdf.fabric);
     }

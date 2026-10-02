@@ -18,6 +18,9 @@
 #define PT_FAMILY_DIAGNOSTIC            15u
 #define PT_FAMILY_MASK                  0xFu
 
+#define PT_FABRIC_SILK                  1u
+#define PT_FABRIC_VELVET                2u
+
 #define PT_SURFACE_FRONT_FACING         (1u << 4)
 #define PT_SURFACE_THIN                 (1u << 5)
 #define PT_SURFACE_BITANGENT_FLIP       (1u << 6)

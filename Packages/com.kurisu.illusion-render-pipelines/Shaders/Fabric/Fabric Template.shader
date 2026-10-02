@@ -3877,10 +3877,18 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				surface.smoothness = saturate( Smoothness );
 				surface.emission = Emission;
 				surface.alpha = saturate( Alpha );
-                surface.sheen = _Sheen_Color.rgb * BaseColor * _Sheen_Intensity;
+                surface.sheen = _Sheen_Color.rgb * BaseColor;
+                surface.sheenAmount = _Sheen_Intensity;
+#if defined(_SHEEN_VELET)
+                surface.velvet = true;
+#endif
 #if defined(_ANISOTROPY_ON)
                 surface.silk = true;
                 surface.anisotropy = _Anisotropy_Intensity;
+#if _NORMAL_DROPOFF_TS
+                // The normal map tilts the anisotropy tangent, as in the raster lighting.
+                surface.tangentWS = TransformTangentToWorld( normalize( Normal.x * half3( 0, 0, 1 ) * _NormalAniso + half3( 1, 0, 0 ) ), half3x3( TangentWS, BitangentWS, NormalWS ) );
+#endif
 #endif
 #if defined(ASE_TRANSMISSION)
                 surface.transmission = Transmission;

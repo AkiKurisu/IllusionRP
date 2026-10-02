@@ -340,9 +340,18 @@ void EvaluateDiffuse(MaterialData mtlData,
 #endif
 }
 
+// @IllusionRP: the cloth lobe color is an input, and velvet uses UE's inverted GGX distribution.
+float D_InvGGX(float a2, float NdotH)
+{
+    float d = (NdotH - a2 * NdotH) * NdotH + a2;
+    return rcp(PI * (1.0 + 4.0 * a2)) * (1.0 + 4.0 * a2 * a2 / (d * d));
+}
+
 void EvaluateSheen(MaterialData mtlData,
                    float3 normal,
                    float roughness,
+                   float3 color,
+                   bool velvet,
                    float3 outgoingDir,
                out float3 value,
                out float pdf)
@@ -363,13 +372,13 @@ void EvaluateSheen(MaterialData mtlData,
     float3 H = normalize(mtlData.V + outgoingDir);
     float NdotH = dot(normal, H);
 
-    float D = D_Charlie(NdotH, roughness);
+    float D = velvet ? D_InvGGX(roughness * roughness, NdotH) : D_Charlie(NdotH, roughness);
 
     // We use this visibility term to match the raster implementation (Fabric.hlsl)
     float Vg = V_Ashikhmin(NdotL, NdotV);
     //float Vg = V_Charlie(NdotL, NdotV, roughness);
 
-    value = mtlData.bsdfData.fresnel0 * D * Vg * NdotL;
+    value = color * D * Vg * NdotL;
 }
 
 } // namespace BRDF
