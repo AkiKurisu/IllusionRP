@@ -31,10 +31,16 @@ void PathTracingClosestHit(inout IllusionPathPayload payload : SV_RayPayload, At
     PathTracingWriteTemplateSurface(payload, g_PathTracingHit, surface);
 }
 
+#if defined(_SURFACE_TYPE_TRANSPARENT) || defined(_PATH_TRACING_TRANSMISSION_THIN) || defined(_PATH_TRACING_TRANSMISSION_REFRACTIVE)
+#define PATH_TRACING_TRANSMITS_SHADOWS
+#endif
+
 [shader("anyhit")]
 void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, AttributeData attributes : SV_IntersectionAttributes)
 {
-#if defined(_ALPHATEST_ON) || defined(_SURFACE_TYPE_TRANSPARENT) || defined(_PATH_TRACING_TRANSMISSION_THIN)
+    if (!PathTracingAcceptShadowCaster(payload))
+        return;
+#if defined(_ALPHATEST_ON) || defined(PATH_TRACING_TRANSMITS_SHADOWS)
 #if (defined(_SURFACE_TYPE_TRANSPARENT) || defined(_PATH_TRACING_TRANSMISSION_THIN)) && !defined(_PATH_TRACING_TRANSMISSION_REFRACTIVE)
     if (PathTracingIsCulledFace())
     {
@@ -43,12 +49,27 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
     }
 #endif
     PATH_TRACING_TEMPLATE_SURFACE surface = PathTracingEvaluateTemplate(attributes, payload);
-    if (g_PathTracingClipped || !PathTracingAcceptCoverage(payload, PathTracingTemplateCoverage(surface)))
+    if (g_PathTracingClipped)
     {
         IgnoreHit();
         return;
     }
-
+    if (PathTracingGetRayKind(payload) == PT_RAY_VISIBILITY)
+    {
+#if defined(PATH_TRACING_TRANSMITS_SHADOWS) && defined(ILLUSION_PATH_TRACING_LIT_SURFACE_INCLUDED) && (defined(_PATH_TRACING_TRANSMISSION_THIN) || defined(_PATH_TRACING_TRANSMISSION_REFRACTIVE) || defined(ASE_REFRACTION))
+        PathTracingAccumulateShadowTransmission(payload, surface.specularTransmission * surface.transmissionTint);
+#elif defined(PATH_TRACING_TRANSMITS_SHADOWS)
+        PathTracingAccumulateShadowTransmission(payload, 1.0 - surface.alpha);
+#else
+        PathTracingAccumulateShadowTransmission(payload, 1.0 - PathTracingTemplateCoverage(surface));
+#endif
+        return;
+    }
+    if (!PathTracingAcceptCoverage(payload, PathTracingTemplateCoverage(surface)))
+    {
+        IgnoreHit();
+        return;
+    }
 #endif
     PathTracingRecordRandomWalk(payload, attributes);
 }

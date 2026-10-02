@@ -793,7 +793,7 @@ void PolymorphicLight::PackColor(float3 radiance, inout PolymorphicLightInfo lig
 
 bool PolymorphicLight::PackCompactInfo(PolymorphicLightInfoFull lightInfo, out uint4 res1, out uint4 res2)
 {
-    if (unpackLightShaping(lightInfo).isSpot)
+    if (unpackLightShaping(lightInfo).isSpot || lightInfo.Extended.TargetIndex != 0)  // @IllusionRP
     {
         res1 = 0;
         res2 = 0;

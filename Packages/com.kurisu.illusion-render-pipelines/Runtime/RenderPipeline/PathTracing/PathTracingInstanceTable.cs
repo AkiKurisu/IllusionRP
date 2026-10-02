@@ -15,6 +15,7 @@ namespace Illusion.Rendering.PathTracing
         public uint PreviousPositionBase;
         public uint CulledSubMeshes;
         public uint ScatteringGroup;
+        public uint RenderingLayers;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -27,6 +28,8 @@ namespace Illusion.Rendering.PathTracing
     internal sealed class PathTracingInstanceTable : IDisposable
     {
         public const uint SceneMask = 0x01;
+
+        public const uint ShadowMask = 0x02;
 
         private const int MaxCulledSubMeshCount = 0xFF;
 
@@ -101,9 +104,10 @@ namespace Illusion.Rendering.PathTracing
                 {
                     PreviousPositionBase = PathTracingInstanceData.NoPositionHistory,
                     CulledSubMeshes = culledCount > 0 ? (uint)culledStart << 8 | (uint)culledCount : 0u,
-                    ScatteringGroup = scatteringGroup
+                    ScatteringGroup = scatteringGroup,
+                    RenderingLayers = renderer.renderingLayerMask
                 });
-                hash = HashCode.Combine(hash, culledCount, scatteringGroup);
+                hash = HashCode.Combine(hash, culledCount, scatteringGroup, renderer.renderingLayerMask, renderer.shadowCastingMode);
                 for (int j = culledStart; j < _culledSubMeshes.Count; j++)
                     hash = HashCode.Combine(hash, _culledSubMeshes[j].IndexStart, _culledSubMeshes[j].Faces);
                 foreach (var material in _materials)

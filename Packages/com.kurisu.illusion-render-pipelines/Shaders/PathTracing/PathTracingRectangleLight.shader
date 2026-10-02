@@ -1,6 +1,6 @@
 Shader "Hidden/Illusion/PathTracingRectangleLight"
 {
-    Properties { [HDR] _EmissionColor("Emission", Color) = (0,0,0,1) }
+    Properties { [HDR] _EmissionColor("Emission", Color) = (0,0,0,1) [HideInInspector] _PathTracingLightTarget("Light Target", Int) = 0 }
     SubShader
     {
         Tags { "RenderPipeline" = "UniversalPipeline" "PathTracingEmission" = "Constant" }

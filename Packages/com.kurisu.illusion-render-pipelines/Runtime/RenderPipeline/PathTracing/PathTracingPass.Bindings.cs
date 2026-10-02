@@ -23,6 +23,7 @@ namespace Illusion.Rendering.PathTracing
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_PathTracingConstants, resources.Constants);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_PathTracingMiniConstants, resources.MiniConstants);
             data.World.Emissive.Bind(cmd, shader);
+            data.LightTables.Bind(cmd, shader);
             data.World.Scene.Instances.MaterialTable.Bind(cmd, shader);
             cmd.SetRayTracingBufferParam(shader, ShaderIDs._PathTracingInstanceData, data.World.Scene.Instances.Buffer);
 

@@ -123,6 +123,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     const lpfloat matIoR = family == PT_FAMILY_LIT ? (lpfloat)iorTintR.x : Bridge::loadIoR(materialID);
     const bool thinSurface = PathTracingHasSurfaceFlag(payload, PT_SURFACE_THIN);
 
+    ptShadingData.instanceID = payload.instanceID;  // @IllusionRP
     ptShadingData.materialID = materialID;
     ptShadingData.mtl = MaterialHeader::make();
     ptShadingData.mtl.setNestedPriority(min(InteriorList::kMaxNestedPriority, 1u + (materialFlags >> PTMaterialFlags_NestedPriorityShift)));
@@ -199,6 +200,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     g_HDRPSampleIndex = Bridge::getSampleIndex();
     g_HDRPVertexIndex = pathVertexIndex;
     g_HDRPScatteringGroup = _PathTracingInstanceData[payload.instanceID].scatteringGroup;  // @IllusionRP
+    g_HDRPExitInstance = payload.instanceID;  // @IllusionRP
     // @IllusionRP: RTXPT vertex 1 is HDRP segment 0; retain the conditionally remapped Skin sample.
     float4 materialSamples = family == PT_FAMILY_SKIN
         ? Illusion::GetSample4D(pixelPos, g_HDRPSampleIndex, 4 * (pathVertexIndex - 1))
@@ -259,6 +261,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         if (bsdf.material.isSubsurface)
         {
             // @IllusionRP: HDRP random walk moved the interaction to its exit surface.
+            ptShadingData.instanceID = g_HDRPExitInstance;
             ptShadingData.N = bsdf.material.bsdfData.normalWS;
             ptShadingData.faceNCorrected = bsdf.material.bsdfData.geomNormalWS;
             ptShadingData.vertexN = ptShadingData.N;
@@ -352,14 +355,16 @@ float3 Bridge::computeSkyMotionVector( const uint2 pixelPos )
     return motion;
 }
 
-// @IllusionRP: alpha testing and stochastic coverage run in the material any-hit shaders.
+// @IllusionRP: alpha testing, caster filtering and RGB shadow transmission run in the material any-hit shaders.
 
-bool Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos)
+float3 Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos, uint targetIndex)
 {
     IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_VISIBILITY, Hash32Combine(Hash32(pixelPos.x + (pixelPos.y << 16)), Bridge::getSampleIndex() * 0x9E3779B9u + pathVertexIndex), rayCone.getWidth(), rayCone.getSpreadAngle());
     payload.hitT = 0.0;
-    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, 0xff, 0, 1, 0, ray, payload);
-    return payload.hitT < 0.0;
+    payload.diffuseOpacity = PathTracingPackHalf4(float4(1.0, 1.0, 1.0, 0.0));
+    payload.parameters.x = _PathTracingLightTargets[targetIndex].shadowLayers;
+    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
+    return payload.hitT < 0.0 ? PathTracingUnpackHalf4(payload.diffuseOpacity).rgb : 0.0;
 }
 
 EnvMap Bridge::CreateEnvMap()

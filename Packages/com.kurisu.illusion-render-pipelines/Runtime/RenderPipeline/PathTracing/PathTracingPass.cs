@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Illusion.Rendering.Shadows;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -37,6 +38,8 @@ namespace Illusion.Rendering.PathTracing
         private readonly PathTracingEnvironment _environment;
 
         private readonly PathTracingLightCollector _lights = new();
+
+        private readonly PathTracingLightTables _lightTables = new();
 
         private readonly PathTracingRectangleLights _rectangleLights;
 
@@ -111,8 +114,10 @@ namespace Illusion.Rendering.PathTracing
             var context = GetContext(camera);
             context.EnsureTargets(width, height);
             var world = GetWorld(settings.layerMask.value);
-            _lights.Collect(settings.directionalAngularDiameter.value);
-            _rectangleLights.Update(_lights.RectangleLights);
+            var perObjectSelector = _rendererData.AdditionalDirectionalPerObjectShadows
+                && camera.TryGetComponent(out PerObjectShadowLightSource selector) && selector.isActiveAndEnabled ? selector.Source : null;
+            _lights.Collect(settings.directionalAngularDiameter.value, perObjectSelector, _rendererData.PerObjectShadowRenderingLayer);
+            _rectangleLights.Update(_lights);
             world.Update(camera, settings.layerMask.value, realtime);
 
             TextureHandle image = realtime
@@ -231,6 +236,7 @@ namespace Illusion.Rendering.PathTracing
                 world.Dispose();
             _worlds.Clear();
             _rectangleLights.Dispose();
+            _lightTables.Dispose();
             DisposeRealtime();
             _resources.Dispose();
             _environment.Dispose();

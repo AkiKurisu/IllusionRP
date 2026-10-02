@@ -66,8 +66,9 @@ struct PolymorphicLightInfoEx
     uint    PrimaryAxis;                // oct-encoded
     uint    CosConeAngleAndSoftness;    // 2x float16
     uint    UniqueID;                   // light hash IDs - used only for debug view coloring and validation
+    uint    TargetIndex;                // @IllusionRP: light target of the source light; 0 lights every receiver
 
-    static PolymorphicLightInfoEx empty() { PolymorphicLightInfoEx ret; ret.IesProfileIndex = 0; ret.PrimaryAxis = 0; ret.CosConeAngleAndSoftness = 0; ret.UniqueID = 0; return ret; }
+    static PolymorphicLightInfoEx empty() { PolymorphicLightInfoEx ret; ret.IesProfileIndex = 0; ret.PrimaryAxis = 0; ret.CosConeAngleAndSoftness = 0; ret.UniqueID = 0; ret.TargetIndex = 0; return ret; }  // @IllusionRP
 };
 
 struct PolymorphicLightInfoFull

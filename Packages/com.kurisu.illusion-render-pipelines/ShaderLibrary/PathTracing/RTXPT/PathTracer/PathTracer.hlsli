@@ -51,7 +51,8 @@ namespace PathTracer
         path.flagsAndVertexIndex    = 0;
         path.SetSceneLength         ( 0 );
         path.packedCounters         = 0;
-        
+        path.receiverInstanceID     = 0xFFFFFFFFu;  // @IllusionRP
+
         // path.setCounter(PackedCounters::SubSampleIndex, subSampleIndex);
 
 #if RTXPT_NESTED_DIELECTRICS_QUALITY > 0 || defined(__INTELLISENSE__)
@@ -245,6 +246,7 @@ namespace PathTracer
         #endif
             UpdatePathThroughput(path, bs.weight);
 
+        path.receiverInstanceID = shadingData.instanceID;  // @IllusionRP
         path.clearScatterEventFlags(); // removes PathFlags::transmission, PathFlags::specular, PathFlags::delta flags
 
         // Compute ray origin for next ray segment.
@@ -487,7 +489,7 @@ namespace PathTracer
 #endif
             }
 
-            environmentEmission = lpfloat3(misWeight * Le);
+            environmentEmission = lpfloat3(misWeight * Le + EvaluateDirectionalMiss(rayDir, bsdfScatterPdf, misInfo, path.receiverInstanceID));  // @IllusionRP
         }
 
 #if RTXPT_FIREFLY_FILTER && PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES
@@ -535,6 +537,10 @@ namespace PathTracer
 #endif
 
         SurfaceData surfaceData = Bridge::loadSurface( payload, rayOrigin, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug);  // @IllusionRP
+        // @IllusionRP: emissive triangles of a targeted light only light the receivers it targets.
+        if (surfaceData.neeTriangleLightIndex != RTXPT_INVALID_LIGHT_INDEX
+            && !PathTracingLightAffects(t_LightsEx[surfaceData.neeTriangleLightIndex].TargetIndex, path.receiverInstanceID))
+            surfaceData.shadingData.emission = 0;
 
         // if (surfaceData.shadingData.mtl.isPSDBlockMotionVectorsAtSurface())   // we've given up on this for now
         //     path.setFlag(PathFlags::exportSpecHitTBlocked, true);

@@ -30,6 +30,7 @@ SamplerState sampler_EmissionMap;
 RWStructuredBuffer<PolymorphicLightInfo> u_lightsBuffer;
 RWStructuredBuffer<PolymorphicLightInfoEx> u_lightsExBuffer;
 
+uint _PathTracingLightTarget;
 uint _EmissiveIndexSize;
 uint _EmissiveIndexStart;
 int _EmissiveBaseVertex;
@@ -148,5 +149,6 @@ void BakeTriangleLights(uint3 id : SV_DispatchThreadID)
     PolymorphicLightInfoFull lightFull = triLight.Store(uniqueID);
     uint lightIndex = _EmissiveDestinationBase + triangleIdx;
     u_lightsBuffer[lightIndex] = lightFull.Base;
+    lightFull.Extended.TargetIndex = _PathTracingLightTarget;
     u_lightsExBuffer[lightIndex] = lightFull.Extended;
 }

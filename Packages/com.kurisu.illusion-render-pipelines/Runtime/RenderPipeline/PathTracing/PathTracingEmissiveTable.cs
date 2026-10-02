@@ -29,6 +29,7 @@ namespace Illusion.Rendering.PathTracing
             public int RecordBase;
             public int TriangleCount;
             public Vector4 Emission;
+            public int TargetIndex;
             public Texture Texture;
             public Vector4 BaseMapST;
         }
@@ -99,7 +100,8 @@ namespace Illusion.Rendering.PathTracing
                         Renderer = renderer, Mesh = mesh, RendererID = renderer.GetInstanceID(), MeshID = mesh.GetInstanceID(),
                         InstanceIndex = instance, SubMesh = subMesh, IndexStart = sub.indexStart, IndexCount = sub.indexCount,
                         BaseVertex = sub.baseVertex, RecordBase = recordCount, TriangleCount = sub.indexCount / 3,
-                        Emission = emission, Texture = texture, BaseMapST = st
+                        Emission = emission, Texture = texture, BaseMapST = st,
+                        TargetIndex = material.HasProperty(ShaderIDs.LightTarget) ? material.GetInt(ShaderIDs.LightTarget) : 0
                     });
                     recordCount = checked(recordCount + sub.indexCount / 3);
                     if (recordCount > PathTracingLightingConfig.MaxLights)
@@ -341,6 +343,7 @@ namespace Illusion.Rendering.PathTracing
                 cmd.SetComputeIntParam(_shader, ShaderIDs.UVStride, uvStride);
                 cmd.SetComputeIntParam(_shader, ShaderIDs.UVOffset, uvOffset);
                 cmd.SetComputeIntParam(_shader, ShaderIDs.UVHalf, uvHalf);
+                cmd.SetComputeIntParam(_shader, ShaderIDs.LightTarget, batch.TargetIndex);
                 cmd.SetComputeIntParam(_shader, ShaderIDs.UseTexture, batch.Texture ? 1 : 0);
                 cmd.SetComputeTextureParam(_shader, _kernel, ShaderIDs.EmissionMap, batch.Texture ? batch.Texture : Texture2D.whiteTexture);
                 cmd.SetComputeVectorParam(_shader, ShaderIDs.EmissiveColor, batch.Emission);
@@ -407,6 +410,7 @@ namespace Illusion.Rendering.PathTracing
             public static readonly int Transform2 = Shader.PropertyToID("_EmissiveTransform2");
             public static readonly int TriangleCount = Shader.PropertyToID("_EmissiveTriangleCount");
             public static readonly int DestinationBase = Shader.PropertyToID("_EmissiveDestinationBase");
+            public static readonly int LightTarget = Shader.PropertyToID("_PathTracingLightTarget");
             public static readonly int InstanceIndex = Shader.PropertyToID("_EmissiveInstanceIndex");
             public static readonly int GeometryIndex = Shader.PropertyToID("_EmissiveGeometryIndex");
             public static readonly int Lights = Shader.PropertyToID("u_lightsBuffer");

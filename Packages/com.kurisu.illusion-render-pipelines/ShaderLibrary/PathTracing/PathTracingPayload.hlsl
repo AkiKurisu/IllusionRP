@@ -23,6 +23,10 @@
 
 
 #define PT_NO_POSITION_HISTORY          0xFFFFFFFFu
+#define PT_NO_INSTANCE                  0xFFFFFFFFu
+
+#define PT_INSTANCE_SCENE               0x1u
+#define PT_INSTANCE_SHADOW              0x2u
 
 #define PT_MISS_T                       (-1.0)
 #define PT_NO_SURFACE_T                 (-2.0)
@@ -54,6 +58,7 @@ struct PathTracingInstance
     uint previousPositionBase;
     uint culledSubMeshes;
     uint scatteringGroup;
+    uint renderingLayers;
 };
 StructuredBuffer<PathTracingInstance> _PathTracingInstanceData;
 

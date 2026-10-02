@@ -47,10 +47,6 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly RenderTexture _sourceCube;
 
-        private readonly GraphicsBuffer _directionalLights = new(GraphicsBuffer.Target.Structured, PathTracingLightCollector.MaxDirectionalLights, 32);
-
-        private readonly PathTracingDirectionalLight[] _directionalData = new PathTracingDirectionalLight[PathTracingLightCollector.MaxDirectionalLights];
-
         private int _hash;
 
         public RenderTexture Cube { get; }
@@ -82,7 +78,7 @@ namespace Illusion.Rendering.PathTracing
         {
             var skybox = RenderSettings.skybox;
             int hash = HashCode.Combine(skybox ? skybox.GetInstanceID() : 0, skybox ? skybox.ComputeCRC() : 0,
-                SunDirection(lights.Sun), SunColor(lights.Sun), lights.DirectionalHash, LightsWithSkybox);
+                SunDirection(lights.Sun), SunColor(lights.Sun), lights.HasDirectionalLights, LightsWithSkybox);
             if (LightsWithSkybox)
                 return HashCode.Combine(hash, RenderSettings.ambientIntensity);
             var probe = RenderSettings.ambientProbe;
@@ -112,19 +108,15 @@ namespace Illusion.Rendering.PathTracing
             if (LightsWithSkybox)
             {
                 var skybox = RenderSettings.skybox;
-                DrawFaces(cmd, _sourceCube, skybox ? GetBakeMaterial(skybox, lights.DirectionalLights.Count > 0) : null, 0);
+                DrawFaces(cmd, _sourceCube, skybox ? GetBakeMaterial(skybox, lights.HasDirectionalLights) : null, 0);
             }
             else
             {
                 ProjectAmbientProbe();
                 DrawFaces(cmd, _sourceCube, _lightingMaterial, LightingProbePass);
             }
-            lights.DirectionalLights.CopyTo(_directionalData);
-            cmd.SetBufferData(_directionalLights, _directionalData);
             _lightingMaterial.SetTexture(ShaderIDs._PathTracingSourceCube, _sourceCube);
             _lightingMaterial.SetFloat(ShaderIDs._PathTracingSourceScale, LightsWithSkybox ? RenderSettings.ambientIntensity : 1);
-            _lightingMaterial.SetBuffer(ShaderIDs._PathTracingDirectionalLights, _directionalLights);
-            _lightingMaterial.SetInt(ShaderIDs._PathTracingDirectionalLightCount, lights.DirectionalLights.Count);
             _lightingMaterial.SetInt(ShaderIDs._PathTracingCubeDim, CubeSize);
             DrawFaces(cmd, Cube, _lightingMaterial, LightingEnvironmentPass);
             cmd.SetGlobalTexture(ShaderIDs._ExposureTexture, exposureTexture);
@@ -317,7 +309,6 @@ namespace Illusion.Rendering.PathTracing
             CoreUtils.Destroy(_bakeMaterial);
             CoreUtils.Destroy(_lightingMaterial);
             CoreUtils.Destroy(_sourceCube);
-            _directionalLights.Release();
             CoreUtils.Destroy(_skyMesh);
             CoreUtils.Destroy(Cube);
             CoreUtils.Destroy(ImportanceMap);
@@ -332,8 +323,6 @@ namespace Illusion.Rendering.PathTracing
             public static readonly int _PathTracingRadianceSH = Shader.PropertyToID("_PathTracingRadianceSH");
             public static readonly int _PathTracingSourceCube = Shader.PropertyToID("_PathTracingSourceCube");
             public static readonly int _PathTracingSourceScale = Shader.PropertyToID("_PathTracingSourceScale");
-            public static readonly int _PathTracingDirectionalLights = Shader.PropertyToID("_PathTracingDirectionalLights");
-            public static readonly int _PathTracingDirectionalLightCount = Shader.PropertyToID("_PathTracingDirectionalLightCount");
             public static readonly int _PathTracingCubeDim = Shader.PropertyToID("_PathTracingCubeDim");
             public static readonly int _PathTracingCubeFace = Shader.PropertyToID("_PathTracingCubeFace");
             public static readonly int t_BuilderConstants = Shader.PropertyToID("t_BuilderConstants");

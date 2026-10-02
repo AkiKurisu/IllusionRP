@@ -111,6 +111,9 @@ namespace PathTracer
 
             // NvReorderThread(PolymorphicLight::DecodeType(packedLightInfo), 32);
             PolymorphicLightSample lightSample = PolymorphicLight::CalcSample( packedLightInfo, interiorSampleRnd, shadingData.posW );
+            // @IllusionRP: a light contributes only to the receivers it targets.
+            if (!PathTracingLightAffects(packedLightInfo.Extended.TargetIndex, shadingData.instanceID))
+                lightSample.Radiance = 0;
 
 			// an example on printf-debugging specific light type
             // if( PolymorphicLight::DecodeType(packedLightInfo) == PolymorphicLightType::kEnvironmentQuad )
@@ -185,12 +188,14 @@ namespace PathTracer
                                 const ShadingData shadingData, const ActiveBSDF bsdf, const PathState preScatterPath, LightSampler lightSampler,
                                 inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
     {
-        bool visible = false;
+        float3 transmission = 0.0;  // @IllusionRP
 
         /*[branch]*/ if (lightSample.Valid())   // if sample's bad, skip; we tried casting the ray anyway but ignoring the results - didn't yield better perf
         {
             RayDesc ray = ComputeVisibilityRay(lightSample, shadingData, bsdf);  // @IllusionRP
-            visible = Bridge::traceVisibilityRay(ray, preScatterPath.rayCone, preScatterPath.getVertexIndex(), workingContext.Debug, preScatterPath.GetPixelPos());
+            // @IllusionRP: shadow rays follow the light's caster rules and return RGB transmission.
+            uint targetIndex = lightSample.LightIndex != RTXPT_INVALID_LIGHT_INDEX ? lightSampler.LoadLight(lightSample.LightIndex).Extended.TargetIndex : 0;
+            transmission = Bridge::traceVisibilityRay(ray, preScatterPath.rayCone, preScatterPath.getVertexIndex(), workingContext.Debug, preScatterPath.GetPixelPos(), targetIndex);
         }
 
         // if( workingContext.Debug.IsDebugPixel() )
@@ -203,7 +208,7 @@ namespace PathTracer
         dx::MaybeReorderThread(visible?(1):(0), 16);
 #endif
 #endif
-        /*[branch]*/ if (visible)
+        /*[branch]*/ if (any(transmission > 0.0))  // @IllusionRP
         {
             // add compute grazing angle fadeout
             float fadeOut = (shadingData.shadowNoLFadeout>0)?(ComputeLowGrazingAngleFalloff( lightSample.Direction, shadingData.vertexN, shadingData.shadowNoLFadeout, 2.0 * shadingData.shadowNoLFadeout )):(1.0);
@@ -231,7 +236,7 @@ namespace PathTracer
 #endif
 
             // apply MIS and other multipliers to light here - reduces register pressure and computation later
-            lightSample.Li *= fadeOut * wrsMIS * pathMIS / (float)fullSamples;
+            lightSample.Li *= transmission * fadeOut * wrsMIS * pathMIS / (float)fullSamples;  // @IllusionRP
 
             // compute BSDF throughput!
             float4 bsdfThp = bsdf.eval(shadingData, lightSample.Direction);
@@ -273,6 +278,8 @@ namespace PathTracer
         }
     }
     
+    #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingDirectionalNEE.hlsl"  // @IllusionRP
+
     inline NEEResult HandleNEE_MultipleSamples(const PathState preScatterPath, const ShadingData shadingData, const ActiveBSDF bsdf, 
                                             const LightSampler lightSampler, const uint fullSamples, inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
     {
@@ -290,6 +297,10 @@ namespace PathTracer
         
         for (uint sampleIndex = 0; sampleIndex < fullSamples; sampleIndex++)
         {
+            // @IllusionRP: directional lights are sampled apart from the light list, which may then be empty.
+            SampleDirectionalNEE(result, preScatterPath, shadingData, bsdf, fullSamples, sampleGenerator, workingContext);
+            if (lightSampler.IsEmpty())
+                continue;
             LightSample lightSample = GenerateLightSample(workingContext, shadingData, bsdf, candidateSampleCount, sampleGenerator, lightSampler);
 
             // this computes the BSDF throughput and (if throughput>0) then casts shadow ray and handles radiance summing up & weighted averaging for 'sample distance' used by denoiser
@@ -320,7 +331,7 @@ namespace PathTracer
 
         // Check if we should apply NEE.
         bool applyNEE = hasNonDeltaLobes;
-        applyNEE &= !lightSampler.IsEmpty() && fullSamples > 0;
+        applyNEE &= (!lightSampler.IsEmpty() || _PathTracingDistantLightCount > 0) && fullSamples > 0;  // @IllusionRP
         applyNEE &= workingContext.PtConsts.NEEEnabled != 0;  // @IllusionRP
 
         if (!applyNEE)

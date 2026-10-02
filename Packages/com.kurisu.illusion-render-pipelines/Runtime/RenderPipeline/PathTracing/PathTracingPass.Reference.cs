@@ -23,6 +23,7 @@ namespace Illusion.Rendering.PathTracing
             internal IllusionRenderPipelineResources PipelineResources;
             internal PathTracingEnvironment Environment;
             internal PathTracingLightCollector Lights;
+            internal PathTracingLightTables LightTables;
             internal PathTracingLightBaker LightBaker;
             internal PathTracingSampleConstants Constants;
             internal Camera Camera;
@@ -134,6 +135,7 @@ namespace Illusion.Rendering.PathTracing
             passData.PipelineResources = _rendererData.RuntimeResources;
             passData.Environment = _environment;
             passData.Lights = _lights;
+            passData.LightTables = _lightTables;
             passData.LightBaker = context.GetLightBaker(_lightBakerKernels);
             passData.Constants = constants;
             passData.Camera = cameraData.camera;
@@ -173,6 +175,7 @@ namespace Illusion.Rendering.PathTracing
             {
                 data.World.Emissive.Prepare(cmd);
                 data.LightBaker.UpdateBegin(cmd, lights, data.Environment, data.World.Emissive, data.Camera.transform.position, data.WorldToClip, data.Width, data.Height);
+                data.LightTables.Upload(cmd, lights);
             }
             using (new ProfilingScope(cmd, Samplers.Scene))
                 data.World.Build(cmd, data.Frame);

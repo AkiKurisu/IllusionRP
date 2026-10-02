@@ -117,6 +117,7 @@ struct /*PAYLOAD_QUALIFIER*/ PathState
     // lpuint      packedMISInfo;                           ///< See NEEBSDFMISInfo
     // lpfloat     thpRuRuCorrection;                       ///< Since we use Russian Roulette to decide early termination for next frame, the correct place to apply RR thp boost that preserves unbiasedness is only AFTER emissive/sky is collected.
     uint        pack1           /*PAYLOAD_FIELD_RW_ALL*/;       ///< packed packedMISInfo and thpRuRuCorrection
+    uint        receiverInstanceID;     // @IllusionRP: scene instance that scattered the current ray, for light targets
     uint        flagsAndVertexIndex /*PAYLOAD_FIELD_RW_ALL*/;   ///< Higher kPathFlagsBitCount bits: Flags indicating the current status. This can be multiple PathFlags flags OR'ed together.
                                                             ///< Lower kVertexIndexBitCount bits: Current vertex index (0 = camera, 1 = primary hit, 2 = secondary hit, etc.).
 

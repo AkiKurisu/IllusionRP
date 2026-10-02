@@ -13,7 +13,7 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly RayTracingAccelerationStructure _accelerationStructure;
 
-        private readonly RayTracingInstanceCullingTest[] _instanceTests = new RayTracingInstanceCullingTest[1];
+        private readonly RayTracingInstanceCullingTest[] _instanceTests = new RayTracingInstanceCullingTest[3];
 
         private int _updatedFrame = -1;
 
@@ -49,16 +49,10 @@ namespace Illusion.Rendering.PathTracing
 
             _accelerationStructure.ClearInstances();
 
-            _instanceTests[0] = new RayTracingInstanceCullingTest
-            {
-                allowOpaqueMaterials = true,
-                allowAlphaTestedMaterials = true,
-                allowTransparentMaterials = true,
-                allowVisualEffects = false,
-                layerMask = layerMask,
-                shadowCastingModeMask = (1 << (int)ShadowCastingMode.Off) | (1 << (int)ShadowCastingMode.On) | (1 << (int)ShadowCastingMode.TwoSided),
-                instanceMask = PathTracingInstanceTable.SceneMask
-            };
+            _instanceTests[0] = InstanceTest(layerMask, 1 << (int)ShadowCastingMode.Off, PathTracingInstanceTable.SceneMask);
+            _instanceTests[1] = InstanceTest(layerMask, (1 << (int)ShadowCastingMode.On) | (1 << (int)ShadowCastingMode.TwoSided),
+                PathTracingInstanceTable.SceneMask | PathTracingInstanceTable.ShadowMask);
+            _instanceTests[2] = InstanceTest(layerMask, 1 << (int)ShadowCastingMode.ShadowsOnly, PathTracingInstanceTable.ShadowMask);
 
             var config = new RayTracingInstanceCullingConfig
             {
@@ -113,6 +107,20 @@ namespace Illusion.Rendering.PathTracing
             SceneHash = HashCode.Combine(hash, _instances.Hash, _propertyBlockHash.Compute(_instances.Renderers));
             TransformsChanged = results.transformsChanged;
             return true;
+        }
+
+        private static RayTracingInstanceCullingTest InstanceTest(int layerMask, int shadowCastingModes, uint instanceMask)
+        {
+            return new RayTracingInstanceCullingTest
+            {
+                allowOpaqueMaterials = true,
+                allowAlphaTestedMaterials = true,
+                allowTransparentMaterials = true,
+                allowVisualEffects = false,
+                layerMask = layerMask,
+                shadowCastingModeMask = shadowCastingModes,
+                instanceMask = instanceMask
+            };
         }
 
         private void ReportMissingPass(int materialId)

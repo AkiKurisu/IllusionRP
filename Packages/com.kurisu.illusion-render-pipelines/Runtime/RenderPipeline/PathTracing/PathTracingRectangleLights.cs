@@ -19,6 +19,7 @@ namespace Illusion.Rendering.PathTracing
         private static readonly HashSet<int> Active = new();
         private static readonly List<int> Stale = new();
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
+        private static readonly int LightTarget = Shader.PropertyToID("_PathTracingLightTarget");
         private static Mesh _mesh;
         private static int _owners;
         private readonly Shader _shader;
@@ -49,10 +50,10 @@ namespace Illusion.Rendering.PathTracing
             _mesh.RecalculateBounds();
         }
 
-        public void Update(IReadOnlyList<Light> lights)
+        public void Update(PathTracingLightCollector collector)
         {
             Active.Clear();
-            foreach (var light in lights)
+            foreach (var light in collector.RectangleLights)
             {
                 if (light.areaSize.x <= 0 || light.areaSize.y <= 0) continue;
                 int id = light.GetInstanceID(); Active.Add(id);
@@ -63,7 +64,7 @@ namespace Illusion.Rendering.PathTracing
                     go.GetComponent<MeshFilter>().sharedMesh = _mesh;
                     var renderer = go.GetComponent<MeshRenderer>();
                     renderer.rayTracingMode = UnityEngine.Experimental.Rendering.RayTracingMode.DynamicTransform;
-                    renderer.shadowCastingMode = ShadowCastingMode.On;
+                    renderer.shadowCastingMode = ShadowCastingMode.Off;
                     renderer.lightProbeUsage = LightProbeUsage.Off;
                     renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
                     var material = CoreUtils.CreateEngineMaterial(_shader);
@@ -78,6 +79,8 @@ namespace Illusion.Rendering.PathTracing
                     transform.SetPositionAndRotation(light.transform.position, light.transform.rotation);
                 var size = new Vector3(light.areaSize.x, light.areaSize.y, 1);
                 if (transform.localScale != size) transform.localScale = size;
+                int target = collector.GetTargetIndex(light);
+                if (entry.Material.GetInt(LightTarget) != target) entry.Material.SetInt(LightTarget, target);
                 var radiance = PathTracingLightCollector.RectangleRadiance(light);
                 var emission = new Vector4(radiance.x, radiance.y, radiance.z, 1);
                 if (entry.Material.GetVector(EmissionColor) != emission) entry.Material.SetVector(EmissionColor, emission);

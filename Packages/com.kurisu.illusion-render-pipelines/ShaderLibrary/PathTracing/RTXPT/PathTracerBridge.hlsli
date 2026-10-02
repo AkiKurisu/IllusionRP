@@ -15,6 +15,7 @@
 #include "Libraries/ShaderDebug/ShaderDebug.hlsl"
 #include "PathTracer/PathTracerTypes.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"   // @IllusionRP
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingLightTargets.hlsl"   // @IllusionRP
 #include "PathTracer/Rendering/Volumes/HomogeneousVolumeSampler.hlsli"
 #include "PathTracer/Lighting/EnvMap.hlsli"
 #include "PathTracer/Lighting/LightSampler.hlsli"
@@ -81,7 +82,7 @@ namespace Bridge
     // There's a relatively high cost to this when used in large shaders just due to register allocation required for alphaTest, even if all geometries are opaque.
     // Consider simplifying alpha testing - perhaps splitting it up from the main geometry path, load it with fewer indirections or something like that.
     // fix: pixelPos added for the ENABLE_DEBUG_LINES_VIZ debug-line path (stale no-arg IsDebugPixel() did not compile)
-    static bool traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos);
+    static float3 traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos, uint targetIndex);  // @IllusionRP
 
     // @IllusionRP: scatter rays are traced with TraceRay by the ray generation shader to invoke the material hit shaders.
 

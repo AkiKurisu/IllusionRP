@@ -69,20 +69,11 @@ Shader "Hidden/Illusion/PathTracingEnvironmentLighting"
 
         Pass
         {
-            Name "EnvironmentAndDirectionalLights"
+            Name "Environment"
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex Vert
             #pragma fragment Frag
-            #define K_PI PI
-            struct EMB_DirectionalLight
-            {
-                float4 ColorIntensity;
-                float3 Direction;
-                float AngularSize;
-            };
-            StructuredBuffer<EMB_DirectionalLight> _PathTracingDirectionalLights;
-            uint _PathTracingDirectionalLightCount;
             uint _PathTracingCubeDim;
             uint _PathTracingCubeFace;
             TEXTURECUBE(_PathTracingSourceCube);
@@ -109,40 +100,11 @@ float3 CubemapGetDirectionFor(uint face, float2 uv)
     return dir * (1 / l);
 }
 
-float3 ComputeLightContribution( uint2 pixel, uint face, const EMB_DirectionalLight light )
-{
-#if 0 // this provides a binary "either in or out of cone" coverage that is a.) incorrect and b.) aliased
-    float3 direction = CubemapGetDirectionFor( face, (float2(pixel) + 0.5.xx ) / float(_PathTracingCubeDim).xx );
-    float angle = acos( clamp( dot(-light.Direction, direction), -1.0, 1.0 ) );
-    float pixelCoverage = angle < (light.AngularSize*0.5);
-#else
-    const float fadeRangeInTexels = 1.1;
-    float3 direction0 = CubemapGetDirectionFor( face, (float2(pixel) + 0.5.xx + 0.5 * float2(-fadeRangeInTexels, -fadeRangeInTexels)) / float(_PathTracingCubeDim).xx );
-    float3 direction1 = CubemapGetDirectionFor( face, (float2(pixel) + 0.5.xx + 0.5 * float2(+fadeRangeInTexels, -fadeRangeInTexels)) / float(_PathTracingCubeDim).xx );
-    float3 direction2 = CubemapGetDirectionFor( face, (float2(pixel) + 0.5.xx + 0.5 * float2(-fadeRangeInTexels, +fadeRangeInTexels)) / float(_PathTracingCubeDim).xx );
-    float3 direction3 = CubemapGetDirectionFor( face, (float2(pixel) + 0.5.xx + 0.5 * float2(+fadeRangeInTexels, +fadeRangeInTexels)) / float(_PathTracingCubeDim).xx );
-    float dotMin = min( min( dot(-light.Direction, direction0), dot(-light.Direction, direction1) ), min( dot(-light.Direction, direction2), dot(-light.Direction, direction3) ) );
-    float dotMax = max( max( dot(-light.Direction, direction0), dot(-light.Direction, direction1) ), max( dot(-light.Direction, direction2), dot(-light.Direction, direction3) ) );
-
-    float angleMin = acos( clamp( dotMax, -1.0, 1.0 ) );
-    float angleMax = acos( clamp( dotMin, -1.0, 1.0 ) );
-
-    float pixelCoverage = saturate( ((light.AngularSize*0.5)-angleMin) / (angleMax-angleMin+1e-24) );
-    pixelCoverage = pow(pixelCoverage, 4);
-#endif
-
-    float lightSolidAngle = 2 * K_PI * ( 1 - cos(light.AngularSize*0.5) );
-
-    return pixelCoverage * light.ColorIntensity.rgb * (light.ColorIntensity.a / lightSolidAngle);
-}
-
             float4 Frag(Varyings input) : SV_Target
             {
                 uint2 pixel = uint2(input.positionCS.xy);
                 float3 direction = CubemapGetDirectionFor(_PathTracingCubeFace, (float2(pixel) + 0.5) / float(_PathTracingCubeDim));
                 float3 radiance = SAMPLE_TEXTURECUBE_LOD(_PathTracingSourceCube, sampler_PathTracingSourceCube, direction, 0).rgb * _PathTracingSourceScale;
-                for (uint i = 0; i < _PathTracingDirectionalLightCount; i++)
-                    radiance += ComputeLightContribution(pixel, _PathTracingCubeFace, _PathTracingDirectionalLights[i]);
                 return float4(clamp(radiance, 0.0, 65504.0), 1);
             }
             ENDHLSL

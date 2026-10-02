@@ -105,6 +105,7 @@ PathState PathPayload::unpack(const PathPayload p)
     path.pack0                          = p.packed[4].y;
     path.pack1                          = p.packed[4].z;
     path.flagsAndVertexIndex            = p.packed[4].w;   
+    path.receiverInstanceID             = 0xFFFFFFFFu;  // @IllusionRP: restored paths light every receiver
 
     return path;
 }

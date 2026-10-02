@@ -50,6 +50,8 @@ void PathTracingClosestHit(inout IllusionPathPayload payload : SV_RayPayload, At
 [shader("anyhit")]
 void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, AttributeData attributes : SV_IntersectionAttributes)
 {
+    if (!PathTracingAcceptShadowCaster(payload))
+        return;
 #if defined(_ALPHATEST_ON) || defined(_SURFACE_TYPE_TRANSPARENT)
 #if defined(_SURFACE_TYPE_TRANSPARENT)
     if (PathTracingIsCulledFace())
@@ -61,10 +63,22 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
     PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
     g_PathTracingClipped = false;
     half alpha = Alpha(SampleAlbedoAlpha(HybridLitPathTracingUV(hit), TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap)).a, _BaseColor, _Cutoff);
+    if (g_PathTracingClipped)
+    {
+        IgnoreHit();
+        return;
+    }
+    if (PathTracingGetRayKind(payload) == PT_RAY_VISIBILITY)
+    {
+#if defined(_SURFACE_TYPE_TRANSPARENT)
+        PathTracingAccumulateShadowTransmission(payload, 1.0 - alpha);
+#endif
+        return;
+    }
 #if !defined(_SURFACE_TYPE_TRANSPARENT) || defined(HYBRID_LIT_PATH_TRACING_FILM)
     alpha = 1.0;
 #endif
-    if (g_PathTracingClipped || !PathTracingAcceptCoverage(payload, alpha))
+    if (!PathTracingAcceptCoverage(payload, alpha))
     {
         IgnoreHit();
         return;

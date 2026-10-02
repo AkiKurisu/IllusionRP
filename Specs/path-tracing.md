@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Draft |
-| Date | 2026-10-01 |
+| Date | 2026-10-02 |
 
 ## Purpose and Scope
 
@@ -112,7 +112,7 @@ Supported material semantics are:
 
 Model selection must come from the material evaluation entry point, not object names, texture names, or visual appearance. Raster-only parameters participate only when they have corresponding path tracing semantics. Additional compensation formulas must not be introduced to preserve their raster appearance.
 
-Coverage, alpha clipping, and physical transmission are distinct inputs. Coverage determines whether a ray accepts a geometric hit; transmission determines scattering after that hit is accepted. Main, shadow, and subsurface paths must follow their respective geometric tests while retaining consistent material coverage semantics.
+Coverage, alpha clipping, and physical transmission are distinct inputs. Coverage determines whether a ray accepts a geometric hit; transmission determines scattering after that hit is accepted. Main, shadow, and subsurface paths must follow their respective geometric tests while retaining consistent material coverage semantics. A shadow path returns colored transmission rather than a binary result: partial coverage passes the uncovered fraction, and a transparent, thin, or refractive surface passes its transmission. Shadow paths continue in a straight line through such surfaces.
 
 The Hair model does not change the input geometry type. Hair cards remain cards and must not be treated as strand geometry merely because they use a hair scattering model. Skin volume scattering requires closed geometry as valid input. A screen-space thickness approximation must not replace propagation through the volume.
 
@@ -122,11 +122,13 @@ Shaders without a path tracing material evaluation entry point must produce a cl
 
 Path integration must account for visible emission, environment lighting, direct lighting, and indirect lighting. The probability densities for direct light sampling and path intersections with light sources must be consistent. Multiple importance sampling must prevent double counting and incorrect weighting.
 
-Lighting inputs support environments, directional lights, point lights, spotlights, rectangular area lights, and emissive geometry. Light direction, color, intensity, size, and spotlight angles must retain their respective semantics. The angular size of a directional light is part of its lighting input.
+Lighting inputs support environments, directional lights, point lights, spotlights, rectangular area lights, and emissive geometry. Light direction, color, intensity, size, and spotlight angles must retain their respective semantics. The angular size of a directional light is part of its lighting input: it softens the light's shadows without changing the irradiance the light delivers to unoccluded surfaces.
 
 Color decoding, light intensity normalization, and world unit conversion occur exactly once at their respective input boundaries. Material models, path integration, exposure, and reconstruction must not apply further compensation. Subsurface scattering distances, medium absorption distances, and ray offsets must use a consistent world scale.
 
-The current lighting contract uses physical distance attenuation. It does not apply Unity range cutoff attenuation, cookies, or light-layer masks. These settings must produce a limitation warning when relevant. Object participation layers are distinct from light-layer masks.
+The current lighting contract uses physical distance attenuation. It does not apply Unity range cutoff attenuation or cookies. These settings must produce a limitation warning when relevant.
+
+When the pipeline uses rendering layers, a light illuminates only renderers whose rendering layers intersect its own, and only renderers whose rendering layers intersect its shadow layers occlude it. The shadow layers follow the rendering layers unless the light declares custom shadow layers. The directional light that owns [per-object shadows](directional-per-object-shadows.md) for the camera is also occluded by renderers on the per-object shadow rendering layer, as its per-object shadow atlas is in raster. Emissive geometry and the environment illuminate every renderer and are occluded by every caster. A renderer's shadow casting mode decides how it takes part: Off makes it visible without occluding light, On and Two Sided make it visible and occluding, and Shadows Only makes it occlude light without being visible. As in HDRP path tracing, a light's shadow toggle does not disable occlusion, and light sources do not occlude other lights. Object participation layers are distinct from rendering layers.
 
 Visibility must be evaluated from the actual scattering position. After subsurface scattering, both direct lighting and path continuation start at the exit position. Ray offsets serve only to avoid geometric self-intersection; they must not alter the actual exit position or output depth.
 

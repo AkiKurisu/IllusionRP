@@ -279,6 +279,25 @@ bool PathTracingIsCulledFace()
     return (culled & (frontFacing ? PT_CULL_FRONT : PT_CULL_BACK)) != 0u;
 }
 
+// Shadow rays accept a caster only when it shares a shadow layer with the light; payload.parameters.x holds those layers.
+bool PathTracingAcceptShadowCaster(IllusionPathPayload payload)
+{
+    if (PathTracingGetRayKind(payload) != PT_RAY_VISIBILITY
+        || (_PathTracingInstanceData[InstanceID()].renderingLayers & payload.parameters.x) != 0)
+        return true;
+    IgnoreHit();
+    return false;
+}
+
+// Shadow rays carry their RGB transmission in diffuseOpacity and pass through surfaces that still transmit light.
+void PathTracingAccumulateShadowTransmission(inout IllusionPathPayload payload, float3 transmittance)
+{
+    float3 value = PathTracingUnpackHalf4(payload.diffuseOpacity).rgb * saturate(transmittance);
+    payload.diffuseOpacity = PathTracingPackHalf4(float4(value, 0.0));
+    if (any(value > 0.0))
+        IgnoreHit();
+}
+
 // Random walks exit through the nearest surface of their own scattering group; payload.parameters.w holds the group.
 void PathTracingRecordRandomWalk(inout IllusionPathPayload payload, AttributeData attributes)
 {
@@ -294,6 +313,7 @@ void PathTracingRecordRandomWalk(inout IllusionPathPayload payload, AttributeDat
         PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
         payload.hitT = RayTCurrent();
         payload.normalVertex = PathTracingPackNormal(hit.vertexNormalWS);
+        payload.instanceID = InstanceID();
     }
 }
 

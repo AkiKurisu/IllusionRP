@@ -34,16 +34,31 @@ namespace Illusion.Rendering.PathTracing
         public uint PrimaryAxis;
         public uint CosConeAngleAndSoftness;
         public uint UniqueID;
+        public uint TargetIndex;
 
         public static readonly int Stride = Marshal.SizeOf<PolymorphicLightInfoEx>();
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct PathTracingDirectionalLight
+    internal struct PathTracingLightTarget
     {
-        public Vector4 ColorIntensity;
-        public Vector3 Direction;
-        public float AngularSize;
+        public uint RenderingLayers;
+        public uint ShadowLayers;
+
+        public static readonly PathTracingLightTarget Everything = new() { RenderingLayers = uint.MaxValue, ShadowLayers = uint.MaxValue };
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PathTracingDistantLight
+    {
+        public Vector3 Forward;
+        public float AngularDiameter;
+        public Vector3 Right;
+        public uint TargetIndex;
+        public Vector3 Up;
+        public float Padding0;
+        public Vector3 Color;
+        public float Padding1;
     }
 
     [StructLayout(LayoutKind.Sequential)]

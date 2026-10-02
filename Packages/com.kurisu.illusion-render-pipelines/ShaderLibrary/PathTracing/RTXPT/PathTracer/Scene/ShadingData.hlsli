@@ -37,6 +37,8 @@
 */
 struct ShadingData
 {
+    uint        instanceID;             // @IllusionRP: scene instance of the shading surface, for light targets
+
     // Geometry data
     float3      posW;                   ///< Shading hit position in world space. CANNOT be optimized to fp16.
     float3      faceNCorrected;         ///< Face normal in world space, corrected for front-facing flag (which also means always facing the viewer). CANNOT be optimized to fp16.
@@ -62,6 +64,7 @@ struct ShadingData
     static ShadingData make()
     {
         ShadingData shadingData;
+        shadingData.instanceID = 0xFFFFFFFFu;  // @IllusionRP
         shadingData.posW = 0;
         shadingData.V = 0;
         shadingData.N = 0;

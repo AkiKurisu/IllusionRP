@@ -402,7 +402,7 @@ struct LightSampler
     {
         PolymorphicLightInfo infoBase = LightsBuffer[index];  // no bounds checking here
         PolymorphicLightInfoEx infoExtended = (PolymorphicLightInfoEx)0;
-        if ( infoBase.HasLightShaping() )
+        // @IllusionRP: the extended data also carries the light target, so it is loaded for every light.
             infoExtended = LightsExBuffer[index];
         return PolymorphicLightInfoFull::make(infoBase, infoExtended);
     }
