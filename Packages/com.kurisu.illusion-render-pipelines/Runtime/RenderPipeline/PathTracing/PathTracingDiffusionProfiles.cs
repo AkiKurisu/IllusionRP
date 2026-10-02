@@ -60,6 +60,16 @@ namespace Illusion.Rendering.PathTracing
                 }
                 result.DiffusionProfileHashTable[index * 4] = asset.profile.hash;
             }
+            if (result.Count > 1)
+            {
+                // Materials without a matching profile resolve to slot 0, which takes the first listed profile as in raster.
+                for (int c = 0; c < 4; ++c)
+                {
+                    result.ShapeParamsAndMaxScatterDists[c] = result.ShapeParamsAndMaxScatterDists[4 + c];
+                    result.TransmissionTintsAndFresnel0[c] = result.TransmissionTintsAndFresnel0[4 + c];
+                    result.WorldScalesAndFilterRadiiAndThicknessRemaps[c] = result.WorldScalesAndFilterRadiiAndThicknessRemaps[4 + c];
+                }
+            }
             return result;
         }
     }

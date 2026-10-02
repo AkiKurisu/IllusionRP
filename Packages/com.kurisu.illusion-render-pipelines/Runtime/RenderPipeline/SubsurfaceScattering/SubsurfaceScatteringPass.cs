@@ -136,6 +136,14 @@ namespace Illusion.Rendering
                 _sssSetDiffusionProfiles[i] = null;
                 _sssDiffusionProfileUpdate[i] = 0;
             }
+            if (profileCount > 1)
+            {
+                // Materials without a matching profile resolve to slot 0, which takes the first listed profile.
+                _sssShapeParamsAndMaxScatterDists[0] = _sssShapeParamsAndMaxScatterDists[1];
+                _sssTransmissionTintsAndFresnel0[0] = _sssTransmissionTintsAndFresnel0[1];
+                _sssDisabledTransmissionTintsAndFresnel0[0] = _sssDisabledTransmissionTintsAndFresnel0[1];
+                _sssWorldScalesAndFilterRadiiAndThicknessRemaps[0] = _sssWorldScalesAndFilterRadiiAndThicknessRemaps[1];
+            }
 
             _sssActiveDiffusionProfileCount = profileCount;
         }

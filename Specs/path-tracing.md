@@ -178,7 +178,7 @@ In Realtime, stable surface information and subsequent scattering computation mu
 
 A Diffusion Profile defines the scale, scattering properties, and transmission properties needed for volume scattering. Raster and path tracing must use consistent profile identity and unit semantics.
 
-Unassigned or unmatched profiles use neutral semantics and must not accidentally select the first valid profile. The number of valid profiles must remain within supported capacity. Each camera must receive a complete valid state rather than depend on values left by a previous camera.
+Unassigned or unmatched profiles use the first valid profile in the Subsurface Scattering Volume list, in raster and path tracing alike, so materials authored without a profile keep scattering; they use neutral semantics only when the list has no valid profile. The number of valid profiles must remain within supported capacity. Each camera must receive a complete valid state rather than depend on values left by a previous camera.
 
 A Random Walk exits only through surfaces of its own scattering group. A renderer is its own group by default; a `PathTracingScatteringGroup` component joins the renderers below it into one group, so meshes that together bound one volume share exits, while unrelated objects stay separate even when they touch or overlap. Group assignment is scene input: it does not change free-path sampling, scattering coefficients, or the volume model, and the exit surface still applies its coverage. This is a deliberate difference from HDRP, whose random walks exit through any surface.
 
@@ -222,7 +222,7 @@ A conforming implementation must demonstrate at least the following behaviors:
 - Reference and Realtime retain consistent material and lighting semantics without mixing incompatible history.
 - Hits, misses, alpha, point lights, spotlights, and emissive geometry follow their input contracts; camera chains see the camera background, Unlit display colors, and multiply overlays.
 - Lit, Fabric, Skin, and Hair inputs, evaluation, sampling, and probability densities are mutually consistent.
-- Valid, unassigned, and unmatched Diffusion Profiles behave correctly; subsurface scattering exits have no fixed hard boundaries.
+- Valid Diffusion Profiles use their own parameters, unassigned and unmatched ones use the first valid profile, and an empty list is neutral; subsurface scattering exits have no fixed hard boundaries.
 - Camera motion, viewport changes, and material or transform updates correctly update output and affected history.
 - Actual RR and DLSSNR execution results can be checked rather than inferred from image presence.
 - Output remains valid, failures can be located, and rendering does not rewrite original scene or material assets.
