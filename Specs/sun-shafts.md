@@ -4,16 +4,14 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Transparency](transparency.md) |
 
 Sun shafts are a screen-space radial glow around an anchor point. Pixels at far depth whose color exceeds a threshold are blurred radially toward the anchor and composited onto the camera color. The effect is not volumetric scattering: it ignores the real light direction and shadow maps, contributes only within a viewport radius of the anchor, and contributes nothing while the anchor is behind the camera. Volumetric fog, which follows the main light and its shadows, is complementary, and both can run in the same frame.
 
-Out of scope: how an application exposes, saves or chooses the anchor and its settings.
-
 ## Porting boundary
 
-The effect is a port of a legacy built-in pipeline image effect. Its parameter set, algorithm and numeric behavior match the original; the deviations below are the complete list, each is forced by the target pipeline, and only the injection point changes appearance.
+The effect ports a legacy built-in pipeline image effect, retaining its parameter set, algorithm and numeric behavior with these URP adaptations:
 
 | Deviation | Reason |
 |---|---|
@@ -82,12 +80,4 @@ The pass runs after transparent rendering and before volumetric fog and automati
 
 ## Parameter recording
 
-The radial blur changes its step between blits that share one material inside a single RenderGraph pass. Material properties resolve when the command buffer executes, so every blit would see the last value; global shader properties are recorded in order. All sun shaft shader inputs (`_SunShaftsSunPosition`, `_SunShaftsThreshold`, `_SunShaftsMaskTexelSize`, `_SunShaftsBlurRadius4`, `_SunShaftsColor`) are therefore set as globals, and each pass allows global state modification. The same rule applies to any RenderGraph pass that reuses one material for several blits with changing parameters.
-
-## Validation
-
-- A bright area at far depth with nothing in front produces shafts; the same brightness directly in front of an opaque surface produces none.
-- If depth is not linearized with URP's convention, the effect produces no output at all, which makes it a check of the reversed-Z handling.
-- With the anchor near a screen edge, no streaks of repeated edge texels appear.
-- Turning off the renderer feature setting, `r.sunshafts` or the Volume `enable` alone gives the same image as turning all of them off.
-- Screen and Add both work, and Screen adds less light than Add.
+The radial blur changes its step between blits that share one material inside a single RenderGraph pass. Material properties resolve when the command buffer executes, so every blit would see the last value; global shader properties are recorded in order. All sun shaft shader inputs (`_SunShaftsSunPosition`, `_SunShaftsThreshold`, `_SunShaftsMaskTexelSize`, `_SunShaftsBlurRadius4`, `_SunShaftsColor`) are therefore set as globals, and each pass allows global state modification.

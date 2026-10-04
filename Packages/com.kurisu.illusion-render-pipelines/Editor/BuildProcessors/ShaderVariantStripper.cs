@@ -326,13 +326,16 @@ namespace Illusion.Rendering.Editor
                 return;
             }
 
-            if (!TryGetPassContract(snippet.passName, out PassContract contract))
-                return;
-
             if (!TryGetPassMetadata(shader, snippet, out string renderPipeline, out string lightMode))
                 return;
 
-            if (!string.Equals(renderPipeline, "UniversalPipeline", StringComparison.Ordinal)
+            if (!string.Equals(renderPipeline, "UniversalPipeline", StringComparison.Ordinal))
+                return;
+
+            if (buildData.StripUrpKeywordAxes)
+                UrpShaderVariantRules.Strip(shader, snippet, compilerDataList, buildData.UrpKeywordStates);
+
+            if (!TryGetPassContract(snippet.passName, out PassContract contract)
                 || !string.Equals(lightMode, contract.LightMode, StringComparison.Ordinal))
                 return;
 
@@ -429,9 +432,6 @@ namespace Illusion.Rendering.Editor
                     return false;
 
                 ShaderTagId passLightMode = pass.FindTagValue(LightModeTag);
-                if (string.IsNullOrEmpty(passLightMode.name))
-                    return false;
-
                 renderPipeline = pipelineTag.name;
                 lightMode = passLightMode.name;
                 return true;

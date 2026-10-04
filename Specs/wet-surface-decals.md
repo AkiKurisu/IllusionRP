@@ -4,15 +4,13 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 
 Wet surface decals are box or sphere volumes that wet or dry the opaque surfaces inside them. Each camera builds a screen-space wetness mask from the registered volumes, and Forward materials darken, smooth and brighten their specular response by that mask, together with the screen-space normals and smoothness that SSR, SSGI and ambient occlusion read.
 
-Out of scope: transparent and Unlit materials, the Deferred path, particles and weather systems, and path tracing.
-
 ## Ownership and registration
 
-The renderer never references application component types. An application component implements `IWetSurfaceDecal` and registers itself with `WetSurfaceDecalRegistry` while it is enabled. Each frame the renderer asks every registered decal for a `WetSurfaceDecalData` snapshot; a decal that returns no data, or whose owning object was destroyed, is skipped. The registry is cleared when the player starts.
+Decal components implement `IWetSurfaceDecal` and register with `WetSurfaceDecalRegistry` while enabled. Each frame the renderer asks every registered decal for a `WetSurfaceDecalData` snapshot; a decal that returns no data, or whose owning object was destroyed, is skipped. The registry is cleared when the player starts.
 
 A snapshot is immutable and holds:
 

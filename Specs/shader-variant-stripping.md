@@ -4,12 +4,10 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
-| Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md), [Validation](validation.md) |
+| Date | 2026-10-04 |
+| Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 Shader variant stripping removes IllusionRP keyword variants and IllusionRP-only passes that no renderer of the build target can reach. Reachability is aggregated from every URP asset, renderer and Illusion renderer feature the target uses; a variant or pass is removed only when every target renderer can do without it.
-
-Out of scope: compute shader kernels and keywords, resources, analysis of scene, camera or Volume content, inference from the current editor scene or the local machine's capabilities, and URP's own stripping.
 
 ## Switch
 
@@ -22,14 +20,15 @@ Out of scope: compute shader kernels and keywords, resources, analysis of scene,
 | Capability gathering | Collects the URP assets of the build target and computes one capability set per renderer, when the build starts and before Unity enumerates variants. |
 | Keyword prefiltering | Writes the aggregated result into derived prefilter fields of each Illusion renderer feature, so Unity enumerates only the keyword states the target needs. |
 | Keyword stripping | Evaluates the keyword rules per renderer and removes a variant only when every renderer allows it. |
+| Supplemental URP axis filtering | After SRP Core and URP callbacks, removes SH/atlas combinations no target renderer selects. |
 | Pass stripping | After SRP Core and URP have processed a pass, removes every variant of a registered IllusionRP pass that no renderer reaches. |
 
 ## Capabilities
 
-- **Sources.** The build target's own URP assets, never the current quality level, open scenes or `SystemInfo`.
+- **Sources.** The URP assets selected for the build target.
 - **Per renderer.** Each renderer in each asset's renderer list contributes one capability set. A renderer with an active Illusion renderer feature contributes the capabilities its serialized settings enable; a renderer whose feature is inactive or missing contributes none.
 - **Invalid data.** The build data is invalid when the target has no URP asset, an asset is null or has no renderer list, a renderer or its feature list is null, a renderer has more than one Illusion renderer feature, no renderer is found, or gathering throws. With invalid data, nothing is stripped and the derived prefilter fields are not updated.
-- **Prefilter cache.** The derived prefilter fields are a build input cache, not runtime quality settings. When a value changes, the renderer feature asset is saved so that variant enumeration reads this target's result.
+- **Prefilter cache.** The derived fields cache the target's prefilter result. When a value changes, the renderer feature asset is saved so that variant enumeration reads that result.
 
 | Capability | Renderer feature setting |
 |---|---|
@@ -81,6 +80,17 @@ A variant is removable for a renderer when any rule below removes it for that re
 - **Transparent variants.** A transparent variant is one with the `_SURFACE_TYPE_TRANSPARENT` keyword enabled. Such a surface does not sample screen-space reflections, ambient occlusion or the screen-space main light shadow unless it writes post-depth ([Materials and Shaders](materials-and-shaders.md#screen-space-receivers)), so a shader that declares `_SURFACE_TYPE_TRANSPARENT` as a keyword never defines `_TRANSPARENT_WRITE_DEPTH`. Shaders that define `_SURFACE_TYPE_TRANSPARENT` as a constant instead of declaring it as a keyword are treated as opaque by these rules.
 - **Declared keywords only.** The rules depend on keywords, not on shader identity, and act only on keywords the pass declares; a variant that no rule matches is kept.
 
+## Supplemental URP axes
+
+SRP Core combines registered variant strippers by requiring every stripper to allow removal. IllusionRP's existing keyword rules protect shared states that its producers supply, including screen-space shadows and ambient occlusion. Supplemental filtering runs separately after those callbacks and leaves that protection in place.
+
+- **Source.** Build data initializes URP's target build context and obtains each asset/renderer pair's `RendererRequirements`. Explicit SH modes use the asset's mode; Auto uses URP's resolved SH requirement. Atlas uses URP's resolved atlas requirement, including GPU Resident Drawer behavior.
+- **Scope.** Only SubShaders tagged `RenderPipeline=UniversalPipeline` participate. Each rule applies only to the keywords declared by the current Pass, shader stage and compiler platform; an undeclared axis imposes no constraint.
+- **SH axis.** The off state selects PerPixel, `EVALUATE_SH_MIXED` selects Mixed, and `EVALUATE_SH_VERTEX` selects PerVertex. Each renderer keeps its resolved mode.
+- **Atlas axis.** Each renderer keeps the on or off state of `_REFLECTION_PROBE_ATLAS` selected by its URP requirement.
+- **Joint reachability.** A variant is kept when its declared SH and atlas states both match the same target renderer. Removal requires a mismatch for every renderer. Independent unions of the two axes do not define reachable combinations.
+- **Switches.** Supplemental filtering runs only when build data is valid and both IllusionRP and URP Strip Unused Variants are enabled. Otherwise it removes nothing.
+
 ## Pass stripping
 
 A pass is a candidate only when its SubShader is tagged `RenderPipeline=UniversalPipeline` and both its name and LightMode match a registered entry. Every variant of a candidate pass is removed when no target renderer reaches it.
@@ -92,8 +102,7 @@ A pass is a candidate only when its SubShader is tagged `RenderPipeline=Universa
 | `WaterSSRData` | `WaterSSRData` | Screen-space reflection and transparent screen-space reflection on the same renderer. |
 | `PostDepthOnly` | `PostDepthOnly` | The transparent depth post pass, or order-independent transparency with transparent overdraw. |
 
-- **Conservative default.** An unregistered pass, a pass whose metadata cannot be read, or one whose RenderPipeline tag, pass name or LightMode is missing or different, is kept.
-- **New passes.** A new IllusionRP-only pass gets a stable pass name and LightMode constant and a runtime renderer list consumer before it is added to this table. Stripping never infers a pass's meaning from shader names, GUIDs, folders or source text.
+- **Unmatched passes.** Passes outside the table, with unreadable metadata or with a different or missing tag, name or LightMode are kept.
 
 ## Shader authoring
 
@@ -103,14 +112,4 @@ Templates and shaders whose passes take part in stripping:
 - use a stable, unique pass name;
 - use a LightMode equal to the runtime `ShaderTagId`;
 - use the pass and keyword names that `IllusionShaderPasses` and `IllusionShaderKeywords` define;
-- export generated shaders again after a template change, as [ASE Shader Workflow](ase-shader-workflow.md) requires, so the contract survives the export.
-
-## Validation
-
-- With the switch off, or with invalid build data, the keyword and pass rules remove nothing.
-- Aggregation is correct for active, inactive, missing and duplicate Illusion renderer features.
-- A build with several renderers keeps every variant and pass that any renderer reaches.
-- Transparent variants keep no on state of screen-space reflections, ambient occlusion or screen-space main light shadows.
-- `OITTransparent`, `SubsurfaceDiffuse`, `WaterSSRData` and `PostDepthOnly` are removed only when no target renderer reaches them.
-- The target Player shows no missing variant, pink shader or functional fallback.
-- A change to the keyword or pass rules is validated by comparing Player builds with stripping on and off, as [Validation](validation.md) requires.
+- export generated shaders with template changes, as [ASE Shader Workflow](ase-shader-workflow.md) defines.

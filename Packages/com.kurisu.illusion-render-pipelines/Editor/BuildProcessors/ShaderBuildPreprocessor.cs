@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using PrefilterMode = Illusion.Rendering.IllusionRendererFeature.PrefilterMode;
+using UrpBuildPreprocessor = UnityEditor.Rendering.Universal.ShaderBuildPreprocessor;
 
 namespace Illusion.Rendering.Editor
 {
@@ -47,13 +48,17 @@ namespace Illusion.Rendering.Editor
             bool isValid,
             bool stripUnusedVariants,
             ShaderFeatures[] rendererFeatures,
-            HashSet<int> pathTracingShaders = null)
+            HashSet<int> pathTracingShaders = null,
+            UrpKeywordState[] urpKeywordStates = null,
+            bool stripUrpKeywordAxes = false)
         {
             Target = target;
             IsValid = isValid;
             StripUnusedVariants = stripUnusedVariants;
             _rendererFeatures = rendererFeatures ?? Array.Empty<ShaderFeatures>();
             _pathTracingShaders = pathTracingShaders ?? new HashSet<int>();
+            UrpKeywordStates = urpKeywordStates ?? Array.Empty<UrpKeywordState>();
+            StripUrpKeywordAxes = stripUrpKeywordAxes;
         }
 
         internal BuildTarget Target { get; }
@@ -63,6 +68,10 @@ namespace Illusion.Rendering.Editor
         internal bool StripUnusedVariants { get; }
 
         internal IReadOnlyList<ShaderFeatures> RendererFeatures => _rendererFeatures;
+
+        internal IReadOnlyList<UrpKeywordState> UrpKeywordStates { get; }
+
+        internal bool StripUrpKeywordAxes { get; }
 
         internal bool AnyRendererSupports(ShaderFeatures required, bool requireAll = false)
         {
@@ -145,7 +154,9 @@ namespace Illusion.Rendering.Editor
 
         private static void GatherCore(BuildTarget target)
         {
+            UrpBuildPreprocessor.GatherShaderFeatures(Debug.isDebugBuild);
             var rendererFeatures = new List<ShaderFeatures>();
+            var urpKeywordStates = new List<UrpKeywordState>();
             var featureAssets = new HashSet<IllusionRendererFeature>();
             bool valid = true;
 
@@ -173,6 +184,13 @@ namespace Illusion.Rendering.Editor
                                 valid = false;
                                 continue;
                             }
+
+                            ScriptableRendererData requirementRenderer = rendererData;
+                            var requirements = UrpBuildPreprocessor.GetRendererRequirements(ref asset, ref requirementRenderer);
+                            ShEvalMode shMode = asset.shEvalMode == ShEvalMode.Auto
+                                ? requirements.needsSHVertexForSHAuto ? ShEvalMode.PerVertex : ShEvalMode.PerPixel
+                                : asset.shEvalMode;
+                            urpKeywordStates.Add(new UrpKeywordState(shMode, requirements.needsReflectionProbeAtlas));
 
                             IllusionRendererFeature illusionFeature = null;
                             int featureCount = 0;
@@ -227,7 +245,9 @@ namespace Illusion.Rendering.Editor
                 valid,
                 stripUnusedVariants,
                 rendererFeatures.ToArray(),
-                GetPathTracingShaders());
+                GetPathTracingShaders(),
+                urpKeywordStates.ToArray(),
+                stripUnusedVariants && UrpBuildPreprocessor.s_StripUnusedVariants);
         }
 
         private static HashSet<int> GetPathTracingShaders()

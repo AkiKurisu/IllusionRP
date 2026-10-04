@@ -4,17 +4,15 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 
 World Scale is the single renderer-level conversion between the logical world lengths that IllusionRP settings are authored in and Unity world units. A project whose content runs at a non-standard size keeps its Volume profiles, renderer settings and diffusion profiles in logical units, and every pass consumes Unity-space values.
-
-Out of scope: how an application maps its own content, physics, cameras, lights and saved data into Unity space, and any data that must be re-baked.
 
 ## Setting
 
 - **Meaning.** `World Scale`, in the General section of `IllusionRendererFeature`, is the number of Unity world units represented by one logical world unit. The default is 1, at which every converted value equals its logical value.
-- **Validity.** The inspector rejects values below 0.001, and the renderer clamps the value to at least 0.001 again when it reads it, so a missing or invalid value never produces a division by zero, NaN or infinity.
-- **Lifecycle.** The renderer reads the setting at every camera setup, so a change applies from the next camera rendered. The value is never inferred from scenes, transforms, cameras or Volume profiles.
+- **Range.** The inspector's minimum is 0.001, and the renderer clamps the value to that minimum when reading it.
+- **Lifecycle.** The renderer reads the setting at every camera setup, so a change applies from the next camera rendered.
 - **Reach.** World Scale changes no transform, camera, collider, Volume bound, light or asset. It acts only where IllusionRP consumes a logical distance.
 
 ## Conversion boundary
@@ -49,7 +47,7 @@ Volume profiles, renderer settings and component values hold logical values. Aft
 
 ## Not converted
 
-These values are not World Scale quantities. A project that needs them adapted defines that in its own settings or specification, never by folding them into World Scale.
+World Scale leaves these values unchanged:
 
 - Light component data: range, intensity, shadow bias and shadow near plane, and the area light shape, fade and shadow settings.
 - Camera near and far planes, URP shadow distance, cascades and shadow bias.
@@ -60,10 +58,3 @@ These values are not World Scale quantities. A project that needs them adapted d
 - Precomputed radiance transfer probe grids, biases and adjustment volumes.
 - Baked meshes, probes, lightmaps and any other data that requires re-baking.
 - Screen-space post-processing parameters, including all sun shaft parameters.
-
-## Validation
-
-- At World Scale 1 every pass behaves as without the conversion.
-- Each logical value is converted exactly once per frame; a change to a world-distance parameter is checked on both the CPU and shader sides for double conversion.
-- A new or changed world-space parameter is classified as length, squared length, inverse length, relative or non-spatial, and its classification is recorded in this specification.
-- A world-space parameter that looks oversized is not normalized without an equivalent physical scale and an image comparison.

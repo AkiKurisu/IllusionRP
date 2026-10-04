@@ -4,24 +4,22 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 | Related Specs | [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
-IllusionRP extends URP's Universal Renderer with one renderer feature, `IllusionRendererFeature`; it is not a separate render pipeline. For every camera the feature decides which of its passes run, injects them at fixed render pass events around URP's own passes, and publishes the global state its shaders read. This spec owns ownership boundaries, per-camera enablement, frame order, camera eligibility, runtime switches and lifecycle. Resources, formats and history are owned by [Render Resources](render-resources.md).
-
-Out of scope: material passes, the Forward GBuffer layout and stencil ([Materials and Shaders](materials-and-shaders.md)), transparency and water ([Transparency](transparency.md)), wet surfaces ([Wet Surface Decals](wet-surface-decals.md)), [World Scale](world-scale.md), [Directional Per-Object Shadows](directional-per-object-shadows.md), [Sun Shafts](sun-shafts.md), [Shader Variant Stripping](shader-variant-stripping.md), the [Validation](validation.md) procedure, and the path traced camera flow ([Path Tracing](path-tracing.md)).
+IllusionRP extends URP's Universal Renderer through `IllusionRendererFeature`. For every camera the feature decides which of its passes run, injects them at fixed render pass events around URP's own passes, and publishes the global state its shaders read. This spec defines ownership boundaries, per-camera enablement, frame order, camera eligibility, runtime switches and lifecycle. Resources, formats and history are owned by [Render Resources](render-resources.md).
 
 ## Ownership
 
-- **URP.** Culling, the depth and depth-normal prepasses, the camera depth copy, motion vectors, main and additional light shadow maps, opaque, skybox and transparent drawing, built-in post-processing, camera attachments and the renderer lifecycle. IllusionRP adds work through renderer feature passes, frame data, the render graph and shader globals. It reads the URP internals it needs, such as the actual rendering mode and the main light shadow cascades, through an internal bridge, and never modifies or reorders URP's passes.
+- **URP.** Culling, the depth and depth-normal prepasses, the camera depth copy, motion vectors, main and additional light shadow maps, opaque, skybox and transparent drawing, built-in post-processing, camera attachments and the renderer lifecycle. IllusionRP adds work through renderer feature passes, frame data, the render graph and shader globals. An internal bridge provides access to URP state such as the actual rendering mode and main light shadow cascades.
 - **`IllusionRendererFeature`.** Creates and disposes every IllusionRP pass, reads the serialized settings and decides per camera which passes to enqueue. A renderer holds at most one instance.
 - **`IllusionRendererData`.** State shared by the feature's passes: the current camera's state, per-camera history, renderer-level render targets, global constants and neutral textures. `IllusionRendererData.Active` is the instance that set up the most recent camera.
 - **`IllusionRenderPipelineResources`.** Shaders, compute shaders, lookup tables and textures, loaded by name from `Resources`.
-- **Volume stack.** Per-camera blended parameters and enable flags. A Volume never grants a capability the renderer feature lacks and owns no pass or resource.
+- **Volume stack.** Per-camera blended parameters and enable flags within the renderer feature's enabled capabilities.
 - **`IllusionRuntimeRenderingConfig`.** Runtime switches and debug view state; see [Runtime switches](#runtime-switches).
-- **Scene inputs.** Objects that feed the renderer (wet surface decals, sun shaft casters, volumetric lights, per-object shadow casters, probe volumes) register with static registries or managers. The renderer never searches the scene each frame.
+- **Scene inputs.** Objects that feed the renderer (wet surface decals, sun shaft casters, volumetric lights, per-object shadow casters, probe volumes) register with static registries or managers.
 
-Forward and Forward+ are the supported rendering paths. The feature reads URP's actual rendering mode. In Deferred it sets `_DEFERRED_RENDERING_PATH` and skips the Forward GBuffer, wet surfaces and area lights, and makes no further promise; other paths have no contract.
+Forward and Forward+ are the supported rendering paths. The feature reads URP's actual rendering mode. In Deferred it sets `_DEFERRED_RENDERING_PATH` and skips the Forward GBuffer, wet surfaces and area lights.
 
 ## Enablement
 
@@ -33,7 +31,7 @@ A feature does work for a camera only when every layer allows it:
 4. camera eligibility ([Cameras](#cameras)) and, for post-processing, the renderer's and the camera's post-processing flags;
 5. rendering path and device support: compute shaders, render and blend formats, per-image-tile shading rate.
 
-Runtime switches and Volumes can only turn a feature off. A setting being on proves only that the feature can run, not that it costs GPU time in a frame.
+Runtime switches and Volumes gate the capabilities enabled by renderer settings. Disabled features skip their rendering work while retaining neutral publication, global state resets and history invalidation.
 
 | Feature | Setting | Switch | Volume | Additional conditions | Off for a camera |
 |---|---|---|---|---|---|
@@ -77,7 +75,7 @@ The feature sets these global keywords for every camera at `BeforeRendering`, so
 - **Frame keywords.** The screen-space shadow producer sets `_CONTACT_SHADOWS` and `_PCSS_SHADOWS` and switches URP's main light shadows to screen space before opaques; URP's main light shadow keywords are restored after opaques, so transparent surfaces sample the shadow map.
 - **Publication.** Global textures, buffers, constants and keywords are a shader compatibility interface. They own no resource and create no render graph dependency; see [Render Resources](render-resources.md).
 - **State changes.** A pass that changes global state declares that it does, and the state is either reset each camera or restored at a defined event.
-- **Debug versus capability.** Debug views only visualize. Runtime switches change capability; when one turns a feature off, its producer and its consumers enter their disabled behavior together.
+- **Debug views and switches.** Debug views visualize rendering state. Runtime switches gate feature work; when one turns a feature off, its producer and consumers enter their disabled behavior together.
 
 ## Frame order
 
@@ -118,7 +116,7 @@ URP records custom passes in render pass event order and, within one event, in t
 
 ## Cameras
 
-Each pass applies its own camera rules; this table is their union. Supporting a further camera type requires reviewing its depth, normals, history, global publication and output target for every pass.
+Each pass applies its own camera rules; this table is their union.
 
 | Camera | Behavior |
 |---|---|
@@ -131,8 +129,7 @@ Each pass applies its own camera rules; this table is their union. Supporting a 
 | Probe capture (Editor) | A camera that renders a precomputed radiance transfer capture records only the capture pass and no other IllusionRP work. |
 
 - **Shared passes.** Every camera of a renderer uses the same pass instances and renderer-level render targets, which reallocate to the current camera's size. Temporal state lives only in per-camera history; see [Render Resources](render-resources.md).
-- **Independence.** A camera must not depend on keywords, globals or results left by another camera.
-- **Cost.** Multi-camera cost is measured per camera; it is not extrapolated from the main Game camera ([Validation](validation.md)).
+- **Camera state.** Setup establishes the current camera's keywords, globals and resource bindings.
 
 ## DLSS Neural Rendering
 
@@ -164,14 +161,7 @@ DLSS Neural Rendering is an experimental full-resolution post-process that repla
 
 ## Lifecycle
 
-- **Create.** `Create` first releases everything a previous `Create` built, so re-creation never leaks. It then loads `IllusionRenderPipelineResources`; in a player a missing asset fails an assertion, and in the Editor the feature builds nothing. It creates the renderer data, managers, every pass, the DLSS backend when present, and registers the Rendering Debugger panels.
+- **Create.** `Create` releases its previous resources, then loads `IllusionRenderPipelineResources`; in a player a missing asset fails an assertion, and in the Editor the feature builds nothing. It creates the renderer data, managers, every pass, the DLSS backend when present, and registers the Rendering Debugger panels.
 - **Settings.** World scale, compute preference, history color, indirect diffuse rendering layers and the per-object shadow settings are read again at every camera setup. Settings that size persistent resources when passes are constructed, such as `areaLightCookieAtlasSize` and `areaLightCookieFormat`, apply when the feature is re-created.
 - **Dispose.** Disposing the feature releases every pass, the renderer data with all per-camera states and history, renderer-level render targets, buffers and neutral textures, the DLSS backend with its per-camera contexts, event subscriptions and the debug panels, and URP constant buffers. Each object that allocates a render target, buffer, material, native array or subscription releases it in its own dispose. Tables shared across feature instances, such as the area light LTC table, are reference counted.
 - **Camera state.** Per-camera state is created on a camera's first frame and released when the camera is destroyed or has not rendered for 600 frames. DLSS contexts are released when their camera is destroyed.
-
-## Change obligations
-
-- A change to frame order, camera rules or feature ownership updates this spec and [Render Resources](render-resources.md) in the same change, naming the affected producers, consumers, disabled behavior and dispose owner. A change to shader passes also updates [Materials and Shaders](materials-and-shaders.md).
-- A change to scheduling also checks the camera inputs it requests (depth, normals, motion), depth and color pyramids, history and global side effects.
-- Disabling a feature must not leave camera inputs, render targets, draws, dispatches, copies, clears or synchronization it no longer needs, while fallbacks, global state resets and history invalidation keep running. A pass that publishes a neutral input or resets global state is not removed because it draws nothing visible.
-- Verification follows [Validation](validation.md), including multiple cameras, resolution changes, the first frame and fast camera motion.

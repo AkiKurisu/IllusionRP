@@ -4,12 +4,10 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP passes exchange data through URP frame data, render graph textures, renderer-level render targets, per-camera history and global shader publication. This spec owns the resource classes, the resources that cross passes or reach shaders, the depth that screen-space effects use, history lifetime, render graph declarations, disabled-state publication and release. Pass order and camera rules are owned by [Rendering Pipeline](rendering-pipeline.md).
-
-Out of scope: the Forward GBuffer channel layout and material inputs ([Materials and Shaders](materials-and-shaders.md)), transparency and water resources ([Transparency](transparency.md)), wet surface resources beyond their lifetime ([Wet Surface Decals](wet-surface-decals.md)), the per-object shadow atlas ([Directional Per-Object Shadows](directional-per-object-shadows.md)), sun shaft resources ([Sun Shafts](sun-shafts.md)), and path tracing resources ([Path Tracing](path-tracing.md)).
 
 ## Resource classes
 
@@ -24,11 +22,10 @@ Out of scope: the Forward GBuffer channel layout and material inputs ([Materials
 
 - **Renderer-level targets are not history.** They are reallocated to each camera's target size and reused by cameras rendered one after another. Only per-camera history carries results from one frame of a camera to its next frame.
 - **Internal formats.** Scratch formats inside one feature belong to its implementation. Formats of resources that cross passes or reach shaders are part of this contract.
-- **Budget.** Format, resolution and the number of frames a resource is held are memory and bandwidth commitments; a change to them is validated together with image quality and platform support.
 
 ## Pipeline resources
 
-`IllusionRenderPipelineResources` is one asset loaded by name from `Resources`. It references every shader, compute shader, lookup texture and mesh the passes use, so that players include them. A shader that a pass finds by name is listed in its `alwaysIncludedShaders`; debug shaders are listed in `debugShaders`. A new shader found by name is added to the list in the same change.
+`IllusionRenderPipelineResources` is one asset loaded by name from `Resources`. It references every shader, compute shader, lookup texture and mesh the passes use, so that players include them. A shader that a pass finds by name is listed in its `alwaysIncludedShaders`; debug shaders are listed in `debugShaders`.
 
 ## Shared resources
 
@@ -74,14 +71,14 @@ Out of scope: the Forward GBuffer channel layout and material inputs ([Materials
 - **Opaque match.** Screen-space opaque effects use depth that matches the opaque normals, motion vectors and visibility. The depth pyramid is built from the camera depth before transparent post-depth is added, so ambient occlusion, SSR and SSGI never see transparent proxy depth.
 - **Pre-transparent depth.** Screen-space shadows, the PCSS penumbra mask and subsurface scattering sample the depth captured before transparent post-depth when it exists.
 - **Post-depth.** When the transparent depth chain runs it publishes its post-depth as the camera depth texture for later passes; the chain is owned by [Transparency](transparency.md).
-- **Replacement.** A pass that changes the published camera depth replaces the frame data handle, not only `_CameraDepthTexture`, and states whether normals, motion vectors and history still match.
+- **Replacement.** A change to published camera depth updates both the frame data handle and `_CameraDepthTexture`.
 
 ## Render graph declarations
 
 - **Real dependencies.** Every pass declares each texture, attachment, depth attachment, buffer and renderer list it reads or writes through the render graph builder.
-- **Globals are not dependencies.** Setting a texture on a material, setting a global texture, or publishing a global after a pass never replaces a builder declaration.
-- **Imported targets.** Renderer-level targets and history are imported with declared access. Persistence solves object lifetime, not execution order.
-- **Culling.** Disabling pass culling is reserved for passes with side effects outside the graph, such as global publication or history writes, and never hides a missing consumer.
+- **Global access.** Textures accessed through materials or globals also have builder declarations.
+- **Imported targets.** Renderer-level targets and history are imported with declared access, which establishes their execution dependencies.
+- **Culling.** Passes with side effects outside the graph, such as global publication or history writes, disable pass culling.
 - **Chains.** Steps inside one feature (trace and denoise, accumulate and composite, copy and generate) are linked through the attachments and texture handles they pass on.
 
 ## Disabled state
@@ -111,7 +108,7 @@ The per-camera history buffers are identified by `IllusionFrameHistoryType`:
 - **Validity.** Each temporal consumer owns its validity: whether its history was reallocated, whether it is valid this frame, and how camera cuts and post-processing resets invalidate it. The existence of a render target does not make a history sampleable.
 - **Isolation.** History is written only by its camera. History reuse avoids read-write feedback within a frame and never crosses cameras.
 - **Mip count.** The color pyramid's usable mip count is tracked per camera and reset to 1 for a camera that does not generate a pyramid.
-- **Readiness.** `IllusionRendererData.TryGetTemporalCaptureStatus` reports per camera whether temporal history is ready for a capture; see [Validation](validation.md).
+- **Readiness.** `IllusionRendererData.TryGetTemporalCaptureStatus(camera, out status)` reports whether the camera state exists and its temporal history is ready. `IsReady` requires a camera state and no `Blockers`; the blockers describe warmup, post-processing or TAA resets, and invalid SSGI, SSR or screen-space shadow history. `RecommendedWarmupFrames` is the relevant history warmup recommendation. This status does not cover color-pyramid history or exposure adaptation.
 - **Release.** A camera's history is released when the camera is destroyed, after 600 frames without rendering, or when the renderer data is disposed.
 
 ### History color
@@ -153,8 +150,3 @@ Setup pushes `ShaderVariablesGlobal` for every camera:
 - **Owners.** Whoever creates a renderer-level target, material, buffer, native array or history releases it in its dispose or in the camera state prune.
 - **Renderer data.** Disposing the renderer data releases every camera state and its history, the renderer-level targets, the depth mip offset and ambient probe buffers, the debug exposure resources, and the neutral exposure and default texture wrappers.
 - **Per-camera contexts.** DLSS Neural Rendering contexts are owned by its backend and released with it or when their camera is destroyed.
-
-## Changes and verification
-
-- **Registration.** A new resource that crosses passes or reaches shaders is added here with its format, producer, consumers, lifetime, disabled behavior and camera scope.
-- **Verification.** A change to frame resources or history verifies render graph handles and attachment access, global publication, history validity and reset, per-camera isolation with several cameras at different sizes, and release on dispose, as [Validation](validation.md) requires.

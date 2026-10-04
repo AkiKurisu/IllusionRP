@@ -4,12 +4,10 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md) |
 
 IllusionRP keeps URP's transparent pass for conventional transparency and adds stages around it in the Forward and Forward+ paths: a transparent depth post pass, a pre-refraction copy of the opaque color, surface data and screen-space reflections for water-like transparent surfaces, Weighted Blended Order-Independent Transparency (OIT), and an optional overdraw that redraws conventional transparency over the OIT result.
-
-Out of scope: the Deferred path, the Water shader and its reflection modes ([Water](water.md)), and the wet response of the Forward GBuffer ([Wet Surface Decals](wet-surface-decals.md)).
 
 ## Enablement
 
@@ -88,7 +86,6 @@ dst = C * (1 - revealage) + dst * revealage
 
 Here `c` is the shader's lit and fogged color divided by the current exposure multiplier `E`, `a` its alpha, `z` its positive view depth and `n` the camera near plane.
 
-- **One ABI.** The accumulation output, the revealage meaning, the exposure handling and the blend states change together or not at all.
 - **Ordering.** OIT runs after URP transparents. Conventional transparency always lies beneath the OIT result unless the overdraw redraws it; there is no exact ordering between the two.
 - **Disabled.** With OIT off, no OIT targets or passes are recorded, and anything drawn only through OIT disappears: transparent Hybrid Lit and Hybrid Complex Lit materials with `_OrderIndependent` on, which have no other color pass ([Materials and Shaders](materials-and-shaders.md)), and the Hair fringe. Hair keeps its core.
 - **Accuracy.** Weighted blending is an approximation and loses accuracy as alpha approaches 1.
@@ -104,7 +101,7 @@ Multi Pass Hair, such as HD Hair, splits into a core and a fringe as [Materials 
 
 - **Depth restore.** The frame's camera depth texture, which is the post-depth when the post pass ran, is copied into the active camera depth, which keeps it for the rest of the frame.
 - **Redraw.** The overdraw then draws the transparent queue range from all layers with `SRPDefaultUnlit`, `UniversalForward` and `UniversalForwardOnly`, sorted back to front, testing LessEqual without writing depth. Objects without a matching pass draw with the error shader. Conventional transparency in front of OIT coverage is thus redrawn over the OIT result.
-- **Stencil.** When `oitOverrideStencil` has its override on, the overdraw uses its reference, read mask, comparison and pass, fail and depth-fail operations. These values are project configuration, interpreted against the stencil layout in [Materials and Shaders](materials-and-shaders.md), not a fixed classification; changing them requires re-validating the restored depth, VRS and material stencil writes.
+- **Stencil.** When `oitOverrideStencil` has its override on, the overdraw uses its reference, read mask, comparison and pass, fail and depth-fail operations, interpreted against the stencil layout in [Materials and Shaders](materials-and-shaders.md).
 - **VRS.** When stencil VRS runs, the overdraw shades at a rate derived from the camera stencil: full rate where it marks SSR receivers or subsurface scattering, 2x2 where it marks only hair or skin, and 4x4 elsewhere. The overdraw is the only consumer of this rate image.
 - **Approximation.** The overdraw mitigates OIT bleed-through; it is not a transparency sorter. Every pixel that passes its depth and stencil tests is blended a second time. Without the depth post pass the restored depth carries no transparent coverage, so all conventional transparency in front of opaque geometry is blended twice. High alpha, refraction, intersecting media and exact order across owners are not guaranteed.
 
@@ -114,14 +111,3 @@ Multi Pass Hair, such as HD Hair, splits into a core and a fringe as [Materials 
 - **History.** Transparent SSR reprojects the previous frame's color, so fast camera or object motion and disocclusion show history artifacts.
 - **Hits.** Transparent SSR only reflects on-screen content present in the opaque depth pyramid. Transparent objects are never hit surfaces, although they may appear in the history color.
 - **One water layer.** Only the nearest water surface per pixel has SSR data; a water surface seen through another samples the nearer surface's reflection.
-
-## Validation
-
-- Opaque-queue Hair still appears in the OIT accumulation and transparent post depth renderer lists, and both OIT targets receive its coverage.
-- The composite attachments, exposure handling and blend state match this spec.
-- With OIT off, no OIT targets or passes are recorded and conventional transparency keeps URP behavior.
-- With the depth post pass and transparent SSR off, no pre-depth, post-depth or `PostDepthOnly` draw is recorded.
-- `_PreRefractionColorTexture` is the current frame's opaque color without water, and black when refraction is off while reflections still work.
-- Water SSR data writes the post-depth and `_WaterSSRNormalTexture` and records a read of the pre-depth.
-- With SSR off, `_SsrLightingTexture` is black and refraction still works.
-- Water, conventional transparency, Hair core and fringe, and the overdraw draw in the order above.

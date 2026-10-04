@@ -4,12 +4,10 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-01 |
+| Date | 2026-10-04 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Transparency](transparency.md), [World Scale](world-scale.md) |
 
 Directional per-object shadows render registered casters, typically characters, into a dedicated camera-local shadow atlas for one directional light. They are a quality layer on top of URP's standard shadow atlases: each camera resolves which directional light owns the layer, the screen-space shadow producer turns the atlas into screen-space visibility, and IllusionRP lighting consumes that visibility.
-
-Out of scope: how an application chooses its main and per-object lights, punctual and area light shadows, and [Path Tracing](path-tracing.md).
 
 ## Light authority
 
@@ -24,8 +22,8 @@ Per-object shadows follow one directional light per camera, the source. A light 
 | `Source` is a usable, visible directional other than the main light, and the actual rendering path is Forward+ | AdditionalDirectional, identified by the light's exact index in URP's Forward+ additional light buffer. |
 | `Source` is set but unusable, not visible, beyond the additional light limit, or the path is not Forward+ | Disabled for that frame. |
 
-- **No silent fallback.** An explicit source that is temporarily invalid disables the layer; only clearing `Source` or disabling the component returns to the Main fallback. A `Source` whose Light has been destroyed counts as null.
-- **Identity.** The additional light index is the buffer index URP uses for that frame; it is never inferred from color, direction, intensity or rendering layers.
+- **Source lifetime.** A `Source` whose Light has been destroyed counts as null.
+- **Identity.** The additional light index is URP's buffer index for the current frame.
 - **Feature gate.** The renderer feature setting Additional Directional Per-Object Shadows (`additionalDirectionalPerObjectShadows`) allows camera selection. When it is off, cameras ignore the component and always use the Main fallback; per-object shadows themselves stay on.
 - **Preview cameras.** Preview cameras have no per-object shadows.
 - **Published state.** The mode is published as `_PerObjSceneShadowSourceMode` (0 Disabled, 1 Main, 2 AdditionalDirectional) together with `_PerObjSceneShadowAdditionalLightIndex` and `_PerObjSceneShadowLightDirection`, also when no caster is visible.
@@ -99,14 +97,3 @@ The screen-space shadow producer writes `_ScreenSpaceShadowmapTexture` from the 
 - **Transparent.** Transparent surfaces, including those that write transparent depth, never read G. With Transparent Receive Per Object Shadows (`transparentReceivePerObjectShadows`, keyword `_TRANSPARENT_PER_OBJECT_SHADOWS`) they sample the atlas directly at their own position with PCF; otherwise they receive no visibility from the source. See [Transparency](transparency.md).
 - **Other shaders.** Shaders without the IllusionRP lighting includes receive Main-mode per-object visibility only through URP's screen-space shadow R channel and never receive AdditionalDirectional visibility.
 - **Lighting loop.** Baked shadowmask, shadow distance fade, light layers, cookies and distance and cone attenuation stay with the normal lighting loop; the screen-space channels carry realtime visibility only.
-
-## Validation
-
-- In Main mode, scene and caster shadows match the result without a camera selector.
-- In AdditionalDirectional mode, URP's main atlas keeps scene casters and drops the layered casters, and the per-object atlas draws every allocated caster.
-- R and G never mix light identities, and contact shadows only change R.
-- With several additional directional lights, only the selected index receives G.
-- Toggling URP main light shadows does not change the AdditionalDirectional sample count or quality.
-- Hair still casts but its additional lighting does not read G.
-- After each camera and after disposal, the main light's shadow layer fields hold their original values.
-- URP's standard atlases stay available to transparent, volumetric, precomputed radiance transfer, offscreen and third-party consumers.
