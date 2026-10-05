@@ -27,6 +27,7 @@ Material:
   - TransparentDepthPrepass
   - TransparentDepthPostpass
   - TransparentBackface
+  - OIT
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3

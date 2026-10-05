@@ -24,6 +24,7 @@ Material:
     RenderType: TransparentCutout
   disabledShaderPasses:
   - PerObjectShadowCaster
+  - OIT
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3

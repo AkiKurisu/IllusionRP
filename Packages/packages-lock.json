@@ -39,7 +39,7 @@
         "com.unity.nuget.newtonsoft-json": "3.2.1",
         "com.unity.nuget.mono-cecil": "1.11.4"
       },
-      "hash": "2cddb532ef5d7f56f5e9b71832105accf71a07ac"
+      "hash": "492accf892b95a6729872c8365f8672d11a1a4cf"
     },
     "com.kurisu.illusion-render-pipelines": {
       "version": "file:com.kurisu.illusion-render-pipelines",

@@ -26,6 +26,7 @@ Material:
     RenderType: Opaque
   disabledShaderPasses:
   - PerObjectShadowCaster
+  - OIT
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
