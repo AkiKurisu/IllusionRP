@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
+using Illusion.Rendering.PRTGI;
 using UnityEngine.Rendering.Universal;
 
 namespace Illusion.Rendering
@@ -172,6 +173,7 @@ namespace Illusion.Rendering
         
         private class ReprojectPassData
         {
+            public PRTShaderBindings ProbeVolumes;
             public ScreenSpaceGlobalIlluminationVariables Variables;
             public ComputeShader ComputeShader;
             public int ReprojectKernel;
@@ -389,7 +391,8 @@ namespace Illusion.Rendering
         private TextureHandle RenderReprojectPass(RenderGraph renderGraph,
             TextureHandle hitPointTexture, TextureHandle depthPyramidTexture, TextureHandle normalTexture,
             TextureHandle motionVectorTexture, TextureHandle colorPyramidTexture, TextureHandle historyDepthTexture,
-            TextureHandle exposureTexture, TextureHandle prevExposureTexture, bool isNewFrame, bool useAsyncCompute)
+            TextureHandle exposureTexture, TextureHandle prevExposureTexture, bool isNewFrame, bool useAsyncCompute,
+            PRTShaderBindings probeVolumes)
         {
             using (var builder = renderGraph.AddComputePass<ReprojectPassData>("SSGI Reproject", out var passData))
             {
@@ -404,6 +407,8 @@ namespace Illusion.Rendering
                 passData.OffsetBuffer = _rendererData.DepthMipChainInfo.GetOffsetBufferData(
                     _rendererData.DepthPyramidMipLevelOffsetsBuffer);
                 passData.IsNewFrame = isNewFrame;
+                passData.ProbeVolumes = probeVolumes;
+                probeVolumes.DeclareReads(builder);
                 
                 // Create output texture
                 var outputDesc = new TextureDesc(_rtWidth, _rtHeight, false, false)
@@ -439,7 +444,7 @@ namespace Illusion.Rendering
                 builder.SetRenderFunc((ReprojectPassData data, ComputeGraphContext context) =>
                 {
                     ConstantBuffer.Push(context.cmd, data.Variables, data.ComputeShader, Properties.ShaderVariablesSSGI);
-                    
+                    data.ProbeVolumes.Bind(context.cmd, data.ComputeShader, data.ReprojectKernel);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.ReprojectKernel,
                         IllusionShaderProperties._DepthPyramid, data.DepthPyramidTexture);
                     context.cmd.SetComputeTextureParam(data.ComputeShader, data.ReprojectKernel,
@@ -892,7 +897,8 @@ namespace Illusion.Rendering
             // Execute reproject pass
             var giTexture = RenderReprojectPass(renderGraph, hitPointTexture, 
                 depthPyramidTexture, normalTexture, motionVectorTexture, colorPyramidTexture,
-                historyDepthTexture, exposureTexture, prevExposureTexture, isNewFrame, useAsyncCompute);
+                historyDepthTexture, exposureTexture, prevExposureTexture, isNewFrame, useAsyncCompute,
+                frameData.Get<PRTShaderResources>().Bindings);
             
             // Execute denoising pipeline if enabled
             if (_needDenoise)

@@ -30,5 +30,6 @@ Rendering contracts and source workflows for IllusionRP.
 | [Sun Shafts](sun-shafts.md) | Screen-space sun shafts: Volume, anchor, passes and the porting boundary. |
 | [World Scale](world-scale.md) | Conversion between logical world lengths and Unity world units. |
 | [Path Tracing](path-tracing.md) | Reference and Realtime modes, Unity material evaluation, IllusionRP scattering models and RTXPT integration. |
+| [Precomputed Radiance Transfer](precomputed-radiance-transfer.md) | Transport baking, direction weights, world lighting and cached visibility, full-grid iteration and per-camera publication. |
 | [ASE Shader Workflow](ase-shader-workflow.md) | Ownership of templates, graphs, functions and generated shaders, and export convergence. |
 | [Upstream Source Migration](upstream-source-migration.md) | Source revisions, import history, host adaptation and difference markers. |

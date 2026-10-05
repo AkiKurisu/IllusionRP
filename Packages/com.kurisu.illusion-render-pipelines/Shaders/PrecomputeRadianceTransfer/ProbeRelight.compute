@@ -1,10 +1,8 @@
-// #pragma enable_d3d11_debug_symbols
-#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
-
 #pragma kernel CSMain
-
-#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
-#pragma multi_compile _ _RELIGHT_DEBUG_RADIANCE
+#pragma kernel CSCommit
+#pragma kernel CSPublish
+#pragma kernel CSCopyDebug
+#pragma kernel CSClearPublication
 
 //--------------------------------------------------------------------------------------------------
 // Included headers
@@ -13,126 +11,154 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/SphericalHarmonics.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/ProbeVolume.hlsl"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/GlobalIlluminationFallback.hlsl"
 
 //--------------------------------------------------------------------------------------------------
 // Inputs & outputs
 //--------------------------------------------------------------------------------------------------
 
-// Input
-StructuredBuffer<BrickRadiance> _brickRadiance;
+StructuredBuffer<PRTProbeData> _prtProbeData;
 StructuredBuffer<BrickFactor> _factors;
-StructuredBuffer<float> _validityMasks;
-RWTexture3D<float3> _coefficientVoxel3D;
-RWTexture3D<float> _validityVoxel3D;
+StructuredBuffer<PRTSkySample> _prtSkySamples;
+StructuredBuffer<float4> _brickRadiance;
+StructuredBuffer<float4> _prtPreviousSH;
+StructuredBuffer<uint> _validityMasks;
+RWStructuredBuffer<float4> _prtNextSH;
+StructuredBuffer<uint> _prtProbeIds;
+StructuredBuffer<uint> _prtReady;
+RWStructuredBuffer<float4> _prtResiduals;
+RWStructuredBuffer<float4> _prtCommittedSH;
+RWStructuredBuffer<uint> _prtCommittedMetadata;
+RWStructuredBuffer<uint> _prtCommittedReady;
+TextureCube<float4> _prtEnvironment;
+SamplerState sampler_prtEnvironment;
+float _prtEnvironmentIntensity;
+uint _prtProbeCount;
+float _prtAbsoluteTolerance;
+float _prtRelativeTolerance;
 
-// Parameters
-float4 _probePos;
-float4 _coefficientVoxelSize;
-float4 _originalBoundingBoxMin;
-float4 _boundingBoxMin;
-float4 _boundingBoxSize;
-int _factorStart;
-int _factorCount;
-int _indexInProbeVolume;
-
-// Debug
-#ifdef _RELIGHT_DEBUG_RADIANCE
-    RWStructuredBuffer<float> _coefficientSH9;
-#endif
-
-#define ThreadCount 256 // Max Brick Num
-groupshared float3 groupCoefficients[9][ThreadCount];
+#define PRT_THREADS 128
+groupshared float3 shReduction[9][PRT_THREADS];
 
 //--------------------------------------------------------------------------------------------------
 // Implementation
 //--------------------------------------------------------------------------------------------------
 
-[numthreads(ThreadCount, 1, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
+[numthreads(PRT_THREADS, 1, 1)]
+void CSMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
 {
-    uint factorIndex = _factorStart + id.x;
-    bool validFactor = factorIndex < uint(_factorStart + _factorCount);
-
-    float3 totalRadiance = 0;
-    float3 dir = 0;
-    if (validFactor)
+    uint localIndex = group.x;
+    uint index = _prtProbeIds[localIndex];
+    PRTProbeData probe = _prtProbeData[localIndex];
+    float3 coefficients[9];
+    for (uint initializeCoefficient = 0; initializeCoefficient < 9u; initializeCoefficient++)
+        coefficients[initializeCoefficient] = 0;
+    float intensity, validity;
+    UnpackIntensityValidity(_validityMasks[index], intensity, validity);
+    if (validity > 0)
     {
-        // Get factor and corresponding brick
-        BrickFactor factor = _factors[factorIndex];
-        BrickRadiance brick = _brickRadiance[factor.brickIndex];
-    
-        // Calculate sky sampling direction
-        dir = normalize(brick.averagePosition - _probePos.xyz);
-    
-        // Sample sky lighting using the correct direction (probe to brick)
-        float2 uv = ComputeNormalizedDeviceCoordinates(brick.averagePosition, UNITY_MATRIX_VP);
-        float weight = 0.0f;
-        float3 skyLighting = 0;
-        skyLighting += SampleReflectionProbes(dir, brick.averagePosition, uv, 1.0f, weight).rgb;
-        skyLighting += SampleAmbientProbe(dir) * (1.0 - weight);
-        skyLighting *= brick.averageSkyVisibility;
-    
-        // Total radiance = brick radiance + sky lighting contribution
-        totalRadiance = (brick.averageRadiance * (1.0 - brick.averageSkyVisibility) + skyLighting) * factor.weight;
-    }
-    
-    // Compute all SH coefficients at once using vectorized approach
-    float shCoeffs[9];
-    EvaluateSH9(dir.xzy, shCoeffs);
-
-    float weight = 4.0 * PI; // float weight = 4.0 * PI / sampleCount;
-
-    // Process each SH coefficient and store to LDS
-    UNITY_UNROLL
-    for (int shIndex = 0; shIndex < 9; shIndex++)
-    {
-        float3 contribution = shCoeffs[shIndex] * totalRadiance * weight;
-
-        groupCoefficients[shIndex][groupIndex] = contribution;
-    }
-    GroupMemoryBarrierWithGroupSync();
-
-    // Parallel reduction for non-power-of-2 size
-    for (uint stride = ThreadCount / 2; stride > 0; stride >>= 1)
-    {
-        if (groupIndex < stride)
+        for (uint edge = lane; edge < uint(probe.factorCount); edge += PRT_THREADS)
         {
-            UNITY_UNROLL
-            for (int shIndex = 0; shIndex < 9; shIndex++)
-            {
-                groupCoefficients[shIndex][groupIndex] += groupCoefficients[shIndex][groupIndex + stride];
-            }
+            // Get factor and corresponding brick
+            BrickFactor factor = _factors[probe.factorStart + edge];
+            float3 radiance = _brickRadiance[factor.brickIndex].rgb;
+            for (uint factorCoefficient = 0; factorCoefficient < 9u; factorCoefficient++)
+                coefficients[factorCoefficient] += radiance * factor.sh[factorCoefficient];
         }
+        for (uint sample = lane; sample < uint(probe.skyCount); sample += PRT_THREADS)
+        {
+            PRTSkySample sky = _prtSkySamples[probe.skyStart + sample];
+            float3 radiance = _prtEnvironment.SampleLevel(sampler_prtEnvironment, sky.direction, 0).rgb
+                * _prtEnvironmentIntensity;
+            float basis[9];
+            EvaluateSH9(sky.direction.xzy, basis);
+            for (uint skyCoefficient = 0; skyCoefficient < 9u; skyCoefficient++)
+                coefficients[skyCoefficient] += radiance * (sky.weight * basis[skyCoefficient]);
+        }
+    }
+    // Process each SH coefficient and store to LDS
+    for (uint storedCoefficient = 0; storedCoefficient < 9u; storedCoefficient++)
+        shReduction[storedCoefficient][lane] = coefficients[storedCoefficient];
+    GroupMemoryBarrierWithGroupSync();
+    // Parallel reduction
+    for (uint offset = PRT_THREADS / 2; offset > 0u; offset >>= 1)
+    {
+        if (lane < offset)
+            for (uint reducedCoefficient = 0; reducedCoefficient < 9u; reducedCoefficient++)
+                shReduction[reducedCoefficient][lane] += shReduction[reducedCoefficient][lane + offset];
         GroupMemoryBarrierWithGroupSync();
     }
-
     // Write results
-    if (groupIndex == 0 && _indexInProbeVolume >= 0)
+    if (lane == 0u)
     {
-        UNITY_UNROLL
-        for (int shIndex = 0; shIndex < 9; shIndex++)
+        float ratio = 0;
+        float difference = 0;
+        float nonFinite = 0;
+        for (uint outputCoefficient = 0; outputCoefficient < 9u; outputCoefficient++)
         {
-            uint3 texCoord = GetProbeTexture3DCoordFromIndex(_indexInProbeVolume, shIndex, _coefficientVoxelSize,
-                                                             _boundingBoxMin, _boundingBoxSize,
-                                                             _originalBoundingBoxMin);
-            _coefficientVoxel3D[texCoord] = groupCoefficients[shIndex][0];
-#ifdef _RELIGHT_DEBUG_RADIANCE
-            _coefficientSH9[shIndex * 3 + 0] = groupCoefficients[shIndex][0].x;
-            _coefficientSH9[shIndex * 3 + 1] = groupCoefficients[shIndex][0].y;
-            _coefficientSH9[shIndex * 3 + 2] = groupCoefficients[shIndex][0].z;
-#endif
+            float3 value = shReduction[outputCoefficient][0];
+            float3 previous = _prtPreviousSH[index * 9u + outputCoefficient].rgb;
+            if (!all(isfinite(value)) || !all(isfinite(previous)))
+                nonFinite += 1;
+            float3 error = abs(value - previous);
+            float3 threshold = _prtAbsoluteTolerance + _prtRelativeTolerance * max(abs(value), abs(previous));
+            float3 scaled = error / threshold;
+            ratio = max(ratio, max(scaled.x, max(scaled.y, scaled.z)));
+            difference = max(difference, max(error.x, max(error.y, error.z)));
+            _prtNextSH[localIndex * 9u + outputCoefficient] = float4(value, 0);
         }
-        
-        // Write validity mask
-        float validityMask = _validityMasks[_indexInProbeVolume];
-        
-        // Calculate validity texture coordinate (without shIndex, depth = y coordinate)
-        uint3 validityTexCoord = GetProbeTexture3DCoordFromIndex(_indexInProbeVolume, 0, _coefficientVoxelSize,
-                                                                   _boundingBoxMin, _boundingBoxSize,
-                                                                   _originalBoundingBoxMin);
-        // Adjust for validity texture (depth is just Y, not Y * 9)
-        validityTexCoord.z = validityTexCoord.z / 9;
-        _validityVoxel3D[validityTexCoord] = validityMask;
+        _prtResiduals[localIndex] = float4(ratio, difference, 0, nonFinite);
     }
+}
+
+[numthreads(64, 1, 1)]
+void CSCommit(uint3 id : SV_DispatchThreadID)
+{
+    uint localIndex = id.x;
+    if (localIndex >= _prtProbeCount) return;
+    if (_prtResiduals[localIndex].w != 0) return;
+    uint index = _prtProbeIds[localIndex];
+    for (uint coefficient = 0; coefficient < 9u; coefficient++)
+        _prtCommittedSH[index * 9u + coefficient] = _prtNextSH[localIndex * 9u + coefficient];
+    _prtCommittedMetadata[index] = _validityMasks[index];
+    _prtCommittedReady[index] = 1u;
+}
+
+int3 _prtPublishOffset;
+int3 _prtPublishCount;
+RWTexture3D<float4> _coefficientVoxel3D;
+RWTexture3D<uint> _validityVoxel3D;
+[numthreads(1, 1, 1)]
+void CSClearPublication()
+{
+    for (uint clearCoefficient = 0; clearCoefficient < 9u; clearCoefficient++)
+        _coefficientVoxel3D[int3(0, 0, clearCoefficient)] = 0;
+    _validityVoxel3D[int3(0, 0, 0)] = 0u;
+}
+[numthreads(8, 4, 8)]
+void CSPublish(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= uint3(_prtPublishCount)))
+        return;
+    int3 slot = _prtPublishOffset + int3(id);
+    int3 coordinate = _prtWindowMin.xyz + slot;
+    uint index = PRTProbeIndex(coordinate);
+    float intensity, validity;
+    uint metadata = _prtReady[index] != 0u ? _validityMasks[index] : 0u;
+    UnpackIntensityValidity(metadata, intensity, validity);
+    for (uint publishedCoefficient = 0; publishedCoefficient < 9u; publishedCoefficient++)
+        _coefficientVoxel3D[PRTTextureCoordinate(slot, publishedCoefficient)] =
+            float4(_prtPreviousSH[index * 9u + publishedCoefficient].rgb * (intensity * validity), validity);
+    int3 metadataCoordinate = int3(slot.x, slot.z, slot.y);
+    _validityVoxel3D[metadataCoordinate] = metadata;
+}
+
+RWStructuredBuffer<float> _coefficientSH9;
+uint _prtDebugProbeIndex;
+[numthreads(32, 1, 1)]
+void CSCopyDebug(uint3 dispatch : SV_DispatchThreadID)
+{
+    uint id = dispatch.x;
+    if (id >= 27u)
+        return;
+    _coefficientSH9[id] = _prtPreviousSH[_prtDebugProbeIndex * 9u + id / 3u][id % 3u];
 }

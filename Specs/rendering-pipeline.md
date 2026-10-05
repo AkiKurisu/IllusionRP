@@ -38,7 +38,7 @@ Runtime switches and Volumes gate the capabilities enabled by renderer settings.
 | Ground truth ambient occlusion | `groundTruthAO` | `r.ssao` | `GroundTruthAmbientOcclusion` | Not offscreen depth. | Not enqueued. |
 | Screen space reflection | `screenSpaceReflection` | `r.ssr` | `ScreenSpaceReflection` | Not offscreen depth; Reflection cameras never sample it. | `_SsrLightingTexture` is black while the setting is on. |
 | Screen space global illumination | `screenSpaceGlobalIllumination` | `r.ssgi` | `ScreenSpaceGlobalIllumination` | Not offscreen depth or Reflection. | `_IndirectDiffuseMode` is Off. |
-| Precomputed radiance transfer GI | `precomputedRadianceTransferGI` | `r.prt` | None | An active probe volume; not Reflection. | No relight; the probe grid is published as empty, and fog and SSGI ignore probe volumes. |
+| Precomputed radiance transfer GI | `precomputedRadianceTransferGI` | `r.prt` | None | Baked probe transport matching the volume grid; not Reflection or Preview. | No solve work; publish neutral data for this camera. Eligible idle cameras still publish their committed generation. See [PRT](precomputed-radiance-transfer.md). |
 | Contact shadows | `contactShadows` | `r.contactshadows` | `ContactShadows` | Reflection cameras never sample them. | `_CONTACT_SHADOWS` off. |
 | Percentage closer soft shadows | `pcssShadows` | `r.pcss` | `PercentageCloserSoftShadows` (temporal accumulation only) | Not Reflection. | `_PCSS_SHADOWS` off, no temporal pass. |
 | Rectangle area lights | `areaLights` | `r.arealights` | `AreaLighting` | Forward or Forward+. | The pass runs with zero lights and black atlases. |

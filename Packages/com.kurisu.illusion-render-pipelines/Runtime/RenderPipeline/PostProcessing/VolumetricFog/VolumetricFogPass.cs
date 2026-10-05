@@ -6,6 +6,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Unity.Collections;
 using UnityEngine.Rendering.RenderGraphModule;
+using Illusion.Rendering.PRTGI;
 
 namespace Illusion.Rendering.PostProcessing
 {
@@ -28,6 +29,7 @@ namespace Illusion.Rendering.PostProcessing
 		/// </summary>
 		private class RaymarchPassData
 		{
+			public PRTShaderBindings ProbeVolumes;
 			public bool UseComputeShader;
 			// Fragment shader path
 			public Material VolumetricFogMaterial;
@@ -591,6 +593,8 @@ namespace Illusion.Rendering.PostProcessing
 				passData.VolumetricLightManager = _volumetricLightManager;
 				passData.VolumeSettings = VolumeManager.instance.stack.GetComponent<VolumetricFog>();
 				passData.RendererData = _rendererData;
+				passData.ProbeVolumes = frameData.Get<PRTShaderResources>().Bindings;
+				passData.ProbeVolumes.DeclareReads(builder);
 
 				if (mainShadowsTexture.IsValid())
 					builder.UseTexture(mainShadowsTexture);
@@ -605,6 +609,7 @@ namespace Illusion.Rendering.PostProcessing
 					UpdateVolumetricFogComputeShaderParameters(context.cmd,
 						data.RaymarchCS, data.RendererData, data.LightData.mainLightIndex, data.LightData.additionalLightsCount,
 						data.LightData.visibleLights);
+					data.ProbeVolumes.Bind(context.cmd, data.RaymarchCS, data.RaymarchKernel);
 
 					context.cmd.SetComputeTextureParam(data.RaymarchCS, data.RaymarchKernel,
 						ShaderIDs._DownsampledCameraDepthTexture, data.DownsampledDepthTexture);
@@ -646,6 +651,8 @@ namespace Illusion.Rendering.PostProcessing
 				var outputTexture = renderGraph.CreateTexture(desc);
 
 				passData.UseComputeShader = false;
+				passData.ProbeVolumes = frameData.Get<PRTShaderResources>().Bindings;
+				passData.ProbeVolumes.DeclareReads(builder);
 				passData.VolumetricFogMaterial = _volumetricFogMaterial.Value;
 				passData.PassIndex = _volumetricFogRenderPassIndex;
 				builder.UseTexture(downsampledDepth);
