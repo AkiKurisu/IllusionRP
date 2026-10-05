@@ -647,6 +647,7 @@ namespace Illusion.Rendering
                 }
             }
 
+            _prtRelightPass.FragmentShadowBias = fragmentShadowBias;
             renderer.EnqueuePass(_prtRelightPass);
 
             // AfterRenderingGBuffer

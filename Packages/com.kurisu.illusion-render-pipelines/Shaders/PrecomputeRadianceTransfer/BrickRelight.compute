@@ -1,391 +1,44 @@
-// #pragma enable_d3d11_debug_symbols
-#pragma only_renderers d3d11 playstation xboxone xboxseries vulkan metal switch
-
 #pragma kernel CSMain
-
-#pragma multi_compile _ _CLUSTER_LIGHT_LOOP
-#pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
-#pragma multi_compile _ _ADDITIONAL_LIGHTS
-#pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
-#pragma multi_compile _ _PRT_RELIGHT_SHADOW
-#pragma multi_compile _ _PRT_SHADOW_CACHE_DEBUG_VIEW
 
 //--------------------------------------------------------------------------------------------------
 // Included headers
 //--------------------------------------------------------------------------------------------------
 
-#include "Packages/com.unity.render-pipelines.ps5/ShaderLibrary/API/FoveatedRendering_PSSL.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/EvaluateProbeVolume.hlsl"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/VolumetricShadows.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/SolverProbeSampling.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/WorldLighting.hlsl"
 
 //--------------------------------------------------------------------------------------------------
 // Inputs & outputs
 //--------------------------------------------------------------------------------------------------
 
-RWStructuredBuffer<SurfelIndices> _brickInfo;       // Info for each brick to update
-RWStructuredBuffer<int> _brickIndexMapping;         // Mapping from update index to actual brick index
-RWStructuredBuffer<Surfel> _surfels;                // All surfels
-RWStructuredBuffer<BrickRadiance> _brickRadiance;   // Out brick radiance (sized for ALL bricks)
-uint _brickCount;                                   // Number of bricks to update this frame
-
-struct ShadowCacheEntry
-{
-    float shadow;
-    uint epoch;
-    uint lastUpdateFrame;
-    uint valid;
-};
-
-struct BrickShadowCache
-{
-    float meanShadow;
-    float variance;
-    uint epoch;
-    uint lastUpdateFrame;
-};
-
-#if defined(_PRT_SHADOW_CACHE_DEBUG_VIEW)
-struct ShadowCacheDebugEntry
-{
-    float shadow;
-    uint status;
-    uint age;
-    uint epoch;
-};
-
-RWStructuredBuffer<ShadowCacheDebugEntry> _shadowCacheDebug;
-#endif
-
-RWStructuredBuffer<ShadowCacheEntry> _shadowCache;      // Shadow cache for each surfel
-RWStructuredBuffer<BrickShadowCache> _brickShadowCache; // Shadow cache for each brick
-RWStructuredBuffer<uint> _shadowCacheStats;             // Debug counters
-
-uint _shadowCacheEpoch;
-uint _shadowCacheFrameIndex;
-uint _shadowCacheMaxAge;
-float _shadowCacheVarianceThreshold;
-uint _enableShadowCacheStats;
-
-#define ThreadCount 64
-
-#define SHADOW_STAT_EVALUATED 0
-#define SHADOW_STAT_HIT 1
-#define SHADOW_STAT_MISS 2
-#define SHADOW_STAT_INVALID_EPOCH 3
-#define SHADOW_STAT_INVALID_AGE 4
-#define SHADOW_STAT_SHADOWMAP_SAMPLE 5
-#define SHADOW_STAT_FALLBACK_CACHE 6
-#define SHADOW_STAT_UNCOVERED_NO_CACHE 7
-
-#define SHADOW_CACHE_DEBUG_UNKNOWN 0
-#define SHADOW_CACHE_DEBUG_FRESH_HIT 1
-#define SHADOW_CACHE_DEBUG_SAMPLED 2
-#define SHADOW_CACHE_DEBUG_FALLBACK_CACHE 3
-#define SHADOW_CACHE_DEBUG_UNCOVERED_NO_CACHE 4
-#define SHADOW_CACHE_DEBUG_BRICK_CACHE_HIT 5
+StructuredBuffer<SurfelIndices> _brickInfo;
+StructuredBuffer<Surfel> _surfels;
+RWStructuredBuffer<float4> _brickRadiance;
+uint _brickCount;
 
 //--------------------------------------------------------------------------------------------------
 // Implementation
 //--------------------------------------------------------------------------------------------------
 
-void WriteShadowCacheDebug(uint surfelGlobalIndex, uint status, float shadow, uint age)
+[numthreads(64, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
 {
-#if defined(_PRT_SHADOW_CACHE_DEBUG_VIEW)
-    ShadowCacheDebugEntry entry;
-    entry.shadow = shadow;
-    entry.status = status;
-    entry.age = age;
-    entry.epoch = _shadowCacheEpoch;
-    _shadowCacheDebug[surfelGlobalIndex] = entry;
-#endif
-}
-
-void AddShadowCacheStat(uint statIndex, uint value)
-{
-    if (_enableShadowCacheStats != 0)
-    {
-        InterlockedAdd(_shadowCacheStats[statIndex], value);
-    }
-}
-
-uint ShadowCacheAge(uint lastUpdateFrame)
-{
-    return _shadowCacheFrameIndex >= lastUpdateFrame ? _shadowCacheFrameIndex - lastUpdateFrame : 0;
-}
-
-bool IsInsideShadowAtlas(float2 shadowUv)
-{
-    return all(shadowUv >= 0.0) && all(shadowUv <= 1.0);
-}
-
-bool CanSampleMainLightShadow(Surfel surfel, float4 shadowCoord)
-{
-    if (BEYOND_SHADOW_FAR(shadowCoord) || !IsInsideShadowAtlas(shadowCoord.xy))
-    {
-        return false;
-    }
-
-#if defined(_MAIN_LIGHT_SHADOWS_CASCADE)
-    return ComputeCascadeIndex(surfel.position) < MAX_SHADOW_CASCADES;
-#else
-    return true;
-#endif
-}
-
-float SampleMainLightShadow(Surfel surfel, uint surfelGlobalIndex, bool useBrickShadowFallback,
-    float brickShadowFallback, uint brickShadowFallbackAge, out uint sampledShadowmap)
-{
-    sampledShadowmap = 0;
-    ShadowCacheEntry entry = _shadowCache[surfelGlobalIndex];
-    // @IllusionRP: Keep cache validity local to this function. D3D11's data-flow
-    // analysis reports a false uninitialized-value warning when these states are
-    // returned through out parameters from an inlined helper.
-    bool invalidByEpoch = entry.valid == 0 || entry.epoch != _shadowCacheEpoch;
-    bool invalidByAge = !invalidByEpoch && ShadowCacheAge(entry.lastUpdateFrame) > _shadowCacheMaxAge;
-    bool cacheIsFresh = !invalidByEpoch && !invalidByAge;
-
-    if (cacheIsFresh)
-    {
-        AddShadowCacheStat(SHADOW_STAT_HIT, 1);
-        WriteShadowCacheDebug(surfelGlobalIndex, SHADOW_CACHE_DEBUG_FRESH_HIT,
-            entry.shadow, ShadowCacheAge(entry.lastUpdateFrame));
-        return entry.shadow;
-    }
-
-    float4 shadowCoord = TransformWorldToShadowCoord(surfel.position);
-    if (CanSampleMainLightShadow(surfel, shadowCoord))
-    {
-        AddShadowCacheStat(SHADOW_STAT_MISS, 1);
-        if (invalidByEpoch)
-        {
-            AddShadowCacheStat(SHADOW_STAT_INVALID_EPOCH, 1);
-        }
-        if (invalidByAge)
-        {
-            AddShadowCacheStat(SHADOW_STAT_INVALID_AGE, 1);
-        }
-
-        float shadow = VolumetricSampleShadowmap(
-            TEXTURE2D_ARGS(_MainLightShadowmapTexture, sampler_MainLightShadowmapTexture), 
-            shadowCoord, 
-            GetMainLightShadowParams(), 
-            false
-        );
-        sampledShadowmap = 1;
-        AddShadowCacheStat(SHADOW_STAT_SHADOWMAP_SAMPLE, 1);
-
-        ShadowCacheEntry nextEntry;
-        nextEntry.shadow = shadow;
-        nextEntry.epoch = _shadowCacheEpoch;
-        nextEntry.lastUpdateFrame = _shadowCacheFrameIndex;
-        nextEntry.valid = 1;
-        _shadowCache[surfelGlobalIndex] = nextEntry;
-        WriteShadowCacheDebug(surfelGlobalIndex, SHADOW_CACHE_DEBUG_SAMPLED, shadow, 0);
-        return shadow;
-    }
-
-    if (!invalidByEpoch)
-    {
-        AddShadowCacheStat(SHADOW_STAT_HIT, 1);
-        AddShadowCacheStat(SHADOW_STAT_FALLBACK_CACHE, 1);
-        if (invalidByAge)
-        {
-            AddShadowCacheStat(SHADOW_STAT_INVALID_AGE, 1);
-        }
-        WriteShadowCacheDebug(surfelGlobalIndex, SHADOW_CACHE_DEBUG_FALLBACK_CACHE,
-            entry.shadow, ShadowCacheAge(entry.lastUpdateFrame));
-        return entry.shadow;
-    }
-
-    if (useBrickShadowFallback)
-    {
-        AddShadowCacheStat(SHADOW_STAT_HIT, 1);
-        AddShadowCacheStat(SHADOW_STAT_FALLBACK_CACHE, 1);
-        WriteShadowCacheDebug(surfelGlobalIndex, SHADOW_CACHE_DEBUG_FALLBACK_CACHE,
-            brickShadowFallback, brickShadowFallbackAge);
-        return brickShadowFallback;
-    }
-
-    AddShadowCacheStat(SHADOW_STAT_MISS, 1);
-    AddShadowCacheStat(SHADOW_STAT_INVALID_EPOCH, 1);
-    AddShadowCacheStat(SHADOW_STAT_UNCOVERED_NO_CACHE, 1);
-    WriteShadowCacheDebug(surfelGlobalIndex, SHADOW_CACHE_DEBUG_UNCOVERED_NO_CACHE, 1.0, 0);
-    return 1.0;
-}
-
-bool IsBrickShadowCacheFresh(BrickShadowCache entry, out bool invalidByEpoch, out bool invalidByAge,
-    out bool validVariance)
-{
-    invalidByEpoch = entry.epoch != _shadowCacheEpoch;
-    invalidByAge = !invalidByEpoch && ShadowCacheAge(entry.lastUpdateFrame) > _shadowCacheMaxAge;
-    validVariance = entry.variance <= _shadowCacheVarianceThreshold;
-    return !invalidByEpoch && !invalidByAge && validVariance;
-}
-
-float3 EvaluateSurfelRadiance(Surfel surfel, uint surfelGlobalIndex, bool useBrickShadow, float brickShadow,
-    bool useBrickShadowFallback, float brickShadowFallback, uint brickShadowFallbackAge,
-    out float mainLightShadow, out uint sampledMainLightShadow)
-{
-    // mainlight property
-    Light mainLight = GetMainLight();
-
-    float atten = 1.0;
-    sampledMainLightShadow = 0;
-#if defined(_PRT_RELIGHT_SHADOW)
-    if (useBrickShadow)
-    {
-        atten = brickShadow;
-    }
-    else
-    {
-        atten = SampleMainLightShadow(surfel, surfelGlobalIndex, useBrickShadowFallback,
-            brickShadowFallback, brickShadowFallbackAge, sampledMainLightShadow);
-    }
-#endif
-    mainLightShadow = atten;
-
-    // radiance from light
-    float NdotL = saturate(dot(surfel.normal, mainLight.direction));
-    half3 directLighting = surfel.albedo * mainLight.color * (NdotL * atten);
-
-#if _CLUSTER_LIGHT_LOOP
-    // Forward+ rendering path needs this data before the light loop.
-    float2 uv = ComputeNormalizedDeviceCoordinates(surfel.position, UNITY_MATRIX_VP);
-    InputData inputData = (InputData)0;
-    inputData.normalizedScreenSpaceUV = uv;
-    inputData.positionWS = surfel.position;
-#endif
-    uint pixelLightCount = GetAdditionalLightsCount();
-    LIGHT_LOOP_BEGIN(pixelLightCount)
-        Light light = GetAdditionalLight(lightIndex, surfel.position);
-    #if !defined(_PRT_RELIGHT_SHADOW)
-        light.shadowAttenuation = 1.0f;
-    #else
-        light.shadowAttenuation = VolumetricAdditionalLightRealtimeShadow(lightIndex, surfel.position, light.direction);
-    #endif
-        NdotL = saturate(dot(surfel.normal, light.direction));
-        half3 additionalLighting = surfel.albedo * light.color * (NdotL * light.distanceAttenuation * light.shadowAttenuation);
-        directLighting += additionalLighting;
-    LIGHT_LOOP_END
-    
-    // radiance from last frame (treat as multi bounce indirect)
-    float3 indirectLighting = SampleProbeVolume(surfel.position, surfel.normal, 0) * surfel.albedo;
-    
-    return directLighting + indirectLighting;
-}
-
-[numthreads(ThreadCount, 1, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
-{
-    // Calculate which brick update this thread should process
-    uint updateIndex = groupId.x * ThreadCount + groupIndex;
-
-    // Process this brick's surfels
-    if (updateIndex >= _brickCount)
-    {
+    uint brick = id.x;
+    if (brick >= _brickCount)
         return;
-    }
-
+    SurfelIndices range = _brickInfo[brick];
     float3 radiance = 0;
-    float3 position = 0;
-    float skyVisibility = 0;
-    float shadowSum = 0;
-    float shadowSumSq = 0;
-    uint sampledMainLightShadowCount = 0;
-    SurfelIndices brickInfo = _brickInfo[updateIndex];
-    int actualBrickIndex = _brickIndexMapping[updateIndex];
-
-    AddShadowCacheStat(SHADOW_STAT_EVALUATED, brickInfo.surfelCount);
-
-    bool useBrickShadow = false;
-    bool useBrickShadowFallback = false;
-    float brickShadow = 1.0;
-    uint brickShadowAge = 0;
-#if defined(_PRT_RELIGHT_SHADOW)
-    BrickShadowCache brickShadowCache = _brickShadowCache[actualBrickIndex];
-    bool brickInvalidByEpoch;
-    bool brickInvalidByAge;
-    bool brickValidVariance;
-    useBrickShadow = IsBrickShadowCacheFresh(brickShadowCache, brickInvalidByEpoch,
-        brickInvalidByAge, brickValidVariance);
-    brickShadowAge = ShadowCacheAge(brickShadowCache.lastUpdateFrame);
-    if (useBrickShadow)
-    {
-        brickShadow = brickShadowCache.meanShadow;
-        AddShadowCacheStat(SHADOW_STAT_HIT, brickInfo.surfelCount);
-    }
-    else
-    {
-        useBrickShadowFallback = !brickInvalidByEpoch && brickValidVariance;
-        if (useBrickShadowFallback)
-        {
-            brickShadow = brickShadowCache.meanShadow;
-        }
-
-        AddShadowCacheStat(SHADOW_STAT_MISS, 1);
-        if (brickInvalidByEpoch)
-        {
-            AddShadowCacheStat(SHADOW_STAT_INVALID_EPOCH, 1);
-        }
-        if (brickInvalidByAge)
-        {
-            AddShadowCacheStat(SHADOW_STAT_INVALID_AGE, 1);
-        }
-    }
-#endif
-    
     // Process all surfels in this brick
-    for (uint i = 0; i < brickInfo.surfelCount; i++)
+    for (uint offset = 0; offset < range.surfelCount; offset++)
     {
-        uint surfelIndex = brickInfo.surfelStart + i;
-        Surfel surfel = _surfels[surfelIndex];
-        float mainLightShadow;
-        uint sampledMainLightShadow;
-        radiance += EvaluateSurfelRadiance(surfel, surfelIndex, useBrickShadow, brickShadow,
-            useBrickShadowFallback, brickShadow, brickShadowAge, mainLightShadow, sampledMainLightShadow);
-#if defined(_PRT_RELIGHT_SHADOW) && defined(_PRT_SHADOW_CACHE_DEBUG_VIEW)
-        if (useBrickShadow)
-        {
-            WriteShadowCacheDebug(surfelIndex, SHADOW_CACHE_DEBUG_BRICK_CACHE_HIT,
-                brickShadow, ShadowCacheAge(brickShadowCache.lastUpdateFrame));
-        }
-#elif defined(_PRT_SHADOW_CACHE_DEBUG_VIEW)
-        WriteShadowCacheDebug(surfelIndex, SHADOW_CACHE_DEBUG_UNKNOWN, 1.0, 0);
-#endif
-        sampledMainLightShadowCount += sampledMainLightShadow;
-        position += surfel.position;
-        skyVisibility += surfel.skyMask;
-        shadowSum += mainLightShadow;
-        shadowSumSq += mainLightShadow * mainLightShadow;
+        uint index = range.surfelStart + offset;
+        Surfel surfel = _surfels[index];
+        float3 direct = EvaluatePRTWorldLighting(surfel, index);
+        // radiance from the previous frame (treat as multi bounce indirect)
+        float3 feedback = SamplePRTSolverProbe(surfel.nearestProbe, surfel.normal);
+        radiance += surfel.albedo * (direct + feedback);
     }
-        
     // Calculate averages
-    float weight = 1.0 / (float)brickInfo.surfelCount;
-    radiance *= weight;
-    position *= weight;
-    skyVisibility *= weight;
-
-#if defined(_PRT_RELIGHT_SHADOW)
-    if (!useBrickShadow && sampledMainLightShadowCount > 0)
-    {
-        float meanShadow = shadowSum * weight;
-        float shadowVariance = max(shadowSumSq * weight - meanShadow * meanShadow, 0.0);
-        BrickShadowCache nextBrickShadowCache;
-        nextBrickShadowCache.meanShadow = meanShadow;
-        nextBrickShadowCache.variance = shadowVariance;
-        nextBrickShadowCache.epoch = _shadowCacheEpoch;
-        nextBrickShadowCache.lastUpdateFrame = _shadowCacheFrameIndex;
-        _brickShadowCache[actualBrickIndex] = nextBrickShadowCache;
-    }
-#endif
-
-    // Write results to the actual brick index in the global buffer
-    BrickRadiance brickRad = (BrickRadiance)0;
-    brickRad.averageRadiance = radiance;
-    brickRad.averagePosition = position;
-    brickRad.averageSkyVisibility = skyVisibility;
-    _brickRadiance[actualBrickIndex] = brickRad; // Write to actual brick index
+    _brickRadiance[brick] = float4(range.surfelCount > 0 ? radiance / float(range.surfelCount) : 0, 0);
 }

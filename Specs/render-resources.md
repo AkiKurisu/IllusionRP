@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-05 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP passes exchange data through URP frame data, render graph textures, renderer-level render targets, per-camera history and global shader publication. This spec owns the resource classes, the resources that cross passes or reach shaders, the depth that screen-space effects use, history lifetime, render graph declarations, disabled-state publication and release. Pass order and camera rules are owned by [Rendering Pipeline](rendering-pipeline.md).
@@ -22,6 +22,8 @@ IllusionRP passes exchange data through URP frame data, render graph textures, r
 
 - **Renderer-level targets are not history.** They are reallocated to each camera's target size and reused by cameras rendered one after another. Only per-camera history carries results from one frame of a camera to its next frame.
 - **Internal formats.** Scratch formats inside one feature belong to its implementation. Formats of resources that cross passes or reach shaders are part of this contract.
+
+PRT global SH/ready buffers and byte-budgeted sector residents belong to its renderer pass. Sector scratch results commit only after all frame-start feedback reads, with no full-grid copy or CPU readback gate. Evicting residents remain charged until asynchronous shadow-cache preservation completes. Dirty window slots and typed layout data are published per camera; moving a window rebuilds only that small window. SH is signed FP32, and packed intensity/validity is R32_UInt. Runtime sampling uses nine validity/intensity-weighted FP32 coefficient pages with validity in alpha. World lighting/shadows use explicit graph inputs and never require runtime RT. See [Precomputed Radiance Transfer](precomputed-radiance-transfer.md) for bake ABI, iteration, snapshot and sampling contracts.
 
 ## Pipeline resources
 
