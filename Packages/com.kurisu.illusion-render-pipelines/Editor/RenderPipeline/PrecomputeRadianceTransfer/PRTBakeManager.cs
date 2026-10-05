@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -14,230 +14,100 @@ namespace Illusion.Rendering.Editor
 {
     public class PRTBakeManager : PRTVolumeManager
     {
-        private static CancellationTokenSource _cancellationTokenSource;
-
-        /// <summary>
-        /// Bake all probe volume and reflection normalization data in current scene
-        /// </summary>
-        public static async void GenerateLighting()
+        private static CancellationTokenSource _cancellation;
+        public static async void GenerateLighting() => await RunBake(async token =>
         {
-            var totalStopwatch = Stopwatch.StartNew();
+            if (ProbeVolume) await BakeVolume(ProbeVolume, token);
+            foreach (ReflectionProbeAdditionalData probe in ReflectionProbeAdditionalData)
+                if (probe) await BakeReflection(probe, token);
+        }, "PRT Lighting");
+        public static async void BakeReflectionProbe(ReflectionProbeAdditionalData probe) =>
+            await RunBake(token => BakeReflection(probe, token), "PRT Reflection");
+        public static async void BakeAllReflectionProbes() => await RunBake(async token =>
+        {
+            foreach (ReflectionProbeAdditionalData probe in ReflectionProbeAdditionalData)
+                if (probe) await BakeReflection(probe, token);
+        }, "PRT Reflections");
+        internal static async void BakePlacementPreview(PRTProbeVolume volume) => await RunBake(async token =>
+        {
+            using var baker = new PRTBaker(volume.bakeResolution);
+            await baker.BakePlacementPreview(volume, token);
+            SceneView.RepaintAll();
+        }, "PRT Probe Placement");
+        private static async Task RunBake(Func<CancellationToken, Task> action, string label)
+        {
+            if (IsBaking) return;
+            _cancellation = new CancellationTokenSource();
+            IsBaking = true;
+            var stopwatch = Stopwatch.StartNew();
             try
             {
-                await BakeProbeVolume_Internal(ProbeVolume);
-                foreach (var probe in ReflectionProbeAdditionalData)
-                {
-                    await BakeReflectionProbe_Internal(probe);
-                }
-                totalStopwatch.Stop();
-                Debug.Log($"[PRTBaker] Bake completed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
+                await action(_cancellation.Token);
+                Debug.Log($"[{label}] Completed in {stopwatch.Elapsed.TotalSeconds:F3}s.");
             }
-            catch (Exception exception)
+            catch (OperationCanceledException) { Debug.Log($"[{label}] Cancelled; incomplete transport was not saved."); }
+            catch (Exception exception) { Debug.LogException(exception); }
+            finally
             {
-                totalStopwatch.Stop();
-                Debug.LogError($"[PRTBaker] Bake failed, total time: {FormatElapsed(totalStopwatch.Elapsed)}, {exception}");
+                _cancellation.Dispose();
+                _cancellation = null;
+                IsBaking = false;
             }
         }
-
-        /// <summary>
-        /// Clear all baked data in current scene
-        /// </summary>
+        public static void StopBaking() => _cancellation?.Cancel();
+        private static async Task BakeVolume(PRTProbeVolume volume, CancellationToken token)
+        {
+            if (!volume.asset && !InitializeProbeVolumeData(volume)) return;
+            int progress = Progress.Start($"Bake PRT Volume ({volume.name})", options: Progress.Options.Managed);
+            using var baker = new PRTBaker(volume.bakeResolution);
+            baker.OnProgressUpdate = (status, value) => Progress.Report(progress, value, status);
+            try
+            {
+                await baker.BakeVolume(volume, token);
+                EditorUtility.SetDirty(volume.asset);
+                AssetDatabase.SaveAssetIfDirty(volume.asset);
+                volume.ReloadBakedData();
+            }
+            finally { Progress.Remove(progress); }
+        }
+        private static async Task BakeReflection(ReflectionProbeAdditionalData probe, CancellationToken token)
+        {
+            if (!probe) return;
+            int progress = Progress.Start($"Bake Reflection Normalization ({probe.name})", options: Progress.Options.Managed);
+            using var baker = new PRTBaker(PRTBakeResolution._512);
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                await baker.BakeReflectionProbe(probe, token);
+                EditorUtility.SetDirty(probe);
+            }
+            finally { Progress.Remove(progress); }
+        }
         public static void ClearBakedData()
         {
-            ProbeVolume.ClearBakedData();
-            EditorUtility.SetDirty(ProbeVolume.asset);
-            foreach (var probe in ReflectionProbeAdditionalData)
+            if (IsBaking) return;
+            if (ProbeVolume && ProbeVolume.asset)
             {
+                ProbeVolume.ClearBakedData();
+                EditorUtility.SetDirty(ProbeVolume.asset);
+            }
+            foreach (ReflectionProbeAdditionalData probe in ReflectionProbeAdditionalData)
+            {
+                if (!probe) continue;
                 probe.ClearSHCoefficients();
                 EditorUtility.SetDirty(probe);
             }
-            Debug.Log($"[PRTBaker] Clear baked data completed.");
         }
-        
-        /// <summary>
-        /// Bake single reflection probe normalization data
-        /// </summary>
-        /// <param name="reflectionProbe"></param>
-        public static async void BakeReflectionProbe(ReflectionProbeAdditionalData reflectionProbe)
-        {
-            var totalStopwatch = Stopwatch.StartNew();
-            try
-            {
-                await BakeReflectionProbe_Internal(reflectionProbe);
-                totalStopwatch.Stop();
-                Debug.Log($"[PRTBaker] Bake completed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
-            }
-            catch
-            {
-                totalStopwatch.Stop();
-                Debug.LogError($"[PRTBaker] Bake failed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
-            }
-        }
-        
-        /// <summary>
-        /// Bake all reflection probes normalization data
-        /// </summary>
-        public static async void BakeAllReflectionProbes()
-        {
-            var totalStopwatch = Stopwatch.StartNew();
-            try
-            {
-                foreach (var probe in ReflectionProbeAdditionalData)
-                {
-                    await BakeReflectionProbe_Internal(probe);
-                }
-
-                totalStopwatch.Stop();
-                Debug.Log($"[PRTBaker] Bake completed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
-            }
-            catch
-            {
-                totalStopwatch.Stop();
-                Debug.LogError($"[PRTBaker] Bake failed, total time: {FormatElapsed(totalStopwatch.Elapsed)}");
-            }
-        }
-        
-        /// <summary>
-        /// Stop all baking tasks in the scene
-        /// </summary>
-        public static void StopBaking()
-        {
-            if (!IsBaking) return;
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource = null;
-        }
-        
-        private static string FormatElapsed(TimeSpan elapsed)
-        {
-            if (elapsed.TotalMinutes >= 1)
-            {
-                // mm min ss.sss s
-                return $"{(int)elapsed.TotalMinutes:D2}m {elapsed.Seconds:D2}.{elapsed.Milliseconds:D3}s";
-            }
-
-            if (elapsed.TotalSeconds >= 1)
-            {
-                // ss.sss s
-                return $"{elapsed.TotalSeconds:F3}s";
-            }
-
-            // xxx.xxx ms
-            return $"{elapsed.TotalMilliseconds:F3}ms";
-        }
-
-        private static async Task BakeProbeVolume_Internal(PRTProbeVolume prtProbeVolume)
-        {
-            if (!prtProbeVolume.asset)
-            {
-                if (!InitializeProbeVolumeData(prtProbeVolume))
-                {
-                    return;
-                }
-            }
-            
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = new CancellationTokenSource();
-            IsBaking = true;
-            using var prtBaker = new PRTBaker(prtProbeVolume.bakeResolution);
-
-            int progressId = Progress.Start(
-                $"Bake Probe Volume ({prtProbeVolume.name})",
-                 options: Progress.Options.Managed);
-            
-            // Setup progress callbacks
-            prtBaker.OnProgressUpdate = (status, progress) =>
-            {
-                Progress.Report(
-                    progressId,
-                    progress,
-                    status);
-            };
-
-            try
-            {
-                await prtBaker.BakeVolume(prtProbeVolume, _cancellationTokenSource.Token);
-                EditorUtility.SetDirty(prtProbeVolume.asset);
-                AssetDatabase.SaveAssets();
-                prtProbeVolume.ReloadBakedData();
-            }
-            catch (OperationCanceledException)
-            {
-                Debug.LogWarning("Baking was cancelled by user.");
-            }
-            finally
-            {
-                Progress.Remove(progressId);
-                _cancellationTokenSource?.Dispose();
-                _cancellationTokenSource = null;
-                IsBaking = false;
-            }
-        }
-        
-        private static async Task BakeReflectionProbe_Internal(ReflectionProbeAdditionalData reflectionProbe)
-        {
-            IsBaking = true;
-            int progressId = Progress.Start(
-                $"Bake Reflection Probe ({reflectionProbe.name})",
-                options: Progress.Options.Managed);
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = new CancellationTokenSource();
-            using var prtBaker = new PRTBaker(PRTBakeResolution._512);
-
-            // Setup progress callbacks
-            prtBaker.OnProgressUpdate = (status, progress) =>
-            {
-                Progress.Report(
-                    progressId,
-                    progress,
-                    status);
-            };
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
-                prtBaker.BakeReflectionProbe(reflectionProbe);
-
-                EditorUtility.SetDirty(reflectionProbe);
-                AssetDatabase.SaveAssets();
-            }
-            catch (OperationCanceledException)
-            {
-                Debug.LogWarning("Baking was cancelled by user.");
-            }
-            finally
-            {
-                Progress.Remove(progressId);
-                IsBaking = false;
-            }
-        }
-
-        private static bool InitializeProbeVolumeData(PRTProbeVolume prtProbeVolume)
+        private static bool InitializeProbeVolumeData(PRTProbeVolume volume)
         {
             string scenePath = SceneManager.GetActiveScene().path;
-            if (string.IsNullOrEmpty(scenePath))
-            {
-                Debug.LogError("Please save your scene before baking.");
-                return false;
-            }
-                
-            string sceneDir = Path.GetDirectoryName(scenePath);
-            string sceneName = Path.GetFileNameWithoutExtension(scenePath);
-                
-            string targetDir = Path.Combine(sceneDir!, sceneName);
-            if (!Directory.Exists(targetDir))
-            {
-                Directory.CreateDirectory(targetDir);
-                AssetDatabase.Refresh();
-            }
-            
+            if (string.IsNullOrEmpty(scenePath)) { Debug.LogError("Save the scene before baking PRT transport."); return false; }
+            string folder = Path.Combine(Path.GetDirectoryName(scenePath), Path.GetFileNameWithoutExtension(scenePath)).Replace('\\', '/');
+            if (!Directory.Exists(folder)) { Directory.CreateDirectory(folder); AssetDatabase.Refresh(); }
             var asset = ScriptableObject.CreateInstance<PRTProbeVolumeAsset>();
-            string assetPath = Path.Combine(targetDir, $"{sceneName}_ProbeVolume.asset");
-            assetPath = assetPath.Replace("\\", "/"); 
-            AssetDatabase.CreateAsset(asset, assetPath);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-            
-            prtProbeVolume.asset = asset;
+            string path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{Path.GetFileNameWithoutExtension(scenePath)}_ProbeVolume.asset");
+            AssetDatabase.CreateAsset(asset, path);
+            volume.asset = asset;
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             return true;
         }

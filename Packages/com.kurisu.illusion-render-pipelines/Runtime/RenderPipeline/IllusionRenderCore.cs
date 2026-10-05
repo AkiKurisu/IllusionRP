@@ -38,7 +38,6 @@ namespace Illusion.Rendering
         
         internal const string DebugMotionVectors = "Hidden/DebugMotionVectors";
         
-        internal const string ProbeGBuffer = "Hidden/ProbeGBuffer";
         
         internal const string ProbeSHDebug = "Hidden/ProbeSHDebug";
 

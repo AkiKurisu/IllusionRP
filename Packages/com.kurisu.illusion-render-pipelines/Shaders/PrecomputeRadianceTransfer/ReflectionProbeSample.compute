@@ -1,4 +1,4 @@
-﻿#pragma kernel CSMain
+#pragma kernel CSMain
 
 //--------------------------------------------------------------------------------------------------
 // Included headers
@@ -11,80 +11,47 @@
 // Inputs & outputs
 //--------------------------------------------------------------------------------------------------
 
-TextureCube _inputCubemap;
+TextureCube<float4> _inputCubemap;
 SamplerState sampler_point_clamp;
-float _randSeed;
+StructuredBuffer<float4> _sampleDirections;
 RWStructuredBuffer<float> _coefficientSH9;
-
-#define ThreadCount 512
-groupshared float3 groupCoefficients[ThreadCount];
+uint _sampleCount;
+#define ThreadCount 128
+groupshared float3 coefficients[ThreadCount];
 
 //--------------------------------------------------------------------------------------------------
 // Implementation
 //--------------------------------------------------------------------------------------------------
 
-// ref: https://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
-float rand(float2 uv)
+[numthreads(ThreadCount, 1, 1)]
+void CSMain(uint groupIndex : SV_GroupIndex)
 {
-    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
-}
-
-// ref: Unreal Engine 4, MonteCarlo.ush
-float3 UniformSphereSample(float u, float v)
-{
-    float phi = degrees(TWO_PI * u);
-    float cosine_theta = 1.0 - 2.0 * v;
-    float sine_theta = sqrt(1.0 - cosine_theta * cosine_theta);
-
-    float x = sine_theta * cos(phi);
-    float y = sine_theta * sin(phi);
-    float z = cosine_theta;
-
-    return float3(x, y, z);
-}
-
-[numthreads(32, 16, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
-{
-    float2 xy = float2(id.x, id.y) / float2(32, 16);
-    xy += float2(1, 1) * _randSeed;
-
-    float u = rand(xy * 1.0);
-    float v = rand(xy * 2.0);
-    float3 dir = UniformSphereSample(u, v);
-
-    float weight = 4.0f * PI / ThreadCount;
-    float3 lighting = _inputCubemap.SampleLevel(sampler_point_clamp, dir, 0).rgb;
-    float shCoeffs[9];
-    EvaluateSH9(dir, shCoeffs);
-
     // Process each SH coefficient
-    UNITY_UNROLL
-    for (int shIndex = 0; shIndex < 9; shIndex++)
+    for (uint coefficient = 0; coefficient < 9; coefficient++)
     {
-        float3 contribution = shCoeffs[shIndex] * lighting * weight;
-        
-        groupCoefficients[groupIndex] = contribution;
+        float3 sum = 0;
+        for (uint sampleIndex = groupIndex; sampleIndex < _sampleCount; sampleIndex += ThreadCount)
+        {
+            float4 sample = _sampleDirections[sampleIndex];
+            float basis[9];
+            EvaluateSH9(sample.xyz, basis);
+            sum += _inputCubemap.SampleLevel(sampler_point_clamp, sample.xyz, 0).rgb * basis[coefficient] * sample.w;
+        }
+        coefficients[groupIndex] = sum;
         GroupMemoryBarrierWithGroupSync();
-        
-        // Parallel reduction for non-power-of-2 size
+        // Parallel reduction
         for (uint stride = ThreadCount / 2; stride > 0; stride >>= 1)
         {
-            if (groupIndex < stride)
-            {
-                groupCoefficients[groupIndex] += groupCoefficients[groupIndex + stride];
-            }
+            if (groupIndex < stride) coefficients[groupIndex] += coefficients[groupIndex + stride];
             GroupMemoryBarrierWithGroupSync();
         }
-        
         // Write results
         if (groupIndex == 0)
         {
-            _coefficientSH9[shIndex * 3 + 0] = groupCoefficients[0].x;
-            _coefficientSH9[shIndex * 3 + 1] = groupCoefficients[0].y;
-            _coefficientSH9[shIndex * 3 + 2] = groupCoefficients[0].z;
+            _coefficientSH9[coefficient * 3] = coefficients[0].x;
+            _coefficientSH9[coefficient * 3 + 1] = coefficients[0].y;
+            _coefficientSH9[coefficient * 3 + 2] = coefficients[0].z;
         }
-        
         GroupMemoryBarrierWithGroupSync();
     }
 }

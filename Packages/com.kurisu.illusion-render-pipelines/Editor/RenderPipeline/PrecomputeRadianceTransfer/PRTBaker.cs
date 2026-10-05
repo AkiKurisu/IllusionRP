@@ -3,503 +3,255 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
-using UnityEngine.Rendering;
 using Illusion.Rendering.PRTGI;
+using Unity.Profiling;
 using UnityEditor;
 using UnityEditor.Rendering;
-using Random = UnityEngine.Random;
+using UnityEngine;
+using UnityEngine.Rendering;
 using UObject = UnityEngine.Object;
 
 namespace Illusion.Rendering.Editor
 {
     public sealed class PRTBaker : IPRTBaker, IDisposable
     {
-        /// <summary>
-        /// G-buffer capture modes for PRT baking
-        /// </summary>
-        private enum GBufferCaptureMode
-        {
-            WorldPosition,
-            Normal,
-            Albedo
-        }
-
-        private const int ThreadX = 32;
-
-        private const int ThreadY = 16;
-
-        private const int RayNum = ThreadX * ThreadY; // 512 per probe
-
-        private const int SurfelByteSize = 3 * 12 + 4; // sizeof(Surfel)
-
-        // Shared render textures for G-buffer capture
-        private RenderTexture _worldPosRT;
-
-        private RenderTexture _normalRT;
-
-        private RenderTexture _albedoRT;
-
-        // Baking settings
         private readonly int _cubemapSize;
-
-        // Progress tracking
+        private readonly float _sceneTime;
+        private readonly ComputeShader _surfelSampleCS, _reflectionProbeSampleCS;
+        private readonly int _surfelKernel, _reflectionKernel;
+        private PRTBakeScene _scene;
+        private Camera _camera;
+        private RenderTexture _position, _normal, _albedo, _metadata, _lighting;
+        private ComputeBuffer _directions;
+        private const string CaptureKeyword = "_PRT_CAPTURE";
+        private static readonly int CaptureModeId = Shader.PropertyToID("_PRTCaptureMode");
+        private static readonly ProfilerMarker SceneMarker = new("PRT Bake Scene Snapshot");
+        private static readonly ProfilerMarker CaptureMarker = new("PRT Bake GBuffer Capture");
         public Action<string, float> OnProgressUpdate;
+        public Bounds GeometryBounds => _scene.bounds;
+        public Hash128 GeometrySignature => _scene.geometrySignature;
+        public Hash128 MaterialSignature => _scene.materialSignature;
+        public string BackendName => "RasterDiffuseCapture";
+        public float SceneTime => _sceneTime;
 
-        private bool _isInitialized;
-
-        private bool _disposed;
-
-        private Camera _cubemapCamera;
-
-        private PRTGBufferCaptureDrawItem[] _captureDrawItems;
-
-        private readonly List<Material> _captureMaterials = new();
-
-        private readonly ComputeShader _surfelSampleCS;
-
-        private readonly int _surfelSampleKernel;
-
-        private readonly ComputeShader _reflectionProbeSampleCS;
-
-        private readonly int _reflectionProbeSampleKernel;
-
-        /// <summary>
-        /// Initialize the PRTBaker with the specified cubemap size
-        /// </summary>
-        /// <param name="bakeResolution">Resolution of the cubemap textures</param>
-        public PRTBaker(PRTBakeResolution bakeResolution)
+        public PRTBaker(PRTBakeResolution resolution)
         {
-            _cubemapSize = (int)bakeResolution;
-            InitializeRenderTextures();
+            _cubemapSize = (int)resolution;
+            _sceneTime = Shader.GetGlobalVector("_Time").y;
             var resources = Resources.Load<IllusionRenderPipelineResources>(nameof(IllusionRenderPipelineResources));
             _surfelSampleCS = resources.prtSurfelSampleCS;
-            _surfelSampleKernel = _surfelSampleCS.FindKernel("CSMain");
             _reflectionProbeSampleCS = resources.reflectionProbeSampleCS;
-            _reflectionProbeSampleKernel = _reflectionProbeSampleCS.FindKernel("CSMain");
+            EnsureCompiled(_surfelSampleCS);
+            EnsureCompiled(_reflectionProbeSampleCS);
+            _surfelKernel = _surfelSampleCS.FindKernel("CSMain");
+            _reflectionKernel = _reflectionProbeSampleCS.FindKernel("CSMain");
         }
 
-        /// <summary>
-        /// Initialize render textures for G-buffer capture
-        /// </summary>
-        private void InitializeRenderTextures()
+        void IPRTBaker.UpdateProgress(string status, float progress) => OnProgressUpdate?.Invoke(status, progress);
+        PRTProbePlacement IPRTBaker.PlaceProbe(Vector3 position, float geometryBias, float rayOriginBias, float searchDistance) =>
+            _scene.placement.Place(position, geometryBias, rayOriginBias, searchDistance);
+
+        private void PrepareScene()
         {
-            if (_isInitialized) return;
-
-            // Create cubemap render textures
-            _worldPosRT = new RenderTexture(_cubemapSize, _cubemapSize, 24, RenderTextureFormat.ARGBFloat)
-            {
-                dimension = TextureDimension.Cube,
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp
-            };
-            _worldPosRT.Create();
-
-            _normalRT = new RenderTexture(_cubemapSize, _cubemapSize, 24, RenderTextureFormat.ARGBFloat)
-            {
-                dimension = TextureDimension.Cube,
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp
-            };
-            _normalRT.Create();
-
-            _albedoRT = new RenderTexture(_cubemapSize, _cubemapSize, 24, RenderTextureFormat.ARGB32)
-            {
-                dimension = TextureDimension.Cube,
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp
-            };
-            _albedoRT.Create();
-
-            _isInitialized = true;
-        }
-
-        void IPRTBaker.UpdateProgress(string status, float progress)
-        {
-            OnProgressUpdate?.Invoke(status, progress);
-        }
-
-        private static void CopyTextureProperty(Material sourceMaterial, Material captureMaterial, string sourceProperty)
-        {
-            if (!sourceMaterial.HasProperty(sourceProperty))
-            {
-                return;
-            }
-
-            var texture = sourceMaterial.GetTexture(sourceProperty);
-            if (!texture)
-            {
-                return;
-            }
-
-            captureMaterial.SetTexture("_MainTex", texture);
-            captureMaterial.SetTextureScale("_MainTex", sourceMaterial.GetTextureScale(sourceProperty));
-            captureMaterial.SetTextureOffset("_MainTex", sourceMaterial.GetTextureOffset(sourceProperty));
-        }
-
-        private static void CopyColorProperty(Material sourceMaterial, Material captureMaterial, string sourceProperty)
-        {
-            if (sourceMaterial.HasProperty(sourceProperty))
-            {
-                captureMaterial.SetColor("_Color", sourceMaterial.GetColor(sourceProperty));
-            }
-        }
-
-        private static void CopyAlbedoProperties(Material sourceMaterial, Material captureMaterial)
-        {
-            CopyTextureProperty(sourceMaterial, captureMaterial, "_MainTex");
-            CopyTextureProperty(sourceMaterial, captureMaterial, "_BaseMap");
-            CopyTextureProperty(sourceMaterial, captureMaterial, "_BaseColorMap");
-            CopyColorProperty(sourceMaterial, captureMaterial, "_Color");
-            CopyColorProperty(sourceMaterial, captureMaterial, "_BaseColor");
-        }
-
-        private void CreateCaptureDrawItems(Renderer[] renderers, Shader captureShader)
-        {
-            var drawItems = new List<PRTGBufferCaptureDrawItem>();
-            foreach (var renderer in renderers)
-            {
-                if (!renderer || !renderer.enabled || renderer.forceRenderingOff || !renderer.gameObject.activeInHierarchy)
-                {
-                    continue;
-                }
-
-                var materials = renderer.sharedMaterials;
-                for (int submeshIndex = 0; submeshIndex < materials.Length; submeshIndex++)
-                {
-                    var sourceMaterial = materials[submeshIndex];
-                    if (!sourceMaterial)
-                    {
-                        continue;
-                    }
-
-                    var captureMaterial = new Material(sourceMaterial)
-                    {
-                        shader = captureShader,
-                        hideFlags = HideFlags.HideAndDontSave
-                    };
-                    CopyAlbedoProperties(sourceMaterial, captureMaterial);
-                    _captureMaterials.Add(captureMaterial);
-                    drawItems.Add(new PRTGBufferCaptureDrawItem(renderer, captureMaterial, submeshIndex));
-                }
-            }
-
-            _captureDrawItems = drawItems.ToArray();
-        }
-
-        private void DestroyCaptureDrawItems()
-        {
-            foreach (var material in _captureMaterials)
-            {
-                UObject.DestroyImmediate(material);
-            }
-
-            _captureMaterials.Clear();
-            _captureDrawItems = null;
-        }
-
-        /// <summary>
-        /// Set global shader keywords for G-buffer capture mode
-        /// This is much more efficient than setting keywords per material
-        /// </summary>
-        /// <param name="captureMode">G-buffer capture mode</param>
-        private static void SetGlobalGBufferCaptureMode(GBufferCaptureMode captureMode)
-        {
-            // Enable the specific keyword based on capture mode
-            switch (captureMode)
-            {
-                case GBufferCaptureMode.WorldPosition:
-                    Shader.EnableKeyword("_GBUFFER_WORLDPOS");
-                    Shader.DisableKeyword("_GBUFFER_NORMAL");
-                    break;
-                case GBufferCaptureMode.Normal:
-                    Shader.DisableKeyword("_GBUFFER_WORLDPOS");
-                    Shader.EnableKeyword("_GBUFFER_NORMAL");
-                    break;
-                case GBufferCaptureMode.Albedo:
-                    Shader.DisableKeyword("_GBUFFER_WORLDPOS");
-                    Shader.DisableKeyword("_GBUFFER_NORMAL");
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Clear all global G-buffer keywords
-        /// </summary>
-        private static void ClearGlobalGBufferKeywords()
-        {
-            Shader.DisableKeyword("_GBUFFER_WORLDPOS");
-            Shader.DisableKeyword("_GBUFFER_NORMAL");
-        }
-
-        private static Camera CreateCubemapCamera()
-        {
-            GameObject cubemapCamera = new GameObject("PRTBaker_CubemapCamera")
-            {
-                hideFlags = HideFlags.HideAndDontSave
-            };
-            Camera camera = cubemapCamera.AddComponent<Camera>();
-            camera.cameraType = CameraType.Reflection;
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.0f, 0.0f, 0.0f, 0.0f);
-            camera.enabled = false;
-            return camera;
-        }
-
-        private void CaptureGbufferCubemaps(Vector3 position)
-        {
-            _cubemapCamera.transform.SetPositionAndRotation(position, Quaternion.identity);
-            int originalCullingMask = _cubemapCamera.cullingMask;
-            _cubemapCamera.cullingMask = 0;
-
-            try
-            {
-                using (PRTGBufferCaptureBridge.Begin(_cubemapCamera, _captureDrawItems))
-                {
-                    SetGlobalGBufferCaptureMode(GBufferCaptureMode.WorldPosition);
-                    _cubemapCamera.RenderToCubemap(_worldPosRT, -1, StaticEditorFlags.ContributeGI);
-                    SetGlobalGBufferCaptureMode(GBufferCaptureMode.Normal);
-                    _cubemapCamera.RenderToCubemap(_normalRT, -1, StaticEditorFlags.ContributeGI);
-                    SetGlobalGBufferCaptureMode(GBufferCaptureMode.Albedo);
-                    _cubemapCamera.RenderToCubemap(_albedoRT, -1, StaticEditorFlags.ContributeGI);
-                }
-            }
-            finally
-            {
-                ClearGlobalGBufferKeywords();
-                _cubemapCamera.cullingMask = originalCullingMask;
-            }
-
-            // Force GPU to flush and release temporary resources
-            GL.Flush();
-        }
-
-        private void CaptureLightingCubemap(Vector3 position)
-        {
-            _cubemapCamera.transform.SetPositionAndRotation(position, Quaternion.identity);
-            _cubemapCamera.RenderToCubemap(_albedoRT);
-        }
-
-        /// <summary>
-        /// Bake surfel data using PRTBaker
-        /// </summary>
-        /// <param name="probePosition">Probe position</param>
-        public Surfel[] BakeSurfelData(Vector3 probePosition)
-        {
-            CaptureGbufferCubemaps(probePosition);
-
-            // Sample surfels using PRTBaker's render textures
-            return SampleSurfels(_worldPosRT, _normalRT, _albedoRT, probePosition);
-        }
-
-        public float[] BakeAdditionalProbeData(Vector3 probePosition)
-        {
-            CaptureLightingCubemap(probePosition);
-            return SampleReflectionProbe(_albedoRT);
-        }
-
-        private Surfel[] SampleSurfels(RenderTexture worldPosCubemap, RenderTexture normalCubemap,
-            RenderTexture albedoCubemap, Vector3 position)
-        {
-            var surfels = new ComputeBuffer(RayNum, SurfelByteSize);
-            try
-            {
-                var readBackBuffer = new Surfel[RayNum];
-
-                var cs = _surfelSampleCS;
-                var kernel = _surfelSampleKernel;
-
-                // set necessary data and start sample
-                cs.SetVector(ShaderProperties.ProbePos, new Vector4(position.x, position.y, position.z, 1.0f));
-                cs.SetFloat(ShaderProperties.RandSeed, Random.Range(0.0f, 1.0f));
-                cs.SetTexture(kernel, ShaderProperties.WorldPosCubemap, worldPosCubemap);
-                cs.SetTexture(kernel, ShaderProperties.NormalCubemap, normalCubemap);
-                cs.SetTexture(kernel, ShaderProperties.AlbedoCubemap, albedoCubemap);
-                cs.SetBuffer(kernel, ShaderProperties.Surfels, surfels);
-
-                // start CS
-                cs.Dispatch(kernel, 1, 1, 1);
-
-                // readback
-                surfels.GetData(readBackBuffer);
-                return readBackBuffer;
-            }
-            finally
-            {
-                surfels.Release();
-            }
-        }
-
-        private float[] SampleReflectionProbe(RenderTexture lightingCubemap)
-        {
-            var coefficientSH9 = new ComputeBuffer(27, sizeof(float));
-            try
-            {
-                var cs = _reflectionProbeSampleCS;
-                var kernel = _reflectionProbeSampleKernel;
-
-                // set necessary data and start sample
-                cs.SetFloat(ShaderProperties.RandSeed, Random.Range(0.0f, 1.0f));
-                cs.SetTexture(kernel, ShaderProperties.InputCubemap, lightingCubemap);
-                cs.SetBuffer(kernel, ShaderProperties.CoefficientSH9, coefficientSH9);
-
-                // start CS
-                cs.Dispatch(kernel, 1, 1, 1);
-
-                var readBackBuffer = new float[27];
-                // readback
-                coefficientSH9.GetData(readBackBuffer);
-                return readBackBuffer;
-            }
-            finally
-            {
-                coefficientSH9.Release();
-            }
-        }
-
-        /// <summary>
-        /// Check if the baker is properly initialized
-        /// </summary>
-        /// <returns>True if initialized</returns>
-        private bool IsInitialized()
-        {
-            return _isInitialized && !_disposed;
-        }
-
-        private static bool ContributesGI(GameObject go) => (GameObjectUtility.GetStaticEditorFlags(go) & StaticEditorFlags.ContributeGI) != 0;
-
-        internal static Renderer[] SelectHighestDetailLodRenderers(Renderer[] renderers, LODGroup[] lodGroups)
-        {
-            var lodRenderers = new HashSet<Renderer>();
-            var highestDetailRenderers = new HashSet<Renderer>();
-
-            foreach (var lodGroup in lodGroups)
-            {
-                if (!lodGroup)
-                {
-                    continue;
-                }
-
-                var lods = lodGroup.GetLODs();
-                foreach (var lod in lods)
-                {
-                    foreach (var renderer in lod.renderers)
-                    {
-                        if (renderer)
-                        {
-                            lodRenderers.Add(renderer);
-                        }
-                    }
-                }
-
-                if (lods.Length == 0)
-                {
-                    continue;
-                }
-
-                foreach (var renderer in lods[0].renderers)
-                {
-                    if (renderer)
-                    {
-                        highestDetailRenderers.Add(renderer);
-                    }
-                }
-            }
-
-            return renderers
-                .Where(renderer => renderer &&
-                                   (!lodRenderers.Contains(renderer) || highestDetailRenderers.Contains(renderer)))
-                .ToArray();
-        }
-
-        public async Task BakeVolume(PRTProbeVolume volume, CancellationToken cancellationToken = default)
-        {
-            if (!IsInitialized())
-            {
-                Debug.LogError("[PRTBaker] Baker is already disposed or not initialized");
-                return;
-            }
-
+            if (_scene != null) return;
+            using var scope = SceneMarker.Auto();
             Renderer[] renderers = UObject.FindObjectsByType<Renderer>(FindObjectsSortMode.None)
-                .Where(r => ContributesGI(r.gameObject))
+                .Where(r => (GameObjectUtility.GetStaticEditorFlags(r.gameObject) & StaticEditorFlags.ContributeGI) != 0)
                 .ToArray();
-            LODGroup[] lodGroups = UObject.FindObjectsByType<LODGroup>(FindObjectsSortMode.None)
-                .ToArray();
-            renderers = SelectHighestDetailLodRenderers(renderers, lodGroups);
-            var captureShader = Shader.Find(IllusionShaders.ProbeGBuffer);
-            CreateCaptureDrawItems(renderers, captureShader);
-            _cubemapCamera = CreateCubemapCamera();
-            try
-            {
-                await volume.BakeDataAsync(this, cancellationToken);
-            }
-            finally
-            {
-                DestroyCaptureDrawItems();
-                UObject.DestroyImmediate(_cubemapCamera.gameObject);
-                _cubemapCamera = null;
-            }
+            renderers = SelectHighestDetailLodRenderers(renderers, UObject.FindObjectsByType<LODGroup>(FindObjectsSortMode.None));
+            _scene = new PRTBakeScene(renderers);
+            if (_scene.emptyGeometry.Length > 0)
+                Debug.Log($"[PRT Capture] Empty geometry: {string.Join("; ", _scene.emptyGeometry)}.");
         }
 
-        public void BakeReflectionProbe(ReflectionProbeAdditionalData probeAdditionalData, CancellationToken cancellationToken = default)
+        public async Task BakeVolume(PRTProbeVolume volume, CancellationToken token = default)
         {
-            if (!IsInitialized())
-            {
-                Debug.LogError("[PRTBaker] Baker is already disposed or not initialized");
-                return;
-            }
+            PrepareScene();
+            await volume.BakeDataAsync(this, token);
+        }
+        internal async Task BakePlacementPreview(PRTProbeVolume volume, CancellationToken token)
+        {
+            PrepareScene();
+            await volume.BakePlacementAsync(this, token);
+        }
 
-            _cubemapCamera = CreateCubemapCamera();
+        async Task<PRTProbeBakeSamples[]> IPRTBaker.CaptureProbesAsync(Vector3[] positions, Vector4[] samples, CancellationToken token)
+        {
+            EnsureCaptureResources();
+            UploadDirections(samples);
+            var result = new PRTProbeBakeSamples[positions.Length];
+            using var buffer = new ComputeBuffer(samples.Length * positions.Length, Surfel.Stride);
+            for (int i = 0; i < positions.Length; i++)
+            {
+                if (token.IsCancellationRequested) break;
+                Capture(positions[i]);
+                _surfelSampleCS.SetVector("_probePos", positions[i]);
+                _surfelSampleCS.SetInt("_sampleCount", samples.Length);
+                _surfelSampleCS.SetInt("_surfelOutputOffset", i * samples.Length);
+                _surfelSampleCS.SetBuffer(_surfelKernel, "_sampleDirections", _directions);
+                _surfelSampleCS.SetTexture(_surfelKernel, "_worldPosCubemap", _position);
+                _surfelSampleCS.SetTexture(_surfelKernel, "_normalCubemap", _normal);
+                _surfelSampleCS.SetTexture(_surfelKernel, "_albedoCubemap", _albedo);
+                _surfelSampleCS.SetTexture(_surfelKernel, "_metadataCubemap", _metadata);
+                _surfelSampleCS.SetBuffer(_surfelKernel, "_surfels", buffer);
+                _surfelSampleCS.Dispatch(_surfelKernel, (samples.Length + 63) / 64, 1, 1);
+            }
+            Surfel[] batch = await Readback<Surfel>(buffer);
+            token.ThrowIfCancellationRequested();
+            for (int i = 0; i < positions.Length; i++)
+            {
+                var data = new Surfel[samples.Length];
+                Array.Copy(batch, i * samples.Length, data, 0, samples.Length);
+                result[i] = new PRTProbeBakeSamples(positions[i], data);
+            }
+            return result;
+        }
+
+        private void EnsureCaptureResources()
+        {
+            EnsureCamera();
+            if (_position) return;
+            _position = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Position");
+            _normal = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Normal");
+            _albedo = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Diffuse");
+            _metadata = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Metadata");
+        }
+        private void EnsureCamera()
+        {
+            if (_camera) return;
+            var go = new GameObject("PRT Bake Camera") { hideFlags = HideFlags.HideAndDontSave };
+            _camera = go.AddComponent<Camera>();
+            _camera.cameraType = CameraType.Reflection;
+            _camera.enabled = false;
+            _camera.allowMSAA = false;
+            _camera.clearFlags = CameraClearFlags.SolidColor;
+            _camera.backgroundColor = Color.clear;
+            _camera.nearClipPlane = 0.001f;
+        }
+        private RenderTexture CreateCube(RenderTextureFormat format, string name)
+        {
+            var target = new RenderTexture(_cubemapSize, _cubemapSize, 24, format, RenderTextureReadWrite.Linear)
+            { dimension = TextureDimension.Cube, filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = name };
+            target.Create();
+            return target;
+        }
+        private void UploadDirections(Vector4[] samples)
+        {
+            if (_directions == null || _directions.count != samples.Length)
+            {
+                _directions?.Release();
+                _directions = new ComputeBuffer(samples.Length, 16);
+            }
+            _directions.SetData(samples);
+        }
+        private void Capture(Vector3 position)
+        {
+            using var scope = CaptureMarker.Auto();
+            _camera.transform.SetPositionAndRotation(position, Quaternion.identity);
+            _camera.farClipPlane = Mathf.Max(1f, Vector3.Distance(position, _scene.bounds.center) + _scene.bounds.extents.magnitude + 1f);
+            _camera.cullingMask = 0;
+            bool originalKeyword = Shader.IsKeywordEnabled(CaptureKeyword);
+            int originalMode = Shader.GetGlobalInteger(CaptureModeId);
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var coefficients = BakeAdditionalProbeData(probeAdditionalData.transform.position);
-                probeAdditionalData.SetSHCoefficients(coefficients);
+                Shader.EnableKeyword(CaptureKeyword);
+                using (PRTGBufferCaptureBridge.Begin(_camera, _scene.drawItems, _sceneTime))
+                {
+                    CaptureMode(0, _position);
+                    CaptureMode(1, _normal);
+                    CaptureMode(2, _albedo);
+                    CaptureMode(3, _metadata);
+                }
             }
             finally
             {
-                // Clean up temporary camera
-                UObject.DestroyImmediate(_cubemapCamera.gameObject);
-                _cubemapCamera = null;
+                if (originalKeyword) Shader.EnableKeyword(CaptureKeyword); else Shader.DisableKeyword(CaptureKeyword);
+                Shader.SetGlobalInteger(CaptureModeId, originalMode);
             }
         }
+        private void CaptureMode(int mode, RenderTexture target)
+        {
+            Shader.SetGlobalInteger(CaptureModeId, mode);
+            if (!_camera.RenderToCubemap(target, -1, StaticEditorFlags.ContributeGI))
+                throw new InvalidOperationException("PRT cubemap capture failed.");
+        }
 
-        /// <summary>
-        /// Dispose resources
-        /// </summary>
+        public async Task BakeReflectionProbe(ReflectionProbeAdditionalData probe, CancellationToken token = default)
+        {
+            EnsureCamera();
+            _lighting ??= CreateCube(RenderTextureFormat.ARGBFloat, "PRT Reflection Reference Radiance");
+            UploadDirections(PRTBakeSampling.GenerateDirections(512, 0));
+            _camera.cullingMask = -1;
+            _camera.farClipPlane = 10000f;
+            _camera.transform.position = probe.transform.position;
+            if (!_camera.RenderToCubemap(_lighting)) throw new InvalidOperationException("Reflection lighting capture failed.");
+            using var coefficients = new ComputeBuffer(27, sizeof(float));
+            _reflectionProbeSampleCS.SetInt("_sampleCount", 512);
+            _reflectionProbeSampleCS.SetTexture(_reflectionKernel, "_inputCubemap", _lighting);
+            _reflectionProbeSampleCS.SetBuffer(_reflectionKernel, "_sampleDirections", _directions);
+            _reflectionProbeSampleCS.SetBuffer(_reflectionKernel, "_coefficientSH9", coefficients);
+            _reflectionProbeSampleCS.Dispatch(_reflectionKernel, 1, 1, 1);
+            float[] values = await Readback<float>(coefficients);
+            token.ThrowIfCancellationRequested();
+            probe.SetSHCoefficients(values);
+        }
+
+        private static async Task<T[]> Readback<T>(ComputeBuffer buffer) where T : struct
+        {
+            var completion = new TaskCompletionSource<T[]>();
+            AsyncGPUReadbackRequest readback = AsyncGPUReadback.Request(buffer);
+            readback.forcePlayerLoopUpdate = true;
+            GL.Flush();
+            EditorApplication.CallbackFunction poll = () =>
+            {
+                EditorApplication.QueuePlayerLoopUpdate();
+                if (completion.Task.IsCompleted) return;
+                readback.Update();
+                if (!readback.done) return;
+                if (readback.hasError) completion.TrySetException(new InvalidOperationException("PRT GPU readback failed."));
+                else completion.TrySetResult(readback.GetData<T>().ToArray());
+            };
+            EditorApplication.update += poll;
+            try
+            {
+                poll();
+                return await completion.Task;
+            }
+            finally { EditorApplication.update -= poll; }
+        }
+        private static void EnsureCompiled(ComputeShader shader)
+        {
+            if (!shader) throw new InvalidOperationException("PRT bake compute shader is unavailable.");
+            ShaderMessage[] errors = ShaderUtil.GetComputeShaderMessages(shader)
+                .Where(message => message.severity == ShaderCompilerMessageSeverity.Error).ToArray();
+            if (errors.Length > 0) throw new InvalidOperationException($"PRT bake compute '{shader.name}' failed to compile: " +
+                string.Join("; ", errors.Select(message => message.file + ":" + message.line + " " + message.message)));
+        }
+        internal static Renderer[] SelectHighestDetailLodRenderers(Renderer[] renderers, LODGroup[] groups)
+        {
+            var all = new HashSet<Renderer>();
+            var first = new HashSet<Renderer>();
+            foreach (LODGroup group in groups)
+            {
+                if (!group) continue;
+                LOD[] lods = group.GetLODs();
+                foreach (LOD lod in lods) foreach (Renderer r in lod.renderers) if (r) all.Add(r);
+                if (lods.Length > 0) foreach (Renderer r in lods[0].renderers) if (r) first.Add(r);
+            }
+            return renderers.Where(r => r && (!all.Contains(r) || first.Contains(r))).ToArray();
+        }
         public void Dispose()
         {
-            if (_disposed) return;
-
-            _worldPosRT?.Release();
-            _worldPosRT = null;
-            _normalRT?.Release();
-            _normalRT = null;
-            _albedoRT?.Release();
-            _albedoRT = null;
-
-            _isInitialized = false;
+            _scene?.Dispose();
+            _scene = null;
+            _directions?.Release();
+            _directions = null;
+            foreach (RenderTexture target in new[] { _position, _normal, _albedo, _metadata, _lighting })
+                if (target) { target.Release(); UObject.DestroyImmediate(target); }
+            _position = _normal = _albedo = _metadata = _lighting = null;
+            if (_camera) UObject.DestroyImmediate(_camera.gameObject);
+            _camera = null;
             OnProgressUpdate = null;
-            _disposed = true;
-        }
-
-        private static class ShaderProperties
-        {
-            public static readonly int ProbePos = Shader.PropertyToID("_probePos");
-
-            public static readonly int RandSeed = Shader.PropertyToID("_randSeed");
-
-            public static readonly int WorldPosCubemap = Shader.PropertyToID("_worldPosCubemap");
-
-            public static readonly int NormalCubemap = Shader.PropertyToID("_normalCubemap");
-
-            public static readonly int AlbedoCubemap = Shader.PropertyToID("_albedoCubemap");
-
-            public static readonly int InputCubemap = Shader.PropertyToID("_inputCubemap");
-
-            public static readonly int CoefficientSH9 = Shader.PropertyToID("_coefficientSH9");
-
-            public static readonly int Surfels = Shader.PropertyToID("_surfels");
         }
     }
 }
