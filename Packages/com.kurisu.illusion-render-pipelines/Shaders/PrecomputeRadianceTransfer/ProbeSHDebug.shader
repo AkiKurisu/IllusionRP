@@ -61,7 +61,7 @@ Shader "Hidden/ProbeSHDebug"
 
             float4 frag (v2f input) : SV_Target
             {
-                float3 dir = input.normal;
+                float3 dir = normalize(input.normal);
 
                 // decode sh
                 float3 c[9];

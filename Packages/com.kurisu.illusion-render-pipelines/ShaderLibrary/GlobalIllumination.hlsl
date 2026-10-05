@@ -19,8 +19,10 @@ half3 HybridGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, fl
     half fresnelTerm = Pow4(1.0 - NoV);
 
     // ============================ Diffuse Part ================================== //
-    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, ambientNormalWS, normalizedScreenSpaceUV, bakedGI);
-    half normalizationFactor = SampleProbeVolumeReflectionNormalize(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI, reflectVector);
+    half3 indirectDiffuse;
+    half normalizationFactor;
+    EvaluateIndirectDiffuseAndReflectionNormalization(positionWS, ambientNormalWS, normalWS,
+        reflectVector, normalizedScreenSpaceUV, bakedGI, indirectDiffuse, normalizationFactor);
     // ============================ Diffuse Part ================================== //
 
     // ============================ Specular Part ================================== //
