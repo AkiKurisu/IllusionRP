@@ -405,33 +405,33 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hasValidSHForNormalization: 1
   shForNormalization:
-    'sh[ 0]': 0.3699246
-    'sh[ 1]': -0.04159999
-    'sh[ 2]': -0.1007689
-    'sh[ 3]': 0.042765617
-    'sh[ 4]': 0.0548475
-    'sh[ 5]': 0.02422392
-    'sh[ 6]': -0.0061211344
-    'sh[ 7]': -0.0052317525
-    'sh[ 8]': -0.015494274
-    'sh[ 9]': 0.3764007
-    'sh[10]': -0.052972734
-    'sh[11]': -0.08216177
-    'sh[12]': 0.03577695
-    'sh[13]': 0.04417806
-    'sh[14]': 0.030738851
-    'sh[15]': 0.005972434
-    'sh[16]': -0.014460424
-    'sh[17]': 0.00040204637
-    'sh[18]': 0.37312186
-    'sh[19]': -0.03382787
-    'sh[20]': -0.046107046
-    'sh[21]': 0.01758229
-    'sh[22]': 0.019127894
-    'sh[23]': 0.055888005
-    'sh[24]': 0.0016558431
-    'sh[25]': -0.010085007
-    'sh[26]': -0.006988205
+    'sh[ 0]': 0.6152786
+    'sh[ 1]': 0.018137246
+    'sh[ 2]': -0.13875736
+    'sh[ 3]': 0.07187565
+    'sh[ 4]': 0.093425274
+    'sh[ 5]': -0.015972078
+    'sh[ 6]': -0.00618146
+    'sh[ 7]': -0.026013799
+    'sh[ 8]': -0.0058150142
+    'sh[ 9]': 0.63659084
+    'sh[10]': 0.017241448
+    'sh[11]': -0.10388932
+    'sh[12]': 0.06687634
+    'sh[13]': 0.090287656
+    'sh[14]': -0.0066022277
+    'sh[15]': 0.002563361
+    'sh[16]': -0.03546295
+    'sh[17]': 0.012195244
+    'sh[18]': 0.628713
+    'sh[19]': 0.052761808
+    'sh[20]': -0.054629155
+    'sh[21]': 0.037990004
+    'sh[22]': 0.06328099
+    'sh[23]': 0.020781316
+    'sh[24]': -0.012089435
+    'sh[25]': -0.014794087
+    'sh[26]': -0.008888859
 --- !u!1 &921882174
 GameObject:
   m_ObjectHideFlags: 0
@@ -720,7 +720,7 @@ Light:
   m_Lightmapping: 4
   m_LightShadowCasterMode: 0
   m_AreaSize: {x: 1, y: 1}
-  m_BounceIntensity: 3
+  m_BounceIntensity: 1
   m_ColorTemperature: 6570
   m_UseColorTemperature: 0
   m_BoundingSphereOverride: {x: 4.5904e-41, y: 0, z: 0, w: 2.6785335e+20}
@@ -41750,6 +41750,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82859215aa6ff494fb82200142b9e34e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  bakeSampleCount: 512
+  bakeSeed: 0
   debugMode: 1
   selectedProbeIndex: 0
   selectedProbeDebugMode: 0
@@ -41766,15 +41768,14 @@ MonoBehaviour:
   virtualOffset: {x: 0, y: 2, z: 0}
   geometryBias: 0.1
   rayOriginBias: 0.4
-  multiFrameRelight: 1
+  sectorWidth: 4
   enableRelightShadow: 1
   shadowCacheMaxAge: 30
-  shadowCacheVarianceThreshold: 0.02
   enableShadowCacheStats: 0
   shadowCacheStatsReadbackInterval: 10
-  probesPerFrameUpdate: 4
-  localProbeCount: 3
-  relightOnceUntilDirty: 1
+  sectorsPerFrame: 2
+  sectorBudgetMiB: 256
+  uploadBudgetMiB: 4
   voxelProbeSize: {x: 32, y: 8, z: 32}
   asset: {fileID: 11400000, guid: 33f1928f6479bc34787575bb1184cece, type: 2}
 --- !u!33 &8064392582940008543
