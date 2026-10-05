@@ -507,8 +507,10 @@ half3 HairGlobalIllumination(BRDFData brdfData, half3 bakedGI, BRDFOcclusionFact
     
     half3 iblR = reflect(-viewDirectionWS, N);
     // ============================ Diffuse Part ================================== //
-    half3 indirectDiffuse = EvaluateIndirectDiffuse(positionWS, ambientNormalWS, normalizedScreenSpaceUV, bakedGI);
-    half normalizationFactor = SampleProbeVolumeReflectionNormalize(positionWS, normalWS, normalizedScreenSpaceUV, bakedGI, iblR);
+    half3 indirectDiffuse;
+    half normalizationFactor;
+    EvaluateIndirectDiffuseAndReflectionNormalization(positionWS, ambientNormalWS, normalWS,
+        iblR, normalizedScreenSpaceUV, bakedGI, indirectDiffuse, normalizationFactor);
     // ============================ Diffuse Part ================================== //
     
     half3 indirectSpecular = GlossyEnvironmentReflection(iblR, positionWS,

@@ -5,7 +5,7 @@ using Illusion.Rendering.PRTGI;
 namespace Illusion.Rendering.Editor
 {
     [CustomEditor(typeof(PRTProbeVolume))]
-    internal class PRTProbeVolumeEditor : PropertyFetchEditor<PRTProbeVolume>
+    internal partial class PRTProbeVolumeEditor : PropertyFetchEditor<PRTProbeVolume>
     {
         private static readonly Color ProbeHandleColor = new(0.2f, 0.8f, 0.1f, 0.125f);
 
@@ -26,21 +26,18 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _rayOriginBias;
 
         // Relight Settings
-        private SerializedProperty _multiFrameRelight;
+        private SerializedProperty _sectorWidth;
         private SerializedProperty _enableRelightShadow;
         private SerializedProperty _shadowCacheMaxAge;
-        private SerializedProperty _shadowCacheVarianceThreshold;
         private SerializedProperty _enableShadowCacheStats;
         private SerializedProperty _shadowCacheStatsReadbackInterval;
-        private SerializedProperty _probesPerFrameUpdate;
-        private SerializedProperty _localProbeCount;
-        private SerializedProperty _relightOnceUntilDirty;
+        private SerializedProperty _sectorsPerFrame;
+        private SerializedProperty _sectorBudgetMiB;
+        private SerializedProperty _uploadBudgetMiB;
 
         // Voxel Settings
         private SerializedProperty _voxelProbeSize;
 
-        // Asset
-        private SerializedProperty _asset;
 
         // Debug Settings
         private SerializedProperty _debugMode;
@@ -48,7 +45,6 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _shadowCacheDebugReadbackInterval;
         private SerializedProperty _shadowCacheDebugShowLabels;
         private SerializedProperty _shadowCacheDebugSurfelSize;
-        private SerializedProperty _bakeResolution;
 
         protected override void OnEnable()
         {
@@ -67,21 +63,19 @@ namespace Illusion.Rendering.Editor
             _enableBakePreprocess = Properties.Find(volume => volume.enableBakePreprocess);
 
             // Relight Settings
-            _multiFrameRelight = Properties.Find(volume => volume.multiFrameRelight);
+            _sectorWidth = Properties.Find(volume => volume.sectorWidth);
             _enableRelightShadow = Properties.Find(volume => volume.enableRelightShadow);
             _shadowCacheMaxAge = Properties.Find(volume => volume.shadowCacheMaxAge);
-            _shadowCacheVarianceThreshold = Properties.Find(volume => volume.shadowCacheVarianceThreshold);
             _enableShadowCacheStats = Properties.Find(volume => volume.enableShadowCacheStats);
             _shadowCacheStatsReadbackInterval = Properties.Find(volume => volume.shadowCacheStatsReadbackInterval);
-            _probesPerFrameUpdate = Properties.Find(volume => volume.probesPerFrameUpdate);
-            _localProbeCount = Properties.Find(volume => volume.localProbeCount);
-            _relightOnceUntilDirty = Properties.Find(volume => volume.relightOnceUntilDirty);
+            _sectorsPerFrame = Properties.Find(volume => volume.sectorsPerFrame);
+            _sectorBudgetMiB = Properties.Find(volume => volume.sectorBudgetMiB);
+            _uploadBudgetMiB = Properties.Find(volume => volume.uploadBudgetMiB);
 
             // Voxel Settings
             _voxelProbeSize = Properties.Find(volume => volume.voxelProbeSize);
 
-            // Asset
-            _asset = Properties.Find(volume => volume.asset);
+            InitializeBakeProperties();
 
             // Debug Settings
             _debugMode = Properties.Find(volume => volume.debugMode);
@@ -89,7 +83,6 @@ namespace Illusion.Rendering.Editor
             _shadowCacheDebugReadbackInterval = Properties.Find(volume => volume.shadowCacheDebugReadbackInterval);
             _shadowCacheDebugShowLabels = Properties.Find(volume => volume.shadowCacheDebugShowLabels);
             _shadowCacheDebugSurfelSize = Properties.Find(volume => volume.shadowCacheDebugSurfelSize);
-            _bakeResolution = Properties.Find(volume => volume.bakeResolution);
 
             EditorApplication.update += RepaintStatsInspector;
         }
@@ -104,7 +97,7 @@ namespace Illusion.Rendering.Editor
             if (!Target ||
                 !Target.enableShadowCacheStats &&
                 Target.debugMode != ProbeVolumeDebugMode.ShadowCache &&
-                !Target.relightOnceUntilDirty)
+                Target.isActiveAndEnabled)
             {
                 return;
             }
@@ -125,10 +118,11 @@ namespace Illusion.Rendering.Editor
             {
                 EditorGUILayout.HelpBox("Precomputed Radiance Transfer Global Illumination is not activated in Renderer.",
                     MessageType.Info);
-                return;
             }
 
             serializedObject.Update();
+            if (!string.IsNullOrEmpty(Target.AssetInvalidReason))
+                EditorGUILayout.HelpBox(Target.AssetInvalidReason, MessageType.Warning);
 
             using (new EditorGUI.DisabledScope(PRTVolumeManager.IsBaking))
             {
@@ -188,121 +182,20 @@ namespace Illusion.Rendering.Editor
         {
             if (Foldout("Relight Settings", true))
             {
-                EditorGUILayout.PropertyField(_multiFrameRelight, Styles.MultiFrameRelightLabel);
-
-                if (_multiFrameRelight.boolValue)
-                {
-                    EditorGUILayout.PropertyField(_probesPerFrameUpdate, Styles.ProbesPerFrameUpdateLabel);
-                    EditorGUILayout.PropertyField(_localProbeCount, Styles.LocalProbeCountLabel);
-                }
-
-                EditorGUILayout.PropertyField(_relightOnceUntilDirty, Styles.RelightOnceUntilDirtyLabel);
-                if (_relightOnceUntilDirty.boolValue)
-                {
-                    using (new EditorGUI.DisabledScope(true))
-                    {
-                        EditorGUILayout.Toggle(Styles.RelightWindowCycleCompleteLabel,
-                            Target.RelightWindowCycleComplete);
-                        EditorGUILayout.TextField(Styles.RelightWindowCoverageLabel,
-                            $"{Target.RelitProbeCountInWindow} / {Target.ProbeCountInWindow}");
-                        EditorGUILayout.IntField(Styles.RelightCurrentProbeIndexLabel,
-                            Target.CurrentProbeUpdateIndex);
-                        EditorGUILayout.Toggle(Styles.RelightInputTrackedLabel,
-                            Target.HasRelightInputHash);
-                        EditorGUILayout.IntField(Styles.RelightInputHashLabel,
-                            Target.LastRelightInputHash);
-                    }
-                }
-
+                EditorGUILayout.PropertyField(_sectorsPerFrame);
+                EditorGUILayout.PropertyField(_sectorBudgetMiB);
+                EditorGUILayout.PropertyField(_uploadBudgetMiB);
+                DrawSolverStatus();
                 EditorGUILayout.Space();
                 EditorGUILayout.PropertyField(_enableRelightShadow, Styles.EnableRelightShadowLabel);
                 if (_enableRelightShadow.boolValue)
                 {
                     EditorGUILayout.PropertyField(_shadowCacheMaxAge, Styles.ShadowCacheMaxAgeLabel);
-                    EditorGUILayout.PropertyField(_shadowCacheVarianceThreshold, Styles.ShadowCacheVarianceThresholdLabel);
                     EditorGUILayout.PropertyField(_enableShadowCacheStats, Styles.EnableShadowCacheStatsLabel);
-
-                    if (_enableShadowCacheStats.boolValue)
-                    {
-                        DrawShadowCacheStats();
-                    }
+                    if (_enableShadowCacheStats.boolValue) DrawShadowCacheStats();
                 }
             }
-
             EditorGUILayout.Space();
-        }
-
-        private void DrawShadowCacheStats()
-        {
-            EditorGUILayout.PropertyField(_shadowCacheStatsReadbackInterval,
-                Styles.ShadowCacheStatsReadbackIntervalLabel);
-
-            var stats = Target.LatestShadowCacheStats;
-            using (new EditorGUI.DisabledScope(true))
-            {
-                EditorGUILayout.LabelField(Styles.ShadowCacheDispatchStatsLabel, EditorStyles.boldLabel);
-                EditorGUILayout.Toggle(Styles.ShadowCacheStatsValidLabel, stats.valid);
-                EditorGUILayout.LongField(Styles.ShadowCacheEvaluatedLabel, stats.evaluated);
-                EditorGUILayout.LongField(Styles.ShadowCacheHitsLabel, stats.cacheHits);
-                EditorGUILayout.LongField(Styles.ShadowCacheMissesLabel, stats.cacheMisses);
-                EditorGUILayout.LongField(Styles.ShadowCacheInvalidEpochLabel, stats.invalidByEpoch);
-                EditorGUILayout.LongField(Styles.ShadowCacheInvalidAgeLabel, stats.invalidByAge);
-                EditorGUILayout.LongField(Styles.ShadowCacheSamplesLabel, stats.shadowmapSamples);
-                EditorGUILayout.LongField(Styles.ShadowCacheFallbackLabel, stats.fallbackFromCache);
-                EditorGUILayout.LongField(Styles.ShadowCacheUncoveredLabel, stats.uncoveredNoCache);
-
-                EditorGUILayout.Space(2);
-                EditorGUILayout.LabelField(Styles.ShadowCacheGlobalStatsLabel, EditorStyles.boldLabel);
-                DrawShadowCacheSnapshotStats(Target.LatestShadowCacheGlobalStats);
-
-                EditorGUILayout.Space(2);
-                EditorGUILayout.LabelField(Styles.ShadowCacheWindowStatsLabel, EditorStyles.boldLabel);
-                DrawShadowCacheSnapshotStats(Target.LatestShadowCacheWindowStats);
-            }
-        }
-
-        private static void DrawShadowCacheSnapshotStats(PRTProbeVolume.ShadowCacheGlobalStats stats)
-        {
-            EditorGUILayout.Toggle(Styles.ShadowCacheStatsValidLabel, stats.valid);
-            EditorGUILayout.LongField(Styles.ShadowCacheGlobalFrameLabel, stats.frameIndex);
-            EditorGUILayout.LongField(Styles.ShadowCacheGlobalEpochLabel, stats.epoch);
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalSurfelReadyLabel,
-                FormatCount(stats.surfelReady, stats.surfelCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalSurfelFreshLabel,
-                FormatCount(stats.surfelFresh, stats.surfelCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalSurfelStaleLabel,
-                FormatCount(stats.surfelStale, stats.surfelCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalSurfelInvalidEpochLabel,
-                FormatCount(stats.surfelInvalidEpoch, stats.surfelCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalSurfelUninitializedLabel,
-                FormatCount(stats.surfelUninitialized, stats.surfelCount));
-            EditorGUILayout.FloatField(Styles.ShadowCacheGlobalSurfelMeanLabel,
-                stats.surfelMeanShadow);
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalBrickReadyLabel,
-                FormatCount(stats.brickReady, stats.brickCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalBrickFreshLabel,
-                FormatCount(stats.brickFresh, stats.brickCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalBrickStaleLabel,
-                FormatCount(stats.brickStale, stats.brickCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalBrickHighVarianceLabel,
-                FormatCount(stats.brickHighVariance, stats.brickCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalBrickInvalidEpochLabel,
-                FormatCount(stats.brickInvalidEpoch, stats.brickCount));
-            EditorGUILayout.TextField(Styles.ShadowCacheGlobalBrickUninitializedLabel,
-                FormatCount(stats.brickUninitialized, stats.brickCount));
-            EditorGUILayout.FloatField(Styles.ShadowCacheGlobalBrickMeanLabel,
-                stats.brickMeanShadow);
-        }
-
-        private static string FormatCount(uint count, uint total)
-        {
-            if (total == 0)
-            {
-                return count.ToString();
-            }
-
-            float percent = count * 100f / total;
-            return $"{count} / {total} ({percent:F1}%)";
         }
 
         private void DrawVoxelSettings()
@@ -344,7 +237,7 @@ namespace Illusion.Rendering.Editor
                         {
                             if (GUILayout.Button("Bake Virtual Offset"))
                             {
-                                Target.BakeProbeVirtualOffset();
+                                PRTBakeManager.BakePlacementPreview(Target);
                             }
                         }
                     }
@@ -383,84 +276,6 @@ namespace Illusion.Rendering.Editor
                 EditorGUILayout.DoubleField(Styles.ShadowCacheDebugSnapshotTimeLabel,
                     Target.LatestShadowCacheDebugTime);
             }
-        }
-
-        private void DrawBakeSettingsSection()
-        {
-            if (Foldout("Bake Settings", true))
-            {
-                EditorGUILayout.PropertyField(_asset, Styles.ProbeVolumeAssetLabel);
-
-                // Bake resolution
-                EditorGUILayout.PropertyField(_bakeResolution, Styles.BakeResolutionLabel);
-            }
-
-            if (Target.asset && !Target.asset.HasValidData)
-            {
-                EditorGUILayout.HelpBox(
-                    "This prt probe volume does not have valid data for relighting.",
-                    MessageType.Warning);
-            }
-        }
-
-        private static void DrawActionButtons()
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.BeginVertical();
-
-            if (PRTVolumeManager.IsBaking)
-            {
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("Cancel Baking"))
-                {
-                    StopBaking();
-                }
-                EditorGUILayout.EndHorizontal();
-            }
-            else
-            {
-                EditorGUILayout.BeginHorizontal();
-                if (ButtonWithDropdownList(Styles.GenerateLightingLabel, 
-                        Styles.DetailActionLabels, 
-                        OnActionDropDown))
-                {
-                    PRTBakeManager.GenerateLighting();
-                    GUIUtility.ExitGUI();
-                }
-                EditorGUILayout.EndHorizontal();
-            }
-
-            EditorGUILayout.EndVertical();
-        }
-        
-        private static void OnActionDropDown(object data)
-        {
-            int mode = (int)data;
-            switch (mode)
-            {
-                case 0:
-                    PRTBakeManager.BakeAllReflectionProbes();
-                    break;
-                case 1:
-                    ClearData();
-                    break;
-            }
-        }
-
-        private static void ClearData()
-        {
-            if (EditorUtility.DisplayDialog("Clear Baked Data",
-                    "Are you sure you want to clear baked data? This action cannot be undone.",
-                    "Clear", "Cancel"))
-            {
-                PRTBakeManager.ClearBakedData();
-            }
-        }
-
-        private static void StopBaking()
-        {
-            PRTBakeManager.StopBaking();
-            PRTBakeManager.ClearBakedData();
         }
 
         private void OnSceneGUI()
@@ -510,10 +325,8 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent EnableBakePreprocessLabel = new("Enable Bake Preprocess", "Enable bake preprocess for per-probe place adjustment");
 
             // Relight Settings
-            public static readonly GUIContent MultiFrameRelightLabel = new("Multi Frame Relight", "Enable multi frame relight to improve performance");
-            public static readonly GUIContent EnableRelightShadowLabel = new("Enable Relight Shadow", "Enable shadow calculation in PRT relight. Disable this to avoid shadow flickering when camera moves");
-            public static readonly GUIContent ShadowCacheMaxAgeLabel = new("Shadow Cache Max Age", "Maximum number of frames before cached PRT shadow values must be refreshed.");
-            public static readonly GUIContent ShadowCacheVarianceThresholdLabel = new("Shadow Cache Variance Threshold", "Maximum per-brick shadow variance that can reuse the brick shadow cache.");
+            public static readonly GUIContent EnableRelightShadowLabel = new("Enable Relight Shadow", "Include world-space visibility in diffuse relighting.");
+            public static readonly GUIContent ShadowCacheMaxAgeLabel = new("Old Sample Age", "Diagnostic threshold in scene ticks. Samples outside the map remain reusable until their visibility epoch changes.");
             public static readonly GUIContent EnableShadowCacheStatsLabel = new("Enable Shadow Cache Stats", "Read back PRT shadow cache hit/miss counters for profiling.");
             public static readonly GUIContent ShadowCacheStatsReadbackIntervalLabel = new("Stats Readback Interval", "Frames between full global shadow cache snapshot readbacks.");
             public static readonly GUIContent ShadowCacheDispatchStatsLabel = new("Current Dispatch Stats");
@@ -543,15 +356,6 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent ShadowCacheGlobalBrickInvalidEpochLabel = new("Bricks Invalid Epoch");
             public static readonly GUIContent ShadowCacheGlobalBrickUninitializedLabel = new("Bricks Uninitialized");
             public static readonly GUIContent ShadowCacheGlobalBrickMeanLabel = new("Bricks Mean Shadow");
-            public static readonly GUIContent ProbesPerFrameUpdateLabel = new("Probes Per Frame Update", "Number of probes to update per frame");
-            public static readonly GUIContent LocalProbeCountLabel = new("Local Probe Count", "Number of camera nearby probes to relight in additional to per frame update roulette");
-            public static readonly GUIContent RelightOnceUntilDirtyLabel =
-                new("Relight Once Until Dirty", "Stop relighting after a full window cycle, then restart when relight inputs change.");
-            public static readonly GUIContent RelightWindowCycleCompleteLabel = new("Window Cycle Complete");
-            public static readonly GUIContent RelightWindowCoverageLabel = new("Window Relit Probes");
-            public static readonly GUIContent RelightCurrentProbeIndexLabel = new("Round Robin Index");
-            public static readonly GUIContent RelightInputTrackedLabel = new("Relight Input Tracked");
-            public static readonly GUIContent RelightInputHashLabel = new("Relight Input Hash");
 
             // Voxel Settings
             public static readonly GUIContent VoxelProbeSizeLabel = new("Voxel Probe Size", "Voxel texture const probe size");

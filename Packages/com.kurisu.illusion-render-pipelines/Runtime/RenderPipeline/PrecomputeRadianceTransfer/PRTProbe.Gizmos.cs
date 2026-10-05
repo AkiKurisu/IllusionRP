@@ -6,23 +6,18 @@ namespace Illusion.Rendering.PRTGI
 {
     public partial class PRTProbe
     {
-        private readonly MaterialPropertyBlock _matPropBlock;
+        private MaterialPropertyBlock _matPropBlock;
 
         /// <summary>
         /// Debug renderer
         /// </summary>
-        private readonly MeshRenderer _renderer;
+        private MeshRenderer _renderer;
         
         /// <summary>
         /// Update Probe debug visibility based on debug mode
         /// </summary>
         internal void UpdateVisibility()
         {
-            // Update position and scale
-            _renderer.transform.position = Position;
-            float size = _volume.probeHandleSize;
-            _renderer.transform.localScale = new Vector3(size, size, size);
-            
             bool shouldShowIrradianceSphere = _volume.debugMode == ProbeVolumeDebugMode.ProbeRadiance;
             
             // Hide when is selected and using other debug modes
@@ -35,7 +30,17 @@ namespace Illusion.Rendering.PRTGI
             // Hide when show surfel brick to prevent hide surfel gizmos
             shouldShowIrradianceSphere &= _volume.selectedProbeDebugMode != ProbeDebugMode.SurfelBrickGrid;
             shouldShowIrradianceSphere &= !PRTVolumeManager.IsBaking;
-            _renderer.enabled = shouldShowIrradianceSphere;
+            if (!shouldShowIrradianceSphere)
+            {
+                if (_renderer)
+                    _renderer.enabled = false;
+                return;
+            }
+            if (!_renderer)
+                CreateDebugObject();
+            _renderer.transform.position = Position;
+            _renderer.transform.localScale = Vector3.one * _volume.probeHandleSize;
+            _renderer.enabled = true;
 
             // Update material properties if sphere is visible
             if (shouldShowIrradianceSphere)
@@ -73,7 +78,25 @@ namespace Illusion.Rendering.PRTGI
 
         private void ReleaseDebugObject()
         {
+            if (!_renderer)
+                return;
+            UnityEngine.Rendering.CoreUtils.Destroy(_renderer.sharedMaterial);
             UObject.DestroyImmediate(_renderer.gameObject);
+            _renderer = null;
+        }
+
+        private void CreateDebugObject()
+        {
+            var probeObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            probeObject.name = $"PRTProbe {Index}";
+            probeObject.hideFlags = HideFlags.HideAndDontSave;
+            probeObject.transform.SetParent(_volume.transform);
+            UObject.DestroyImmediate(probeObject.GetComponent<SphereCollider>());
+            _renderer = probeObject.GetComponent<MeshRenderer>();
+            _renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _renderer.receiveShadows = false;
+            _renderer.sharedMaterial = UnityEngine.Rendering.CoreUtils.CreateEngineMaterial(IllusionShaders.ProbeSHDebug);
+            _matPropBlock = new MaterialPropertyBlock();
         }
         
         private static class ShaderProperties

@@ -44,47 +44,72 @@ half SampleProbeVolumeReflectionNormalize(float3 worldPos, float3 normal, float2
 {
 #if USE_CLUSTER_LIGHT_LOOP && _PRT_GLOBAL_ILLUMINATION_ON
     UNITY_BRANCH
-    if (_coefficientVoxelGridSize == 0)
+    if (_coefficientVoxelGridSize == 0 || _reflectionProbeNormalizationFactor.w <= 0)
     {
         return 1.0f;
     }
     
-    float3 lightingInReflDir = EvaluateProbeVolumeSH(
-                       worldPos, 
-                       reflectionDir,
-                       bakedGI,
-                       _coefficientVoxel3D,
-                       _validityVoxel3D,
-                       _coefficientVoxelGridSize,
-                       _coefficientVoxelCorner,
-                       _coefficientVoxelSize,
-                       _boundingBoxMin,
-                       _boundingBoxSize,
-                       _originalBoundingBoxMin
-                   );
+    float3 lightingInReflDir = 0;
+    if (!TrySampleProbeVolume(worldPos, reflectionDir, lightingInReflDir))
+        return 1.0f;
     return CalculateNormalizationFactorFromReflectionProbes(lightingInReflDir, normal, worldPos, normalizedScreenSpaceUV);
 #else
     return 1.0f;
 #endif
 }
 
-half3 EvaluateIndirectDiffuse(float3 positionWS, float3 normalWS, float2 normalizedScreenSpaceUV, float3 bakedGI)
+bool TrySampleScreenSpaceIndirectDiffuse(float2 normalizedScreenSpaceUV, out half3 indirectDiffuse)
 {
-    bool replaceBakeDiffuseLighting = false; 
-    half3 indirectDiffuse = 0;
+    indirectDiffuse = 0;
     
 #if (SURFACE_TYPE_RECEIVE_SSGI && _SCREEN_SPACE_GLOBAL_ILLUMINATION && !defined(LIGHTMAP_ON) && !defined(DYNAMICLIGHTMAP_ON))
     if (_IndirectDiffuseMode != INDIRECTDIFFUSEMODE_OFF)
     {
         indirectDiffuse = SampleScreenSpaceGlobalIllumination(normalizedScreenSpaceUV).rgb;
-        replaceBakeDiffuseLighting = true;
+        return true;
     }
 #endif
 
-    if (!replaceBakeDiffuseLighting)
+    return false;
+}
+
+half3 EvaluateIndirectDiffuse(float3 positionWS, float3 normalWS, float2 normalizedScreenSpaceUV, float3 bakedGI)
+{
+    half3 indirectDiffuse;
+    return TrySampleScreenSpaceIndirectDiffuse(normalizedScreenSpaceUV, indirectDiffuse)
+        ? indirectDiffuse : SAMPLE_PROBE_VOLUME(positionWS, normalWS, bakedGI);
+}
+
+void EvaluateIndirectDiffuseAndReflectionNormalization(float3 positionWS, float3 diffuseNormalWS,
+    float3 normalWS, float3 reflectionDir, float2 normalizedScreenSpaceUV, float3 bakedGI,
+    out half3 indirectDiffuse, out half normalizationFactor)
+{
+    bool screenSpaceDiffuse = TrySampleScreenSpaceIndirectDiffuse(normalizedScreenSpaceUV, indirectDiffuse);
+    if (!screenSpaceDiffuse) indirectDiffuse = bakedGI;
+    normalizationFactor = 1;
+#if _PRT_GLOBAL_ILLUMINATION_ON
+    #if USE_CLUSTER_LIGHT_LOOP
+    UNITY_BRANCH
+    if (_coefficientVoxelGridSize != 0 && _reflectionProbeNormalizationFactor.w > 0)
     {
-        indirectDiffuse = SAMPLE_PROBE_VOLUME(positionWS, normalWS, bakedGI);
+        float3 lightingInReflDir, probeDiffuse;
+        bool valid;
+        if (screenSpaceDiffuse)
+            valid = TrySampleProbeVolume(positionWS, reflectionDir, lightingInReflDir);
+        else
+            valid = TrySampleProbeVolumePair(positionWS, diffuseNormalWS, reflectionDir,
+                probeDiffuse, lightingInReflDir);
+        if (valid)
+        {
+            if (!screenSpaceDiffuse) indirectDiffuse = probeDiffuse;
+            normalizationFactor = CalculateNormalizationFactorFromReflectionProbes(
+                lightingInReflDir, normalWS, positionWS, normalizedScreenSpaceUV);
+        }
+        return;
     }
-    return indirectDiffuse;
+    #endif
+    if (!screenSpaceDiffuse)
+        indirectDiffuse = SampleProbeVolume(positionWS, diffuseNormalWS, bakedGI);
+#endif
 }
 #endif
