@@ -4,14 +4,14 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-05 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 Shader variant stripping removes IllusionRP keyword variants and IllusionRP-only passes that no renderer of the build target can reach. Reachability is aggregated from every URP asset, renderer and Illusion renderer feature the target uses; a variant or pass is removed only when every target renderer can do without it.
 
 ## Switch
 
-`IllusionRenderPipelineSettings.stripUnusedVariants`, shown as Strip Unused Variants under Project Settings, Graphics, IllusionRP Global Settings, is the master switch and is on by default. When it is off, the keyword and pass rules remove nothing and, with valid build data, the dynamic prefilter is reset to keep every IllusionRP keyword state. The static keyword filters apply either way.
+`IllusionRenderPipelineSettings.stripUnusedVariants`, shown as Strip Unused Variants under Project Settings, Graphics, IllusionRP Global Settings, controls capability-based stripping and is on by default. When it is off, the capability-based keyword and pass rules remove nothing and, with valid build data, the dynamic prefilter is reset to keep every runtime IllusionRP keyword state. Static filters and mandatory Editor-only variant removal apply either way.
 
 ## Build stages
 
@@ -19,11 +19,14 @@ Shader variant stripping removes IllusionRP keyword variants and IllusionRP-only
 |---|---|
 | Capability gathering | Collects the URP assets of the build target and computes one capability set per renderer, when the build starts and before Unity enumerates variants. |
 | Keyword prefiltering | Writes the aggregated result into derived prefilter fields of each Illusion renderer feature, so Unity enumerates only the keyword states the target needs. |
+| Editor-only variants | Removes every variant with `_PRT_CAPTURE` enabled from Player and AssetBundle shader builds, independently of build capabilities and stripping switches. |
 | Keyword stripping | Evaluates the keyword rules per renderer and removes a variant only when every renderer allows it. |
 | Supplemental URP axis filtering | After SRP Core and URP callbacks, removes SH/atlas combinations no target renderer selects. |
 | Pass stripping | After SRP Core and URP have processed a pass, removes every variant of a registered IllusionRP pass that no renderer reaches. |
 
 ## Capabilities
+
+`_PRT_CAPTURE` is exclusively for Editor probe baking. The shader build callback removes its enabled variants before checking build capability data, pass metadata or stripping switches. Its disabled variants continue through normal runtime stripping rules. Editor shader compilation retains the capture variant for baking.
 
 - **Sources.** The URP assets selected for the build target.
 - **Per renderer.** Each renderer in each asset's renderer list contributes one capability set. A renderer with an active Illusion renderer feature contributes the capabilities its serialized settings enable; a renderer whose feature is inactive or missing contributes none.
