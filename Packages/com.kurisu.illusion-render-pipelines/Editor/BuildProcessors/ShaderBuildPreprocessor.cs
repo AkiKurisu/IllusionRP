@@ -34,6 +34,9 @@ namespace Illusion.Rendering.Editor
         AreaShadowMedium = 1L << 15,
         AreaShadowHigh = 1L << 16,
         PathTracing = 1L << 17,
+        DeferredRendering = 1L << 18,
+        Renderer2D = 1L << 19,
+        UnmanagedScreenSpaceOcclusion = 1L << 20,
         All = ~0
     }
 
@@ -50,7 +53,7 @@ namespace Illusion.Rendering.Editor
             ShaderFeatures[] rendererFeatures,
             HashSet<int> pathTracingShaders = null,
             UrpKeywordState[] urpKeywordStates = null,
-            bool stripUrpKeywordAxes = false)
+            bool stripUrpVariants = false)
         {
             Target = target;
             IsValid = isValid;
@@ -58,7 +61,7 @@ namespace Illusion.Rendering.Editor
             _rendererFeatures = rendererFeatures ?? Array.Empty<ShaderFeatures>();
             _pathTracingShaders = pathTracingShaders ?? new HashSet<int>();
             UrpKeywordStates = urpKeywordStates ?? Array.Empty<UrpKeywordState>();
-            StripUrpKeywordAxes = stripUrpKeywordAxes;
+            StripUrpVariants = stripUrpVariants;
         }
 
         internal BuildTarget Target { get; }
@@ -71,7 +74,7 @@ namespace Illusion.Rendering.Editor
 
         internal IReadOnlyList<UrpKeywordState> UrpKeywordStates { get; }
 
-        internal bool StripUrpKeywordAxes { get; }
+        internal bool StripUrpVariants { get; }
 
         internal bool AnyRendererSupports(ShaderFeatures required, bool requireAll = false)
         {
@@ -192,6 +195,12 @@ namespace Illusion.Rendering.Editor
                                 : asset.shEvalMode;
                             urpKeywordStates.Add(new UrpKeywordState(shMode, requirements.needsReflectionProbeAtlas));
 
+                            ShaderFeatures rendererCapabilities = ShaderFeatures.None;
+                            if (requirements.renderingMode is RenderingMode.Deferred or RenderingMode.DeferredPlus)
+                                rendererCapabilities |= ShaderFeatures.DeferredRendering;
+                            if (rendererData is Renderer2DData)
+                                rendererCapabilities |= ShaderFeatures.Renderer2D;
+
                             IllusionRendererFeature illusionFeature = null;
                             int featureCount = 0;
                             if (rendererData.rendererFeatures == null)
@@ -217,10 +226,10 @@ namespace Illusion.Rendering.Editor
                                 continue;
                             }
 
-                            rendererFeatures.Add(
-                                illusionFeature && illusionFeature.isActive
+                            rendererFeatures.Add(rendererCapabilities |
+                                (illusionFeature && illusionFeature.isActive
                                     ? GetFeatures(illusionFeature)
-                                    : ShaderFeatures.None);
+                                    : ShaderFeatures.UnmanagedScreenSpaceOcclusion));
                         }
                     }
                 }
@@ -342,6 +351,9 @@ namespace Illusion.Rendering.Editor
             PrefilterMode ssr = enabled
                 ? AggregateMode(rendererFeatures, ShaderFeatures.ScreenSpaceReflection)
                 : safe;
+            PrefilterMode ssao = enabled
+                ? ScreenSpaceOcclusionMode(rendererFeatures)
+                : safe;
             PrefilterMode ssgi = enabled
                 ? AggregateMode(rendererFeatures, ShaderFeatures.ScreenSpaceGlobalIllumination)
                 : safe;
@@ -364,6 +376,7 @@ namespace Illusion.Rendering.Editor
                 changed |= SetMode(ref feature.precomputedRadianceTransferGIPrefilterMode, prt);
                 changed |= SetMode(ref feature.transparentPerObjectShadowsPrefilterMode, transparentShadow);
                 changed |= SetMode(ref feature.screenSpaceReflectionPrefilterMode, ssr);
+                changed |= SetMode(ref feature.screenSpaceOcclusionPrefilterMode, ssao);
                 changed |= SetMode(ref feature.screenSpaceGlobalIlluminationPrefilterMode, ssgi);
                 changed |= SetMode(ref feature.fragmentShadowBiasPrefilterMode, fragmentBias);
                 if (feature.areaShadowPrefilterMode != areaShadow)
@@ -377,6 +390,14 @@ namespace Illusion.Rendering.Editor
                 EditorUtility.SetDirty(feature);
                 AssetDatabase.SaveAssetIfDirty(feature);
             }
+        }
+
+        private static PrefilterMode ScreenSpaceOcclusionMode(IReadOnlyList<ShaderFeatures> renderers)
+        {
+            foreach (ShaderFeatures renderer in renderers)
+                if ((renderer & ShaderFeatures.UnmanagedScreenSpaceOcclusion) != 0)
+                    return PrefilterMode.Select;
+            return AggregateMode(renderers, ShaderFeatures.ScreenSpaceOcclusion);
         }
 
         private static PrefilterMode AggregateMode(

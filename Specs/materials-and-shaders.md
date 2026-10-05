@@ -13,7 +13,7 @@ IllusionRP renders materials on the Forward and Forward+ paths. This spec define
 
 - **Color owner.** A material's color comes from its main color pass, or from `OIT` for order-independent transparent coverage. Every other pass produces data only: depth, normals, smoothness, motion, shadows, subsurface diffuse or water reflection data.
 - **Sources.** Templates own pass topology, LightMode tags, fixed render state and `UnityPerMaterial`; graphs own material inputs; generated shaders are rebuilt from both, as [ASE Shader Workflow](ase-shader-workflow.md) defines. Shared HLSL owns surface setup, BRDFs, coverage, shadows, global illumination and packing.
-- **Material state.** The Hybrid Lit material inspector, used by Hybrid Lit, Hybrid Complex Lit and by default by the Hybrid Lit template, keeps pass enabled state, keywords and the hidden stencil properties in sync with the surface type and material options. The packaged template shaders use the ASE material inspector, which changes neither pass state nor stencil properties.
+- **Material state.** The Hybrid Lit material inspector, used by Hybrid Lit, Hybrid Complex Lit and by default by the Hybrid Lit template, keeps pass enabled state, keywords and the hidden stencil properties in sync with the surface type and material options. `HybridLitShader.SynchronizePasses(Material)` is the shared Editor entry point for the inspector and asset pipelines to synchronize pass state directly from material properties, without requiring an open inspector or changing keywords, render queue or stencil properties. The packaged template shaders use the ASE material inspector, which changes neither pass state nor stencil properties.
 - **Diffusion profiles.** Editor code binds a profile with `DiffusionProfileMaterialUtility.SetProfile(material, profile, propertyName)`, where `propertyName` defaults to `_DiffusionProfile`. It writes the profile asset GUID as a vector to `<propertyName>_Asset` and the profile hash, reinterpreted as a float, to `<propertyName>`. A null profile clears both; a material without both properties, or a profile that is not a saved asset, is rejected with an exception.
 
 ## Shader families
@@ -56,7 +56,7 @@ The `UniversalGBuffer` passes are part of the existing topology, but IllusionRP 
 
 [Transparency](transparency.md) owns the behavior of `OIT`, `PostDepthOnly` and `WaterSSRData`.
 
-- **Single owner.** A transparent Hybrid Lit or Hybrid Complex Lit material is shaded by the main color pass or by `OIT`, never both. With `_OrderIndependent` on, the inspector disables the main color pass and enables `OIT`; with it off, the reverse. For opaque materials it disables `OIT`.
+- **Single owner.** A transparent Hybrid Lit or Hybrid Complex Lit material is shaded by the main color pass or by `OIT`, never both. Pass synchronization reads `_Surface` and `_OrderIndependent` from the material: transparent materials disable `ForwardGBuffer`, and enable `OIT` only with `_OrderIndependent` on. `UniversalForward` and `UniversalForwardOnly` are enabled when `OIT` is disabled. Opaque materials disable `OIT` and restore the main color pass and `ForwardGBuffer`.
 - **Hair multipass.** Hair splits one material into an opaque-queue core, shaded by the main pass, and a fringe, shaded by `OIT`; the split and its cutoffs are defined in [Transparency](transparency.md#hair-fringe). Every Hair pass shares vertex deformation, culling and alpha, so no seam opens between core and fringe.
 
 ## Forward GBuffer

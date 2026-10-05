@@ -1,0 +1,22 @@
+{
+    "name": "Illusion.RenderPipelines.SBP.Editor",
+    "rootNamespace": "Illusion.Rendering.Editor",
+    "references": [
+        "GUID:c5ecc461727906345a35491a0440694f",
+        "GUID:d266184870a112c408c41ce739e92997"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "ILLUSION_SBP"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.scriptablebuildpipeline",
+            "expression": "1.0.0",
+            "define": "ILLUSION_SBP"
+        }
+    ]
+}

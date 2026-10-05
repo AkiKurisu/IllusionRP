@@ -24,11 +24,12 @@ namespace Illusion.Rendering
         [SelectIf(true, overridePriority: true, keywordNames: ShaderKeywordStrings.MainLightShadowScreen)]
         private const bool RequiresScreenSpaceShadowsKeyword = true;
         
-        // ReSharper disable once UnusedMember.Local
-        // Override priority in UniversalRenderPipelinePrefitering first, then filter it in ShaderVariantStripper
-        [SelectIf(true, overridePriority: true, keywordNames: new [] {ShaderKeywordStrings.ScreenSpaceOcclusion})]
-        private const bool ScreenSpaceOcclusionPrefilterMode = true;
-        
+        [RemoveIf(PrefilterMode.Remove, overridePriority: true, keywordNames: ShaderKeywordStrings.ScreenSpaceOcclusion)]
+        [SelectIf(PrefilterMode.Select, overridePriority: true, keywordNames: new [] {"", ShaderKeywordStrings.ScreenSpaceOcclusion})]
+        [SelectIf(PrefilterMode.SelectOnly, overridePriority: true, keywordNames: ShaderKeywordStrings.ScreenSpaceOcclusion)]
+        [SerializeField]
+        internal PrefilterMode screenSpaceOcclusionPrefilterMode = PrefilterMode.Select;
+
         // ReSharper disable once UnusedMember.Local
         // Override priority in UniversalRenderPipelinePrefitering
         // Prefer Depth Normal, see GroundTruthAmbientOcclusion.cs
