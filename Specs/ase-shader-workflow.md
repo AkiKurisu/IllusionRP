@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-05 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
 IllusionRP's template-based material shaders are authored with Amplify Shader Editor (ASE). The package ships one ASE template per shading family; a graph supplies the material inputs, and ASE exports template, graph and functions into one generated shader. This workflow defines source ownership and how changes reach the generated shaders.
@@ -50,6 +50,7 @@ Affected package graphs are exported with their template or function change. Ren
 ## Export and convergence
 
 - **Editor state.** Each graph is loaded, exported and saved separately because shared editor state, such as master pass data, can carry into the next graph.
+- **Authored pass selection.** Available Passes is separate from Custom Options. Preserve both when rebuilding template nodes; restore pass visibility by pass name. Background exports apply the option actions before saving, so their selected defines and pragmas reach the generated code. Unless pass topology is intentionally changed, the exported pass names and LightMode tags must match the graph's previous output.
 - **Port-driven options.** `Port:` entries use the connection state seen when the graph loads. After connections change in the same session, reload and export applies the matching defines, such as `_NORMALMAP`, `_EMISSION`, `ASE_BAKEDGI`, `_GBUFFER_NORMAL_OVERRIDE` and `_GBUFFER_SMOOTHNESS_OVERRIDE`.
 - **Pass layout.** After a template pass layout change, the first export can leave stale master pass data in the graph; a subsequent reload and export clears it. Options that exclude a pass drop connections into that pass's master node on reload.
 - **Export metadata.** Each generated shader records the exporting ASE version in its header and graph metadata. Generated shader sources use CRLF line endings.
