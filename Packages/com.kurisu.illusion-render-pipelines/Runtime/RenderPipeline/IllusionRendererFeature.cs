@@ -143,6 +143,8 @@ namespace Illusion.Rendering
 
         public bool screenSpaceGlobalIllumination;
 
+        public bool rayTracedGlobalIllumination;
+
         public bool precomputedRadianceTransferGI;
 
         public bool enableIndirectDiffuseRenderingLayers;
@@ -412,7 +414,7 @@ namespace Illusion.Rendering
             _exposurePass = new ExposurePass(_rendererData);
             _processingPostPass = new PostProcessingPostPass(_rendererData);
             CreateDLSSNeuralRenderingBackend();
-            CreatePathTracingPass();
+            CreateRayTracingPasses();
 
             _setupPass = new SetupPass(this, _rendererData);
             _transparentStencilVRSPass = new StencilVRSGenerationPass(IllusionRenderPassEvent.TransparentStencilVRSPass);
@@ -431,6 +433,10 @@ namespace Illusion.Rendering
         public override void OnCameraPreCull(ScriptableRenderer renderer, in CameraData cameraData)
         {
             _mainLightCasterScope?.BeginCameraCull(cameraData.camera, renderer);
+            // Collecting skinned renderers into the acceleration structure after the shadow casters are culled invalidates that culling.
+            if (UseRayTracedGlobalIllumination(cameraData.camera, IllusionRuntimeRenderingConfig.Get(),
+                    UniversalRenderingUtility.GetRenderingModeActual(renderer) == RenderingMode.Deferred))
+                _rayTracedGlobalIlluminationPass.UpdateScene(cameraData.camera);
         }
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
@@ -473,10 +479,12 @@ namespace Illusion.Rendering
                                                         && config.EnableTransparentScreenSpaceReflection
                                                         && supportsTransparentSSRCompute;
 
+            bool useRayTracedGlobalIllumination = UseRayTracedGlobalIllumination(renderingData.cameraData.camera, config, isDeferred);
             var screenSpaceGlobalIlluminationParam = VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
-            bool useScreenSpaceGlobalIllumination = config.EnableScreenSpaceGlobalIllumination 
+            bool useScreenSpaceGlobalIllumination = config.EnableScreenSpaceGlobalIllumination
                                                     && screenSpaceGlobalIllumination && !isPreviewCamera
-                                                    && screenSpaceGlobalIlluminationParam.enable.value;
+                                                    && screenSpaceGlobalIlluminationParam.enable.value
+                                                    && !useRayTracedGlobalIllumination;
             
             // ========================================= Post Processing ============================================================ //
             var convolutionBloomParam = VolumeManager.instance.stack.GetComponent<ConvolutionBloom>();
@@ -512,7 +520,8 @@ namespace Illusion.Rendering
 
             bool useForwardGBuffer = !isDeferred; // Replace DepthNormal with ForwardGBuffer in Forward/Forward+.
             bool useDepthPyramid = useAmbientOcclusion || useScreenSpaceReflection
-                                   || useTransparentScreenSpaceReflection || useScreenSpaceGlobalIllumination;
+                                   || useTransparentScreenSpaceReflection || useScreenSpaceGlobalIllumination
+                                   || useRayTracedGlobalIllumination;
             bool useTAA = renderingData.cameraData.IsTemporalAAEnabled(); // Disable in scene view
             bool needHistoryColor = requireHistoryColor && !useTAA;
             bool useColorPyramid = useScreenSpaceReflection || useScreenSpaceGlobalIllumination;
@@ -553,8 +562,10 @@ namespace Illusion.Rendering
             renderer.EnqueuePass(groundTruthAO ? _enableSSAOPass : _disableSSAOPass);
             renderer.EnqueuePass(useTransparentShadow ? _enableTransparentPerObjectShadowsPass : _disableTransparentPerObjectShadowsPass);
             renderer.EnqueuePass(subsurfaceScattering ? _enableScreenSpaceSubsurfaceScatteringPass : _disableScreenSpaceSubsurfaceScatteringPass);
-            renderer.EnqueuePass(screenSpaceReflection ? _enableScreenSpaceReflectionPass : _disableScreenSpaceReflectionPass);
-            renderer.EnqueuePass(screenSpaceGlobalIllumination ? _enableScreenSpaceGlobalIlluminationPass : _disableScreenSpaceGlobalIlluminationPass);
+            renderer.EnqueuePass(screenSpaceReflection || rayTracedGlobalIllumination
+                ? _enableScreenSpaceReflectionPass : _disableScreenSpaceReflectionPass);
+            renderer.EnqueuePass(screenSpaceGlobalIllumination || rayTracedGlobalIllumination
+                ? _enableScreenSpaceGlobalIlluminationPass : _disableScreenSpaceGlobalIlluminationPass);
             renderer.EnqueuePass(isDeferred ? _enableDeferredPass : _disableDeferredPass);
             renderer.EnqueuePass(_wetSurfaceResetPass);
             renderer.EnqueuePass(precomputedRadianceTransferGI ? _enablePRTGIPass : _disablePRTGIPass);
@@ -602,7 +613,7 @@ namespace Illusion.Rendering
                 renderer.EnqueuePass(_groundTruthAmbientOcclusionPass);
             }
 
-            if (screenSpaceReflection && !isOffscreenDepth)
+            if ((screenSpaceReflection || rayTracedGlobalIllumination) && !isOffscreenDepth)
             {
                 renderer.EnqueuePass(_screenSpaceReflectionPass);
             }
@@ -614,6 +625,11 @@ namespace Illusion.Rendering
             if (useScreenSpaceGlobalIllumination && !isOffscreenDepth)
             {
                 renderer.EnqueuePass(_screenSpaceGlobalIlluminationPass);
+            }
+
+            if (useRayTracedGlobalIllumination)
+            {
+                renderer.EnqueuePass(_rayTracedGlobalIlluminationPass);
             }
 
             renderer.EnqueuePass(enableSceneShadow ? _perObjShadowPass : _perObjShadowPreviewPass);
@@ -752,6 +768,7 @@ namespace Illusion.Rendering
         {
             UpdateRenderDataSettings();
             rendererData.TransparentScreenSpaceReflectionTexture = default;
+            rendererData.ScreenSpaceReflectionTexture = default;
             var cameraData = frameData.Get<UniversalCameraData>();
             var lightData = frameData.Get<UniversalLightData>();
             var shadowData = frameData.Get<UniversalShadowData>();
@@ -770,13 +787,17 @@ namespace Illusion.Rendering
             var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
             bool useShadowTemporalAccumulation = rendererData.PCSSShadowSampling && pcssParams.shadowTemporalAccumulation.value;
 
+            bool useRayTracedGlobalIllumination = UseRayTracedGlobalIllumination(cameraData.camera, config,
+                UniversalRenderingUtility.GetRenderingModeActual(cameraData.renderer) == RenderingMode.Deferred);
             var screenSpaceGlobalIlluminationParam =
                 VolumeManager.instance.stack.GetComponent<ScreenSpaceGlobalIllumination>();
             bool useScreenSpaceGlobalIllumination = screenSpaceGlobalIllumination
                                                     && config.EnableScreenSpaceGlobalIllumination
                                                     && !isPreviewOrReflectCamera
-                                                    && screenSpaceGlobalIlluminationParam.enable.value;
+                                                    && screenSpaceGlobalIlluminationParam.enable.value
+                                                    && !useRayTracedGlobalIllumination;
             rendererData.SampleScreenSpaceIndirectDiffuse = useScreenSpaceGlobalIllumination;
+            rendererData.SampleRayTracedIndirectDiffuse = useRayTracedGlobalIllumination;
 
             var screenSpaceReflectionParam = VolumeManager.instance.stack.GetComponent<ScreenSpaceReflection>();
             bool useScreenSpaceReflection = config.EnableScreenSpaceReflection
@@ -864,7 +885,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _prtRelightPass);
             SafeDispose(ref _setupPass);
             SafeDispose(ref _dlssNeuralRenderingBackend);
-            DisposePathTracing();
+            DisposeRayTracingPasses();
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             IllusionDebugPanels.Unregister(this);

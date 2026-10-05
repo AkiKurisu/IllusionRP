@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-06 |
+| Date | 2026-10-11 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP resources connect producers, material consumers and temporal rendering. [Rendering Pipeline](rendering-pipeline.md) owns frame order; feature specifications own the meaning of their outputs.
@@ -31,8 +31,8 @@ The renderer resource asset references the shaders, lookup textures and meshes r
 | Forward GBuffer and camera normals | Material prepass → ambient occlusion, SSR, SSGI and denoisers. Wet surfaces update the same surface description before those consumers. |
 | Opaque depth pyramid | Opaque camera depth → screen-space traces and depth history. Transparent proxy depth never becomes its source. |
 | Ambient occlusion | AO producer → opaque lighting. |
-| SSR lighting | Opaque SSR → opaque materials; transparent SSR replaces the published result before transparent materials. |
-| Indirect diffuse | SSGI → eligible material lighting. |
+| SSR lighting | Opaque SSR, then [ray traced global illumination](ray-traced-global-illumination.md#output-and-composition) specular merged into its remainder → opaque materials; transparent SSR replaces the published result before transparent materials. |
+| Indirect diffuse | SSGI, or [ray traced global illumination](ray-traced-global-illumination.md) in its place → eligible material lighting. |
 | Screen-space shadow visibility | Shadow production and filtering → opaque lighting. See [Per-Object Shadows](directional-per-object-shadows.md). |
 | Subsurface lighting | Split diffuse lighting and scattering → Skin composition. |
 | Color pyramid | Camera color after transparents → subsequent-frame reflection and indirect-light consumers. |
@@ -71,7 +71,7 @@ Reflection cameras use neutral exposure and own no exposure history. On a post-p
 
 ## History
 
-Color, exposure, SSR, SSGI, depth/normal and screen-space shadow histories are isolated per camera. Each consumer owns readiness, reprojection validity and invalidation on allocation, camera cuts, skipped work or incompatible configuration.
+Color, exposure, SSR, SSGI, ray traced global illumination, depth/normal and screen-space shadow histories are isolated per camera. Each consumer owns readiness, reprojection validity and invalidation on allocation, camera cuts, skipped work or incompatible configuration.
 
 History sizing follows the camera target; shrinking resets storage to the new size. Frame-local readiness is reset without pretending persistent contents are newly produced. First-frame and post-processing resets cannot reproject through an unrelated previous camera state. Sampling must not introduce read-write feedback within a frame.
 

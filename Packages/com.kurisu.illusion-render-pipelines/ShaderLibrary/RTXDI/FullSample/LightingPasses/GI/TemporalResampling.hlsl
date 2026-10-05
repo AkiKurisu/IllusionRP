@@ -17,10 +17,10 @@
 #define RTXDI_BOILING_FILTER_GROUP_SIZE RTXDI_SCREEN_SPACE_GROUP_SIZE
 #endif
 
-#include "../RtxdiApplicationBridge/RtxdiApplicationBridge.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIApplicationBridge.hlsl"
 
-#include <Rtxdi/GI/BoilingFilter.hlsli>
-#include <Rtxdi/GI/TemporalResampling.hlsli>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/BoilingFilter.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/TemporalResampling.hlsli"
 
 #if USE_RAY_QUERY
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
@@ -42,8 +42,8 @@ void RayGen()
     const uint2 reservoirPosition = RTXDI_PixelPosToReservoirPos(pixelPosition, g_Const.runtimeParams.activeCheckerboardField);
     RTXDI_GIReservoir reservoir = RTXDI_LoadGIReservoir(g_Const.restirGI.reservoirBufferParams, reservoirPosition, g_Const.restirGI.bufferIndices.secondarySurfaceReSTIRDIOutputBufferIndex);
 
-    float3 motionVector = t_MotionVectors[pixelPosition].xyz;
-    motionVector = convertMotionVectorToPixelSpace(g_Const.view, g_Const.prevView, pixelPosition, motionVector);
+    // @IllusionRP: the bridge supplies the screen motion, from the camera's motion vectors when it has them.
+    float3 motionVector = RayTracedGIScreenSpaceMotion(pixelPosition, primarySurface);
 
     if (RAB_IsSurfaceValid(primarySurface)) {
         RTXDI_GITemporalResamplingParameters tParams = g_Const.restirGI.temporalResamplingParams;

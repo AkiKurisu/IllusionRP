@@ -13,8 +13,8 @@
 #ifndef RTXDI_GI_SPATIAL_RESAMPLING_HLSLI
 #define RTXDI_GI_SPATIAL_RESAMPLING_HLSLI
 
-#include "Rtxdi/GI/Reservoir.hlsli"
-#include "Rtxdi/Utils/Checkerboard.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/Reservoir.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/Checkerboard.hlsli"
 
 // Enabled by default. Application code need to define those macros appropriately to optimize shaders.
 #ifndef RTXDI_GI_ALLOWED_BIAS_CORRECTION
@@ -189,6 +189,9 @@ RTXDI_GIReservoir RTXDI_GISpatialResampling(
             RTXDI_FinalizeGIResampling(curReservoir, normalizationNumerator, normalizationDenominator);
         }
     }
+
+    // @IllusionRP: keeps the pixel's history age for the next temporal pass, whichever sample was selected.
+    curReservoir.age = inputReservoir.age;
 
     return curReservoir;
 }

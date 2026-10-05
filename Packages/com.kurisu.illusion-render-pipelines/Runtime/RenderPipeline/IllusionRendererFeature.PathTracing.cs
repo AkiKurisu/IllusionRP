@@ -17,6 +17,8 @@ namespace Illusion.Rendering
 
         private PathTracingPass _pathTracingPass;
 
+        private RayTracedGlobalIlluminationPass _rayTracedGlobalIlluminationPass;
+
         private VolumeStack _pathTracingVolumeStack;
 
         private readonly Dictionary<Camera, int> _pathTracedCameras = new();
@@ -39,36 +41,57 @@ namespace Illusion.Rendering
 
         public bool IsPathTracingAvailable => pathTracing && _pathTracingPass != null;
 
+        /// <summary>
+        /// Whether ray traced global illumination can run on this device with its NRD denoisers.
+        /// </summary>
+        public bool IsRayTracedGlobalIlluminationAvailable => rayTracedGlobalIllumination && _rayTracedGlobalIlluminationPass is { IsDenoiserLoaded: true };
+
         internal bool IsPathTracingRayReconstructionAvailable => _pathTracingPass is { IsRayReconstructionAvailable: true };
 
-        private void CreatePathTracingPass()
+        private void CreateRayTracingPasses()
         {
-            DisposePathTracing();
+            DisposeRayTracingPasses();
             var resources = _renderPipelineResources;
-            if (!pathTracing || !PathTracingSharedScene.IsSupported || !PathTracingSharedScene.HasResources(resources)
-                || !resources.pathTracingRS || !resources.pathTracingAccumulationCS || !resources.pathTracingOutputShader
-                || !resources.pathTracingBuildRS || !resources.pathTracingFillRS || !resources.pathTracingRealtimeCS)
+            if (!(pathTracing || rayTracedGlobalIllumination) || !PathTracingSharedScene.IsSupported || !PathTracingSharedScene.HasResources(resources))
                 return;
             _rayTracingScene = new PathTracingSharedScene(resources);
+            RenderPipelineManager.beginContextRendering += ReleaseUnusedRayTracingResources;
+            if (rayTracedGlobalIllumination && RayTracedGlobalIlluminationPass.HasResources(resources))
+                _rayTracedGlobalIlluminationPass = new RayTracedGlobalIlluminationPass(resources, _rendererData, _rayTracingScene);
+            if (!pathTracing || !resources.pathTracingRS || !resources.pathTracingAccumulationCS || !resources.pathTracingOutputShader
+                || !resources.pathTracingBuildRS || !resources.pathTracingFillRS || !resources.pathTracingRealtimeCS)
+                return;
             _pathTracingPass = new PathTracingPass(resources, _rendererData, _rayTracingScene);
             RenderPipelineManager.beginContextRendering += RestoreStaleCameras;
             RenderPipelineManager.beginCameraRendering += SuppressRasterForPathTracing;
             RenderPipelineManager.endCameraRendering += RestoreRasterAfterPathTracing;
         }
 
-        private void DisposePathTracing()
+        private void DisposeRayTracingPasses()
         {
-            if (_pathTracingPass == null)
+            if (_rayTracingScene == null)
                 return;
-            RenderPipelineManager.beginContextRendering -= RestoreStaleCameras;
-            RenderPipelineManager.beginCameraRendering -= SuppressRasterForPathTracing;
-            RenderPipelineManager.endCameraRendering -= RestoreRasterAfterPathTracing;
-            RestoreSuppressedCameras();
-            _pathTracedCameras.Clear();
-            _pathTracingVolumeStack?.Dispose();
-            _pathTracingVolumeStack = null;
-            SafeDispose(ref _pathTracingPass);
+            RenderPipelineManager.beginContextRendering -= ReleaseUnusedRayTracingResources;
+            if (_pathTracingPass != null)
+            {
+                RenderPipelineManager.beginContextRendering -= RestoreStaleCameras;
+                RenderPipelineManager.beginCameraRendering -= SuppressRasterForPathTracing;
+                RenderPipelineManager.endCameraRendering -= RestoreRasterAfterPathTracing;
+                RestoreSuppressedCameras();
+                _pathTracedCameras.Clear();
+                _pathTracingVolumeStack?.Dispose();
+                _pathTracingVolumeStack = null;
+                SafeDispose(ref _pathTracingPass);
+            }
+            SafeDispose(ref _rayTracedGlobalIlluminationPass);
             SafeDispose(ref _rayTracingScene);
+        }
+
+        private void ReleaseUnusedRayTracingResources(ScriptableRenderContext context, List<Camera> cameras)
+        {
+            _pathTracingPass?.ReleaseUnused();
+            _rayTracedGlobalIlluminationPass?.ReleaseUnused();
+            _rayTracingScene.ReleaseUnused();
         }
 
         private bool TryEnqueuePathTracing(ScriptableRenderer renderer, ref RenderingData renderingData,
@@ -122,6 +145,14 @@ namespace Illusion.Rendering
                 return false;
             }
             return true;
+        }
+
+        private bool UseRayTracedGlobalIllumination(Camera camera, IllusionRuntimeRenderingConfig config, bool isDeferred)
+        {
+            if (_rayTracedGlobalIlluminationPass == null || isDeferred || !config.EnableRayTracedGlobalIllumination || !IsPathTracingCamera(camera))
+                return false;
+            var volume = VolumeManager.instance.stack.GetComponent<RayTracedGlobalIllumination>();
+            return volume != null && volume.enable.value && _rayTracedGlobalIlluminationPass.IsDenoiserAvailable(volume.denoiser.value);
         }
 
         private static bool IsPathTracingCamera(Camera camera)
@@ -184,8 +215,6 @@ namespace Illusion.Rendering
             }
             foreach (var camera in _staleCameras)
                 _pathTracedCameras.Remove(camera);
-            _pathTracingPass.ReleaseUnused();
-            _rayTracingScene.ReleaseUnused();
         }
 
         private void RestoreSuppressedCameras()

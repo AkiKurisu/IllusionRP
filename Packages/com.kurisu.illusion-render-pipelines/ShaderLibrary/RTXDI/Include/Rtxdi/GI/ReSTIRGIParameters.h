@@ -13,8 +13,8 @@
 #ifndef RTXDI_RESTIRGI_PARAMETERS_H
 #define RTXDI_RESTIRGI_PARAMETERS_H
 
-#include "Rtxdi/RtxdiParameters.h"
-#include "Rtxdi/RtxdiTypes.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/RtxdiParameters.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/RtxdiTypes.h"
 
 struct RTXDI_PackedGIReservoir
 {

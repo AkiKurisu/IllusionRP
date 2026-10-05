@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-11 |
 | Related Specs | [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 IllusionRP extends URP's Universal Renderer through a renderer feature rather than owning a separate raster pipeline. Forward and Forward+ are the supported material paths. URP retains its standard stages; IllusionRP inserts feature work and publishes the state its materials consume.
@@ -23,7 +23,7 @@ Deferred cameras skip Forward GBuffer, wet surfaces and area lights. Existing De
 
 Work requires serialized capability, runtime permission, active Volume where applicable, eligible camera and supported rendering path/device. Post effects additionally require pipeline and camera post-processing. Compute preference never overrides missing compute support.
 
-Turning off a feature skips its work while preserving neutral publication, state reset and history invalidation. Runtime and Volume controls cannot enable a capability removed from the build. Feature-specific eligibility belongs to its specification; [Transparency](transparency.md), [PRT](precomputed-radiance-transfer.md) and [Wet Surfaces](wet-surface-decals.md) define their producer chains.
+Turning off a feature skips its work while preserving neutral publication, state reset and history invalidation. Runtime and Volume controls cannot enable a capability removed from the build. Feature-specific eligibility belongs to its specification; [Transparency](transparency.md), [PRT](precomputed-radiance-transfer.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) and [Wet Surfaces](wet-surface-decals.md) define their producer chains.
 
 ## Global state
 
@@ -39,7 +39,7 @@ Global names form a shader interface but neither own resources nor establish gra
 |---|---|
 | Camera setup | Camera state, exposure inputs, global capabilities, lookup publication and wet reset. |
 | Before/at depth prepass | Tonemapping setup, then Forward GBuffer for supported paths. |
-| After prepass | Preserve opaque depth; depth pyramid; wet surface updates; transparent post-depth; AO; opaque SSR; per-object shadows, area lights and contact shadows; contact denoise and PRT; SSGI. |
+| After prepass | Preserve opaque depth; depth pyramid; wet surface updates; transparent post-depth; AO; opaque SSR; per-object shadows, area lights and contact shadows; contact denoise and PRT; SSGI, or ray traced global illumination in its place. |
 | Before opaques | SSR publication, screen-space shadow production/filtering and split subsurface lighting. |
 | After opaques, before skybox | Restore main-shadow state; pre-refraction copy; water data; transparent SSR. |
 | URP transparents | Conventional transparent color. |

@@ -13,7 +13,7 @@
 #ifndef RTXDI_BRDF_RAY_SAMPLE_HLSLI
 #define RTXDI_BRDF_RAY_SAMPLE_HLSLI
 
-#include "rtxdi/Utils/Math.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/Math.hlsli"
 
 #define RTXDI_BrdfRaySampleProperties_ContinuousDelta_Bit 0
 #define RTXDI_BrdfRaySampleProperties_DiffuseSpecular_Bit 1

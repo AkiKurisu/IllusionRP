@@ -12,16 +12,15 @@
 
 #pragma pack_matrix(row_major)
 
-#include "../RtxdiApplicationBridge/RtxdiApplicationBridge.hlsli"
-#include "../../ShaderDebug/ShaderDebugPrint/ShaderDebugPrint.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIApplicationBridge.hlsl"
 #include "../ShadingHelpers.hlsli"
 
-#include <Rtxdi/GI/Reservoir.hlsli>
-#include <Rtxdi/Utils/ReservoirAddressing.hlsli>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/Reservoir.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/ReservoirAddressing.hlsli"
 
 #ifdef WITH_NRD
 #define NRD_HEADER_ONLY
-#include <NRD.hlsli>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/NRD/NRD.hlsli"
 #endif
 
 #include "../ShadingHelpers.hlsli"
@@ -67,21 +66,22 @@ void RayGen()
 #endif
     uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(GlobalIndex, g_Const.runtimeParams.activeCheckerboardField);
 
-    if (any(pixelPosition > int2(g_Const.view.viewportSize)))
+    if (any(pixelPosition >= int2(g_Const.view.viewportSize)))  // @IllusionRP: the last row and column are outside the viewport.
         return;
-
-    ShaderDebug::SetDebugShaderPrintCurrentThreadCursorXY(pixelPosition);
 
     const RAB_Surface primarySurface = RAB_GetGBufferSurface(pixelPosition, false);
 
     const uint2 reservoirPosition = RTXDI_PixelPosToReservoirPos(pixelPosition, g_Const.runtimeParams.activeCheckerboardField);
-    const RTXDI_GIReservoir reservoir = RTXDI_LoadGIReservoir(g_Const.restirGI.reservoirBufferParams, reservoirPosition, g_Const.restirGI.bufferIndices.secondarySurfaceReSTIRDIOutputBufferIndex);
+    // @IllusionRP: shades the output of the last enabled resampling stage, as the RTXDI context assigns it, rather than the initial samples.
+    const RTXDI_GIReservoir reservoir = RTXDI_LoadGIReservoir(g_Const.restirGI.reservoirBufferParams, reservoirPosition, g_Const.restirGI.bufferIndices.finalShadingInputBufferIndex);
 
     float3 diffuse = 0;
     float3 specular = 0;
+    float hitDistance = 0;  // @IllusionRP
 
     if (RTXDI_IsValidGIReservoir(reservoir))
     {
+        hitDistance = length(reservoir.position - primarySurface.worldPos);  // @IllusionRP
         float3 radiance = reservoir.radiance * reservoir.weightSum;
 
         float3 visibility = 1.0;
@@ -121,14 +121,10 @@ void RayGen()
             diffuse = brdf.demodulatedDiffuse * radiance;
             specular = brdf.specular * radiance;
         }
-        specular = DemodulateSpecular(primarySurface.material.specularF0, specular);
+        specular = RayTracedGIDemodulateSpecular(primarySurface, specular);  // @IllusionRP: demodulated by the lobe's FGD
     }
 
+    // @IllusionRP: indirect lighting is the only signal, so this is the first pass, and the sample distance is its hit distance.
     StoreShadingOutput(GlobalIndex, pixelPosition,
-        primarySurface.viewDepth, primarySurface.material.roughness, diffuse, specular, 0, false, true);
-
-    if (g_Const.debug.outputDebugIndirectLighting)
-    {
-        u_IndirectLightingRaw[pixelPosition] = float4(diffuse + specular, 1.0);
-    }
+        primarySurface.viewDepth, primarySurface.material.roughness, diffuse, specular, hitDistance, true, true);
 }

@@ -1,0 +1,31 @@
+{
+  "name": "Illusion.RenderPipelines.RayTracedGlobalIllumination.UnityRHI",
+  "rootNamespace": "Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI",
+  "references": [
+    "GUID:bfc869a05342f004ba5c103275ee3e63",
+    "GUID:f024b5ee6a3a27e4fb89eb802254c52d",
+    "GUID:d8b63aba1907145bea998dd612889d6b",
+    "GUID:df380645f10b7bc4b97d4f5eb6303d95",
+    "GUID:15fc0a57446b3144c949da3e2b9737a9"
+  ],
+  "includePlatforms": [
+    "Editor",
+    "WindowsStandalone64"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "ILLUSION_RAY_TRACED_GI_DENOISER"
+  ],
+  "versionDefines": [
+    {
+      "name": "top.kuanmi.unityrhi",
+      "expression": "[1.0.0,2.0.0)",
+      "define": "ILLUSION_RAY_TRACED_GI_DENOISER"
+    }
+  ],
+  "noEngineReferences": false
+}

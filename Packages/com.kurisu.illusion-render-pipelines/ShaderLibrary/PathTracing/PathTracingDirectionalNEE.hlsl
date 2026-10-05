@@ -34,8 +34,8 @@ void SampleDirectionalNEE(inout NEEResult result, const PathState path, const Sh
         pdf = selection / rcpPdf;
     }
 
-    float scatterPdf = bsdf.evalPdf(shadingData, direction, kUseBSDFSampling);
-    float mis = PathTracingIsDeltaDirectional(light) ? 1.0 : EvalMIS(RTXPT_NEE_MIS_HEURISTIC, fullSamples, pdf, 1, scatterPdf);
+    float mis = PathTracingIsDeltaDirectional(light) || bsdf.lightSampledLobesOnly() ? 1.0
+        : EvalMIS(RTXPT_NEE_MIS_HEURISTIC, fullSamples, pdf, 1, bsdf.evalPdf(shadingData, direction, kUseBSDFSampling));
 
     LightSample sample = (LightSample)0;
     sample.Direction = direction;

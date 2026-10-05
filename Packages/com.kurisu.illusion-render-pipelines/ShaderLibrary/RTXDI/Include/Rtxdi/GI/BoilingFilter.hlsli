@@ -13,8 +13,8 @@
 #ifndef RTXDI_GI_BOILING_FILTER_HLSLI
 #define RTXDI_GI_BOILING_FILTER_HLSLI
 
-#include "Rtxdi/GI/Reservoir.hlsli"
-#include "Rtxdi/Utils/BoilingFilter.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/Reservoir.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/BoilingFilter.hlsli"
 
 #ifdef RTXDI_ENABLE_BOILING_FILTER
 

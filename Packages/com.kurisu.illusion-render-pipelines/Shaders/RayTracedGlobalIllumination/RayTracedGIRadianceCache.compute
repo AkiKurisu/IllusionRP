@@ -1,0 +1,37 @@
+#pragma kernel Resolve
+#pragma kernel Clear
+#pragma only_renderers d3d11
+#pragma require Native16Bit int64BufferAtomics
+
+// Combines each frame's cache samples with the history of every entry and evicts stale entries, as SHaRC's resolve pass does.
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIRadianceCache.hlsl"
+
+float4 _RayTracedGICacheCameraPositionPrev;
+uint _RayTracedGICacheFrameIndex;
+
+[numthreads(256, 1, 1)]
+void Resolve(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _RayTracedGICacheCapacity)
+        return;
+
+    SharcResolveParameters resolveParameters;
+    resolveParameters.cameraPositionPrev = _RayTracedGICacheCameraPositionPrev.xyz;
+    resolveParameters.accumulationFrameNum = kRayTracedGICacheAccumulationFrameNum;
+    resolveParameters.responsiveFrameNum = kRayTracedGICacheAccumulationFrameNum;
+    resolveParameters.staleFrameNumMax = kRayTracedGICacheStaleFrameNumMax;
+    resolveParameters.frameIndex = _RayTracedGICacheFrameIndex;
+    SharcResolveEntry(id.x, RayTracedGICacheParameters(), resolveParameters);
+}
+
+[numthreads(256, 1, 1)]
+void Clear(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _RayTracedGICacheCapacity)
+        return;
+
+    u_RayTracedGICacheHashEntries[id.x] = HASH_GRID_INVALID_HASH_KEY;
+    u_RayTracedGICacheAccumulation[id.x] = SharcZeroAccumulationData();
+    u_RayTracedGICacheResolved[id.x] = SharcZeroPackedData();
+}

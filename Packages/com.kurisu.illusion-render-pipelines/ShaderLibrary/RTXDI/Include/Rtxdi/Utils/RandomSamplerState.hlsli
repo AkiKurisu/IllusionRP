@@ -13,8 +13,8 @@
 #ifndef RTXDI_RANDOM_SAMPLER_STATE_HLSLI
 #define RTXDI_RANDOM_SAMPLER_STATE_HLSLI
 
-#include <Rtxdi/Utils/Math.hlsli>
-#include <Rtxdi/Utils/RandomSamplerPerPassSeeds.hlsli>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/Math.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/RandomSamplerPerPassSeeds.hlsli"
 
 struct RTXDI_RandomSamplerState
 {

@@ -13,9 +13,9 @@
 #ifndef RTXDI_GI_SPATIOTEMPORAL_RESAMPLING_HLSLI
 #define RTXDI_GI_SPATIOTEMPORAL_RESAMPLING_HLSLI
 
-#include "Rtxdi/GI/Reservoir.hlsli"
-#include "Rtxdi/GI/SpatialResampling.hlsli"
-#include "Rtxdi/GI/TemporalResampling.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/Reservoir.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/SpatialResampling.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/TemporalResampling.hlsli"
 
 RTXDI_GIReservoir RTXDI_GISpatioTemporalResampling(
     const uint2 pixelPosition,

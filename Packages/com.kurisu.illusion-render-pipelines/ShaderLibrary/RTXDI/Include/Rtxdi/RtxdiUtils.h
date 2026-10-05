@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 
-#include <Rtxdi/RtxdiParameters.h>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/RtxdiParameters.h"
 
 namespace rtxdi
 {

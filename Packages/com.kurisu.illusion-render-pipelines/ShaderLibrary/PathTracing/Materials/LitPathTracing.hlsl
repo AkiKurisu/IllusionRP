@@ -183,7 +183,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
 
             if (mtlData.bsdfWeight[1] > BSDF_WEIGHT_EPSILON)
             {
-                BRDF::EvaluateGGX(mtlData, GetSpecularNormal(mtlData), CLEAR_COAT_ROUGHNESS, CLEAR_COAT_F0, sampleDir, value, pdf, fresnelClearCoat);
+                BRDF::EvaluateGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.coatRoughness, CLEAR_COAT_F0, sampleDir, value, pdf, fresnelClearCoat);  // @IllusionRP
                 fresnelClearCoat *= mtlData.bsdfData.coatMask;
                 result.specValue += value * mtlData.bsdfData.coatMask;
                 result.specPdf += mtlData.bsdfWeight[1] * pdf;
@@ -200,7 +200,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
         }
         else if (inputSample.z < mtlData.bsdfWeight[0] + mtlData.bsdfWeight[1]) // Clear coat BRDF
         {
-            if (!BRDF::SampleGGX(mtlData, GetSpecularNormal(mtlData), CLEAR_COAT_ROUGHNESS, CLEAR_COAT_F0, inputSample, sampleDir, result.specValue, result.specPdf, fresnelClearCoat))
+            if (!BRDF::SampleGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.coatRoughness, CLEAR_COAT_F0, inputSample, sampleDir, result.specValue, result.specPdf, fresnelClearCoat))  // @IllusionRP
                 return false;
 
             fresnelClearCoat *= mtlData.bsdfData.coatMask;
@@ -237,7 +237,7 @@ bool SampleMaterial(MaterialData mtlData, float3 inputSample, out float3 sampleD
 
             if (mtlData.bsdfWeight[1] > BSDF_WEIGHT_EPSILON)
             {
-                BRDF::EvaluateGGX(mtlData, GetSpecularNormal(mtlData), CLEAR_COAT_ROUGHNESS, CLEAR_COAT_F0, sampleDir, value, pdf, fresnelClearCoat);
+                BRDF::EvaluateGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.coatRoughness, CLEAR_COAT_F0, sampleDir, value, pdf, fresnelClearCoat);  // @IllusionRP
                 fresnelClearCoat *= mtlData.bsdfData.coatMask;
                 result.specValue = result.specValue * (1.0 - fresnelClearCoat) + value * mtlData.bsdfData.coatMask;
                 result.specPdf += mtlData.bsdfWeight[1] * pdf;
@@ -334,7 +334,7 @@ void EvaluateMaterial(MaterialData mtlData, float3 sampleDir, out MaterialResult
 
         if (mtlData.bsdfWeight[1] > BSDF_WEIGHT_EPSILON)
         {
-            BRDF::EvaluateGGX(mtlData, GetSpecularNormal(mtlData), CLEAR_COAT_ROUGHNESS, CLEAR_COAT_F0, sampleDir, result.specValue, result.specPdf, fresnelClearCoat);
+            BRDF::EvaluateGGX(mtlData, GetSpecularNormal(mtlData), mtlData.bsdfData.coatRoughness, CLEAR_COAT_F0, sampleDir, result.specValue, result.specPdf, fresnelClearCoat);  // @IllusionRP
             fresnelClearCoat *= mtlData.bsdfData.coatMask;
             result.specValue *= mtlData.bsdfData.coatMask;
             result.specPdf *= mtlData.bsdfWeight[1];

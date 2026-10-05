@@ -13,7 +13,7 @@
 #ifndef RTXDI_REGIR_PARAMETERS_H
 #define RTXDI_REGIR_PARAMETERS_H
 
-#include "Rtxdi/RtxdiTypes.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/RtxdiTypes.h"
 
 #define RTXDI_ONION_MAX_LAYER_GROUPS 8
 #define RTXDI_ONION_MAX_RINGS 52

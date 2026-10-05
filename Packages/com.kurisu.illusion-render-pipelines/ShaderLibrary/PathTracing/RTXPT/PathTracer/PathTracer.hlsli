@@ -15,6 +15,11 @@
 
 #include "Scene/ShadingData.hlsli"
 
+#if defined(PT_SEPARATE_SURFACE_EMISSION)
+// @IllusionRP: the emission a hit adds to the path, kept apart from its light sampling for the radiance cache update.
+static float3 g_PathSurfaceEmission;
+#endif
+
 // Global compile-time path tracer settings for debugging, performance or quality tweaks; could be in a separate file or Config.hlsli but it's convenient to have them in here where they're used.
 namespace PathTracer
 {
@@ -717,7 +722,11 @@ namespace PathTracer
 
                 float3 radiance = path.GetThp() * surfaceEmission;
                 float specRadianceAvg = path.hasFlag(PathFlags::stablePlaneBaseScatterDiff)?(0.0):(Average(radiance));
+#if defined(PT_SEPARATE_SURFACE_EMISSION)
+                g_PathSurfaceEmission += radiance;  // @IllusionRP
+#else
                 AccumulatePathRadiance( workingContext, path, radiance, specRadianceAvg, path.hasFlag(PathFlags::stablePlaneOnBranch), ShouldCollectGISecondaryRadiance(path) );
+#endif
 
                 //if (path.getVertexIndex()==2)
                 //workingContext.Debug.DrawDebugViz( path.GetPixelPos(), saturate(float4( 0, path.sceneLengthFromDenoisingLayer*1, 0, 1 )) );

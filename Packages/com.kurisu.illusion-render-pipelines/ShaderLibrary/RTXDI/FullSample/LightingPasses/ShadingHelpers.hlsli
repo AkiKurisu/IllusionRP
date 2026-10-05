@@ -13,10 +13,10 @@
 #ifndef SHADING_HELPERS_HLSLI
 #define SHADING_HELPERS_HLSLI
 
-#include "Rtxdi/DI/Reservoir.hlsli"
+// @IllusionRP: only the GI passes are imported, without the DI reservoir.
 
 #ifdef WITH_NRD
-#include <NRD.hlsli>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/NRD/NRD.hlsli"
 #endif
 
 struct SplitBrdf

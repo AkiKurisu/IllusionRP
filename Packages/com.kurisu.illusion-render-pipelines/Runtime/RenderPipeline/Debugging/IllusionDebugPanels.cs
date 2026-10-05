@@ -96,6 +96,8 @@ namespace Illusion.Rendering
                     c => c.EnableScreenSpaceRefraction, (c, v) => c.EnableScreenSpaceRefraction = v),
                 Toggle("Screen Space Global Illumination", "Screen space global illumination.",
                     c => c.EnableScreenSpaceGlobalIllumination, (c, v) => c.EnableScreenSpaceGlobalIllumination = v),
+                Toggle("Ray Traced Global Illumination", "Ray traced global illumination for raster cameras.",
+                    c => c.EnableRayTracedGlobalIllumination, (c, v) => c.EnableRayTracedGlobalIllumination = v),
                 Toggle("PRT Global Illumination", "Precomputed radiance transfer global illumination.",
                     c => c.EnablePrecomputedRadianceTransferGlobalIllumination, (c, v) => c.EnablePrecomputedRadianceTransferGlobalIllumination = v),
                 Toggle("Screen Space Ambient Occlusion", "Screen space ambient occlusion.",

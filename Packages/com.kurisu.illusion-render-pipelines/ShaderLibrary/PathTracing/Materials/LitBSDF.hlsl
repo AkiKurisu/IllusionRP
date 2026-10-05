@@ -21,6 +21,17 @@ struct HDRPBSDF
     bool thin;
     bool valid;
 
+    // @IllusionRP: with PT_NEE_ONLY, as on the RTXDI sample's secondary surfaces, light sampling alone lights every surface,
+    // which scatters no ray.
+    bool lightSampledLobesOnly()
+    {
+#if defined(PT_NEE_ONLY)
+        return true;
+#else
+        return false;
+#endif
+    }
+
     float getRoughness()
     {
         if (family == PT_FAMILY_HAIR) return hair.bsdfData.perceptualRoughness;
@@ -72,7 +83,7 @@ struct HDRPBSDF
     bool sample(const ShadingData shadingData, const float4 inputSample, out BSDFSample result, bool useImportanceSampling)
     {
         result = (BSDFSample)0;
-        if (!valid) return false;
+        if (!valid || lightSampledLobesOnly()) return false;
         if (family == PT_FAMILY_HAIR)
         {
             Illusion::Hair::MaterialResult value;

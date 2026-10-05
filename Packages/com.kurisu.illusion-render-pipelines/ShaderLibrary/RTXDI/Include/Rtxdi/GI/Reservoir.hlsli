@@ -13,10 +13,10 @@
 #ifndef RTXDI_GI_RESERVOIR_HLSLI
 #define RTXDI_GI_RESERVOIR_HLSLI
 
-#include "Rtxdi/GI/ReSTIRGIParameters.h"
-#include "Rtxdi/Utils/Color.hlsli"
-#include "Rtxdi/Utils/ReservoirAddressing.hlsli"
-#include "Rtxdi/Utils/TypePacking.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/ReSTIRGIParameters.h"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/Color.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/ReservoirAddressing.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/TypePacking.hlsli"
 
 // Define this macro to 0 if your shader needs read-only access to the reservoirs, 
 // to avoid compile errors in the RTXDI_StoreDIReservoir function

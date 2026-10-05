@@ -13,9 +13,9 @@
 #ifndef RTXDI_GI_TEMPORAL_RESAMPLING_HLSLI
 #define RTXDI_GI_TEMPORAL_RESAMPLING_HLSLI
 
-#include "Rtxdi/GI/Reservoir.hlsli"
-#include "Rtxdi/Utils/Checkerboard.hlsli"
-#include "Rtxdi/Utils/ReservoirAddressing.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/Reservoir.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/Checkerboard.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/Utils/ReservoirAddressing.hlsli"
 
 // Enabled by default. Application code need to define those macros appropriately to optimize shaders.
 #ifndef RTXDI_GI_ALLOWED_BIAS_CORRECTION
@@ -178,6 +178,10 @@ RTXDI_GIReservoir RTXDI_GITemporalResampling(
             selectedTargetPdf = targetPdf;
         }
     }
+
+    // @IllusionRP: the age counts the frames of the pixel's history rather than of its selected sample; dropping histories
+    // by sample age forgets runs of zero-weight samples and biases dark receivers bright.
+    curReservoir.age = foundTemporalReservoir ? temporalReservoir.age : 0;
 
 #if RTXDI_GI_ALLOWED_BIAS_CORRECTION >= RTXDI_BIAS_CORRECTION_BASIC
     if (tparams.biasCorrectionMode >= RTXDI_BIAS_CORRECTION_BASIC)

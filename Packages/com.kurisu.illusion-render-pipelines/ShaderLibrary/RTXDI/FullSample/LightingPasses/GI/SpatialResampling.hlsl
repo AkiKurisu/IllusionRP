@@ -12,9 +12,9 @@
 
 #pragma pack_matrix(row_major)
 
-#include "../RtxdiApplicationBridge/RtxdiApplicationBridge.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIApplicationBridge.hlsl"
 
-#include <Rtxdi/GI/SpatialResampling.hlsli>
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/Include/Rtxdi/GI/SpatialResampling.hlsli"
 
 #if USE_RAY_QUERY
 [numthreads(RTXDI_SCREEN_SPACE_GROUP_SIZE, RTXDI_SCREEN_SPACE_GROUP_SIZE, 1)]
@@ -29,7 +29,7 @@ void RayGen()
 #endif
     uint2 pixelPosition = RTXDI_ReservoirPosToPixelPos(GlobalIndex, g_Const.runtimeParams.activeCheckerboardField);
 
-    if (any(pixelPosition > int2(g_Const.view.viewportSize)))
+    if (any(pixelPosition >= int2(g_Const.view.viewportSize)))  // @IllusionRP: the last row and column are outside the viewport.
         return;
 
     RTXDI_RandomSamplerState rng = RTXDI_InitRandomSampler(GlobalIndex, g_Const.runtimeParams.frameIndex, RTXDI_GI_SPATIAL_RESAMPLING_RANDOM_SEED);
