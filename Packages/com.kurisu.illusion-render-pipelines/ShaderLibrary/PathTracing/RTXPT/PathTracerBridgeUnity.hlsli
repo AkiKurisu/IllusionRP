@@ -84,7 +84,7 @@ uint IllusionEmissiveTriangleLightIndex(uint instanceID, uint triangleIndex)
 }
 
 PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, const float3 rayOrigin, const float3 rayDir,
-    const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPos, DebugContext debug )
+    const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPos, DebugContext debug, const bool emissionOnly )
 {
     const bool frontFacing = PathTracingHasSurfaceFlag(payload, PT_SURFACE_FRONT_FACING);
     const float3 faceN = PathTracingUnpackNormal(payload.normalFace);
@@ -224,6 +224,11 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
             ptShadingData.emission = (lpfloat3)diffuseOpacity.rgb;
             neeTriangleLightIndex = RTXPT_INVALID_LIGHT_INDEX;
         }
+        bsdf.valid = false;
+    }
+    else
+    if (emissionOnly)
+    {
         bsdf.valid = false;
     }
     else

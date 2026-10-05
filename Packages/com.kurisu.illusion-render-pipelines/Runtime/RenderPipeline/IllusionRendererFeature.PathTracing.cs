@@ -13,6 +13,8 @@ namespace Illusion.Rendering
         [SerializeField, Tooltip("Enable path tracing when its Volume is active and the device supports ray tracing.")]
         public bool pathTracing = true;
 
+        private PathTracingSharedScene _rayTracingScene;
+
         private PathTracingPass _pathTracingPass;
 
         private VolumeStack _pathTracingVolumeStack;
@@ -43,12 +45,12 @@ namespace Illusion.Rendering
         {
             DisposePathTracing();
             var resources = _renderPipelineResources;
-            if (!pathTracing || !PathTracingPass.IsSupported
+            if (!pathTracing || !PathTracingSharedScene.IsSupported || !PathTracingSharedScene.HasResources(resources)
                 || !resources.pathTracingRS || !resources.pathTracingAccumulationCS || !resources.pathTracingOutputShader
-                || !resources.pathTracingLightsBakerCS || !resources.pathTracingEnvironmentCS || !resources.pathTracingEnvironmentLightingShader || !resources.pathTracingEmissiveCS
-                || !resources.pathTracingRectangleLightShader || !resources.pathTracingBuildRS || !resources.pathTracingFillRS || !resources.pathTracingRealtimeCS || !resources.pathTracingMotionCS)
+                || !resources.pathTracingBuildRS || !resources.pathTracingFillRS || !resources.pathTracingRealtimeCS)
                 return;
-            _pathTracingPass = new PathTracingPass(resources, _rendererData);
+            _rayTracingScene = new PathTracingSharedScene(resources);
+            _pathTracingPass = new PathTracingPass(resources, _rendererData, _rayTracingScene);
             RenderPipelineManager.beginContextRendering += RestoreStaleCameras;
             RenderPipelineManager.beginCameraRendering += SuppressRasterForPathTracing;
             RenderPipelineManager.endCameraRendering += RestoreRasterAfterPathTracing;
@@ -66,6 +68,7 @@ namespace Illusion.Rendering
             _pathTracingVolumeStack?.Dispose();
             _pathTracingVolumeStack = null;
             SafeDispose(ref _pathTracingPass);
+            SafeDispose(ref _rayTracingScene);
         }
 
         private bool TryEnqueuePathTracing(ScriptableRenderer renderer, ref RenderingData renderingData,
@@ -182,6 +185,7 @@ namespace Illusion.Rendering
             foreach (var camera in _staleCameras)
                 _pathTracedCameras.Remove(camera);
             _pathTracingPass.ReleaseUnused();
+            _rayTracingScene.ReleaseUnused();
         }
 
         private void RestoreSuppressedCameras()

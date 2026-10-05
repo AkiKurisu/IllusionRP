@@ -39,7 +39,6 @@ namespace Illusion.Rendering.PathTracing
         private readonly List<Material> _materials = new();
         private readonly MaterialPropertyBlock _rendererBlock = new();
         private readonly MaterialPropertyBlock _materialBlock = new();
-        private readonly HashSet<int> _reportedContracts = new();
         private readonly List<GraphicsBuffer> _meshBuffers = new();
         private readonly GraphicsBuffer _emptyRaw = new(GraphicsBuffer.Target.Raw, 4, sizeof(uint));
         private List<Batch> _batches = new();
@@ -128,16 +127,7 @@ namespace Illusion.Rendering.PathTracing
             st = new Vector4(1, 1, 0, 0);
             string contract = material.GetTag("PathTracingEmission", false, string.Empty);
             if (contract != "PBR" && contract != "Constant")
-            {
-                if (material.HasProperty(ShaderIDs.EmissionColor))
-                {
-                    Vector4 value = block.HasProperty(ShaderIDs.EmissionColor)
-                        ? block.GetVector(ShaderIDs.EmissionColor) : material.GetVector(ShaderIDs.EmissionColor);
-                    if ((value.x != 0 || value.y != 0 || value.z != 0) && _reportedContracts.Add(material.shader.GetInstanceID()))
-                        Debug.LogWarning($"[PathTracing] Shader '{material.shader.name}' has a nonzero _EmissionColor but no reference emission contract; it is not included in triangle light sampling.", material);
-                }
                 return false;
-            }
             if (contract == "PBR" && !material.IsKeywordEnabled("_EMISSION"))
                 return false;
             if (!material.HasProperty(ShaderIDs.EmissionColor))

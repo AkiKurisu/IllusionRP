@@ -10,7 +10,7 @@ namespace Illusion.Rendering
         {
             yield return Section("Status",
                 Value("Ray Tracing", "Path tracing requires DXR ray tracing shaders.",
-                    () => PathTracingPass.IsSupported ? "Supported" : "Unsupported"),
+                    () => PathTracingSharedScene.IsSupported ? "Supported" : "Unsupported"),
                 Value("Renderer Feature", "Path tracing capability of the Illusion renderer feature.", FeatureStatus),
                 Value("Ray Reconstruction", "Realtime mode reconstructs frames with DLSS Ray Reconstruction.",
                     () => AnyFeature(feature => feature.IsPathTracingRayReconstructionAvailable) ? "Available" : "Unavailable"));

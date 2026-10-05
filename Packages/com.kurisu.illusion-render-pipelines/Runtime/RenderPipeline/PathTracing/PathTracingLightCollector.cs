@@ -14,7 +14,6 @@ namespace Illusion.Rendering.PathTracing
         public const int MaxDirectionalLights = 16;
         private readonly List<Light> _sceneLights = new();
         private readonly List<Light> _rectangles = new();
-        private readonly HashSet<int> _reportedUnsupported = new();
         private readonly Dictionary<int, int> _targetIndices = new();
         private readonly Comparison<Light> _byInstanceId = (a, b) => a.GetInstanceID().CompareTo(b.GetInstanceID());
         public readonly List<PolymorphicLightInfo> Lights = new();
@@ -51,7 +50,6 @@ namespace Illusion.Rendering.PathTracing
             {
                 if (!light.isActiveAndEnabled || light.intensity <= 0)
                     continue;
-                ReportUnsupported(light);
                 uint target = (uint)Targets.Count;
                 switch (light.type)
                 {
@@ -118,16 +116,6 @@ namespace Illusion.Rendering.PathTracing
             }
             _targetIndices.Add(light.GetInstanceID(), Targets.Count);
             Targets.Add(target);
-        }
-
-        private void ReportUnsupported(Light light)
-        {
-            bool pointOrSpot = light.type == LightType.Point || light.type == LightType.Spot;
-            bool supported = pointOrSpot || light.type == LightType.Directional || light.type == LightType.Rectangle;
-            if (!supported) return;
-            bool cookie = light.cookie || (light.TryGetComponent(out IllusionAdditionalLightData data) && data.areaLightCookie);
-            if ((pointOrSpot || cookie) && _reportedUnsupported.Add(light.GetInstanceID()))
-                Debug.LogWarning($"[PathTracing] Light '{light.name}' ignores Unity range attenuation and cookies in path tracing.", light);
         }
 
         private static PolymorphicLightInfo ConvertPunctual(Light light, out PolymorphicLightInfoEx shaping)

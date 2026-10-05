@@ -549,7 +549,9 @@ namespace PathTracer
         const bool debugPath = false;
 #endif
 
-        SurfaceData surfaceData = Bridge::loadSurface( payload, rayOrigin, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug);  // @IllusionRP
+        // @IllusionRP: a reference vertex that ends the path only collects emission, so it skips the material evaluation.
+        const bool emissionOnly = PATH_TRACER_MODE==PATH_TRACER_MODE_REFERENCE && path.isTerminatingAtNextBounce();
+        SurfaceData surfaceData = Bridge::loadSurface( payload, rayOrigin, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug, emissionOnly);  // @IllusionRP
         // @IllusionRP: emissive triangles of a targeted light only light the receivers it targets.
         if (surfaceData.neeTriangleLightIndex != RTXPT_INVALID_LIGHT_INDEX
             && !PathTracingLightAffects(t_LightsEx[surfaceData.neeTriangleLightIndex].TargetIndex, path.receiverInstanceID))
