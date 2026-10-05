@@ -1,8 +1,10 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.Profiling;
 using UnityEditor;
 using UnityEngine;
 
@@ -10,276 +12,156 @@ namespace Illusion.Rendering.PRTGI
 {
     public partial class PRTProbeVolume
     {
-        // Cache for ray-traced virtual offset positions
+        [SerializeField, Min(16)] internal int bakeSampleCount = 512;
+        [SerializeField] internal uint bakeSeed;
         private readonly Dictionary<Vector3, Vector3> _cachedVirtualOffsetPositions = new();
-        
-        private float _cachedGeometryBias;
+        private static readonly ProfilerMarker PlacementMarker = new("PRT Bake Probe Placement");
+        private static readonly ProfilerMarker TransferMarker = new("PRT Bake Direction Transfer");
 
-        private float _cachedRayOriginBias;
-        
-        /// <summary>
-        /// Precompute surfel and bake into <see cref="PRTProbeVolumeAsset"/> using PRTBaker
-        /// </summary>
-        /// <param name="prtBaker">PRTBaker instance to use for baking</param>
-        /// <param name="cancellationToken"></param>
-        internal async Task BakeDataAsync(IPRTBaker prtBaker, CancellationToken cancellationToken = default)
+        internal async Task BakeDataAsync(IPRTBaker baker, CancellationToken token = default)
         {
-            if (!Probes.Any())
+            PRTProbeGrid grid = GetBakeGrid();
+            Hash128 settings = GetBakeSettingsSignature();
+            Hash128 authoringInputs = GetBakeAuthoringInputsSignature();
+            var placement = await BakePlacementAsync(baker, token);
+            Vector4[] directions = PRTBakeSampling.GenerateDirections(bakeSampleCount, bakeSeed);
+            var partition = new PRTSectorBake(grid, sectorWidth);
+            const int batchSize = 32;
+            for (int start = 0; start < grid.ProbeCount; start += batchSize)
             {
-                AllocateProbes();
-            }
-
-            // Force update to hide debug spheres
-            foreach (var probe in Probes)
-            {
-                probe.UpdateVisibility();
-            }
-            
-            var surfelGrid = new SurfelGrid();
-
-            // Bake probes virtual offset
-            BakeProbeVirtualOffset();
-
-            // Capture surfels for each probe
-            for (int i = 0; i < Probes.Length; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var probe = Probes[i];
-                float progress = (float)i / Probes.Length;
-                prtBaker.UpdateProgress($"Sampling surfels for probe {i + 1}/{Probes.Length} at {probe.Position}", progress);
-                
-                Vector3 probeOffset = CalculateProbeVirtualOffset(probe.Position);
-                var surfels = prtBaker.BakeSurfelData(probeOffset + probe.Position);
-                // Add surfels to grid and mark the probe reference
-                foreach (var surfel in surfels)
+                token.ThrowIfCancellationRequested();
+                int count = Math.Min(batchSize, grid.ProbeCount - start);
+                var positions = new Vector3[count];
+                for (int i = 0; i < count; i++) positions[i] = grid.GetPosition(start + i) + placement[start + i].offset;
+                baker.UpdateProgress($"Capture probes {start + 1}–{start + count}/{grid.ProbeCount}", 0.1f + 0.8f * start / grid.ProbeCount);
+                PRTProbeBakeSamples[] captures = await baker.CaptureProbesAsync(positions, directions, token);
+                using var scope = TransferMarker.Auto();
+                for (int i = 0; i < count; i++)
                 {
-                    surfelGrid.AddSurfel(surfel, probe);
+                    int index = start + i;
+                    Vector3 nominal = grid.GetPosition(index);
+                    partition.AddProbe(index, captures[i].surfels, directions, captures[i].capturePosition - nominal,
+                        PRTProbeValidity.Pack(1f, placement[index].valid ? 1f : 0f));
                 }
-
-                // Periodically force garbage collection to prevent memory buildup
-                if ((i + 1) % 20 == 0)
-                {
-                    System.GC.Collect();
-                    System.GC.WaitForPendingFinalizers();
-                }
-
-                EditorApplication.QueuePlayerLoopUpdate();
-                await Task.Delay(1, cancellationToken);
             }
-
-            InitializeValidityData();
-            asset.CellData = surfelGrid.GenerateCell(Probes, _validity);
+            token.ThrowIfCancellationRequested();
+            if (!grid.Equals(GetBakeGrid()) || authoringInputs != GetBakeAuthoringInputsSignature())
+                throw new InvalidOperationException("Probe bake settings changed during capture; the asset was not replaced.");
+            baker.UpdateProgress("Serialize direction transfer", 0.95f);
+            var data = partition.Complete();
+            var signature = new PRTBakeSignature { geometry = baker.GeometrySignature, materials = baker.MaterialSignature,
+                settings = settings, backend = baker.BackendName, sampleCount = directions.Length, seed = bakeSeed,
+                sceneTime = baker.SceneTime, authoringInputs = authoringInputs };
+            asset.SetBakedData(grid, signature, baker.GeometryBounds, sectorWidth, partition.Metadata, data);
         }
 
-        /// <summary>
-        /// Force to reload bake data in editor
-        /// </summary>
+        internal async Task<PRTProbePlacement[]> BakePlacementAsync(IPRTBaker baker, CancellationToken token)
+        {
+            PRTProbeGrid grid = GetBakeGrid();
+            var result = new PRTProbePlacement[grid.ProbeCount];
+            PRTProbeAdjustmentVolume[] adjustmentVolumes = GetPlacementVolumes().ToArray();
+            _cachedVirtualOffsetPositions.Clear();
+            for (int i = 0; i < result.Length; i++)
+            {
+                token.ThrowIfCancellationRequested();
+                Vector3 nominal = grid.GetPosition(i);
+                Vector3 offset = Vector3.zero;
+                float geometry = geometryBias, ray = rayOriginBias;
+                if (enableBakePreprocess)
+                {
+                    offset = virtualOffset;
+                    foreach (PRTProbeAdjustmentVolume volume in adjustmentVolumes)
+                    {
+                        if (!volume || !volume.Contains(nominal)) continue;
+                        if (volume.mode == PRTProbeAdjustmentMode.OverrideVirtualOffsetSettings)
+                        { geometry = volume.geometryBias; ray = volume.rayOriginBias; }
+                        else offset += volume.GetAdditionalVirtualOffset();
+                    }
+                    using var scope = PlacementMarker.Auto();
+                    PRTProbePlacement adjusted = baker.PlaceProbe(nominal + offset, geometry, ray, probeGridSize);
+                    result[i] = new PRTProbePlacement(offset + adjusted.offset, adjusted.valid);
+                }
+                else result[i] = new PRTProbePlacement(offset, true);
+                _cachedVirtualOffsetPositions[nominal] = result[i].offset;
+                if ((i + 1) % 32 == 0)
+                {
+                    baker.UpdateProgress($"Place probes {i + 1}/{result.Length}", 0.1f * (i + 1) / result.Length);
+                    await Task.Yield();
+                }
+            }
+            return result;
+        }
+
+        private PRTProbeGrid GetBakeGrid()
+        {
+            if (transform.rotation != Quaternion.identity || transform.lossyScale != Vector3.one)
+                throw new InvalidOperationException("PRT probe volumes require an unrotated, unscaled world-space grid.");
+            return new PRTProbeGrid { origin = transform.position, min = Vector3Int.zero,
+                count = new Vector3Int(probeSizeX, probeSizeY, probeSizeZ), spacing = probeGridSize };
+        }
+        private Vector3 CalculateProbeVirtualOffset(Vector3 nominal)
+        {
+            if (_cachedVirtualOffsetPositions.TryGetValue(nominal, out Vector3 offset)) return offset;
+            if (!asset || !asset.HasValidData) return Vector3.zero;
+            PRTProbeGrid grid = asset.Grid;
+            Vector3 coordinate = (nominal - grid.origin) / grid.spacing - (Vector3)grid.min;
+            var c = new Vector3Int(Mathf.RoundToInt(coordinate.x), Mathf.RoundToInt(coordinate.y), Mathf.RoundToInt(coordinate.z));
+            if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= grid.count.x || c.y >= grid.count.y || c.z >= grid.count.z)
+                return Vector3.zero;
+            return asset.Probes[c.x * grid.count.y * grid.count.z + c.y * grid.count.z + c.z].captureOffset;
+        }
+        internal Hash128 GetBakeSettingsSignature()
+        {
+            Hash128 hash = default;
+            hash.Append(enableBakePreprocess ? 1 : 0);
+            AppendVector(ref hash, virtualOffset);
+            hash.Append(geometryBias); hash.Append(rayOriginBias);
+            hash.Append((int)bakeResolution); hash.Append(bakeSampleCount); hash.Append(unchecked((int)bakeSeed));
+            hash.Append(sectorWidth);
+            hash.Append(SurfelGrid.DefaultBrickSize); hash.Append(SurfelGrid.MergeDistance);
+            foreach (PRTProbeAdjustmentVolume volume in GetPlacementVolumes())
+            {
+                if (!volume || volume.mode is PRTProbeAdjustmentMode.IntensityScale or PRTProbeAdjustmentMode.InvalidateProbes) continue;
+                hash.Append((int)volume.mode); hash.Append((int)volume.shape);
+                for (int i = 0; i < 16; i++) hash.Append(volume.transform.localToWorldMatrix[i]);
+                AppendVector(ref hash, volume.size);
+                hash.Append(volume.radius); hash.Append(volume.geometryBias); hash.Append(volume.rayOriginBias);
+                hash.Append(volume.virtualOffsetRotation); hash.Append(volume.virtualOffsetDistance);
+            }
+            return hash;
+        }
+        internal Hash128 GetBakeAuthoringInputsSignature()
+        {
+            Hash128 hash = GetBakeSettingsSignature();
+            foreach (PRTProbeAdjustmentVolume volume in PRTVolumeManager.AdjustmentVolumes.Where(v => v && v.isActiveAndEnabled)
+                .OrderBy(v => GlobalObjectId.GetGlobalObjectIdSlow(v).ToString(), StringComparer.Ordinal))
+            {
+                hash.Append(GlobalObjectId.GetGlobalObjectIdSlow(volume).ToString());
+                hash.Append((int)volume.mode); hash.Append((int)volume.shape);
+                for (int i = 0; i < 16; i++) hash.Append(volume.transform.localToWorldMatrix[i]);
+                AppendVector(ref hash, volume.size);
+                hash.Append(volume.radius); hash.Append(volume.intensityScale);
+                hash.Append(volume.geometryBias); hash.Append(volume.rayOriginBias);
+                hash.Append(volume.virtualOffsetRotation); hash.Append(volume.virtualOffsetDistance);
+            }
+            return hash;
+        }
+        private static IEnumerable<PRTProbeAdjustmentVolume> GetPlacementVolumes() =>
+            PRTVolumeManager.AdjustmentVolumes.Where(v => v &&
+                v.mode is PRTProbeAdjustmentMode.ApplyVirtualOffset or PRTProbeAdjustmentMode.OverrideVirtualOffsetSettings)
+                .OrderBy(v => GlobalObjectId.GetGlobalObjectIdSlow(v).ToString(), StringComparer.Ordinal);
+        private static void AppendVector(ref Hash128 hash, Vector3 value)
+        { hash.Append(value.x); hash.Append(value.y); hash.Append(value.z); }
         internal void ReloadBakedData()
         {
             AllocateProbes();
             TryLoadAsset(asset);
             PRTVolumeManager.RegisterProbeVolume(this);
         }
-        
-        /// <summary>
-        /// Clear <see cref="PRTProbeVolumeAsset"/> data
-        /// </summary>
         internal void ClearBakedData()
         {
             asset.Clear();
             ReleaseRuntimeData();
-        }
-        
-        /// <summary>
-        /// Bake probes virtual offset position cache
-        /// </summary>
-        internal void BakeProbeVirtualOffset()
-        {
-            _cachedVirtualOffsetPositions.Clear();
-            foreach (var probe in Probes)
-            {
-                // Calculate per-probe virtual offset
-                CalculateProbeVirtualOffset(probe.Position);
-            }
-        }
-        
-        /// <summary>
-        /// Calculate virtual offset for a specific probe position
-        /// </summary>
-        /// <param name="probePosition">World position of the probe</param>
-        /// <returns>Combined virtual offset for this probe</returns>
-        private Vector3 CalculateProbeVirtualOffset(Vector3 probePosition)
-        {
-            if (!enableBakePreprocess) return Vector3.zero;
-            Vector3 totalOffset = virtualOffset; // Start with global offset
-
-            float geomBias = geometryBias;
-            float rayBias = rayOriginBias;
-
-            var adjustmentVolumes = PRTVolumeManager.AdjustmentVolumes;
-            for (int i = 0; i < adjustmentVolumes.Count; i++)
-            {
-                var volume = adjustmentVolumes[i];
-                if (volume && volume.Contains(probePosition))
-                {
-                    if (volume.mode == PRTProbeAdjustmentMode.OverrideVirtualOffsetSettings)
-                    {
-                        geomBias = volume.geometryBias;
-                        rayBias = volume.rayOriginBias;
-                    }
-                    else
-                    {
-                        Vector3 volumeOffset = volume.GetAdditionalVirtualOffset();
-                        totalOffset += volumeOffset;
-                    }
-                }
-            }
-            
-            // Calculate or use cached ray-traced virtual offset position
-            Vector3 rayTracedPosition = CalculateVirtualOffsetPosition(probePosition + totalOffset, geomBias, rayBias);
-            return rayTracedPosition - probePosition;
-        }
-
-        /// <summary>
-        /// Calculate virtual offset position using cpu ray tracing
-        /// </summary>
-        /// <param name="probePosition">World position of the probe</param>
-        /// <param name="inGeometryBias"></param>
-        /// <param name="inRayOriginBias"></param>
-        /// <returns>Virtual offset position for this probe</returns>
-        private Vector3 CalculateVirtualOffsetPosition(Vector3 probePosition, float inGeometryBias, float inRayOriginBias)
-        {
-            // Check cache first
-            if (_cachedVirtualOffsetPositions.TryGetValue(probePosition, out Vector3 cachedPosition))
-            {
-                return cachedPosition;
-            }
-
-            // Calculate and cache the result
-            Vector3 rayTracedPosition = CalculateRayTracedVirtualOffsetPosition(probePosition, inGeometryBias, inRayOriginBias, probeGridSize);
-            _cachedVirtualOffsetPositions[probePosition] = rayTracedPosition;
-            return rayTracedPosition;
-        }
-
-        /// <summary>
-        /// Calculate ray-traced virtual offset position
-        /// </summary>
-        /// <param name="probePosition">Original probe position</param>
-        /// <param name="geometryBias"></param>
-        /// <param name="rayOriginBias"></param>
-        /// <param name="searchDistance"></param>
-        /// <returns>Ray-traced virtual offset position</returns>
-        private static Vector3 CalculateRayTracedVirtualOffsetPosition(Vector3 probePosition, 
-            float geometryBias, float rayOriginBias, float searchDistance)
-        {
-            const float DISTANCE_THRESHOLD = 5e-5f;
-            const float DOT_THRESHOLD = 1e-2f;
-            const float VALIDITY_THRESHOLD = 0.5f; // 50% backface threshold
-
-            Vector3[] sampleDirections = GetSampleDirections();
-            Vector3 bestDirection = Vector3.zero;
-            float maxDotSurface = -1f;
-            float minDistance = float.MaxValue;
-            int validHits = 0;
-
-            foreach (Vector3 direction in sampleDirections)
-            {
-                Vector3 rayOrigin = probePosition + direction * rayOriginBias;
-                Vector3 rayDirection = direction;
-
-                // Cast ray to find geometry intersection
-                if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, searchDistance))
-                {
-                    // Skip front faces
-                    if (hit.triangleIndex >= 0) // Check if it's a valid hit
-                    {
-                        // Check if it's a back face by checking normal direction
-                        Vector3 hitNormal = hit.normal;
-                        float dotSurface = Vector3.Dot(rayDirection, hitNormal);
-
-                        // If it's a front face, skip it
-                        if (dotSurface > 0)
-                        {
-                            validHits++;
-                            continue;
-                        }
-
-                        float distanceDiff = hit.distance - minDistance;
-
-                        // If distance is within threshold
-                        if (distanceDiff < DISTANCE_THRESHOLD)
-                        {
-                            // If new distance is smaller by at least threshold, or if ray is more colinear with normal
-                            if (distanceDiff < -DISTANCE_THRESHOLD || dotSurface - maxDotSurface > DOT_THRESHOLD)
-                            {
-                                bestDirection = rayDirection;
-                                maxDotSurface = dotSurface;
-                                minDistance = hit.distance;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Calculate validity (percentage of backfaces seen)
-            float validity = 1.0f - validHits / (sampleDirections.Length - 1.0f);
-
-            // Disable VO for probes that don't see enough backface
-            if (validity <= VALIDITY_THRESHOLD)
-                return probePosition;
-
-            if (minDistance == float.MaxValue)
-                minDistance = 0f;
-
-            // Calculate final offset position
-            float offsetDistance = minDistance * 1.05f + geometryBias;
-            return probePosition + bestDirection * offsetDistance;
-        }
-
-        /// <summary>
-        /// Get sample directions for ray tracing
-        /// </summary>
-        /// <returns>Array of normalized direction vectors</returns>
-        private static Vector3[] GetSampleDirections()
-        {
-            // 3x3x3 - 1, excluding center
-            const float k0 = 0f, k1 = 1f, k2 = 0.70710678118654752440084436210485f, k3 = 0.57735026918962576450914878050196f;
-
-            return new Vector3[]
-            {
-                // Top layer (y = +1)
-                new(-k3, +k3, -k3), // -1  1 -1
-                new( k0, +k2, -k2), //  0  1 -1
-                new(+k3, +k3, -k3), //  1  1 -1
-                new(-k2, +k2,  k0), // -1  1  0
-                new( k0, +k1,  k0), //  0  1  0
-                new(+k2, +k2,  k0), //  1  1  0
-                new(-k3, +k3, +k3), // -1  1  1
-                new( k0, +k2, +k2), //  0  1  1
-                new(+k3, +k3, +k3), //  1  1  1
-
-                // Middle layer (y = 0)
-                new(-k2,  k0, -k2), // -1  0 -1
-                new( k0,  k0, -k1), //  0  0 -1
-                new(+k2,  k0, -k2), //  1  0 -1
-                new(-k1,  k0,  k0), // -1  0  0
-                // k0, k0, k0 - skip center position (which would be a zero-length ray)
-                new(+k1,  k0,  k0), //  1  0  0
-                new(-k2,  k0, +k2), // -1  0  1
-                new( k0,  k0, +k1), //  0  0  1
-                new(+k2,  k0, +k2), //  1  0  1
-
-                // Bottom layer (y = -1)
-                new(-k3, -k3, -k3), // -1 -1 -1
-                new( k0, -k2, -k2), //  0 -1 -1
-                new(+k3, -k3, -k3), //  1 -1 -1
-                new(-k2, -k2,  k0), // -1 -1  0
-                new( k0, -k1,  k0), //  0 -1  0
-                new(+k2, -k2,  k0), //  1 -1  0
-                new(-k3, -k3, +k3), // -1 -1  1
-                new( k0, -k2, +k2), //  0 -1  1
-                new(+k3, -k3, +k3), //  1 -1  1
-            };
         }
     }
 }

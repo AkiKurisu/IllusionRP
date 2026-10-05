@@ -1,38 +1,41 @@
-﻿using UnityEngine;
+using UnityEngine;
+#if UNITY_EDITOR
+using System.Threading;
+using System.Threading.Tasks;
+#endif
 
 namespace Illusion.Rendering.PRTGI
 {
-    /// <summary>
-    /// PRT bake cubemap resolution
-    /// </summary>
     public enum PRTBakeResolution
     {
-        [InspectorName("128 * 128")]
-        _128 = 128,
-        [InspectorName("256 * 256")]
-        _256 = 256,
-        [InspectorName("512 * 512")]
-        _512 = 512
+        [InspectorName("128 × 128")] _128 = 128,
+        [InspectorName("256 × 256")] _256 = 256,
+        [InspectorName("512 × 512")] _512 = 512
     }
-
 #if UNITY_EDITOR
-    /// <summary>
-    /// PRT bake interface
-    /// </summary>
+    internal readonly struct PRTProbeBakeSamples
+    {
+        public readonly Vector3 capturePosition;
+        public readonly Surfel[] surfels;
+        public PRTProbeBakeSamples(Vector3 position, Surfel[] samples) { capturePosition = position; surfels = samples; }
+    }
+    internal readonly struct PRTProbePlacement
+    {
+        public readonly Vector3 offset;
+        public readonly bool valid;
+        public PRTProbePlacement(Vector3 offset, bool valid) { this.offset = offset; this.valid = valid; }
+    }
     internal interface IPRTBaker
     {
-        /// <summary>
-        /// Update baking progress.
-        /// </summary>
-        /// <param name="status">Status message</param>
-        /// <param name="progress">Progress value</param>
+        Bounds GeometryBounds { get; }
+        Hash128 GeometrySignature { get; }
+        Hash128 MaterialSignature { get; }
+        string BackendName { get; }
+        float SceneTime { get; }
         void UpdateProgress(string status, float progress);
-
-        /// <summary>
-        /// Bake surfel data at the specified position.
-        /// </summary>
-        /// <param name="probePosition"></param>
-        Surfel[] BakeSurfelData(Vector3 probePosition);
+        Task<PRTProbeBakeSamples[]> CaptureProbesAsync(Vector3[] capturePositions, Vector4[] directionAndIntegralWeights,
+            CancellationToken cancellationToken);
+        PRTProbePlacement PlaceProbe(Vector3 position, float geometryBias, float rayOriginBias, float searchDistance);
     }
 #endif
 }

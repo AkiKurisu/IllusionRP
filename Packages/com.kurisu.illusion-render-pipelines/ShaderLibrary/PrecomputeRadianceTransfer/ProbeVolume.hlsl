@@ -1,153 +1,104 @@
-﻿#ifndef PRT_PROBE_VOLUME_INCLUDED
+#ifndef PRT_PROBE_VOLUME_INCLUDED
 #define PRT_PROBE_VOLUME_INCLUDED
-
-//--------------------------------------------------------------------------------------------------
-// PRT Definition
-//--------------------------------------------------------------------------------------------------
 
 struct Surfel
 {
     float3 position;
     float3 normal;
     float3 albedo;
-    float skyMask;
+    uint flags;
+    uint renderingLayerMask;
+    uint objectLayerMask;
+    uint materialKey;
+    int nearestProbe;
 };
 
-struct SurfelIndices
+struct SurfelIndices { uint surfelStart; uint surfelCount; };
+struct BrickFactor { int brickIndex; float sh[9]; };
+struct PRTProbeData
 {
-    uint surfelStart;
-    uint surfelCount;
+    int factorStart;
+    int factorCount;
+    int skyStart;
+    int skyCount;
+    float3 captureOffset;
+    uint validity;
 };
+struct PRTSkySample { float3 direction; float weight; };
 
-struct BrickRadiance
+CBUFFER_START(PRTProbeVolumeConstants)
+float4 _prtGridOrigin;
+int4 _prtGridMin;
+int4 _prtGridCount;
+int4 _prtWindowMin;
+int4 _prtWindowCount;
+float _prtGridSpacing;
+uint _prtPublicationGeneration;
+uint _prtVolumeEnabled;
+uint _prtLayoutPadding;
+CBUFFER_END
+
+uint PRTProbeIndex(int3 coordinate)
 {
-    float3 averageRadiance;
-    float3 averagePosition;
-    float averageSkyVisibility;
-};
-
-struct BrickFactor
-{
-    int brickIndex;
-    float weight;
-};
-
-#define TOROIDAL_ADDRESSING 1
-
-//--------------------------------------------------------------------------------------------------
-// Implementation
-//--------------------------------------------------------------------------------------------------
-
-// Convert probe grid 3D coordinates to 3D Texture coordinates
-int3 GetProbeTexture3DCoordFrom3DCoord(int3 probeCoord, uint shIndex)
-{
-    return int3(probeCoord.x, probeCoord.z, probeCoord.y * 9 + shIndex);
+    int3 local = coordinate - _prtGridMin.xyz;
+    return uint(local.x * _prtGridCount.y * _prtGridCount.z + local.y * _prtGridCount.z + local.z);
 }
 
-// Decode SH coefficients from 3D texture for a specific probe
-void DecodeSHCoefficientFromVoxel3D(inout float3 c[9], in Texture3D<float3> voxel3D, int3 probeCoord)
+int3 PRTProbeCoordinate(uint index)
 {
-    // Sample RGB components separately for each SH coefficient
-    for (int i = 0; i < 9; i++)
+    int yz = _prtGridCount.y * _prtGridCount.z;
+    int x = int(index) / yz;
+    int rem = int(index) % yz;
+    return int3(x, rem / _prtGridCount.z, rem % _prtGridCount.z) + _prtGridMin.xyz;
+}
+
+int3 PRTTextureCoordinate(int3 slot, uint coefficient)
+{
+    return int3(slot.x, slot.z, slot.y + int(coefficient) * _prtWindowCount.y);
+}
+
+bool PRTInterpolationCell(float3 worldPosition, int3 minimum, int3 count, out int3 cell, out float3 rate)
+{
+    cell = minimum;
+    rate = 0;
+    if (_prtGridSpacing <= 0 || any(count <= 0))
+        return false;
+    float3 coordinate = (worldPosition - _prtGridOrigin.xyz) / _prtGridSpacing;
+    [unroll]
+    for (int axis = 0; axis < 3; axis++)
     {
-        // Calculate 3D texture coordinates
-        int3 texCoord = GetProbeTexture3DCoordFrom3DCoord(probeCoord, i);
-        c[i] = voxel3D.Load(int4(texCoord, 0));
+        if (count[axis] == 1)
+        {
+            if (abs(coordinate[axis] - float(minimum[axis])) > 0.5)
+                return false;
+        }
+        else
+        {
+            float end = float(minimum[axis] + count[axis] - 1);
+            if (coordinate[axis] < float(minimum[axis]) || coordinate[axis] > end)
+                return false;
+            cell[axis] = min(int(floor(coordinate[axis])), minimum[axis] + count[axis] - 2);
+            rate[axis] = saturate(coordinate[axis] - float(cell[axis]));
+        }
     }
+    return true;
 }
 
-// Convert probe world position to probe grid 3D coordinates
-int3 GetProbe3DCoordFromPosition(float3 worldPos, float voxelGridSize, float4 voxelCorner)
+float PRTCornerWeight(uint corner, float3 rate)
 {
-    float3 probeIndexF = floor((worldPos.xyz - voxelCorner.xyz) / voxelGridSize);
-    int3 probeIndex3 = int3(probeIndexF.x, probeIndexF.y, probeIndexF.z);
-    return probeIndex3;
+    float3 t = float3((corner & 4u) != 0u, (corner & 2u) != 0u, (corner & 1u) != 0u);
+    float3 weights = lerp(1.0 - rate, rate, t);
+    return weights.x * weights.y * weights.z;
 }
 
-bool IsProbeCoordInsideVoxel(int3 probeCoord, float4 voxelSize)
+int3 PRTCornerOffset(uint corner)
 {
-    bool isInsideVoxelX = 0 <= (float)probeCoord.x && (float)probeCoord.x < voxelSize.x;
-    bool isInsideVoxelY = 0 <= (float)probeCoord.y && (float)probeCoord.y < voxelSize.y;
-    bool isInsideVoxelZ = 0 <= (float)probeCoord.z && (float)probeCoord.z < voxelSize.z;
-    bool isInsideVoxel = isInsideVoxelX && isInsideVoxelY && isInsideVoxelZ;
-    return isInsideVoxel;
+    return int3((corner & 4u) != 0u, (corner & 2u) != 0u, (corner & 1u) != 0u);
 }
 
-// Convert 3D texture coordinates to probe index
-float3 GetProbePositionFromTexture3DCoord(uint3 probeCoord, float voxelGridSize, float4 voxelCorner)
+void UnpackIntensityValidity(uint packed, out float intensity, out float validity)
 {
-    float3 res = float3(probeCoord.x, probeCoord.y, probeCoord.z) * voxelGridSize + voxelCorner.xyz;
-    return res;
+    intensity = float(packed & 0x00FFFFFFu) * (5.0 / 16777215.0);
+    validity = float(packed >> 24) * (1.0 / 255.0);
 }
-
-// Toroidal Addressing
-uint3 Wrap3DCoord(int3 coord, uint3 length, uint3 maxSize)
-{
-    uint3 offset = (maxSize / length + 2) * length; // Apply bias first
-    coord += offset;
-    uint3 result = uint3(coord) % uint3(length);
-    return result;
-}
-
-// Convert probe index to 3D texture coordinates
-uint3 GetProbeTexture3DCoordFromIndex(uint probeIndex, uint shIndex, float4 voxelSize,
-    float4 boundingBoxMin, float4 boundingBoxSize, float4 originalBoundingBoxMin)
-{
-    // Convert probe index to 3D grid coordinates
-    uint probeSizeY = uint(voxelSize.y);
-    uint probeSizeZ = uint(voxelSize.z);
-    
-    uint x = probeIndex / (probeSizeY * probeSizeZ);
-    uint temp = probeIndex % (probeSizeY * probeSizeZ);
-    uint y = temp / probeSizeZ;
-    uint z = temp % probeSizeZ;
-
-#ifdef TOROIDAL_ADDRESSING
-    // Calculate relative coordinates within original bounding box
-    int3 bboxCoord = int3(x, y, z) - int3(originalBoundingBoxMin.xyz);
-
-    // Toroidal Addressing
-    bboxCoord = Wrap3DCoord(bboxCoord, boundingBoxSize.xyz, voxelSize.xyz);
-#else
-    // Calculate relative coordinates within current bounding box
-    uint3 bboxCoord = uint3(x, y, z) - uint3(boundingBoxMin.xyz);
 #endif
-    
-    // Convert to 3D texture coordinates
-    uint3 texCoord = GetProbeTexture3DCoordFrom3DCoord(bboxCoord, shIndex);
-    return texCoord;
-}
-
-//--------------------------------------------------------------------------------------------------
-// Packing utilities for intensity and validity
-//--------------------------------------------------------------------------------------------------
-
-// Pack intensity (0-5 range, 24 bits) and validity (0-1 range, 8 bits) into a single float
-float PackIntensityValidity(float intensity, float validity)
-{
-    // Normalize intensity from [0, 5] to [0, 1] for packing
-    float normalizedIntensity = saturate(intensity / 5.0);
-    
-    // Pack into 32-bit uint: intensity (bits 0-23) + validity (bits 24-31)
-    uint packedIntensity = uint(normalizedIntensity * 16777215.0); // 2^24 - 1
-    uint packedValidity = uint(saturate(validity) * 255.0) << 24; // 2^8 - 1, shifted to bits 24-31
-    uint packedVal = packedIntensity | packedValidity;
-    
-    return asfloat(packedVal);
-}
-
-// Unpack intensity and validity from a single float
-void UnpackIntensityValidity(float packedData, out float intensity, out float validity)
-{
-    uint packedVal = asuint(packedData);
-    
-    // Extract intensity from bits 0-23
-    uint intensityBits = packedVal & 0x00FFFFFF; // Mask to get lower 24 bits
-    float normalizedIntensity = float(intensityBits) / 16777215.0;
-    intensity = normalizedIntensity * 5.0; // Denormalize back to [0, 5]
-    
-    // Extract validity from bits 24-31
-    uint validityBits = (packedVal >> 24) & 0xFF; // Shift and mask to get upper 8 bits
-    validity = float(validityBits) / 255.0;
-}
-#endif // defined(PRT_SH_INCLUDED)

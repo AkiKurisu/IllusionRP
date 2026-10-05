@@ -12,60 +12,40 @@
 //--------------------------------------------------------------------------------------------------
 
 RWStructuredBuffer<Surfel> _surfels;
-TextureCube _worldPosCubemap;
-TextureCube _normalCubemap;
-TextureCube _albedoCubemap;
+StructuredBuffer<float4> _sampleDirections;
+TextureCube<float4> _worldPosCubemap, _normalCubemap, _albedoCubemap, _metadataCubemap;
 SamplerState sampler_point_clamp;
-float _randSeed;
 float4 _probePos;
+uint _sampleCount;
+uint _surfelOutputOffset;
 
 //--------------------------------------------------------------------------------------------------
 // Implementation
 //--------------------------------------------------------------------------------------------------
 
-// ref: https://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
-float rand(float2 uv)
-{
-    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
-}
-
-// ref: Unreal Engine 4, MonteCarlo.ush
-float3 UniformSphereSample(float u, float v)
-{
-    float phi = degrees(TWO_PI * u);
-    float cosine_theta = 1.0 - 2.0 * v;
-    float sine_theta = sqrt(1.0 - cosine_theta * cosine_theta);
-
-    float x = sine_theta * cos(phi);
-    float y = sine_theta * sin(phi);
-    float z = cosine_theta;
-
-    return float3(x, y, z);
-}
-
-[numthreads(32, 16, 1)]
+[numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    float2 xy = float2(id.x, id.y) / float2(32, 16);
-    xy += float2(1, 1) * _randSeed;
-
-    float u = rand(xy * 1.0);
-    float v = rand(xy * 2.0);
-    float3 dir = UniformSphereSample(u, v);
-
-    Surfel result;
-
-    // opaque geometry
-    result.position = _worldPosCubemap.SampleLevel(sampler_point_clamp, dir, 0).rgb;
-    result.albedo = _albedoCubemap.SampleLevel(sampler_point_clamp, dir, 0).rgb;
-
-    float4 normal_and_mask = _normalCubemap.SampleLevel(sampler_point_clamp, dir, 0);
-    result.normal = normal_and_mask.xyz;
-    result.skyMask = saturate(1.0 - normal_and_mask.w);
-
-    // sample sky
-    result.position += (_probePos.xyz + dir) * result.skyMask;
-
-    uint surfelIndex = id.x * 16 + id.y;
-    _surfels[surfelIndex] = result;
+    if (id.x >= _sampleCount) return;
+    float3 direction = _sampleDirections[id.x].xyz;
+    float4 normal = _normalCubemap.SampleLevel(sampler_point_clamp, direction, 0);
+    Surfel result = (Surfel)0;
+    if (normal.w == 0)
+    {
+        // sample sky
+        result.flags = 1;
+        result.position = _probePos.xyz + direction;
+    }
+    else
+    {
+        // opaque geometry
+        float4 metadata = _metadataCubemap.SampleLevel(sampler_point_clamp, direction, 0);
+        result.position = _worldPosCubemap.SampleLevel(sampler_point_clamp, direction, 0).xyz;
+        result.normal = normalize(normal.xyz);
+        result.albedo = _albedoCubemap.SampleLevel(sampler_point_clamp, direction, 0).rgb;
+        result.renderingLayerMask = uint(metadata.x) | (uint(metadata.y) << 16);
+        result.objectLayerMask = 1u << uint(metadata.w);
+        result.materialKey = uint(metadata.z);
+    }
+    _surfels[_surfelOutputOffset + id.x] = result;
 }
