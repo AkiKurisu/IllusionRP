@@ -101,13 +101,9 @@ namespace Illusion.Rendering.AreaLights
         public Matrix4x4 shadowToWorld;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
     internal struct ShaderVariablesAreaLights
     {
         public int _AreaLightCount;
-        public int _AreaLightPadding0;
-        public int _AreaLightPadding1;
-        public int _AreaLightPadding2;
         public Vector4 _AreaShadowAtlasSize;
         public Vector4 _CachedAreaShadowAtlasSize;
         public Vector4 _CookieAtlasSize;

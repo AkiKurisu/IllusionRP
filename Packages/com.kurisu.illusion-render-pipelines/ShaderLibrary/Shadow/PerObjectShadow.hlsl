@@ -28,7 +28,11 @@
 #define MAX_PER_OBJECT_SHADOW_COUNT 16
 
 TEXTURE2D_SHADOW(_PerObjSceneShadowMap);
+#if defined(SHADER_API_METAL) && defined(UNITY_METAL_SHADOWS_USE_POINT_FILTERING)
 SAMPLER_CMP(sampler_PerObjSceneShadowMap);
+#else
+#define sampler_PerObjSceneShadowMap sampler_LinearClampCompare
+#endif
 
 int _PerObjSceneShadowCount;
 int _PerObjSceneShadowSourceMode;
