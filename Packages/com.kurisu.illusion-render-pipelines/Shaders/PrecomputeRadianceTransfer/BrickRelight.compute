@@ -16,29 +16,47 @@ StructuredBuffer<SurfelIndices> _brickInfo;
 StructuredBuffer<Surfel> _surfels;
 RWStructuredBuffer<float4> _brickRadiance;
 uint _brickCount;
+uint _brickGroupsX;
+float3 _surfelBoundsMin;
+float3 _surfelBoundsSize;
 
 //--------------------------------------------------------------------------------------------------
 // Implementation
 //--------------------------------------------------------------------------------------------------
 
-[numthreads(64, 1, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
+#define BRICK_THREADS 32
+groupshared float3 _brickSums[BRICK_THREADS];
+
+// One group per brick: brick sizes range from one surfel to several hundred, so a thread per brick leaves most of the
+// GPU idle while a few threads walk the largest bricks.
+[numthreads(BRICK_THREADS, 1, 1)]
+void CSMain(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
 {
-    uint brick = id.x;
+    uint brick = group.y * _brickGroupsX + group.x;
     if (brick >= _brickCount)
         return;
     SurfelIndices range = _brickInfo[brick];
     float3 radiance = 0;
-    // Process all surfels in this brick
-    for (uint offset = 0; offset < range.surfelCount; offset++)
+    for (uint offset = thread; offset < range.surfelCount; offset += BRICK_THREADS)
     {
         uint index = range.surfelStart + offset;
         Surfel surfel = _surfels[index];
-        float3 direct = EvaluatePRTWorldLighting(surfel, index);
+        float3 normal = PRTSurfelNormal(surfel);
+        float3 position = PRTSurfelPosition(surfel, _surfelBoundsMin, _surfelBoundsSize);
+        float3 direct = EvaluatePRTWorldLighting(position, normal, range.renderingLayerMask, range.objectLayerMask, index);
         // radiance from the previous frame (treat as multi bounce indirect)
-        float3 feedback = SamplePRTSolverProbe(surfel.nearestProbe, surfel.normal);
-        radiance += surfel.albedo * (direct + feedback);
+        float3 feedback = SamplePRTSolverProbe(surfel.nearestProbe, normal);
+        radiance += PRTSurfelAlbedo(surfel) * (direct + feedback);
     }
-    // Calculate averages
-    _brickRadiance[brick] = float4(range.surfelCount > 0 ? radiance / float(range.surfelCount) : 0, 0);
+    _brickSums[thread] = radiance;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]
+    for (uint stride = BRICK_THREADS / 2; stride > 0; stride >>= 1)
+    {
+        if (thread < stride)
+            _brickSums[thread] += _brickSums[thread + stride];
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (thread == 0)
+        _brickRadiance[brick] = float4(range.surfelCount > 0 ? _brickSums[0] / float(range.surfelCount) : 0, 0);
 }

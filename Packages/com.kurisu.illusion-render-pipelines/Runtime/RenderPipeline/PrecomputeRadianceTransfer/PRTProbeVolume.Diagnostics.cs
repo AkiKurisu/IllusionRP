@@ -9,29 +9,22 @@ namespace Illusion.Rendering.PRTGI
     {
         public readonly struct ShadowCacheStats
         {
+            // Matches the counter indices in WorldLighting.hlsl.
+            internal const int CounterCount = 5;
             public readonly bool valid;
-            public readonly uint evaluated, cacheHits, cacheMisses, invalidByEpoch, invalidByAge;
-            public readonly uint shadowmapSamples, fallbackFromCache, uncoveredNoCache;
+            public readonly uint evaluated, cacheHits, uncovered, unknown, shadowmapSamples;
             public ShadowCacheStats(uint[] counters)
             {
                 valid = true;
-                evaluated = counters[0]; cacheHits = counters[1]; cacheMisses = counters[2];
-                invalidByEpoch = counters[3]; invalidByAge = counters[4];
-                shadowmapSamples = counters[5]; fallbackFromCache = counters[6]; uncoveredNoCache = counters[7];
+                evaluated = counters[0]; cacheHits = counters[1]; uncovered = counters[2];
+                unknown = counters[3]; shadowmapSamples = counters[4];
             }
-        }
-
-        internal struct ShadowCacheSnapshotEntry
-        {
-            public float shadow;
-            public uint epoch, lastUpdateFrame, valid;
         }
 
         public struct ShadowCacheGlobalStats
         {
             public bool valid;
-            public uint epoch, frameIndex, surfelCount, surfelReady, surfelFresh, surfelStale;
-            public uint surfelInvalidEpoch, surfelUninitialized;
+            public uint epoch, surfelCount, surfelReady, surfelInvalidEpoch, surfelUninitialized;
             public float surfelMeanShadow;
         }
 
@@ -39,7 +32,7 @@ namespace Illusion.Rendering.PRTGI
         public ShadowCacheGlobalStats LatestShadowCacheGlobalStats { get; private set; }
         public ShadowCacheGlobalStats LatestShadowCacheWindowStats { get; private set; }
         private bool _globalStatsPending, _hasGlobalStatsFrame;
-        private uint _globalStatsFrame, _globalStatsEpoch, _globalStatsAge;
+        private uint _globalStatsFrame, _globalStatsEpoch;
         private string _globalPreviewName;
         private int _globalPreviewId;
 
@@ -48,9 +41,9 @@ namespace Illusion.Rendering.PRTGI
             if (request.hasError)
                 return;
             var values = request.GetData<uint>();
-            if (values.Length < 8)
+            if (values.Length < ShadowCacheStats.CounterCount)
                 return;
-            var counters = new uint[8];
+            var counters = new uint[ShadowCacheStats.CounterCount];
             for (int i = 0; i < counters.Length; i++)
                 counters[i] = values[i];
             LatestShadowCacheStats = new ShadowCacheStats(counters);
@@ -62,13 +55,12 @@ namespace Illusion.Rendering.PRTGI
                 frame - _globalStatsFrame >= (uint)Mathf.Max(1, shadowCacheStatsReadbackInterval));
         }
 
-        internal void BeginWorldShadowStats(uint epoch, uint frame, uint maxAge, string name, int id)
+        internal void BeginWorldShadowStats(uint epoch, uint frame, string name, int id)
         {
             _globalStatsPending = true;
             _hasGlobalStatsFrame = true;
             _globalStatsEpoch = epoch;
             _globalStatsFrame = frame;
-            _globalStatsAge = maxAge;
             _globalPreviewName = name;
             _globalPreviewId = id;
         }
@@ -78,16 +70,16 @@ namespace Illusion.Rendering.PRTGI
             _globalStatsPending = false;
             if (request.hasError)
                 return;
-            var entries = request.GetData<ShadowCacheSnapshotEntry>();
-            var global = new ShadowCacheGlobalStats { valid = true, epoch = _globalStatsEpoch, frameIndex = _globalStatsFrame };
+            var entries = request.GetData<uint>();
+            var global = new ShadowCacheGlobalStats { valid = true, epoch = _globalStatsEpoch };
             var window = global;
             ShadowPreviewSector = sector;
             var indices = CurrentWindowSurfelIndices(sector);
             for (int i = 0; i < entries.Length; i++)
             {
-                AddShadowEntry(ref global, entries[i], _globalStatsAge);
+                AddShadowEntry(ref global, entries[i]);
                 if (indices.Contains(i))
-                    AddShadowEntry(ref window, entries[i], _globalStatsAge);
+                    AddShadowEntry(ref window, entries[i]);
             }
             if (global.surfelReady > 0)
                 global.surfelMeanShadow /= global.surfelReady;
@@ -99,17 +91,14 @@ namespace Illusion.Rendering.PRTGI
             ShadowPreviewLightId = _globalPreviewId;
         }
 
-        private static void AddShadowEntry(ref ShadowCacheGlobalStats stats, ShadowCacheSnapshotEntry entry, uint maxAge)
+        private static void AddShadowEntry(ref ShadowCacheGlobalStats stats, uint entry)
         {
             stats.surfelCount++;
-            if (entry.valid == 0) { stats.surfelUninitialized++; return; }
-            if (entry.epoch != stats.epoch) { stats.surfelInvalidEpoch++; return; }
+            uint epoch = entry >> 8;
+            if (epoch == 0) { stats.surfelUninitialized++; return; }
+            if (epoch != stats.epoch) { stats.surfelInvalidEpoch++; return; }
             stats.surfelReady++;
-            stats.surfelMeanShadow += Mathf.Clamp01(entry.shadow);
-            if (stats.frameIndex - entry.lastUpdateFrame <= maxAge)
-                stats.surfelFresh++;
-            else
-                stats.surfelStale++;
+            stats.surfelMeanShadow += (entry & 0xFF) / 255f;
         }
 
         private HashSet<int> CurrentWindowSurfelIndices(int sector)
@@ -125,7 +114,7 @@ namespace Illusion.Rendering.PRTGI
                 var range = data.probes[asset.LocalProbeIndex(probe.Index)];
                 for (int i = range.factorStart; i < range.factorStart + range.factorCount; i++)
                 {
-                    int brick = data.factors[i].brickIndex;
+                    int brick = data.factors[i].BrickIndex;
                     if (!bricks.Add(brick))
                         continue;
                     var surfels = data.bricks[brick];

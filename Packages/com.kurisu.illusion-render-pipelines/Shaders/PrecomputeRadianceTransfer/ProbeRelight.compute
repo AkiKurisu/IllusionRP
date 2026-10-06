@@ -1,8 +1,10 @@
 #pragma kernel CSMain
 #pragma kernel CSCommit
 #pragma kernel CSPublish
-#pragma kernel CSCopyDebug
 #pragma kernel CSClearPublication
+#pragma kernel CSPyramidFromProbes
+#pragma kernel CSPyramidDownsample
+#pragma kernel CSPublishLevel
 
 //--------------------------------------------------------------------------------------------------
 // Included headers
@@ -18,7 +20,9 @@
 
 StructuredBuffer<PRTProbeData> _prtProbeData;
 StructuredBuffer<BrickFactor> _factors;
-StructuredBuffer<PRTSkySample> _prtSkySamples;
+StructuredBuffer<uint> _prtSkyVisibility;
+StructuredBuffer<float4> _prtBakeDirections;
+uint _prtBakeDirectionCount;
 StructuredBuffer<float4> _brickRadiance;
 StructuredBuffer<float4> _prtPreviousSH;
 StructuredBuffer<uint> _validityMasks;
@@ -60,19 +64,24 @@ void CSMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
         {
             // Get factor and corresponding brick
             BrickFactor factor = _factors[probe.factorStart + edge];
-            float3 radiance = _brickRadiance[factor.brickIndex].rgb;
+            float3 radiance = _brickRadiance[PRTFactorBrick(factor)].rgb;
+            float sh[9];
+            PRTFactorSH(factor, sh);
             for (uint factorCoefficient = 0; factorCoefficient < 9u; factorCoefficient++)
-                coefficients[factorCoefficient] += radiance * factor.sh[factorCoefficient];
+                coefficients[factorCoefficient] += radiance * sh[factorCoefficient];
         }
-        for (uint sample = lane; sample < uint(probe.skyCount); sample += PRT_THREADS)
+        uint skyWords = (_prtBakeDirectionCount + 31u) / 32u;
+        for (uint sample = lane; sample < _prtBakeDirectionCount; sample += PRT_THREADS)
         {
-            PRTSkySample sky = _prtSkySamples[probe.skyStart + sample];
-            float3 radiance = _prtEnvironment.SampleLevel(sampler_prtEnvironment, sky.direction, 0).rgb
+            if ((_prtSkyVisibility[localIndex * skyWords + sample / 32u] & (1u << (sample & 31u))) == 0u)
+                continue;
+            float4 sky = _prtBakeDirections[sample];
+            float3 radiance = _prtEnvironment.SampleLevel(sampler_prtEnvironment, sky.xyz, 0).rgb
                 * _prtEnvironmentIntensity;
             float basis[9];
-            EvaluateSH9(sky.direction.xzy, basis);
+            EvaluateSH9(sky.xzy, basis);
             for (uint skyCoefficient = 0; skyCoefficient < 9u; skyCoefficient++)
-                coefficients[skyCoefficient] += radiance * (sky.weight * basis[skyCoefficient]);
+                coefficients[skyCoefficient] += radiance * (sky.w * basis[skyCoefficient]);
         }
     }
     // Process each SH coefficient and store to LDS
@@ -125,40 +134,101 @@ void CSCommit(uint3 id : SV_DispatchThreadID)
 
 int3 _prtPublishOffset;
 int3 _prtPublishCount;
+uint _prtPublishCascade;
 RWTexture3D<float4> _coefficientVoxel3D;
-RWTexture3D<uint> _validityVoxel3D;
 [numthreads(1, 1, 1)]
 void CSClearPublication()
 {
     for (uint clearCoefficient = 0; clearCoefficient < 9u; clearCoefficient++)
         _coefficientVoxel3D[int3(0, 0, clearCoefficient)] = 0;
-    _validityVoxel3D[int3(0, 0, 0)] = 0u;
 }
 [numthreads(8, 4, 8)]
 void CSPublish(uint3 id : SV_DispatchThreadID)
 {
     if (any(id >= uint3(_prtPublishCount)))
         return;
-    int3 slot = _prtPublishOffset + int3(id);
-    int3 coordinate = _prtWindowMin.xyz + slot;
-    uint index = PRTProbeIndex(coordinate);
+    int3 node = _prtPublishOffset + int3(id);
+    int3 slot = PRTPublicationSlot(node, 0);
+    uint index = PRTProbeIndex(node + _prtGridMin.xyz);
     float intensity, validity;
     uint metadata = _prtReady[index] != 0u ? _validityMasks[index] : 0u;
     UnpackIntensityValidity(metadata, intensity, validity);
     for (uint publishedCoefficient = 0; publishedCoefficient < 9u; publishedCoefficient++)
-        _coefficientVoxel3D[PRTTextureCoordinate(slot, publishedCoefficient)] =
+        _coefficientVoxel3D[PRTTextureCoordinate(slot, 0, publishedCoefficient)] =
             float4(_prtPreviousSH[index * 9u + publishedCoefficient].rgb * (intensity * validity), validity);
-    int3 metadataCoordinate = int3(slot.x, slot.z, slot.y);
-    _validityVoxel3D[metadataCoordinate] = metadata;
 }
 
-RWStructuredBuffer<float> _coefficientSH9;
-uint _prtDebugProbeIndex;
-[numthreads(32, 1, 1)]
-void CSCopyDebug(uint3 dispatch : SV_DispatchThreadID)
+StructuredBuffer<float4> _prtPyramidSource;
+RWStructuredBuffer<float4> _prtPyramidTarget;
+int3 _prtPyramidSourceCount;
+int3 _prtPyramidTargetCount;
+int3 _prtPyramidOffset;
+int3 _prtPyramidSize;
+
+uint PRTPyramidIndex(int3 node, int3 count)
 {
-    uint id = dispatch.x;
-    if (id >= 27u)
+    return uint((node.x * count.y + node.y) * count.z + node.z);
+}
+
+// Tent filter over the 3x3x3 finer nodes around node 2i, normalized by the taps that exist.
+void DownsamplePyramid(uint3 id, bool fromProbes)
+{
+    if (any(id >= uint3(_prtPyramidSize)))
         return;
-    _coefficientSH9[id] = _prtPreviousSH[_prtDebugProbeIndex * 9u + id / 3u][id % 3u];
+    int3 node = _prtPyramidOffset + int3(id);
+    float4 sum[9];
+    for (uint clear = 0; clear < 9u; clear++)
+        sum[clear] = 0;
+    float total = 0;
+    for (int dx = -1; dx <= 1; dx++)
+    for (int dy = -1; dy <= 1; dy++)
+    for (int dz = -1; dz <= 1; dz++)
+    {
+        int3 tap = node * 2 + int3(dx, dy, dz);
+        if (any(tap < 0) || any(tap >= _prtPyramidSourceCount))
+            continue;
+        float k = (dx == 0 ? 0.5 : 0.25) * (dy == 0 ? 0.5 : 0.25) * (dz == 0 ? 0.5 : 0.25);
+        total += k;
+        uint index = PRTPyramidIndex(tap, _prtPyramidSourceCount);
+        if (fromProbes)
+        {
+            float intensity, validity;
+            UnpackIntensityValidity(_prtReady[index] != 0u ? _validityMasks[index] : 0u, intensity, validity);
+            for (uint probeCoefficient = 0; probeCoefficient < 9u; probeCoefficient++)
+                sum[probeCoefficient] += k * float4(_prtPreviousSH[index * 9u + probeCoefficient].rgb * (intensity * validity), validity);
+        }
+        else
+        {
+            for (uint levelCoefficient = 0; levelCoefficient < 9u; levelCoefficient++)
+                sum[levelCoefficient] += k * _prtPyramidSource[index * 9u + levelCoefficient];
+        }
+    }
+    uint target = PRTPyramidIndex(node, _prtPyramidTargetCount);
+    for (uint coefficient = 0; coefficient < 9u; coefficient++)
+        _prtPyramidTarget[target * 9u + coefficient] = total > 0 ? sum[coefficient] / total : 0;
+}
+
+[numthreads(4, 4, 4)]
+void CSPyramidFromProbes(uint3 id : SV_DispatchThreadID)
+{
+    DownsamplePyramid(id, true);
+}
+
+[numthreads(4, 4, 4)]
+void CSPyramidDownsample(uint3 id : SV_DispatchThreadID)
+{
+    DownsamplePyramid(id, false);
+}
+
+// Coarse cascades copy the already premultiplied pyramid level.
+[numthreads(8, 4, 8)]
+void CSPublishLevel(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= uint3(_prtPublishCount)))
+        return;
+    int3 node = _prtPublishOffset + int3(id);
+    int3 slot = PRTPublicationSlot(node, _prtPublishCascade);
+    uint index = PRTPyramidIndex(node, _prtPyramidSourceCount);
+    for (uint coefficient = 0; coefficient < 9u; coefficient++)
+        _coefficientVoxel3D[PRTTextureCoordinate(slot, _prtPublishCascade, coefficient)] = _prtPyramidSource[index * 9u + coefficient];
 }

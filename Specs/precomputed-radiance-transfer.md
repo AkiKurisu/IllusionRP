@@ -40,7 +40,7 @@ Relighting selects world-space lights against each sector's geometry bounds, not
 
 Lighting changes and visibility changes are tracked independently. Color changes retain valid visibility; light identity, geometry of the light, shadow settings and layers invalidate incompatible cached visibility. Cache entries cannot migrate accidentally between lights after reordering.
 
-PRT reuses existing URP shadow coverage and never renders its own shadow maps. A compatible covered sample refreshes visibility. Outside coverage, a valid sample for the same light state remains usable; age is diagnostic. Missing coverage uses an explicitly unknown, unoccluded approximation for that evaluation without promoting it to valid cached visibility. Unknown coverage does not block publication.
+PRT reuses existing URP shadow coverage and never renders its own shadow maps. A compatible covered sample refreshes visibility. Outside coverage, a valid sample for the same light state remains usable; samples carry no age. Missing coverage uses an explicitly unknown, unoccluded approximation for that evaluation without promoting it to valid cached visibility. Unknown coverage does not block publication.
 
 Geometry and surface materials remain fixed by the bake. Runtime observation covers lights, environment, probe settings and existing shadow coverage; geometry or material changes require rebaking.
 
@@ -50,13 +50,23 @@ The renderer owns committed global probe lighting and readiness. Sector resident
 
 Uploading, active and pending-eviction residents all count toward the budget. Eviction preserves visibility asynchronously before release; a failed preservation retains ownership and reports the failure. Reload restores only compatible light identities and visibility. Budget pressure preserves existing publication and reports delayed work instead of uploading the whole world.
 
-Surface feedback uses its nearest baked probe; material shading interpolates the published camera volume. Invalid or unready feedback contributes zero. All selected integrations finish reading frame-start state before any sector commit. Publication has no whole-grid copy or CPU-readback gate, and convergence diagnostics never stop continuous lighting updates.
+Surface feedback uses its nearest baked probe; material shading samples the published camera cascades. Invalid or unready feedback contributes zero. All selected integrations finish reading frame-start state before any sector commit. Publication has no whole-grid copy or CPU-readback gate, and convergence diagnostics never stop continuous lighting updates.
 
-A primary Game camera drives updates, with Scene View as a fallback when no Game camera renders. Other cameras publish shared committed results without duplicating relighting. Each camera tracks its own publication changes; moving windows rebuild only their local layout. Bookkeeping advances when recorded publication executes.
+A primary Game camera drives updates, with Scene View as a fallback when no Game camera renders. Other cameras publish shared committed results without duplicating relighting. Each camera tracks its own publication changes; moving windows publish only newly covered slots. Bookkeeping advances when recorded publication executes.
 
-Interpolation respects probe validity and intensity and preserves signed lighting until final irradiance evaluation. Outside-domain positions, missing windows or zero valid weight use the consumer's fallback; reflection normalization is neutral without coverage. Spatial filtering is an approximation whose error is evaluated separately from solver arithmetic.
+Interpolation respects probe validity and intensity and preserves signed lighting until final irradiance evaluation. Positions outside every cascade, missing publications or zero valid weight in every covering cascade use the consumer's fallback; reflection normalization is neutral without coverage. Spatial filtering is an approximation whose error is evaluated separately from solver arithmetic.
 
 Every eligible camera publishes committed or neutral data even when no sector changes. Reflection/Preview or disabled cameras cannot leave inherited empty state for a later Game camera. Asset replacement resets residency and publications atomically, including ownership of pending work; disabling and re-enabling can recover normally.
+
+## Camera cascades
+
+Each eligible camera publishes a small number of nested cascades. Cascade 0 holds committed probe lighting at the baked spacing; every further cascade doubles the spacing and, with the same probe count, covers twice the extent. Cascades are axis-aligned with the baked grid, snapped to their own spacing, centered on the camera and clamped to the baked domain. A cascade whose predecessor already covers the whole domain is not published.
+
+Coarse lighting is a prefiltered pyramid of committed probe lighting, not separately baked transport. Each coarse node is a tent-weighted average of the finer level around its aligned node, accumulated in the validity-premultiplied form that shading interpolates, so invalid probes never contribute and a fully invalid neighborhood remains invalid. Pyramid levels are global, follow sector commits incrementally and, like committed probe lighting, survive transport eviction. Coarse cascades are a far-field approximation: their wider support may average lighting across thin occluders, so a coarser cascade never replaces a finer cascade that has valid coverage at a point.
+
+Publication uses toroidal addressing on the horizontal axes. A window step publishes only the newly covered slabs and hardware filtering wraps across the physical seam; a vertical step rebuilds that cascade. Sector commits republish only the intersecting slots of each cascade. The content of a toroidal publication equals a full rebuild at the same window position.
+
+Shading uses the finest cascade containing the point and blends into the next coarser cascade across a one-cell band along the axes where its window scrolls. The band is tightened by one cell and centered on the camera position clamped into the window, so the weight depends only on the camera and window steps do not pop. The coarsest published cascade does not fade, and the accumulated result is normalized by its total weight. A cascade with zero valid weight at a point yields to the next coarser one. All PRT consumers share this evaluation.
 
 ## Resource declarations and observation
 

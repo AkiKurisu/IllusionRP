@@ -9,7 +9,7 @@ namespace Illusion.Rendering.PRTGI
 #if UNITY_EDITOR
     internal enum ShadowCacheDebugStatus : uint
     {
-        Unknown, FreshHit, Sampled, FallbackFromCache, UncoveredNoCache
+        Unknown, Cached, Uncovered
     }
     [ExecuteAlways]
 #endif
@@ -34,16 +34,16 @@ namespace Illusion.Rendering.PRTGI
         [Range(0, 1)] public float rayOriginBias = 0.1f;
         [Min(1)] public int sectorWidth = 4;
         public bool enableRelightShadow = true;
-        [Min(1)] public int shadowCacheMaxAge = 30;
         public bool enableShadowCacheStats;
         [Min(1)] public int shadowCacheStatsReadbackInterval = 10;
         [Min(1)] public int sectorsPerFrame = 2;
         [Min(1)] public int sectorBudgetMiB = 256;
         [Min(1)] public int uploadBudgetMiB = 4;
         public Vector3Int voxelProbeSize = new(10, 5, 10);
+        [Range(1, PRTLayoutConstants.MaxCascades)] public int cascadeCount = 3;
         [HideInInspector] public PRTProbeVolumeAsset asset;
 
-        private RenderTexture _coefficientVoxelRT, _validityVoxelRT;
+        private RenderTexture _coefficientVoxelRT;
         private uint[] _validity;
         private PRTProbeMetadata[] _allProbes;
         private bool _isDataInitialized;
@@ -53,7 +53,6 @@ namespace Illusion.Rendering.PRTGI
         private readonly List<PRTProbe> _probesInBoundingBox = new();
 
         public RenderTexture CoefficientVoxel3D => _coefficientVoxelRT;
-        public RenderTexture ValidityVoxel3D => _validityVoxelRT;
         public Vector3Int BoundingBoxMin => _boundingBoxMin;
         public Grid CurrentVoxelGrid { get; private set; }
         public int ProbeCountInWindow => _probesInBoundingBox.Count;
@@ -76,6 +75,7 @@ namespace Illusion.Rendering.PRTGI
         public float SolverResidual { get; private set; }
         public float SolverAbsoluteResidual { get; private set; }
         public int SolverNonFiniteCount { get; private set; }
+        public int PyramidLevels { get; private set; }
         public uint PublishedGeneration { get; private set; }
         public string ShadowPreviewLightName { get; internal set; }
         public int ShadowPreviewLightId { get; internal set; }
@@ -106,6 +106,10 @@ namespace Illusion.Rendering.PRTGI
             SolverResidual = solver.Residual;
             SolverAbsoluteResidual = solver.AbsoluteResidual;
             SolverNonFiniteCount = solver.NonFiniteCount;
+            PyramidLevels = solver.Pyramid.CoarseLevelCount;
+#if UNITY_EDITOR
+            _radianceSolver = solver;
+#endif
         }
     }
 }

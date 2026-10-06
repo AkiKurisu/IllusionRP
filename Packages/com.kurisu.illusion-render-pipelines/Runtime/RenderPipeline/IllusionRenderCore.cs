@@ -41,6 +41,8 @@ namespace Illusion.Rendering
         
         internal const string ProbeSHDebug = "Hidden/ProbeSHDebug";
 
+        internal const string DebugPRTCascades = "Hidden/DebugPRTCascades";
+
         internal const string DebugDisplayHDShadowMap = "Hidden/AreaLights/DebugDisplayHDShadowMap";
 #endif
     }

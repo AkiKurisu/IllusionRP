@@ -31,25 +31,16 @@ struct PRTWorldShadowFace
     uint padding;
 };
 
-struct PRTWorldShadowEntry
-{
-    float shadow;
-    uint epoch;
-    uint lastUpdateFrame;
-    uint valid;
-};
-
 StructuredBuffer<PRTWorldLight> _PRTWorldLights;
 StructuredBuffer<PRTWorldShadowFace> _PRTWorldShadowFaces;
-RWStructuredBuffer<PRTWorldShadowEntry> _PRTWorldShadowCache;
+// Cached visibility per shadowed light and surfel: unorm8 shadow | 24-bit light visibility epoch << 8. Epoch 0 is empty.
+RWStructuredBuffer<uint> _PRTWorldShadowCache;
 RWStructuredBuffer<uint> _PRTWorldLightingStats;
 Texture2D<float> _PRTWorldMainShadows;
 Texture2D<float> _PRTWorldAdditionalShadows;
 uint _PRTWorldLightCount;
 uint _PRTWorldSurfelCount;
-uint _PRTWorldSceneFrame;
 uint _PRTWorldStatsEnabled;
-uint _PRTWorldMaxShadowAge;
 
 void PRTWorldStat(uint index)
 {
@@ -83,55 +74,47 @@ float PRTWorldVisibility(PRTWorldLight light, uint surfelIndex, float3 positionW
 {
     PRTWorldStat(0);
     uint index = light.cacheOffset + surfelIndex;
-    PRTWorldShadowEntry entry = _PRTWorldShadowCache[index];
-    bool epochValid = entry.valid != 0 && entry.epoch == light.visibilityEpoch;
-    uint age = _PRTWorldSceneFrame - entry.lastUpdateFrame;
     for (uint i = 0; i < light.faceCount; i++)
     {
         PRTWorldShadowFace face = _PRTWorldShadowFaces[light.faceOffset + i];
         float visibility;
         if (!PRTWorldSampleFace(face, positionWS, normalWS, direction, visibility)) continue;
-        entry.shadow = saturate(visibility);
-        entry.epoch = light.visibilityEpoch;
-        entry.lastUpdateFrame = _PRTWorldSceneFrame;
-        entry.valid = 1;
-        _PRTWorldShadowCache[index] = entry;
-        PRTWorldStat(5);
-        return entry.shadow;
+        visibility = saturate(visibility);
+        _PRTWorldShadowCache[index] = (light.visibilityEpoch << 8) | uint(round(visibility * 255.0));
+        PRTWorldStat(4);
+        return visibility;
     }
     PRTWorldStat(2);
-    if (epochValid)
+    uint entry = _PRTWorldShadowCache[index];
+    if ((entry >> 8) == light.visibilityEpoch)
     {
         PRTWorldStat(1);
-        PRTWorldStat(6);
-        if (age > _PRTWorldMaxShadowAge) PRTWorldStat(4);
-        return entry.shadow;
+        return float(entry & 0xFFu) / 255.0;
     }
     PRTWorldStat(3);
-    PRTWorldStat(7);
     return 1;
 }
 
-float3 EvaluatePRTWorldLighting(Surfel surfel, uint surfelIndex)
+float3 EvaluatePRTWorldLighting(float3 position, float3 normal, uint renderingLayerMask, uint objectLayerMask, uint surfelIndex)
 {
     float3 lighting = 0;
     for (uint i = 0; i < _PRTWorldLightCount; i++)
     {
         PRTWorldLight light = _PRTWorldLights[i];
-        if ((surfel.objectLayerMask & light.objectLayers) == 0) continue;
-        if ((light.flags & 4u) != 0 && (surfel.renderingLayerMask & light.renderingLayers) == 0) continue;
+        if ((objectLayerMask & light.objectLayers) == 0) continue;
+        if ((light.flags & 4u) != 0 && (renderingLayerMask & light.renderingLayers) == 0) continue;
         bool directional = light.positionType.w == 0;
-        float3 lightVector = directional ? light.directionRange.xyz : light.positionType.xyz - surfel.position;
+        float3 lightVector = directional ? light.directionRange.xyz : light.positionType.xyz - position;
         float distanceSqr = max(dot(lightVector, lightVector), HALF_MIN_SQRT);
         float3 direction = lightVector * rsqrt(distanceSqr);
         float attenuation = directional ? 1 : DistanceAttenuation(distanceSqr, light.attenuation.xy);
         if (light.positionType.w == 2) attenuation *= AngleAttenuation(light.directionRange.xyz, direction, light.attenuation.zw);
-        float cosine = saturate(dot(surfel.normal, direction));
+        float cosine = saturate(dot(normal, direction));
         if (cosine <= 0 || attenuation <= 0) continue;
         float visibility = 1;
         if ((light.flags & 1u) != 0)
         {
-            visibility = PRTWorldVisibility(light, surfelIndex, surfel.position, surfel.normal, direction);
+            visibility = PRTWorldVisibility(light, surfelIndex, position, normal, direction);
             visibility = lerp(1, visibility, saturate(light.colorShadowStrength.w));
         }
         lighting += light.colorShadowStrength.rgb * (cosine * attenuation * visibility);

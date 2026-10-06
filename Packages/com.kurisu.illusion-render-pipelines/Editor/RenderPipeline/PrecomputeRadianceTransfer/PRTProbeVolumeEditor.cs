@@ -7,8 +7,6 @@ namespace Illusion.Rendering.Editor
     [CustomEditor(typeof(PRTProbeVolume))]
     internal partial class PRTProbeVolumeEditor : PropertyFetchEditor<PRTProbeVolume>
     {
-        private static readonly Color ProbeHandleColor = new(0.2f, 0.8f, 0.1f, 0.125f);
-
         private const double StatsRepaintInterval = 0.2;
 
         private double _nextStatsRepaintTime;
@@ -24,6 +22,7 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _rayOriginBias;
 
         private SerializedProperty _voxelProbeSize;
+        private SerializedProperty _cascadeCount;
         private SerializedProperty _sectorsPerFrame;
         private SerializedProperty _uploadBudgetMiB;
         private SerializedProperty _sectorBudgetMiB;
@@ -44,6 +43,7 @@ namespace Illusion.Rendering.Editor
             _rayOriginBias = Properties.Find(volume => volume.rayOriginBias);
 
             _voxelProbeSize = Properties.Find(volume => volume.voxelProbeSize);
+            _cascadeCount = Properties.Find(volume => volume.cascadeCount);
             _sectorsPerFrame = Properties.Find(volume => volume.sectorsPerFrame);
             _uploadBudgetMiB = Properties.Find(volume => volume.uploadBudgetMiB);
             _sectorBudgetMiB = Properties.Find(volume => volume.sectorBudgetMiB);
@@ -170,6 +170,7 @@ namespace Illusion.Rendering.Editor
             if (Foldout("Relight", true))
             {
                 EditorGUILayout.PropertyField(_voxelProbeSize, Styles.CameraWindow);
+                EditorGUILayout.PropertyField(_cascadeCount, Styles.Cascades);
                 EditorGUILayout.PropertyField(_sectorsPerFrame, Styles.SectorsPerFrame);
                 EditorGUILayout.PropertyField(_uploadBudgetMiB, Styles.UploadBudget);
                 EditorGUILayout.PropertyField(_sectorBudgetMiB, Styles.ResidentBudget);
@@ -188,25 +189,30 @@ namespace Illusion.Rendering.Editor
                 return;
             }
 
-            bool shadowCacheMode = Target.debugMode == ProbeVolumeDebugMode.ShadowCache;
-            float visibleHandleSize = Target.probeHandleSize * (shadowCacheMode ? 0.05f : 0.2f);
-            float pickHandleSize = Target.probeHandleSize * 0.2f;
-            var handleColor = shadowCacheMode
-                ? new Color(ProbeHandleColor.r, ProbeHandleColor.g, ProbeHandleColor.b, 0.025f)
-                : ProbeHandleColor;
+            var current = Event.current;
+            if (current.type != EventType.MouseDown || current.button != 0 || current.alt)
+                return;
 
-            using (new Handles.DrawingScope(handleColor))
+            // Pick the nearest probe along the mouse ray; one handle per probe does not scale to large volumes.
+            float radius = Target.probeHandleSize * (Target.debugMode == ProbeVolumeDebugMode.ShadowCache ? 0.1f : 0.5f);
+            Ray ray = HandleUtility.GUIPointToWorldRay(current.mousePosition);
+            int picked = -1;
+            float nearest = float.PositiveInfinity;
+            for (int i = 0; i < Target.Probes.Length; i++)
             {
-                for (int i = 0; i < Target.Probes.Length; i++)
-                {
-                    if (Handles.Button(Target.Probes[i].Position, Quaternion.identity, visibleHandleSize,
-                            pickHandleSize, Handles.SphereHandleCap))
-                    {
-                        Target.selectedProbeIndex = i;
-                        Repaint();
-                    }
-                }
+                Vector3 offset = Target.Probes[i].Position - ray.origin;
+                float along = Vector3.Dot(offset, ray.direction);
+                if (along <= 0f || along >= nearest || (offset - ray.direction * along).sqrMagnitude > radius * radius)
+                    continue;
+                nearest = along;
+                picked = i;
             }
+
+            if (picked < 0)
+                return;
+            Target.selectedProbeIndex = picked;
+            current.Use();
+            Repaint();
         }
 
         private static class Styles
@@ -219,7 +225,8 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent GeometryBias = new("Geometry Bias", "How far to push a probe's capture point out of geometry.");
             public static readonly GUIContent RayOriginBias = new("Ray Origin Bias", "Distance between a probe's center and the origin of its placement rays.");
 
-            public static readonly GUIContent CameraWindow = new("Camera Window", "Probes around the camera that are published to material shading, per axis. Clamped to the probe count.");
+            public static readonly GUIContent CameraWindow = new("Camera Window", "Probes per axis in each camera cascade. Clamped to the probe count.");
+            public static readonly GUIContent Cascades = new("Cascades", "Nested camera windows; each one doubles the probe spacing. Coarser cascades are skipped once a finer one covers the whole volume.");
             public static readonly GUIContent SectorsPerFrame = new("Sectors Per Frame", "Maximum number of sectors relit each frame.");
             public static readonly GUIContent UploadBudget = new("Upload Budget (MiB)", "Maximum sector transport uploaded to the GPU each frame.");
             public static readonly GUIContent ResidentBudget = new("Resident Budget (MiB)", "Maximum sector transport kept resident on the GPU.");
@@ -246,7 +253,6 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent PlacementPreview = new("Preview Placement", "Run the placement search without baking transport.");
             public static readonly GUIContent CollectStats = new("Statistics", "Read back solver residuals and shadow cache counters from the GPU.");
             public static readonly GUIContent StatsReadbackInterval = new("Readback Interval", "Frames between statistics readbacks.");
-            public static readonly GUIContent ShadowCacheMaxAge = new("Old Sample Age", "Samples older than this many scene ticks are counted as old. Diagnostic only.");
         }
     }
 }

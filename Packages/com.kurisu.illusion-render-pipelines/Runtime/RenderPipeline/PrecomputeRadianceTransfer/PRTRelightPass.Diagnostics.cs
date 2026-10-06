@@ -34,11 +34,10 @@ namespace Illusion.Rendering.PRTGI
             int surfelCount = sector.Data.surfels.Length;
             bool preview = _lighting.PreviewCacheOffset != uint.MaxValue && surfelCount > 0;
             if (stats)
-                _volume.BeginWorldShadowStats(_lighting.PreviewVisibilityEpoch, frame, _lighting.MaxShadowAge,
-                    _lighting.PreviewLightName, _lighting.PreviewLightId);
+                _volume.BeginWorldShadowStats(_lighting.PreviewVisibilityEpoch, frame, _lighting.PreviewLightName, _lighting.PreviewLightId);
 #if UNITY_EDITOR
             if (debug && preview)
-                _volume.BeginWorldShadowDebug(_lighting.PreviewVisibilityEpoch, frame, _lighting.MaxShadowAge, _lighting.PreviewLightName);
+                _volume.BeginWorldShadowDebug(_lighting.PreviewVisibilityEpoch, frame, _lighting.PreviewLightName);
 #endif
             if (!preview)
             {
@@ -93,39 +92,5 @@ namespace Illusion.Rendering.PRTGI
 #endif
             });
         }
-
-#if UNITY_EDITOR
-        private sealed class ProbeDebugData
-        {
-            public ComputeShader shader;
-            public int kernel, index;
-            public GraphicsBuffer source, destination;
-        }
-        private void RecordProbeDebug(RenderGraph graph)
-        {
-            if (_solver.Generation == 0 || _volume.debugMode is not (ProbeVolumeDebugMode.ProbeRadiance or ProbeVolumeDebugMode.ShadowCache))
-                return;
-            foreach (var pair in _volume.CreatedProbeDebugData())
-            {
-                using var builder = graph.AddUnsafePass<ProbeDebugData>("PRT publish debug probe coefficients", out var data);
-                data.shader = _probeShader;
-                data.kernel = _debugKernel;
-                data.index = pair.index;
-                data.source = _solver.Previous;
-                data.destination = pair.data.CoefficientSH9;
-                builder.UseBuffer(graph.ImportBuffer(data.source), AccessFlags.Read);
-                builder.UseBuffer(graph.ImportBuffer(data.destination), AccessFlags.Write);
-                builder.AllowPassCulling(false);
-                builder.SetRenderFunc(static (ProbeDebugData pass, UnsafeGraphContext context) =>
-                {
-                    var command = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
-                    command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtPreviousSH", pass.source);
-                    command.SetComputeBufferParam(pass.shader, pass.kernel, "_coefficientSH9", pass.destination);
-                    command.SetComputeIntParam(pass.shader, "_prtDebugProbeIndex", pass.index);
-                    command.DispatchCompute(pass.shader, pass.kernel, 1, 1, 1);
-                });
-            }
-        }
-#endif
     }
 }

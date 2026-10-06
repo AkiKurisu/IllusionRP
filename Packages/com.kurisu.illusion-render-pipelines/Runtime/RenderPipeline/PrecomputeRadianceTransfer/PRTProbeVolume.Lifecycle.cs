@@ -15,10 +15,16 @@ namespace Illusion.Rendering.PRTGI
             IsFeatureEnabled = IllusionRenderingUtils.GetPrecomputedRadianceTransferFeatureEnabled();
             PRTVolumeManager.RegisterProbeVolume(this);
             EnsureRuntimeData();
+#if UNITY_EDITOR
+            EnableRadianceDebug();
+#endif
         }
 
         private void OnDisable()
         {
+#if UNITY_EDITOR
+            DisableRadianceDebug();
+#endif
             PRTVolumeManager.UnregisterProbeVolume(this);
             ReleaseRuntimeData();
             _hasAssetState = false;
@@ -42,11 +48,6 @@ namespace Illusion.Rendering.PRTGI
                 return;
             IsFeatureEnabled = IllusionRenderingUtils.GetPrecomputedRadianceTransferFeatureEnabled();
             EnsureRuntimeData();
-#if UNITY_EDITOR
-            if (Probes != null)
-                foreach (var probe in Probes)
-                    probe.UpdateVisibility();
-#endif
         }
 
         internal void EnsureRuntimeData()
@@ -125,7 +126,10 @@ namespace Illusion.Rendering.PRTGI
             RuntimeDataId++;
             ClearShadowCacheGlobalStats();
             ReleaseProbes();
-            _coefficientVoxelRT = _validityVoxelRT = null;
+#if UNITY_EDITOR
+            _radianceSolver = null;
+#endif
+            _coefficientVoxelRT = null;
             _allProbes = null;
             _isDataInitialized = false;
             PublishedGeneration = 0;
@@ -138,13 +142,11 @@ namespace Illusion.Rendering.PRTGI
 
         private void ReleaseProbes()
         {
-            if (Probes != null)
-                foreach (var probe in Probes)
-                    probe.Dispose();
             Probes = null;
             _probesInBoundingBox.Clear();
             _mainCamera = null;
             _currentBoundingBox = default;
+            CascadeBounds = Array.Empty<Bounds>();
 #if UNITY_EDITOR
             _cachedVirtualOffsetPositions.Clear();
             ReleaseProbeDebugData();

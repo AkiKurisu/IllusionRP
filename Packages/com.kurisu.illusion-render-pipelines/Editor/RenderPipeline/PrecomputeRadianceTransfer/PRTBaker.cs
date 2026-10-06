@@ -80,7 +80,7 @@ namespace Illusion.Rendering.Editor
             EnsureCaptureResources();
             UploadDirections(samples);
             var result = new PRTProbeBakeSamples[positions.Length];
-            using var buffer = new ComputeBuffer(samples.Length * positions.Length, Surfel.Stride);
+            using var buffer = new ComputeBuffer(samples.Length * positions.Length, PRTCaptureSample.Stride);
             for (int i = 0; i < positions.Length; i++)
             {
                 if (token.IsCancellationRequested) break;
@@ -96,11 +96,11 @@ namespace Illusion.Rendering.Editor
                 _surfelSampleCS.SetBuffer(_surfelKernel, "_surfels", buffer);
                 _surfelSampleCS.Dispatch(_surfelKernel, (samples.Length + 63) / 64, 1, 1);
             }
-            Surfel[] batch = await Readback<Surfel>(buffer);
+            PRTCaptureSample[] batch = await Readback<PRTCaptureSample>(buffer);
             token.ThrowIfCancellationRequested();
             for (int i = 0; i < positions.Length; i++)
             {
-                var data = new Surfel[samples.Length];
+                var data = new PRTCaptureSample[samples.Length];
                 Array.Copy(batch, i * samples.Length, data, 0, samples.Length);
                 result[i] = new PRTProbeBakeSamples(positions[i], data);
             }

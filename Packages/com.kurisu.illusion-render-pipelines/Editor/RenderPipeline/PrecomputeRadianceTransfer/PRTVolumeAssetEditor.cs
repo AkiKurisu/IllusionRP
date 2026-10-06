@@ -27,7 +27,7 @@ namespace Illusion.Rendering.Editor
                 ("SH9 Transfers", sectors.Sum(s => (long)s.factors.Length), BrickFactor.Stride),
                 ("Sector Probe Ranges", sectors.Sum(s => (long)s.probes.Length), PRTProbeData.Stride),
                 ("Sector Probe IDs", sectors.Sum(s => (long)s.probeIds.Length), 4),
-                ("Sky Directions", sectors.Sum(s => (long)s.skySamples.Length), PRTSkySample.Stride)
+                ("Sky Visibility Words", sectors.Sum(s => (long)s.skyVisibility.Length), 4)
             };
             long total = buffers.Sum(b => b.count * b.stride);
 

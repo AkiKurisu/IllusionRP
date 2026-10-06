@@ -10,14 +10,15 @@ namespace Illusion.Rendering.PRTGI
         internal struct ShadowCacheDebugEntry
         {
             public float shadow;
-            public uint status, age, epoch;
+            public ShadowCacheDebugStatus status;
+            public uint epoch;
         }
         internal struct ShadowCacheProbeDebugSummary
         {
             public bool valid;
             public ShadowCacheDebugStatus status;
             public float meanShadow;
-            public uint unknownCount, freshHitCount, sampledCount, fallbackCount, uncoveredCount;
+            public uint cachedCount, uncoveredCount;
         }
         internal ShadowCacheDebugEntry[] LatestShadowCacheDebugEntries { get; private set; }
         internal ShadowCacheProbeDebugSummary[] LatestShadowCacheProbeSummaries { get; private set; }
@@ -27,28 +28,19 @@ namespace Illusion.Rendering.PRTGI
         internal double LatestShadowCacheDebugTime { get; private set; }
         internal string ShadowDebugPreviewLightName { get; private set; }
         private bool _shadowDebugPending, _hasShadowDebugFrame;
-        private uint _shadowDebugFrame, _shadowDebugEpoch, _shadowDebugAge;
+        private uint _shadowDebugFrame, _shadowDebugEpoch;
         private string _shadowDebugName;
         internal int ShadowDebugSector { get; private set; }
         internal bool IsShadowCacheDebugActive => debugMode == ProbeVolumeDebugMode.ShadowCache;
-        internal System.Collections.Generic.IEnumerable<(int index, PRTProbeDebugData data)> CreatedProbeDebugData()
-        {
-            if (_probeDebugData == null)
-                yield break;
-            for (int i = 0; i < _probeDebugData.Length; i++)
-                if (_probeDebugData[i] != null)
-                    yield return (i, _probeDebugData[i]);
-        }
         internal bool ShouldRequestShadowCacheDebugReadback(uint frame) => IsShadowCacheDebugActive && !_shadowDebugPending &&
             (!_hasShadowDebugFrame || frame - _shadowDebugFrame >= (uint)Mathf.Max(1, shadowCacheDebugReadbackInterval));
 
-        internal void BeginWorldShadowDebug(uint epoch, uint frame, uint maxAge, string name)
+        internal void BeginWorldShadowDebug(uint epoch, uint frame, string name)
         {
             _shadowDebugPending = true;
             _hasShadowDebugFrame = true;
             _shadowDebugFrame = frame;
             _shadowDebugEpoch = epoch;
-            _shadowDebugAge = maxAge;
             _shadowDebugName = name;
         }
 
@@ -57,17 +49,16 @@ namespace Illusion.Rendering.PRTGI
             _shadowDebugPending = false;
             if (request.hasError)
                 return;
-            var values = request.GetData<ShadowCacheSnapshotEntry>();
+            var values = request.GetData<uint>();
             var entries = new ShadowCacheDebugEntry[values.Length];
             for (int i = 0; i < values.Length; i++)
             {
-                var value = values[i];
-                uint age = _shadowDebugFrame - value.lastUpdateFrame;
-                bool ready = value.valid != 0 && value.epoch == _shadowDebugEpoch;
+                uint epoch = values[i] >> 8;
+                bool ready = epoch != 0 && epoch == _shadowDebugEpoch;
                 entries[i] = new ShadowCacheDebugEntry
                 {
-                    shadow = ready ? value.shadow : 1f, epoch = value.epoch, age = age,
-                    status = ready ? age <= _shadowDebugAge ? 1u : 3u : 4u
+                    shadow = ready ? (values[i] & 0xFF) / 255f : 1f, epoch = epoch,
+                    status = ready ? ShadowCacheDebugStatus.Cached : ShadowCacheDebugStatus.Uncovered
                 };
             }
             ShadowDebugSector = sector;
@@ -95,21 +86,19 @@ namespace Illusion.Rendering.PRTGI
                 float sum = 0;
                 for (int factor = range.factorStart; factor < range.factorStart + range.factorCount; factor++)
                 {
-                    var brick = data.bricks[data.factors[factor].brickIndex];
+                    var brick = data.bricks[data.factors[factor].BrickIndex];
                     for (int surfel = brick.start; surfel < brick.start + brick.count; surfel++)
                     {
                         var entry = LatestShadowCacheDebugEntries[surfel];
                         count++;
                         sum += Mathf.Clamp01(entry.shadow);
-                        if (entry.status == 1) summary.freshHitCount++;
-                        else if (entry.status == 3) summary.fallbackCount++;
+                        if (entry.status == ShadowCacheDebugStatus.Cached) summary.cachedCount++;
                         else summary.uncoveredCount++;
                     }
                 }
                 summary.valid = count > 0;
                 summary.meanShadow = count > 0 ? sum / count : 0;
-                summary.status = summary.uncoveredCount > 0 ? ShadowCacheDebugStatus.UncoveredNoCache
-                    : summary.fallbackCount > 0 ? ShadowCacheDebugStatus.FallbackFromCache : ShadowCacheDebugStatus.FreshHit;
+                summary.status = summary.uncoveredCount > 0 ? ShadowCacheDebugStatus.Uncovered : ShadowCacheDebugStatus.Cached;
                 summaries[index] = summary;
             }
             LatestShadowCacheProbeSummaries = summaries;

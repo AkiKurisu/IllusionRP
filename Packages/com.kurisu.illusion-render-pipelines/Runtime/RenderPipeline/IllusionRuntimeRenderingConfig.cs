@@ -182,6 +182,12 @@ namespace Illusion.Rendering
         public bool EnableVrsDebug { get; set; }
 
         /// <summary>
+        /// Color pixels by the PRT camera cascades that light them.
+        /// </summary>
+        [ConfigVariable("r.debug.prt.cascades", IsEditor = true)]
+        public bool EnablePRTCascadesDebug { get; set; }
+
+        /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.
         /// </summary>
         [ConfigVariable("r.CenterHistogramAroundMiddleGrey", IsEditor = true)]

@@ -39,13 +39,11 @@ namespace Illusion.Rendering.PRTGI
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    // unorm8 visibility | 24-bit light visibility epoch << 8; epoch 0 marks an empty entry.
     internal struct PRTWorldShadowCacheEntry
     {
-        internal const int Stride = 16;
-        internal float Shadow;
-        internal uint Epoch;
-        internal uint LastUpdateFrame;
-        internal uint Valid;
+        internal const int Stride = 4;
+        internal uint Packed;
     }
 
     internal struct PRTWorldLightSnapshot
@@ -87,9 +85,7 @@ namespace Illusion.Rendering.PRTGI
         internal TextureHandle AdditionalShadowTexture;
         internal uint LightCount;
         internal uint SurfelCount;
-        internal uint SceneFrame;
         internal uint PreviewCacheOffset;
         internal bool CollectStats;
-        internal uint MaxShadowAge;
     }
 }

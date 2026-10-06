@@ -313,6 +313,8 @@ namespace Illusion.Rendering
         private TransparentSSRDebugPass _transparentSSRDebugPass;
 
         private AreaLights.AreaLightShadowAtlasDebugPass _areaLightShadowAtlasDebugPass;
+
+        private PRTCascadeDebugPass _prtCascadeDebugPass;
 #endif
 
         public override void Create()
@@ -429,6 +431,7 @@ namespace Illusion.Rendering
             _stencilVRSDebugPass = new StencilVRSDebugPass();
             _transparentSSRDebugPass = new TransparentSSRDebugPass(_rendererData);
             _areaLightShadowAtlasDebugPass = new AreaLights.AreaLightShadowAtlasDebugPass();
+            _prtCascadeDebugPass = new PRTCascadeDebugPass();
             IllusionDebugPanels.Register(this);
 #endif
         }
@@ -750,6 +753,10 @@ namespace Illusion.Rendering
             {
                 renderer.EnqueuePass(_transparentSSRDebugPass);
             }
+            if (config.EnablePRTCascadesDebug && _rendererData.SampleProbeVolumes)
+            {
+                renderer.EnqueuePass(_prtCascadeDebugPass);
+            }
 #endif
             // AfterRenderingPostProcessing
             renderer.EnqueuePass(_processingPostPass);
@@ -884,6 +891,7 @@ namespace Illusion.Rendering
             SafeDispose(ref _stencilVRSDebugPass);
             SafeDispose(ref _transparentSSRDebugPass);
             SafeDispose(ref _areaLightShadowAtlasDebugPass);
+            SafeDispose(ref _prtCascadeDebugPass);
             SafeDispose(ref _motionVectorsDebugPass);
             SafeDispose(ref _exposureDebugPass);
 #endif

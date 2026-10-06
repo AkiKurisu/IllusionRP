@@ -44,11 +44,8 @@ namespace Illusion.Rendering.PRTGI
             }
 
             int validProbeCount = 0;
-            uint sampledCount = 0;
-            uint fallbackCount = 0;
-            uint hitCount = 0;
+            uint cachedCount = 0;
             uint uncoveredCount = 0;
-            uint unknownCount = 0;
 
             for (int i = 0; i < LatestShadowCacheProbeSummaries.Length; i++)
             {
@@ -59,17 +56,14 @@ namespace Illusion.Rendering.PRTGI
                 }
 
                 validProbeCount++;
-                sampledCount += summary.sampledCount;
-                fallbackCount += summary.fallbackCount;
-                hitCount += summary.freshHitCount;
+                cachedCount += summary.cachedCount;
                 uncoveredCount += summary.uncoveredCount;
-                unknownCount += summary.unknownCount;
             }
 
             Handles.Label(GetShadowCacheSummaryLabelPosition(),
                 $"Shadow preview {ShadowDebugPreviewLightName} Frame:{LatestShadowCacheDebugFrameIndex} Epoch:{LatestShadowCacheDebugEpoch}\n" +
                 $"Probes:{validProbeCount}/{LatestShadowCacheProbeSummaries.Length} " +
-                $"S:{sampledCount} F:{fallbackCount} H:{hitCount} U:{uncoveredCount} ?:{unknownCount}");
+                $"Cached surfels:{cachedCount} Uncovered:{uncoveredCount}");
         }
 
 
@@ -113,10 +107,9 @@ namespace Illusion.Rendering.PRTGI
             }
 
             var summary = LatestShadowCacheProbeSummaries[probeIndex];
-            uint hitCount = summary.freshHitCount;
             Handles.Label(probePos + Vector3.up * probeHandleSize * 0.85f,
                 $"ShadowCache F:{LatestShadowCacheDebugFrameIndex} E:{LatestShadowCacheDebugEpoch} " +
-                $"Avg:{summary.meanShadow:0.00} S:{summary.sampledCount} F:{summary.fallbackCount} H:{hitCount} U:{summary.uncoveredCount}");
+                $"Avg:{summary.meanShadow:0.00} Cached:{summary.cachedCount} Uncovered:{summary.uncoveredCount}");
         }
 
 
@@ -143,8 +136,7 @@ namespace Illusion.Rendering.PRTGI
                 }
 
                 var entry = LatestShadowCacheDebugEntries[surfelIndex];
-                var status = (ShadowCacheDebugStatus)entry.status;
-                Gizmos.color = GetShadowCacheStatusColor(status, entry.shadow);
+                Gizmos.color = GetShadowCacheStatusColor(entry.status, entry.shadow);
                 Gizmos.DrawSphere(debugData.LocalSurfels[i].position, surfelSize);
             }
         }
@@ -156,10 +148,8 @@ namespace Illusion.Rendering.PRTGI
         {
             Color baseColor = status switch
             {
-                ShadowCacheDebugStatus.FreshHit => new Color(0.1f, 0.9f, 0.25f, 0.85f),
-                ShadowCacheDebugStatus.Sampled => new Color(0f, 0.85f, 1f, 0.85f),
-                ShadowCacheDebugStatus.FallbackFromCache => new Color(0.1f, 0.35f, 1f, 0.9f),
-                ShadowCacheDebugStatus.UncoveredNoCache => new Color(1f, 0.15f, 0.1f, 0.9f),
+                ShadowCacheDebugStatus.Cached => new Color(0.1f, 0.9f, 0.25f, 0.85f),
+                ShadowCacheDebugStatus.Uncovered => new Color(1f, 0.15f, 0.1f, 0.9f),
                 _ => new Color(0.45f, 0.45f, 0.45f, 0.75f)
             };
 

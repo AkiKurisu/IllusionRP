@@ -11,7 +11,7 @@
 // Inputs & outputs
 //--------------------------------------------------------------------------------------------------
 
-RWStructuredBuffer<Surfel> _surfels;
+RWStructuredBuffer<PRTCaptureSample> _surfels;
 StructuredBuffer<float4> _sampleDirections;
 TextureCube<float4> _worldPosCubemap, _normalCubemap, _albedoCubemap, _metadataCubemap;
 SamplerState sampler_point_clamp;
@@ -29,7 +29,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (id.x >= _sampleCount) return;
     float3 direction = _sampleDirections[id.x].xyz;
     float4 normal = _normalCubemap.SampleLevel(sampler_point_clamp, direction, 0);
-    Surfel result = (Surfel)0;
+    PRTCaptureSample result = (PRTCaptureSample)0;
     if (normal.w == 0)
     {
         // sample sky

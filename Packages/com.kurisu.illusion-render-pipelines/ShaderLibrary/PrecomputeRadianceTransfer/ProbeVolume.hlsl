@@ -1,7 +1,7 @@
 #ifndef PRT_PROBE_VOLUME_INCLUDED
 #define PRT_PROBE_VOLUME_INCLUDED
 
-struct Surfel
+struct PRTCaptureSample
 {
     float3 position;
     float3 normal;
@@ -13,29 +13,76 @@ struct Surfel
     int nearestProbe;
 };
 
-struct SurfelIndices { uint surfelStart; uint surfelCount; };
-struct BrickFactor { int brickIndex; float sh[9]; };
+// Layout shared with Surfel in PRTData.cs: unorm16 position within the sector's surfel bounds, octahedral unorm12
+// normal, sRGB unorm8 albedo.
+struct Surfel
+{
+    uint positionXY;
+    uint positionZAlbedoRG;
+    uint normalAlbedoB;
+    int nearestProbe;
+};
+
+float3 PRTSurfelPosition(Surfel surfel, float3 boundsMin, float3 boundsSize)
+{
+    float3 q = float3(surfel.positionXY & 0xFFFFu, surfel.positionXY >> 16, surfel.positionZAlbedoRG & 0xFFFFu) / 65535.0;
+    return boundsMin + q * boundsSize;
+}
+
+float3 PRTSurfelNormal(Surfel surfel)
+{
+    float2 e = float2(surfel.normalAlbedoB & 0xFFFu, (surfel.normalAlbedoB >> 12) & 0xFFFu) / 4095.0 * 2.0 - 1.0;
+    float3 n = float3(e, 1.0 - abs(e.x) - abs(e.y));
+    float t = saturate(-n.z);
+    n.xy += float2(n.x >= 0 ? -t : t, n.y >= 0 ? -t : t);
+    return normalize(n);
+}
+
+float PRTSRGBToLinear(float c)
+{
+    return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+}
+
+float3 PRTSurfelAlbedo(Surfel surfel)
+{
+    float3 srgb = float3((surfel.positionZAlbedoRG >> 16) & 0xFFu, surfel.positionZAlbedoRG >> 24, surfel.normalAlbedoB >> 24) / 255.0;
+    return float3(PRTSRGBToLinear(srgb.r), PRTSRGBToLinear(srgb.g), PRTSRGBToLinear(srgb.b));
+}
+
+struct SurfelIndices { uint surfelStart; uint surfelCount; uint renderingLayerMask; uint objectLayerMask; };
+// Layout shared with BrickFactor in PRTData.cs: sector-local brick index and nine half coefficients.
+struct BrickFactor { uint brickSh0; uint sh12; uint sh34; uint sh56; uint sh78; };
+
+uint PRTFactorBrick(BrickFactor factor) { return factor.brickSh0 & 0xFFFFu; }
+
+void PRTFactorSH(BrickFactor factor, out float sh[9])
+{
+    sh[0] = f16tof32(factor.brickSh0 >> 16);
+    sh[1] = f16tof32(factor.sh12); sh[2] = f16tof32(factor.sh12 >> 16);
+    sh[3] = f16tof32(factor.sh34); sh[4] = f16tof32(factor.sh34 >> 16);
+    sh[5] = f16tof32(factor.sh56); sh[6] = f16tof32(factor.sh56 >> 16);
+    sh[7] = f16tof32(factor.sh78); sh[8] = f16tof32(factor.sh78 >> 16);
+}
 struct PRTProbeData
 {
     int factorStart;
     int factorCount;
-    int skyStart;
-    int skyCount;
     float3 captureOffset;
     uint validity;
 };
-struct PRTSkySample { float3 direction; float weight; };
 
 CBUFFER_START(PRTProbeVolumeConstants)
 float4 _prtGridOrigin;
 int4 _prtGridMin;
 int4 _prtGridCount;
-int4 _prtWindowMin;
-int4 _prtWindowCount;
+int4 _prtSlotCount;
 float _prtGridSpacing;
 uint _prtPublicationGeneration;
 uint _prtVolumeEnabled;
-uint _prtLayoutPadding;
+uint _prtCascadeCount;
+float4 _prtCascadeCenter;
+int4 _prtCascadeWindowMin[4];
+int4 _prtCascadeWindowCount[4];
 CBUFFER_END
 
 uint PRTProbeIndex(int3 coordinate)
@@ -52,18 +99,35 @@ int3 PRTProbeCoordinate(uint index)
     return int3(x, rem / _prtGridCount.z, rem % _prtGridCount.z) + _prtGridMin.xyz;
 }
 
-int3 PRTTextureCoordinate(int3 slot, uint coefficient)
+int PRTWrap(int coordinate, int count)
 {
-    return int3(slot.x, slot.z, slot.y + int(coefficient) * _prtWindowCount.y);
+    return coordinate - count * int(floor(float(coordinate) / float(count)));
 }
 
-bool PRTInterpolationCell(float3 worldPosition, int3 minimum, int3 count, out int3 cell, out float3 rate)
+// Horizontal axes are toroidal so a window step only republishes the newly covered slabs. Cascades share one
+// texture: level c occupies depth slices [c * 9 * slots.y, (c + 1) * 9 * slots.y), coefficient-major.
+int3 PRTPublicationSlot(int3 node, uint cascade)
+{
+    return int3(PRTWrap(node.x, _prtSlotCount.x), node.y - _prtCascadeWindowMin[cascade].y, PRTWrap(node.z, _prtSlotCount.z));
+}
+
+int3 PRTTextureCoordinate(int3 slot, uint cascade, uint coefficient)
+{
+    return int3(slot.x, slot.z, slot.y + int(cascade * 9u + coefficient) * _prtSlotCount.y);
+}
+
+// Node coordinates of a cascade level, relative to the grid minimum; level c has spacing * 2^c.
+float3 PRTCascadeCoordinate(float3 worldPosition, uint cascade)
+{
+    return ((worldPosition - _prtGridOrigin.xyz) / _prtGridSpacing - float3(_prtGridMin.xyz)) / float(1u << cascade);
+}
+
+bool PRTInterpolationCell(float3 coordinate, int3 minimum, int3 count, out int3 cell, out float3 rate)
 {
     cell = minimum;
     rate = 0;
     if (_prtGridSpacing <= 0 || any(count <= 0))
         return false;
-    float3 coordinate = (worldPosition - _prtGridOrigin.xyz) / _prtGridSpacing;
     [unroll]
     for (int axis = 0; axis < 3; axis++)
     {

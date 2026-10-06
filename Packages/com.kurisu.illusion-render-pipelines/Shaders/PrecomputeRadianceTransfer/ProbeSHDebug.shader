@@ -1,163 +1,94 @@
 Shader "Hidden/ProbeSHDebug"
 {
-	Properties
-	{
-		TintColor("_TintColor", Color) = (1, 1, 1, 1)
-	}
     SubShader
     {
         Tags
         {
             "RenderPipeline" = "UniversalPipeline"
-			"RenderType"="Opaque"
-			"Queue"="Geometry+0"
-			"UniversalMaterialType"="Lit"
+            "RenderType" = "Opaque"
+            "Queue" = "Geometry+0"
         }
-        LOD 100
+
+        HLSLINCLUDE
+        #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+        #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/SphericalHarmonics.hlsl"
+
+        // One instance per probe of the committed solver state.
+        StructuredBuffer<float4> _prtDebugProbeSH;
+        StructuredBuffer<uint> _prtDebugProbeMetadata;
+        float4 _prtDebugGridOrigin;   // xyz: first probe, w: spacing
+        float4 _prtDebugGridCount;    // xyz: probe count, w: hidden probe or -1
+        float _prtDebugProbeScale;
+
+        struct Attributes
+        {
+            float4 positionOS : POSITION;
+            float3 normalOS : NORMAL;
+        };
+
+        struct Varyings
+        {
+            float4 positionCS : SV_POSITION;
+            float3 normalWS : TEXCOORD0;
+            nointerpolation uint probe : TEXCOORD1;
+        };
+
+        Varyings Vertex(Attributes input, uint instanceID : SV_InstanceID)
+        {
+            Varyings output;
+            uint3 count = (uint3)_prtDebugGridCount.xyz;
+            uint3 coordinate = uint3(instanceID / (count.y * count.z), instanceID / count.z % count.y, instanceID % count.z);
+            float3 center = _prtDebugGridOrigin.xyz + float3(coordinate) * _prtDebugGridOrigin.w;
+            output.positionCS = TransformWorldToHClip(center + input.positionOS.xyz * _prtDebugProbeScale);
+            if ((int)instanceID == (int)_prtDebugGridCount.w)
+                output.positionCS = float4(2, 2, 2, 1);
+            output.normalWS = input.normalOS;
+            output.probe = instanceID;
+            return output;
+        }
+        ENDHLSL
 
         Pass
         {
             Name "Forward"
-			Tags
-			{
-				"LightMode" = "UniversalForward"
-			}
-			
-			ZWrite On
-			ZTest LEqual
-			
+            Tags { "LightMode" = "UniversalForward" }
+
+            ZWrite On
+            ZTest LEqual
+
             HLSLPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
+            #pragma vertex Vertex
+            #pragma fragment Fragment
 
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/SphericalHarmonics.hlsl"
-            
-            CBUFFER_START(UnityPerMaterial)
-            StructuredBuffer<float> _coefficientSH9; // array size: 3x9=27
-            float4 _TintColor;
-            CBUFFER_END
-
-            struct appdata
+            float4 Fragment(Varyings input) : SV_Target
             {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
-            };
-
-            struct v2f
-            {
-                float4 vertex : SV_POSITION;
-                float3 normal : TEXCOORD2;
-            };
-
-            v2f vert (appdata v)
-            {
-                v2f o;
-                o.vertex = TransformObjectToHClip(v.vertex.xyz);
-                o.normal = TransformObjectToWorldNormal(v.normal);
-                o.normal = normalize(o.normal);
-                return o;
-            }
-
-            float4 frag (v2f input) : SV_Target
-            {
-                float3 dir = normalize(input.normal);
-
-                // decode sh
                 float3 c[9];
-                for (int i = 0; i < 9; i++)
-                {
-                    c[i].x = _coefficientSH9[i * 3 + 0];
-                    c[i].y = _coefficientSH9[i * 3 + 1];
-                    c[i].z = _coefficientSH9[i * 3 + 2];
-                }
-
-                // decode irradiance
-                float3 Lo = IrradianceSH9(c, dir.xzy); // PI is pre-divided
-                
-                // Apply tint color for invalidated probes
-                Lo *= _TintColor.rgb;
-                
-                return float4(Lo, 1.0);
+                for (uint i = 0; i < 9; i++)
+                    c[i] = _prtDebugProbeSH[input.probe * 9u + i].xyz;
+                float3 irradiance = IrradianceSH9(c, normalize(input.normalWS).xzy); // PI is pre-divided
+                // Invalid probes render black.
+                return float4((_prtDebugProbeMetadata[input.probe] >> 24) > 127u ? irradiance : 0, 1);
             }
             ENDHLSL
         }
-		
-		Pass
-		{
-			Name "DepthNormals"
-			Tags 
-			{ 
-				"LightMode" = "DepthNormals" 
-		    }
-			
-			Blend One Zero
-			ZTest LEqual
-			ZWrite On
 
-			HLSLPROGRAM
+        Pass
+        {
+            Name "DepthNormals"
+            Tags { "LightMode" = "DepthNormals" }
 
-			#pragma vertex vert
-			#pragma fragment frag
+            ZWrite On
+            ZTest LEqual
 
-			#define SHADERPASS SHADERPASS_DEPTHNORMALSONLY
-			
-			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
-			#include "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/Includes/ShaderPass.hlsl"
+            HLSLPROGRAM
+            #pragma vertex Vertex
+            #pragma fragment Fragment
 
-			struct VertexInput
-			{
-				float4 vertex : POSITION;
-				float3 ase_normal : NORMAL;
-				float4 ase_tangent : TANGENT;
-				UNITY_VERTEX_INPUT_INSTANCE_ID
-			};
-
-			struct VertexOutput
-			{
-				float4 clipPos : SV_POSITION;
-				float4 clipPosV : TEXCOORD0;
-				float3 worldNormal : TEXCOORD1;
-				float4 worldTangent : TEXCOORD2;
-				UNITY_VERTEX_INPUT_INSTANCE_ID
-				UNITY_VERTEX_OUTPUT_STEREO
-			};
-			
-			
-			VertexOutput VertexFunction( VertexInput v)
-			{
-				VertexOutput o = (VertexOutput)0;
-				UNITY_SETUP_INSTANCE_ID(v);
-				UNITY_TRANSFER_INSTANCE_ID(v, o);
-				UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
-				
-				float3 positionWS = TransformObjectToWorld( v.vertex.xyz );
-				float3 normalWS = TransformObjectToWorldNormal( v.ase_normal );
-				float4 tangentWS = float4(TransformObjectToWorldDir( v.ase_tangent.xyz), v.ase_tangent.w);
-				float4 positionCS = TransformWorldToHClip( positionWS );
-				o.worldNormal = normalWS;
-				o.worldTangent = tangentWS;
-				o.clipPos = positionCS;
-				o.clipPosV = positionCS;
-				return o;
-			}
-
-			
-			VertexOutput vert ( VertexInput v )
-			{
-				return VertexFunction( v );
-			}
-
-			half4 frag(	VertexOutput IN) : SV_TARGET
-			{
-				UNITY_SETUP_INSTANCE_ID(IN);
-				UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX( IN );
-				
-				float3 WorldNormal = IN.worldNormal;
-				return half4(NormalizeNormalPerPixel(WorldNormal), 0.0);
-			}
-			ENDHLSL
-		}
+            half4 Fragment(Varyings input) : SV_Target
+            {
+                return half4(NormalizeNormalPerPixel(input.normalWS), 0.0);
+            }
+            ENDHLSL
+        }
     }
 }
