@@ -105,7 +105,7 @@ namespace Illusion.Rendering
         public ComputeShader prtProbeRelightCS;
 
 #if UNITY_EDITOR
-        public ComputeShader prtSurfelSampleCS;
+        public UnityEngine.Rendering.RayTracingShader prtBakeTraceRS;
 
         public ComputeShader reflectionProbeSampleCS;
 #endif

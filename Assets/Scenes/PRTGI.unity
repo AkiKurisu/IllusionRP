@@ -6710,7 +6710,6 @@ MonoBehaviour:
   shadowCacheDebugReadbackInterval: 10
   shadowCacheDebugShowLabels: 1
   shadowCacheDebugSurfelSize: 0.05
-  bakeResolution: 512
   probeSizeX: 32
   probeSizeY: 4
   probeSizeZ: 32
@@ -6721,7 +6720,6 @@ MonoBehaviour:
   rayOriginBias: 0.4
   sectorWidth: 4
   enableRelightShadow: 1
-  shadowCacheMaxAge: 30
   enableShadowCacheStats: 0
   shadowCacheStatsReadbackInterval: 10
   sectorsPerFrame: 2

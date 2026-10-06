@@ -1,0 +1,136 @@
+#pragma max_recursion_depth 1
+#pragma only_renderers d3d11
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/ProbeVolume.hlsl"
+
+#define PRT_BAKE_SCENE_MASK 0x1
+#define PRT_BAKE_SOLID_MASK 0x2
+
+RaytracingAccelerationStructure _PRTBakeScene;
+StructuredBuffer<float4> _PRTBakeProbes;
+StructuredBuffer<float4> _PRTBakeDirections;
+StructuredBuffer<float2> _PRTBakeBiases; // geometry bias, ray origin bias
+StructuredBuffer<uint4> _PRTBakeInstances; // rendering layers, object layer mask, material key
+RWStructuredBuffer<PRTCaptureSample> _PRTBakeSamples;
+RWStructuredBuffer<float4> _PRTBakePlacements;
+uint _PRTBakeSampleCount;
+float _PRTBakeConeSpread;
+float _PRTBakeSearchDistance;
+
+static const uint PlacementDirectionCount = 26;
+static const uint PlacementSteps = 4;
+
+IllusionPathPayload Trace(float3 origin, float3 direction, float tMin, float tMax, uint flags, uint mask, uint seed)
+{
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = direction;
+    ray.TMin = tMin;
+    ray.TMax = tMax;
+    IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER, seed, 0.0, _PRTBakeConeSpread);
+    TraceRay(_PRTBakeScene, flags, mask, 0, 1, 0, ray, payload);
+    return payload;
+}
+
+// One ray per probe and table direction; the hit's material pass supplies the diffuse surface.
+[shader("raygeneration")]
+void CaptureRayGen()
+{
+    uint2 index = DispatchRaysIndex().xy;
+    float3 origin = _PRTBakeProbes[index.y].xyz;
+    float3 direction = _PRTBakeDirections[index.x].xyz;
+    IllusionPathPayload payload = Trace(origin, direction, 0.001, 1e30, RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+        PRT_BAKE_SCENE_MASK, index.y * _PRTBakeSampleCount + index.x);
+
+    PRTCaptureSample result = (PRTCaptureSample)0;
+    if (payload.hitT < 0.0)
+    {
+        result.flags = 1;
+        result.position = origin + direction;
+    }
+    else
+    {
+        // Two-sided surfaces report the normal of the side the probe sees.
+        float3 normal = PathTracingUnpackNormal(payload.normalShading);
+        float3 vertexNormal = PathTracingUnpackNormal(payload.normalVertex);
+        bool frontFacing = PathTracingHasSurfaceFlag(payload, PT_SURFACE_FRONT_FACING);
+        if (dot(normal, vertexNormal) * (frontFacing ? 1.0 : -1.0) < 0.0)
+            normal = -normal;
+        uint4 instance = _PRTBakeInstances[payload.instanceID];
+        result.position = origin + direction * payload.hitT;
+        result.normal = normal;
+        result.albedo = PathTracingUnpackHalf4(payload.diffuseOpacity).rgb;
+        result.renderingLayerMask = instance.x;
+        result.objectLayerMask = instance.y;
+        result.materialKey = instance.z;
+    }
+    _PRTBakeSamples[index.y * _PRTBakeSampleCount + index.x] = result;
+}
+
+float3 PlacementDirection(uint index)
+{
+    uint cell = index < 13 ? index : index + 1;
+    return normalize(float3(int(cell / 9) - 1, int(cell / 3 % 3) - 1, int(cell % 3) - 1));
+}
+
+// Pushes a probe out of solid geometry: a probe that sees more back faces than front faces is inside, and moves
+// past the nearest back face. xyz: offset from the nominal position, w: 1 when the probe ends outside.
+[shader("raygeneration")]
+void PlacementRayGen()
+{
+    uint probe = DispatchRaysIndex().x;
+    float2 bias = _PRTBakeBiases[probe];
+    float3 position = _PRTBakeProbes[probe].xyz;
+    float3 current = position;
+    float4 result = float4(0.0, 0.0, 0.0, 0.0);
+    for (uint step = 0; step < PlacementSteps; step++)
+    {
+        uint front = 0, back = 0;
+        float nearest = 1e30;
+        float3 exitPosition = current;
+        for (uint i = 0; i < PlacementDirectionCount; i++)
+        {
+            float3 direction = PlacementDirection(i);
+            float3 origin = current - direction * bias.y;
+            IllusionPathPayload payload = Trace(origin, direction, 1e-6, 1e30, RAY_FLAG_FORCE_OPAQUE, PRT_BAKE_SOLID_MASK, 0);
+            if (payload.hitT < 0.0)
+                continue;
+            bool frontFacing = PathTracingHasSurfaceFlag(payload, PT_SURFACE_FRONT_FACING);
+            // A coplanar front face wins over the nearest back face, so solids resting on each other open no exit.
+            if (!frontFacing)
+                frontFacing = Trace(origin, direction, 1e-6, payload.hitT * (1.0 + 1e-4) + 1e-4,
+                    RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_CULL_BACK_FACING_TRIANGLES, PRT_BAKE_SOLID_MASK, 0).hitT >= 0.0;
+            if (frontFacing)
+            {
+                front++;
+                continue;
+            }
+            back++;
+            if (payload.hitT < nearest)
+            {
+                nearest = payload.hitT;
+                exitPosition = origin + direction * payload.hitT + PathTracingUnpackNormal(payload.normalFace) * bias.x;
+            }
+        }
+        result.xyz = current - position;
+        if (back <= front)
+        {
+            result.w = 1.0;
+            break;
+        }
+        float3 exitOffset = exitPosition - position;
+        if (dot(exitOffset, exitOffset) > _PRTBakeSearchDistance * _PRTBakeSearchDistance)
+            break;
+        current = exitPosition;
+        result.xyz = current - position;
+    }
+    _PRTBakePlacements[probe] = result;
+}
+
+[shader("miss")]
+void Miss(inout IllusionPathPayload payload : SV_RayPayload)
+{
+    payload.hitT = PT_MISS_T;
+}

@@ -5,24 +5,66 @@ using Unity.Collections;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEditor.Rendering;
+using Illusion.Rendering.PathTracing;
 using UObject = UnityEngine.Object;
 
 namespace Illusion.Rendering.Editor
 {
+    internal readonly struct PRTBakeInstance
+    {
+        internal readonly Mesh Mesh;
+        internal readonly Matrix4x4 LocalToWorld;
+        internal readonly Material Material;
+        internal readonly MaterialPropertyBlock Properties;
+        internal readonly int SubmeshIndex;
+        internal readonly uint RenderingLayers, ObjectLayerMask, MaterialKey;
+        internal readonly CullMode Cull;
+        internal readonly bool AnyHit, Solid;
+
+        internal PRTBakeInstance(Renderer renderer, Mesh mesh, Matrix4x4 localToWorld, Material material, MaterialPropertyBlock properties,
+            int submeshIndex, uint materialKey)
+        {
+            Mesh = mesh;
+            LocalToWorld = localToWorld;
+            Material = material;
+            Properties = properties.isEmpty ? null : properties;
+            SubmeshIndex = submeshIndex;
+            RenderingLayers = renderer.renderingLayerMask;
+            ObjectLayerMask = 1u << renderer.gameObject.layer;
+            MaterialKey = materialKey;
+            Cull = CullOf(material, properties);
+            AnyHit = material.renderQueue >= (int)RenderQueue.AlphaTest || material.IsKeywordEnabled("_ALPHATEST_ON") ||
+                material.IsKeywordEnabled("_SURFACE_TYPE_TRANSPARENT");
+            Solid = Cull == CullMode.Back && !AnyHit && !material.doubleSidedGI &&
+                material.GetTag("RenderType", false) is not ("Transparent" or "TransparentCutout") &&
+                !(material.HasProperty("_Surface") && material.GetFloat("_Surface") != 0);
+        }
+
+        // Shaders without a cull property are treated as two-sided.
+        private static CullMode CullOf(Material material, MaterialPropertyBlock properties)
+        {
+            foreach (string name in new[] { "_CullMode", "_Cull" })
+            {
+                if (!material.HasProperty(name)) continue;
+                return (CullMode)Mathf.RoundToInt(properties.HasFloat(name) ? properties.GetFloat(name) : material.GetFloat(name));
+            }
+            return CullMode.Off;
+        }
+    }
+
     internal sealed class PRTBakeScene : IDisposable
     {
-        internal readonly PRTGBufferCaptureDrawItem[] drawItems;
-        internal readonly PRTMeshVirtualOffset placement = new();
+        internal readonly PRTBakeInstance[] instances;
         internal readonly Bounds bounds;
         internal readonly Hash128 geometrySignature;
         internal readonly Hash128 materialSignature;
         internal readonly string[] emptyGeometry;
         private readonly List<Mesh> _meshes = new();
-        private readonly List<Material> _materials = new();
 
         internal PRTBakeScene(Renderer[] renderers)
         {
-            var items = new List<PRTGBufferCaptureDrawItem>();
+            var items = new List<PRTBakeInstance>();
             var meshCopies = new Dictionary<Mesh, Mesh>();
             var meshHashes = new Dictionary<Mesh, Hash128>();
             var materialKeys = new Dictionary<(Material, Renderer), uint>();
@@ -80,56 +122,49 @@ namespace Illusion.Rendering.Editor
                     Material[] sourceMaterials = renderer.sharedMaterials;
                     if (sourceMaterials.Length != mesh.subMeshCount)
                         throw new NotSupportedException($"PRT capture requires matching material/submesh slots ({renderer.name}).");
-                    Bounds rendererBounds = renderer.bounds;
-                    float windPadding = 0;
-                    int firstItem = items.Count;
-                    var solid = new bool[mesh.subMeshCount];
                     for (int submesh = 0; submesh < sourceMaterials.Length; submesh++)
                     {
                         Material source = sourceMaterials[submesh];
                         if (!source) throw new InvalidOperationException($"PRT capture has an empty material slot ({renderer.name}).");
+                        RequirePathTracingPass(source);
                         var key = (source, renderer.HasPropertyBlock() ? renderer : null);
                         if (!materialKeys.TryGetValue(key, out uint materialKey))
                         {
                             materialKey = (uint)materialKeys.Count + 1;
                             materialKeys.Add(key, materialKey);
                         }
-                        if (materialKey >= 16777216u) throw new InvalidOperationException("PRT material metadata exceeds FP32 exact integer range.");
-                        Material capture = PRTCaptureMaterial.Create(source, renderer, submesh, materialKey,
-                            out MaterialPropertyBlock properties, out int pass, out bool isSolid);
-                        _materials.Add(capture);
-                        if (submesh < solid.Length) solid[submesh] = isSolid;
-                        items.Add(new PRTGBufferCaptureDrawItem(renderer, mesh, matrix, capture, properties, submesh, pass, rendererBounds));
+                        var properties = new MaterialPropertyBlock();
+                        renderer.GetPropertyBlock(properties, submesh);
+                        if (properties.isEmpty) renderer.GetPropertyBlock(properties);
+                        var item = new PRTBakeInstance(renderer, mesh, matrix, source, properties, submesh, materialKey);
+                        items.Add(item);
                         AppendMaterial(ref materials, source);
                         AppendPropertyBlock(ref materials, source.shader, properties);
-                        if (source.shader.name == "AE/Leaves")
-                        {
-                            float power = properties.HasFloat("_WindPower") ? properties.GetFloat("_WindPower") : source.GetFloat("_WindPower");
-                            Vector3 scale = renderer.transform.lossyScale;
-                            windPadding = Mathf.Max(windPadding, 2f * Mathf.Sqrt(3f) * Mathf.Abs(power) *
-                                Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z)));
-                        }
-                        materials.Append(properties.GetVector("_PRTMetadata").ToString("R"));
+                        materials.Append(item.RenderingLayers);
+                        materials.Append(item.ObjectLayerMask);
+                        materials.Append(materialKey);
                     }
-                    rendererBounds.Expand(windPadding);
-                    for (int i = firstItem; i < items.Count; i++)
-                    {
-                        PRTGBufferCaptureDrawItem item = items[i];
-                        items[i] = new PRTGBufferCaptureDrawItem(item.Renderer, item.Mesh, item.LocalToWorld, item.Material,
-                            item.Properties, item.SubmeshIndex, item.PassIndex, rendererBounds);
-                    }
-                    if (!hasBounds) { geometryBounds = rendererBounds; hasBounds = true; }
-                    else geometryBounds.Encapsulate(rendererBounds);
-                    placement.AddMesh(mesh, matrix, solid);
+                    if (!hasBounds) { geometryBounds = renderer.bounds; hasBounds = true; }
+                    else geometryBounds.Encapsulate(renderer.bounds);
                 }
-                placement.Build();
-                drawItems = items.ToArray();
+                instances = items.ToArray();
                 bounds = geometryBounds;
                 geometrySignature = geometry;
                 materialSignature = materials;
                 emptyGeometry = empties.ToArray();
             }
             catch { Dispose(); throw; }
+        }
+
+        private static void RequirePathTracingPass(Material material)
+        {
+            if (!material.shader) throw new InvalidOperationException($"PRT capture material '{material.name}' has no shader.");
+            if (material.FindPass(PathTracingPass.MaterialPassName) < 0)
+                throw new NotSupportedException($"PRT capture requires a {PathTracingPass.MaterialPassName} pass for '{material.shader.name}' ({material.name}).");
+            ShaderMessage[] errors = ShaderUtil.GetShaderMessages(material.shader)
+                .Where(message => message.severity == ShaderCompilerMessageSeverity.Error).ToArray();
+            if (errors.Length > 0) throw new InvalidOperationException($"PRT capture shader '{material.shader.name}' failed to compile: " +
+                string.Join("; ", errors.Select(message => message.file + ":" + message.line + " " + message.message)));
         }
 
         private static void AppendObject(ref Hash128 hash, UObject value)
@@ -206,9 +241,7 @@ namespace Illusion.Rendering.Editor
         }
         public void Dispose()
         {
-            foreach (Material material in _materials) UObject.DestroyImmediate(material);
             foreach (Mesh mesh in _meshes) UObject.DestroyImmediate(mesh);
-            _materials.Clear();
             _meshes.Clear();
         }
     }

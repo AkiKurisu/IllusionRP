@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-06 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
-PRT provides diffuse indirect lighting for fixed baked geometry and materials under changing lights and environment. Baking captures transport; runtime raster/compute relighting does not require ray tracing. Probe interpolation and patch averaging are explicit approximations.
+PRT provides diffuse indirect lighting for fixed baked geometry and materials under changing lights and environment. Baking traces transport with hardware ray tracing; runtime raster/compute relighting does not require it. Probe interpolation and patch averaging are explicit approximations.
 
 ## Execution order and scheduling
 
@@ -26,13 +26,13 @@ All sectors selected in one frame read the same frame-start feedback. Updating o
 
 The asset owns a fixed axis-aligned world grid and independently owned sector transport. Probe identity is global; transport storage is sector-local. Geometry, materials, placement and authoring inputs are snapshotted consistently, and the bake is rejected if those inputs change before completion. A transformed volume cannot reinterpret a bake in a different world space.
 
-Capture uses authored vertex deformation, normal, diffuse and binary coverage inputs through the existing Forward GBuffer authoring path. Screen-space simplification overrides are not substitutes for bake inputs. Fractional transparency continuation, emission transport and full BSDF transport are outside this diffuse first-hit model. Unsupported geometry and material inputs are diagnosed rather than silently omitted.
+Capture traces every probe's sample directions against the snapshotted meshes and shades first hits with the materials' [path tracing](path-tracing.md) pass, which supplies the normal, diffuse reflectance and binary coverage. Diffuse reflectance follows the path tracing convention. Each material's cull mode decides which faces a ray can hit; materials without one are two-sided. Geometry is the static or baked skinned mesh, so vertex-shader animation is not captured. Screen-space simplification overrides are not substitutes for bake inputs. Fractional transparency continuation, emission transport and full BSDF transport are outside this diffuse first-hit model. Unsupported geometry and material inputs are diagnosed rather than silently omitted.
 
 Bake direction sampling and integration use the same deterministic convention. Geometry transfer and sky visibility remain separate. Geometry validity is distinct from runtime intensity or authoring masks, so removing a mask can restore a geometrically valid probe without rebaking unchanged transport.
 
-Virtual offsets use the captured geometry and do not depend on colliders or modify global physics. Thin transparent or double-sided surfaces do not establish occupancy. An offset that cannot be verified invalidates its probe.
+Virtual offsets trace the captured geometry and do not depend on colliders or modify global physics. Thin transparent or double-sided surfaces do not establish occupancy, and a front face coplanar with the nearest back face counts as front, so solids resting on each other open no exit. An offset that cannot be verified invalidates its probe.
 
-The bake-only capture variant remains available in the Editor and is always stripped from runtime builds. Generated shaders follow [ASE Shader Workflow](ase-shader-workflow.md). Temporary capture state is restored, cancellation completes outstanding readbacks before releasing their resources, and incomplete work never replaces a valid asset.
+Baking requires DirectX 12 with hardware ray tracing and rejects materials without a path tracing pass; runtime shaders carry no bake-only variants. Temporary capture state is restored, cancellation completes outstanding readbacks before releasing their resources, and incomplete work never replaces a valid asset.
 
 ## Lighting and visibility snapshots
 

@@ -15,7 +15,6 @@ namespace Illusion.Rendering.PRTGI
         [SerializeField, Min(16)] internal int bakeSampleCount = 512;
         [SerializeField] internal uint bakeSeed;
         private readonly Dictionary<Vector3, Vector3> _cachedVirtualOffsetPositions = new();
-        private static readonly ProfilerMarker PlacementMarker = new("PRT Bake Probe Placement");
         private static readonly ProfilerMarker TransferMarker = new("PRT Bake Direction Transfer");
 
         internal async Task BakeDataAsync(IPRTBaker baker, CancellationToken token = default)
@@ -26,7 +25,7 @@ namespace Illusion.Rendering.PRTGI
             var placement = await BakePlacementAsync(baker, token);
             Vector4[] directions = PRTBakeSampling.GenerateDirections(bakeSampleCount, bakeSeed);
             var partition = new PRTSectorBake(grid, sectorWidth);
-            const int batchSize = 32;
+            int batchSize = Math.Max(1, (1 << 19) / directions.Length);
             for (int start = 0; start < grid.ProbeCount; start += batchSize)
             {
                 token.ThrowIfCancellationRequested();
@@ -36,13 +35,14 @@ namespace Illusion.Rendering.PRTGI
                 baker.UpdateProgress($"Capture probes {start + 1}–{start + count}/{grid.ProbeCount}", 0.1f + 0.8f * start / grid.ProbeCount);
                 PRTProbeBakeSamples[] captures = await baker.CaptureProbesAsync(positions, directions, token);
                 using var scope = TransferMarker.Auto();
+                var offsets = new Vector3[count];
+                var validity = new uint[count];
                 for (int i = 0; i < count; i++)
                 {
-                    int index = start + i;
-                    Vector3 nominal = grid.GetPosition(index);
-                    partition.AddProbe(index, captures[i].surfels, directions, captures[i].capturePosition - nominal,
-                        PRTProbeValidity.Pack(1f, placement[index].valid ? 1f : 0f));
+                    offsets[i] = captures[i].capturePosition - grid.GetPosition(start + i);
+                    validity[i] = PRTProbeValidity.Pack(1f, placement[start + i].valid ? 1f : 0f);
                 }
+                partition.AddProbes(start, captures, directions, offsets, validity);
             }
             token.ThrowIfCancellationRequested();
             if (!grid.Equals(GetBakeGrid()) || authoringInputs != GetBakeAuthoringInputsSignature())
@@ -61,33 +61,38 @@ namespace Illusion.Rendering.PRTGI
             var result = new PRTProbePlacement[grid.ProbeCount];
             PRTProbeAdjustmentVolume[] adjustmentVolumes = GetPlacementVolumes().ToArray();
             _cachedVirtualOffsetPositions.Clear();
+            var offsets = new Vector3[result.Length];
+            var positions = new Vector3[result.Length];
+            var biases = new Vector2[result.Length];
             for (int i = 0; i < result.Length; i++)
             {
-                token.ThrowIfCancellationRequested();
                 Vector3 nominal = grid.GetPosition(i);
-                Vector3 offset = Vector3.zero;
-                float geometry = geometryBias, ray = rayOriginBias;
+                Vector2 bias = new(geometryBias, rayOriginBias);
                 if (enableBakePreprocess)
                 {
-                    offset = virtualOffset;
+                    offsets[i] = virtualOffset;
                     foreach (PRTProbeAdjustmentVolume volume in adjustmentVolumes)
                     {
                         if (!volume || !volume.Contains(nominal)) continue;
                         if (volume.mode == PRTProbeAdjustmentMode.OverrideVirtualOffsetSettings)
-                        { geometry = volume.geometryBias; ray = volume.rayOriginBias; }
-                        else offset += volume.GetAdditionalVirtualOffset();
+                            bias = new Vector2(volume.geometryBias, volume.rayOriginBias);
+                        else offsets[i] += volume.GetAdditionalVirtualOffset();
                     }
-                    using var scope = PlacementMarker.Auto();
-                    PRTProbePlacement adjusted = baker.PlaceProbe(nominal + offset, geometry, ray, probeGridSize);
-                    result[i] = new PRTProbePlacement(offset + adjusted.offset, adjusted.valid);
                 }
-                else result[i] = new PRTProbePlacement(offset, true);
-                _cachedVirtualOffsetPositions[nominal] = result[i].offset;
-                if ((i + 1) % 32 == 0)
-                {
-                    baker.UpdateProgress($"Place probes {i + 1}/{result.Length}", 0.1f * (i + 1) / result.Length);
-                    await Task.Yield();
-                }
+                positions[i] = nominal + offsets[i];
+                biases[i] = bias;
+            }
+            PRTProbePlacement[] adjusted = null;
+            if (enableBakePreprocess)
+            {
+                baker.UpdateProgress("Place probes", 0f);
+                adjusted = await baker.PlaceProbesAsync(positions, biases, probeGridSize, token);
+            }
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = adjusted == null ? new PRTProbePlacement(offsets[i], true)
+                    : new PRTProbePlacement(offsets[i] + adjusted[i].offset, adjusted[i].valid);
+                _cachedVirtualOffsetPositions[grid.GetPosition(i)] = result[i].offset;
             }
             return result;
         }
@@ -116,7 +121,7 @@ namespace Illusion.Rendering.PRTGI
             hash.Append(enableBakePreprocess ? 1 : 0);
             AppendVector(ref hash, virtualOffset);
             hash.Append(geometryBias); hash.Append(rayOriginBias);
-            hash.Append((int)bakeResolution); hash.Append(bakeSampleCount); hash.Append(unchecked((int)bakeSeed));
+            hash.Append(bakeSampleCount); hash.Append(unchecked((int)bakeSeed));
             hash.Append(sectorWidth);
             hash.Append(SurfelGrid.DefaultBrickSize); hash.Append(SurfelGrid.MergeDistance);
             hash.Append(Surfel.Stride); hash.Append(BrickFactor.Stride);

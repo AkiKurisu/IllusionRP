@@ -15,41 +15,35 @@ namespace Illusion.Rendering.Editor
 {
     public sealed class PRTBaker : IPRTBaker, IDisposable
     {
-        private readonly int _cubemapSize;
+        private const int ReflectionCubemapSize = 512;
         private readonly float _sceneTime;
-        private readonly ComputeShader _surfelSampleCS, _reflectionProbeSampleCS;
-        private readonly int _surfelKernel, _reflectionKernel;
+        private readonly RayTracingShader _traceShader;
+        private readonly ComputeShader _reflectionProbeSampleCS;
+        private readonly int _reflectionKernel;
         private PRTBakeScene _scene;
+        private PRTBakeTracer _tracer;
         private Camera _camera;
-        private RenderTexture _position, _normal, _albedo, _metadata, _lighting;
+        private RenderTexture _lighting;
         private ComputeBuffer _directions;
-        private const string CaptureKeyword = "_PRT_CAPTURE";
-        private static readonly int CaptureModeId = Shader.PropertyToID("_PRTCaptureMode");
         private static readonly ProfilerMarker SceneMarker = new("PRT Bake Scene Snapshot");
-        private static readonly ProfilerMarker CaptureMarker = new("PRT Bake GBuffer Capture");
         public Action<string, float> OnProgressUpdate;
         public Bounds GeometryBounds => _scene.bounds;
         public Hash128 GeometrySignature => _scene.geometrySignature;
         public Hash128 MaterialSignature => _scene.materialSignature;
-        public string BackendName => "RasterDiffuseCapture";
+        public string BackendName => "RayTracedCapture";
         public float SceneTime => _sceneTime;
 
-        public PRTBaker(PRTBakeResolution resolution)
+        public PRTBaker()
         {
-            _cubemapSize = (int)resolution;
             _sceneTime = Shader.GetGlobalVector("_Time").y;
             var resources = Resources.Load<IllusionRenderPipelineResources>(nameof(IllusionRenderPipelineResources));
-            _surfelSampleCS = resources.prtSurfelSampleCS;
+            _traceShader = resources.prtBakeTraceRS;
             _reflectionProbeSampleCS = resources.reflectionProbeSampleCS;
-            EnsureCompiled(_surfelSampleCS);
             EnsureCompiled(_reflectionProbeSampleCS);
-            _surfelKernel = _surfelSampleCS.FindKernel("CSMain");
             _reflectionKernel = _reflectionProbeSampleCS.FindKernel("CSMain");
         }
 
         void IPRTBaker.UpdateProgress(string status, float progress) => OnProgressUpdate?.Invoke(status, progress);
-        PRTProbePlacement IPRTBaker.PlaceProbe(Vector3 position, float geometryBias, float rayOriginBias, float searchDistance) =>
-            _scene.placement.Place(position, geometryBias, rayOriginBias, searchDistance);
 
         private void PrepareScene()
         {
@@ -62,6 +56,7 @@ namespace Illusion.Rendering.Editor
             _scene = new PRTBakeScene(renderers);
             if (_scene.emptyGeometry.Length > 0)
                 Debug.Log($"[PRT Capture] Empty geometry: {string.Join("; ", _scene.emptyGeometry)}.");
+            _tracer = new PRTBakeTracer(_traceShader, _scene.instances, _sceneTime);
         }
 
         public async Task BakeVolume(PRTProbeVolume volume, CancellationToken token = default)
@@ -77,27 +72,17 @@ namespace Illusion.Rendering.Editor
 
         async Task<PRTProbeBakeSamples[]> IPRTBaker.CaptureProbesAsync(Vector3[] positions, Vector4[] samples, CancellationToken token)
         {
-            EnsureCaptureResources();
-            UploadDirections(samples);
-            var result = new PRTProbeBakeSamples[positions.Length];
-            using var buffer = new ComputeBuffer(samples.Length * positions.Length, PRTCaptureSample.Stride);
-            for (int i = 0; i < positions.Length; i++)
+            using var probes = Upload(positions.Select(p => (Vector4)p).ToArray(), 16);
+            using var directions = Upload(samples, 16);
+            using var output = new GraphicsBuffer(GraphicsBuffer.Target.Structured, samples.Length * positions.Length, PRTCaptureSample.Stride);
+            using (var cmd = new CommandBuffer { name = "PRT Bake Capture" })
             {
-                if (token.IsCancellationRequested) break;
-                Capture(positions[i]);
-                _surfelSampleCS.SetVector("_probePos", positions[i]);
-                _surfelSampleCS.SetInt("_sampleCount", samples.Length);
-                _surfelSampleCS.SetInt("_surfelOutputOffset", i * samples.Length);
-                _surfelSampleCS.SetBuffer(_surfelKernel, "_sampleDirections", _directions);
-                _surfelSampleCS.SetTexture(_surfelKernel, "_worldPosCubemap", _position);
-                _surfelSampleCS.SetTexture(_surfelKernel, "_normalCubemap", _normal);
-                _surfelSampleCS.SetTexture(_surfelKernel, "_albedoCubemap", _albedo);
-                _surfelSampleCS.SetTexture(_surfelKernel, "_metadataCubemap", _metadata);
-                _surfelSampleCS.SetBuffer(_surfelKernel, "_surfels", buffer);
-                _surfelSampleCS.Dispatch(_surfelKernel, (samples.Length + 63) / 64, 1, 1);
+                _tracer.Capture(cmd, probes, positions.Length, directions, samples.Length, output);
+                Graphics.ExecuteCommandBuffer(cmd);
             }
-            PRTCaptureSample[] batch = await Readback<PRTCaptureSample>(buffer);
+            PRTCaptureSample[] batch = await Readback<PRTCaptureSample>(output);
             token.ThrowIfCancellationRequested();
+            var result = new PRTProbeBakeSamples[positions.Length];
             for (int i = 0; i < positions.Length; i++)
             {
                 var data = new PRTCaptureSample[samples.Length];
@@ -107,15 +92,29 @@ namespace Illusion.Rendering.Editor
             return result;
         }
 
-        private void EnsureCaptureResources()
+        async Task<PRTProbePlacement[]> IPRTBaker.PlaceProbesAsync(Vector3[] positions, Vector2[] biases, float searchDistance,
+            CancellationToken token)
         {
-            EnsureCamera();
-            if (_position) return;
-            _position = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Position");
-            _normal = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Normal");
-            _albedo = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Diffuse");
-            _metadata = CreateCube(RenderTextureFormat.ARGBFloat, "PRT Capture Metadata");
+            using var probes = Upload(positions.Select(p => (Vector4)p).ToArray(), 16);
+            using var bias = Upload(biases, 8);
+            using var output = new GraphicsBuffer(GraphicsBuffer.Target.Structured, positions.Length, 16);
+            using (var cmd = new CommandBuffer { name = "PRT Bake Placement" })
+            {
+                _tracer.Place(cmd, probes, bias, positions.Length, searchDistance, output);
+                Graphics.ExecuteCommandBuffer(cmd);
+            }
+            Vector4[] placements = await Readback<Vector4>(output);
+            token.ThrowIfCancellationRequested();
+            return placements.Select(p => new PRTProbePlacement(p, p.w > 0.5f)).ToArray();
         }
+
+        private static GraphicsBuffer Upload<T>(T[] data, int stride) where T : struct
+        {
+            var buffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, Mathf.Max(1, data.Length), stride);
+            buffer.SetData(data);
+            return buffer;
+        }
+
         private void EnsureCamera()
         {
             if (_camera) return;
@@ -128,13 +127,6 @@ namespace Illusion.Rendering.Editor
             _camera.backgroundColor = Color.clear;
             _camera.nearClipPlane = 0.001f;
         }
-        private RenderTexture CreateCube(RenderTextureFormat format, string name)
-        {
-            var target = new RenderTexture(_cubemapSize, _cubemapSize, 24, format, RenderTextureReadWrite.Linear)
-            { dimension = TextureDimension.Cube, filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = name };
-            target.Create();
-            return target;
-        }
         private void UploadDirections(Vector4[] samples)
         {
             if (_directions == null || _directions.count != samples.Length)
@@ -144,42 +136,16 @@ namespace Illusion.Rendering.Editor
             }
             _directions.SetData(samples);
         }
-        private void Capture(Vector3 position)
-        {
-            using var scope = CaptureMarker.Auto();
-            _camera.transform.SetPositionAndRotation(position, Quaternion.identity);
-            _camera.farClipPlane = Mathf.Max(1f, Vector3.Distance(position, _scene.bounds.center) + _scene.bounds.extents.magnitude + 1f);
-            _camera.cullingMask = 0;
-            bool originalKeyword = Shader.IsKeywordEnabled(CaptureKeyword);
-            int originalMode = Shader.GetGlobalInteger(CaptureModeId);
-            try
-            {
-                Shader.EnableKeyword(CaptureKeyword);
-                using (PRTGBufferCaptureBridge.Begin(_camera, _scene.drawItems, _sceneTime))
-                {
-                    CaptureMode(0, _position);
-                    CaptureMode(1, _normal);
-                    CaptureMode(2, _albedo);
-                    CaptureMode(3, _metadata);
-                }
-            }
-            finally
-            {
-                if (originalKeyword) Shader.EnableKeyword(CaptureKeyword); else Shader.DisableKeyword(CaptureKeyword);
-                Shader.SetGlobalInteger(CaptureModeId, originalMode);
-            }
-        }
-        private void CaptureMode(int mode, RenderTexture target)
-        {
-            Shader.SetGlobalInteger(CaptureModeId, mode);
-            if (!_camera.RenderToCubemap(target, -1, StaticEditorFlags.ContributeGI))
-                throw new InvalidOperationException("PRT cubemap capture failed.");
-        }
 
         public async Task BakeReflectionProbe(ReflectionProbeAdditionalData probe, CancellationToken token = default)
         {
             EnsureCamera();
-            _lighting ??= CreateCube(RenderTextureFormat.ARGBFloat, "PRT Reflection Reference Radiance");
+            if (!_lighting)
+            {
+                _lighting = new RenderTexture(ReflectionCubemapSize, ReflectionCubemapSize, 24, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+                { dimension = TextureDimension.Cube, filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "PRT Reflection Reference Radiance" };
+                _lighting.Create();
+            }
             UploadDirections(PRTBakeSampling.GenerateDirections(512, 0));
             _camera.cullingMask = -1;
             _camera.farClipPlane = 10000f;
@@ -191,15 +157,16 @@ namespace Illusion.Rendering.Editor
             _reflectionProbeSampleCS.SetBuffer(_reflectionKernel, "_sampleDirections", _directions);
             _reflectionProbeSampleCS.SetBuffer(_reflectionKernel, "_coefficientSH9", coefficients);
             _reflectionProbeSampleCS.Dispatch(_reflectionKernel, 1, 1, 1);
-            float[] values = await Readback<float>(coefficients);
+            float[] values = await Readback<float>(AsyncGPUReadback.Request(coefficients));
             token.ThrowIfCancellationRequested();
             probe.SetSHCoefficients(values);
         }
 
-        private static async Task<T[]> Readback<T>(ComputeBuffer buffer) where T : struct
+        private static Task<T[]> Readback<T>(GraphicsBuffer buffer) where T : struct => Readback<T>(AsyncGPUReadback.Request(buffer));
+
+        private static async Task<T[]> Readback<T>(AsyncGPUReadbackRequest readback) where T : struct
         {
             var completion = new TaskCompletionSource<T[]>();
-            AsyncGPUReadbackRequest readback = AsyncGPUReadback.Request(buffer);
             readback.forcePlayerLoopUpdate = true;
             GL.Flush();
             EditorApplication.CallbackFunction poll = () =>
@@ -242,13 +209,14 @@ namespace Illusion.Rendering.Editor
         }
         public void Dispose()
         {
+            _tracer?.Dispose();
+            _tracer = null;
             _scene?.Dispose();
             _scene = null;
             _directions?.Release();
             _directions = null;
-            foreach (RenderTexture target in new[] { _position, _normal, _albedo, _metadata, _lighting })
-                if (target) { target.Release(); UObject.DestroyImmediate(target); }
-            _position = _normal = _albedo = _metadata = _lighting = null;
+            if (_lighting) { _lighting.Release(); UObject.DestroyImmediate(_lighting); }
+            _lighting = null;
             if (_camera) UObject.DestroyImmediate(_camera.gameObject);
             _camera = null;
             OnProgressUpdate = null;
