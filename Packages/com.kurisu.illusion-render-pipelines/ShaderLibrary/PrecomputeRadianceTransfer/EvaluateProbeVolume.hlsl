@@ -2,6 +2,7 @@
 #define PRT_EVALUATE_PROBE_VOLUME_INCLUDED
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/SphericalHarmonics.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/GlobalSamplers.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/ProbeVolume.hlsl"
 
 #ifndef _PRT_GLOBAL_ILLUMINATION
@@ -11,7 +12,6 @@
 
 #define _coefficientVoxelGridSize (_prtVolumeEnabled != 0u ? _prtGridSpacing : 0.0)
 Texture3D<float4> _coefficientVoxel3D;
-SamplerState sampler_coefficientVoxel3D;
 Texture3D<uint> _validityVoxel3D;
 
 bool TrySampleProbeVolumePair(float3 worldPosition, float3 normal, float3 secondaryNormal,
@@ -39,7 +39,7 @@ bool TrySampleProbeVolumePair(float3 worldPosition, float3 normal, float3 second
     for (uint coefficient = 0; coefficient < 9u; coefficient++)
     {
         float3 sampleCoordinate = coordinate + float3(0, 0, float(coefficient) / 9.0);
-        float4 sample = _coefficientVoxel3D.SampleLevel(sampler_coefficientVoxel3D, sampleCoordinate, 0);
+        float4 sample = _coefficientVoxel3D.SampleLevel(sampler_LinearClamp, sampleCoordinate, 0);
         if (coefficient == 0) totalWeight = sample.a;
         diffuse += sample.rgb * (basis[coefficient] * kClampedCosineCoefs[coefficient]);
         secondaryDiffuse += sample.rgb * (secondaryBasis[coefficient] * kClampedCosineCoefs[coefficient]);

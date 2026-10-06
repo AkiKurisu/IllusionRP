@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-06 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Transparency](transparency.md), [World Scale](world-scale.md) |
 
 Directional per-object shadows render registered casters, typically characters, into a dedicated camera-local shadow atlas for one directional light. They are a quality layer on top of URP's standard shadow atlases: each camera resolves which directional light owns the layer, the screen-space shadow producer turns the atlas into screen-space visibility, and IllusionRP lighting consumes that visibility.
@@ -59,6 +59,7 @@ Adaptive allocation:
 - **Bias.** Depth and normal bias come from the source light, or from the pipeline asset when the light uses pipeline settings, scaled by the tile's world texel size and, for soft shadows, by the filter kernel radius. They do not depend on URP allocating its own atlases.
 - **Strength and quality.** In Main mode, consumers use URP's main light shadow strength and soft shadow quality. In AdditionalDirectional mode they use the source's shadow strength and soft shadow quality, which is Off unless the pipeline asset supports soft shadows and the light uses soft shadows.
 - **PCF.** Off, Low, Medium and High take 1, 4, 9 and 16 comparison samples. The choice is made at runtime from the quality value and does not depend on URP's `_SHADOWS_SOFT*` keywords.
+- **Comparison sampler.** Per-object PCF shares URP's `sampler_LinearClampCompare` for the bilinear/clamp shadow atlas. Metal variants with `UNITY_METAL_SHADOWS_USE_POINT_FILTERING` retain the texture-derived sampler to match URP's forced point-filtered allocation. Atlas coordinates, depth comparison and PCF taps are unchanged.
 - **PCSS.** When PCSS shadows are active, the screen-space producer filters per-object tiles with a per-object PCSS path using the same Volume parameters and penumbra mask as the main light, instead of PCF.
 - **Globals.** The atlas and its per-tile data are published as `_PerObjSceneShadowMap`, `_PerObjSceneShadowCount`, `_PerObjSceneShadowMatrices`, `_PerObjSceneShadowMapRects`, `_PerObjSceneShadowParams`, `_PerObjShadowBiases` and the `_PerObjShadowPcss*` arrays.
 

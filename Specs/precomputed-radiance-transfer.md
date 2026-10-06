@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-05 |
+| Date | 2026-10-06 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 PRT provides diffuse indirect lighting for fixed baked geometry and material inputs with runtime directional, point and spot lights and environment lighting. Runtime relighting, visibility and sampling use raster and compute; they do not require ray tracing. The representation is SH9, with patch averaging and probe interpolation as explicit approximations.
@@ -95,7 +95,7 @@ Sampling is inside the first-to-last probe domain. At its upper boundary the fin
 
 The asset and solver store raw signed FP32 SH9 radiance. Publication stores nine FP32 coefficient pages: RGB is preweighted by intensity and validity, and alpha stores validity. Hardware trilinear filtering supplies the numerator and denominator with the same spatial weights. Sampling divides by filtered validity, evaluates the SH basis and normalized cosine convolution once, then clamps the final irradiance. Nearest-probe feedback uses the same final-clamp and cosine convention without spatial interpolation. Per-corner clamping is not equivalent and can bias the interpolated field bright.
 
-The sampling basis is evaluated once per direction, with fixed coefficient loops expanded for streaming accumulation. Integrated outputs are checked for non-finite values before sector commit; pixel sampling does not repeat finite checks on every coefficient. Where diffuse and reflection normalization need the same neighborhood, both directions share the nine filtered coefficient queries. Packed metadata remains R32_UInt for diagnostics; the pixel sampler uses the FP32 validity alpha.
+The sampling basis is evaluated once per direction, with fixed coefficient loops expanded for streaming accumulation. Integrated outputs are checked for non-finite values before sector commit; pixel sampling does not repeat finite checks on every coefficient. Where diffuse and reflection normalization need the same neighborhood, both directions share the nine filtered coefficient queries. The single-mip coefficient volume uses Core's shared `sampler_LinearClamp` at LOD zero, matching its bilinear/clamp texture settings without allocating a separate sampler. Packed metadata remains R32_UInt for diagnostics; the pixel sampler uses the FP32 validity alpha.
 
 Hardware filter weights have finite precision independent of FP32 coefficient storage. This is a runtime spatial-interpolation approximation, not bitwise equivalence with manual FP32/FP64 weights. Constant-field preservation and shader arithmetic are verified separately from spatial-filter error; producer/integration tolerances do not imply those spatial errors meet the same limit. Quality acceptance and performance budgets require matched scene/state measurements.
 

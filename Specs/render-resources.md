@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-05 |
+| Date | 2026-10-06 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP passes exchange data through URP frame data, render graph textures, renderer-level render targets, per-camera history and global shader publication. This spec owns the resource classes, the resources that cross passes or reach shaders, the depth that screen-space effects use, history lifetime, render graph declarations, disabled-state publication and release. Pass order and camera rules are owned by [Rendering Pipeline](rendering-pipeline.md).
@@ -58,7 +58,7 @@ PRT global SH/ready buffers and byte-budgeted sector residents belong to its ren
 |---|---|
 | `_AreaLightDatas` | Structured buffer of up to 16 rectangle lights per camera; the C# and HLSL layouts are maintained together. |
 | `_HDShadowDatas` | Structured buffer of up to 32 shadow requests; the `AreaLighting` Volume's `maxShadowRequests` (1 to 32) limits each camera. |
-| `ShaderVariablesAreaLights` | Constant buffer: `_AreaLightCount`, `_AreaShadowAtlasSize`, `_CachedAreaShadowAtlasSize` (equal to the atlas size; no cached atlas exists), `_CookieAtlasSize`, `_CookieAtlasData`. |
+| Area light parameters | Global uniforms: `_AreaLightCount`, `_AreaShadowAtlasSize`, `_CachedAreaShadowAtlasSize` (equal to the atlas size; no cached atlas exists), `_CookieAtlasSize`, `_CookieAtlasData`. They share Unity's global uniform buffer rather than consuming a dedicated constant-buffer slot alongside Forward+, DOTS, fog and PRT. |
 | `_ShadowmapAreaAtlas` | A square atlas of the `AreaLighting` Volume's `shadowAtlasResolution`, each light limited to `maxShadowResolution`. With Medium filtering, a half-resolution RG32 float EVSM moment atlas; with High, the depth atlas at the Volume's `shadowAtlasDepthBits`. `_AreaShadowAtlasSize` always reports the full depth atlas size. `_CachedAreaLightShadowmapAtlas` names the same texture. |
 | `_LtcData` | 64×64×8 RGBA16 float texture array of LTC matrices. |
 | `_CookieAtlas` | Power-of-two, mipmapped atlas whose size and format come from `areaLightCookieAtlasSize` and `areaLightCookieFormat` (default 2048, R11G11B10). Each cookie is prefiltered per mip before it is placed. |

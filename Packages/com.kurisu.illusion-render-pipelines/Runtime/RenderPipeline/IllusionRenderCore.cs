@@ -195,7 +195,11 @@ namespace Illusion.Rendering
         public static readonly int _MainLightShadowCascadeBiases = MemberNameHelpers.ShaderPropertyID();
 
         // Area lights
-        public static readonly int ShaderVariablesAreaLights = MemberNameHelpers.ShaderPropertyID();
+        public static readonly int _AreaLightCount = MemberNameHelpers.ShaderPropertyID();
+        public static readonly int _AreaShadowAtlasSize = MemberNameHelpers.ShaderPropertyID();
+        public static readonly int _CachedAreaShadowAtlasSize = MemberNameHelpers.ShaderPropertyID();
+        public static readonly int _CookieAtlasSize = MemberNameHelpers.ShaderPropertyID();
+        public static readonly int _CookieAtlasData = MemberNameHelpers.ShaderPropertyID();
 
         public static readonly int _AreaLightDatas = MemberNameHelpers.ShaderPropertyID();
 

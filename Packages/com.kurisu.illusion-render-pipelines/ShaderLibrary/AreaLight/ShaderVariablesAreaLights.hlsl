@@ -7,16 +7,12 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ShaderVariables.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightDefinition.hlsl"
 
-CBUFFER_START(ShaderVariablesAreaLights)
-    int _AreaLightCount;
-    int _AreaLightPadding0;
-    int _AreaLightPadding1;
-    int _AreaLightPadding2;
-    float4 _AreaShadowAtlasSize;        // Depth atlas size, also used for the half resolution moment atlas
-    float4 _CachedAreaShadowAtlasSize;  // @IllusionRP: no cached atlas, kept so HDRP sampling code compiles unchanged
-    float4 _CookieAtlasSize;
-    float4 _CookieAtlasData;
-CBUFFER_END
+// Share Unity's global uniform buffer; a separate block exceeds the Forward+ DOTS binding budget.
+int _AreaLightCount;
+float4 _AreaShadowAtlasSize;        // Depth atlas size, also used for the half resolution moment atlas
+float4 _CachedAreaShadowAtlasSize;  // @IllusionRP: no cached atlas, kept so HDRP sampling code compiles unchanged
+float4 _CookieAtlasSize;
+float4 _CookieAtlasData;
 
 StructuredBuffer<AreaLightData> _AreaLightDatas;
 

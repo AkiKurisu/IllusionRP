@@ -516,7 +516,12 @@ namespace Illusion.Rendering.AreaLights
                     cmd.SetGlobalTexture(IllusionShaderProperties._CookieAtlas, data.cookieAtlas);
                     cmd.SetGlobalBuffer(IllusionShaderProperties._AreaLightDatas, data.manager.lightDataBuffer);
                     cmd.SetGlobalBuffer(IllusionShaderProperties._HDShadowDatas, data.manager.shadowDataBuffer);
-                    ConstantBuffer.PushGlobal(natCmd, data.manager.shaderVariables, IllusionShaderProperties.ShaderVariablesAreaLights);
+                    var parameters = data.manager.shaderVariables;
+                    cmd.SetGlobalInt(IllusionShaderProperties._AreaLightCount, parameters._AreaLightCount);
+                    cmd.SetGlobalVector(IllusionShaderProperties._AreaShadowAtlasSize, parameters._AreaShadowAtlasSize);
+                    cmd.SetGlobalVector(IllusionShaderProperties._CachedAreaShadowAtlasSize, parameters._CachedAreaShadowAtlasSize);
+                    cmd.SetGlobalVector(IllusionShaderProperties._CookieAtlasSize, parameters._CookieAtlasSize);
+                    cmd.SetGlobalVector(IllusionShaderProperties._CookieAtlasData, parameters._CookieAtlasData);
                 });
             }
         }
