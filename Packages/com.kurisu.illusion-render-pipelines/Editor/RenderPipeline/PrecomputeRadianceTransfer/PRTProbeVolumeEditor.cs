@@ -235,6 +235,7 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent Asset = new("Asset", "Baked transport for this volume. Created next to the scene when empty.");
             public static readonly GUIContent SampleCount = new("Samples Per Probe", "Number of directions integrated for each probe.");
             public static readonly GUIContent SampleSeed = new("Sampling Seed", "Seed of the deterministic sample directions.");
+            public static readonly GUIContent SurfelMergeDistance = new("Surfel Merge Distance", "Size of the cells that merge captured surface samples into surfels. Larger cells relight faster and store less, but blur lighting detail.");
             public static readonly GUIContent SectorWidth = new("Sector Size", "Probe columns per sector along X and Z. Smaller sectors stream at a finer granularity.");
             public static readonly GUIContent GenerateLighting = EditorGUIUtility.TrTextContent("Generate Lighting", "Bake probe volume transport and reflection probe normalization data.");
             public static readonly string[] DetailActions =

@@ -17,7 +17,7 @@ namespace Illusion.Rendering.PRTGI
         private readonly int[] _localIds;
         public PRTProbeMetadata[] Metadata { get; }
 
-        public PRTSectorBake(PRTProbeGrid grid, int width)
+        public PRTSectorBake(PRTProbeGrid grid, int width, float mergeDistance)
         {
             _grid = grid;
             _width = width;
@@ -34,7 +34,7 @@ namespace Illusion.Rendering.PRTGI
                 _localIds[i] = ids.Count;
                 ids.Add(i);
             }
-            for (int i = 0; i < count; i++) _sectors[i] = new SurfelGrid(_ids[i].Count);
+            for (int i = 0; i < count; i++) _sectors[i] = new SurfelGrid(_ids[i].Count, mergeDistance);
         }
 
         private int SectorIndex(int id) => id / (_grid.count.y * _grid.count.z) / _width * _columnsZ

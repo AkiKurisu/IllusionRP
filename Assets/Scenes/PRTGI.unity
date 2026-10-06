@@ -6701,7 +6701,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82859215aa6ff494fb82200142b9e34e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  bakeSampleCount: 512
+  bakeSampleCount: 2048
+  surfelMergeDistance: 0.25
   bakeSeed: 0
   debugMode: 0
   selectedProbeIndex: 0
