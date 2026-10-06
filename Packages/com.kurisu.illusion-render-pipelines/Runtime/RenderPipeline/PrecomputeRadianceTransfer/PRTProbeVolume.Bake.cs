@@ -12,7 +12,8 @@ namespace Illusion.Rendering.PRTGI
 {
     public partial class PRTProbeVolume
     {
-        [SerializeField, Min(16)] internal int bakeSampleCount = 512;
+        [SerializeField, Min(16)] internal int bakeSampleCount = 2048;
+        [SerializeField, Range(0.05f, 1f)] internal float surfelMergeDistance = 0.25f;
         [SerializeField] internal uint bakeSeed;
         private readonly Dictionary<Vector3, Vector3> _cachedVirtualOffsetPositions = new();
         private static readonly ProfilerMarker TransferMarker = new("PRT Bake Direction Transfer");
@@ -24,7 +25,7 @@ namespace Illusion.Rendering.PRTGI
             Hash128 authoringInputs = GetBakeAuthoringInputsSignature();
             var placement = await BakePlacementAsync(baker, token);
             Vector4[] directions = PRTBakeSampling.GenerateDirections(bakeSampleCount, bakeSeed);
-            var partition = new PRTSectorBake(grid, sectorWidth);
+            var partition = new PRTSectorBake(grid, sectorWidth, surfelMergeDistance);
             int batchSize = Math.Max(1, (1 << 19) / directions.Length);
             for (int start = 0; start < grid.ProbeCount; start += batchSize)
             {
@@ -123,7 +124,7 @@ namespace Illusion.Rendering.PRTGI
             hash.Append(geometryBias); hash.Append(rayOriginBias);
             hash.Append(bakeSampleCount); hash.Append(unchecked((int)bakeSeed));
             hash.Append(sectorWidth);
-            hash.Append(SurfelGrid.DefaultBrickSize); hash.Append(SurfelGrid.MergeDistance);
+            hash.Append(SurfelGrid.DefaultBrickSize); hash.Append(surfelMergeDistance);
             hash.Append(Surfel.Stride); hash.Append(BrickFactor.Stride);
             foreach (PRTProbeAdjustmentVolume volume in GetPlacementVolumes())
             {

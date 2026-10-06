@@ -7,13 +7,13 @@ namespace Illusion.Rendering.PRTGI
     public class SurfelGrid
     {
         public const float DefaultBrickSize = 4f;
-        public const float MergeDistance = 0.1f;
         private readonly Dictionary<BrickKey, int> _brickLookup = new();
         private readonly List<Brick> _bricks = new();
         private readonly Dictionary<int, BrickTransfer>[] _probeFactors;
         private readonly uint[][] _probeSky;
         private readonly PRTProbeData[] _probes;
         private readonly bool[] _captured;
+        private readonly float _mergeDistance;
 
         private readonly struct BrickKey : IEquatable<BrickKey>
         {
@@ -49,10 +49,10 @@ namespace Illusion.Rendering.PRTGI
             public readonly Dictionary<Vector3Int, int> lookup = new();
             public readonly List<MergedSurfel> surfels = new();
             public uint renderingLayerMask, objectLayerMask;
-            public void Add(PRTCaptureSample sample)
+            public void Add(PRTCaptureSample sample, float mergeDistance)
             {
-                var key = new Vector3Int(Mathf.RoundToInt(sample.position.x / MergeDistance),
-                    Mathf.RoundToInt(sample.position.y / MergeDistance), Mathf.RoundToInt(sample.position.z / MergeDistance));
+                var key = new Vector3Int(Mathf.RoundToInt(sample.position.x / mergeDistance),
+                    Mathf.RoundToInt(sample.position.y / mergeDistance), Mathf.RoundToInt(sample.position.z / mergeDistance));
                 if (!lookup.TryGetValue(key, out int index))
                 {
                     lookup.Add(key, surfels.Count);
@@ -69,8 +69,9 @@ namespace Illusion.Rendering.PRTGI
             }
         }
 
-        public SurfelGrid(int probeCount)
+        public SurfelGrid(int probeCount, float mergeDistance)
         {
+            _mergeDistance = mergeDistance;
             _probes = new PRTProbeData[probeCount];
             _captured = new bool[probeCount];
             _probeFactors = new Dictionary<int, BrickTransfer>[probeCount];
@@ -105,7 +106,7 @@ namespace Illusion.Rendering.PRTGI
                     _brickLookup.Add(key, brickIndex);
                     _bricks.Add(new Brick { renderingLayerMask = sample.renderingLayerMask, objectLayerMask = sample.objectLayerMask });
                 }
-                _bricks[brickIndex].Add(sample);
+                _bricks[brickIndex].Add(sample, _mergeDistance);
                 factors.TryGetValue(brickIndex, out BrickTransfer factor);
                 factor.brickIndex = brickIndex;
                 factor.AddDirection(direction);

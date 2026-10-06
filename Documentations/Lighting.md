@@ -435,6 +435,7 @@ To see which cascade lights each pixel, enable **PRT Cascades** under **Illusion
 | **Asset** | PRT Probe Volume Asset that stores the baked transport. Created next to the scene when empty. |
 | **Samples Per Probe** | Number of directions integrated for each probe. |
 | **Sampling Seed** | Seed of the deterministic sample directions. |
+| **Surfel Merge Distance** | Size of the cells that merge captured surface samples into surfels. Larger cells relight faster and store less, but blur lighting detail. |
 | **Sector Size** | Probe columns per sector along X and Z. Smaller sectors stream at a finer granularity. |
 
 ## Baking Workflow
