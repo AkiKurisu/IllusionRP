@@ -121,7 +121,8 @@ namespace Illusion.Rendering.PRTGI
         /// <returns></returns>
         public static bool TryGetReflectionProbeAdditionalData(ReflectionProbe reflectionProbe, out ReflectionProbeAdditionalData additionalData)
         {
-            return ReflectionProbeAdditionalDataDict.TryGetValue(reflectionProbe, out additionalData);
+            additionalData = null;
+            return reflectionProbe && ReflectionProbeAdditionalDataDict.TryGetValue(reflectionProbe, out additionalData);
         }
     }
 }

@@ -30,6 +30,9 @@ namespace Illusion.Rendering.PRTGI
                 builder.UseBuffer(graph.ImportBuffer(pass.buffer), AccessFlags.Read);
                 builder.AllowPassCulling(false);
                 builder.SetRenderFunc((ResidualReadback data, UnsafeGraphContext context) =>
+                {
+                    var owner = data.owner;
+                    var solver = data.solver;
                     CommandBufferHelpers.GetNativeCommandBuffer(context.cmd).RequestAsyncReadback(data.buffer, request =>
                     {
                         if (!request.hasError)
@@ -41,12 +44,13 @@ namespace Illusion.Rendering.PRTGI
                             }
                         else maximum.x = maximum.y = float.NaN;
                         if (--remaining != 0) return;
-                        data.owner._residualPending = false;
-                        if (data.solver.Disposed) return;
-                        data.solver.Residual = maximum.x;
-                        data.solver.AbsoluteResidual = maximum.y;
-                        data.solver.NonFiniteCount = (int)maximum.w;
-                    }));
+                        owner._residualPending = false;
+                        if (solver.Disposed) return;
+                        solver.Residual = maximum.x;
+                        solver.AbsoluteResidual = maximum.y;
+                        solver.NonFiniteCount = (int)maximum.w;
+                    });
+                });
             }
         }
     }

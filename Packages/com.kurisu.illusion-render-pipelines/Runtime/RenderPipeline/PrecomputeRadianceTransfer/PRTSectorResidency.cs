@@ -103,8 +103,13 @@ namespace Illusion.Rendering.PRTGI
             builder.UseBuffer(graph.ImportBuffer(resident.Lighting.ShadowCacheBuffer), AccessFlags.Read);
             builder.AllowPassCulling(false);
             builder.SetRenderFunc(static (Eviction data, UnsafeGraphContext context) =>
-                CommandBufferHelpers.GetNativeCommandBuffer(context.cmd).RequestAsyncReadback(data.resident.Lighting.ShadowCacheBuffer,
-                    request => data.owner.CompleteEviction(data.resident, request)));
+            {
+                // Pass data is pooled by the render graph; the callback must not read it after this frame.
+                var owner = data.owner;
+                var evicted = data.resident;
+                CommandBufferHelpers.GetNativeCommandBuffer(context.cmd).RequestAsyncReadback(evicted.Lighting.ShadowCacheBuffer,
+                    request => owner.CompleteEviction(evicted, request));
+            });
         }
 
         private void CompleteEviction(PRTSectorResident resident, AsyncGPUReadbackRequest request)

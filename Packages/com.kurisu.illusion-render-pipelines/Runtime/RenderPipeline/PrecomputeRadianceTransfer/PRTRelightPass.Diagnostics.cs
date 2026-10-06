@@ -69,24 +69,26 @@ namespace Illusion.Rendering.PRTGI
             builder.SetRenderFunc(static (ShadowReadbackData pass, UnsafeGraphContext context) =>
             {
                 var command = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                var volume = pass.volume;
+                int dataId = pass.dataId, sector = pass.sector;
                 if (pass.readStats)
                     command.RequestAsyncReadback(pass.stats, request =>
                     {
-                        if (pass.volume && pass.volume.RuntimeDataId == pass.dataId)
-                            pass.volume.UpdateShadowCacheStats(request);
+                        if (volume && volume.RuntimeDataId == dataId)
+                            volume.UpdateShadowCacheStats(request);
                     });
                 if (pass.readPreview)
                     command.RequestAsyncReadback(pass.cache, pass.bytes, pass.offset, request =>
                     {
-                        if (pass.volume && pass.volume.RuntimeDataId == pass.dataId)
-                            pass.volume.UpdateWorldShadowStats(request, pass.sector);
+                        if (volume && volume.RuntimeDataId == dataId)
+                            volume.UpdateWorldShadowStats(request, sector);
                     });
 #if UNITY_EDITOR
                 if (pass.readDebug)
                     command.RequestAsyncReadback(pass.cache, pass.bytes, pass.offset, request =>
                     {
-                        if (pass.volume && pass.volume.RuntimeDataId == pass.dataId)
-                            pass.volume.UpdateWorldShadowDebug(request, pass.sector);
+                        if (volume && volume.RuntimeDataId == dataId)
+                            volume.UpdateWorldShadowDebug(request, sector);
                     });
 #endif
             });

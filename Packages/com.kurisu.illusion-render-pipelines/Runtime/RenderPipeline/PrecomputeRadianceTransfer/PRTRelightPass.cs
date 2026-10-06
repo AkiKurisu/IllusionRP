@@ -109,7 +109,7 @@ namespace Illusion.Rendering.PRTGI
             var requested = scheduler.Select(camera.camera.transform.position, Mathf.Max(1, _volume.sectorsPerFrame));
             var residency = _solver.Residency;
             _selected.Clear();
-            int uploadBudget = Mathf.Max(1, _volume.uploadBudgetMiB) * 1024 * 1024;
+            int uploadBudget = (int)Math.Min(int.MaxValue, Mathf.Max(1, _volume.uploadBudgetMiB) * 1048576L);
             long residentBudget = (long)Mathf.Max(1, _volume.sectorBudgetMiB) * 1024 * 1024;
             residency.BeginFrame(graph, scheduler.NearSector, scheduler.BackgroundSector, residentBudget);
             foreach (int id in requested)
