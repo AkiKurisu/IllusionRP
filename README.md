@@ -1,7 +1,6 @@
 <div align="center">
 
 [![Release](https://img.shields.io/github/v/release/AkiKurisu/IllusionRP)](https://github.com/AkiKurisu/IllusionRP/releases)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AkiKurisu/IllusionRP)
 [![Zhihu](https://img.shields.io/badge/知乎-AkiKurisu-0084ff?style=flat-square)](https://www.zhihu.com/people/akikurisu)
 [![Bilibili](https://img.shields.io/badge/Bilibili-爱姬Kurisu-00A1D6?style=flat-square)](https://space.bilibili.com/20472331)
 
@@ -13,9 +12,15 @@ Unity high-definition graphics plugin for Universal Render Pipelines.
 
 # Highlights
 
-- High-quality graphics features with one-click integration for your URP project
-- Ready-to-use shaders and templates for Amplify Shader Editor
-- Compatible with Unity 2022, 2023, and Unity 6 versions
+- Bring high-quality graphics to your URP Forward and Forward+ project with **one-click integration**.
+- Create detailed characters with **subsurface skin scattering, dual-lobe specular, Kajiya-Kay and Marschner hair, and anisotropic fabric shading**.
+- Reduce hair and material transparency sorting artifacts with **weighted blended order-independent transparency**.
+- Enrich scene lighting with **Hybrid Lit materials, LTC area lights, screen-space reflections, and screen-space and precomputed radiance transfer global illumination**.
+- Ground characters and reveal fine surface details with **per-object shadows, contact shadows, PCSS soft shadows, and ground-truth ambient occlusion**.
+- Shape the final image with **volumetric lighting, automatic exposure, convolution bloom, and advanced tonemapping**.
+- Build custom materials with **ready-to-use shaders and Amplify Shader Editor templates** integrated with IllusionRP lighting.
+- Explore **reference and realtime path tracing, DLSS Ray Reconstruction, and experimental DLSS Neural Rendering** on supported hardware.
+- Support **Unity 2022, Unity 2023, and Unity 6** through their respective version branches.
 
 # Demo
 
