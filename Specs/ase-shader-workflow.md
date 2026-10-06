@@ -7,57 +7,38 @@
 | Date | 2026-10-05 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
-IllusionRP's template-based material shaders are authored with Amplify Shader Editor (ASE). The package ships one ASE template per shading family; a graph supplies the material inputs, and ASE exports template, graph and functions into one generated shader. This workflow defines source ownership and how changes reach the generated shaders.
+ASE authoring separates reusable rendering contracts from material inputs. Changes must reach both their source assets and generated shader output without replacing authored graph intent.
 
 ## Sources
 
-| Source | Owns |
+| Source | Responsibility |
 |---|---|
-| Template | SubShader and pass topology, pass names and LightMode tags, fixed render state, the `UnityPerMaterial` buffer of every pass and the fields it declares, the master node ports, and the Additional Options that add or remove passes, defines and properties. |
-| Graph | Material nodes, textures, properties and the chosen option values. ASE stores the graph inside the generated shader file, in the serialized block after the shader code, and adds the graph's material properties to every pass's `UnityPerMaterial` buffer. |
-| ASE function | A reusable node subgraph. Graphs reference it by asset GUID and ASE expands it into the generated code at export. |
-| Shared HLSL include | Surface setup, BRDF and lighting, global illumination, coverage and packing. Templates include it by package path and the generated shader keeps the include directive. |
-| Generated shader | The code ASE writes from the template, the graph and its functions. |
+| Template | Pass topology, rendering state, material layout and authoring ports/options. |
+| Graph | Material inputs, connections and chosen options. |
+| ASE function | Reusable input subgraph shared by referencing graphs. |
+| Shared shader include | Common surface, lighting, coverage and packing behavior. |
+| Generated shader | Exported result of those sources, not an independent implementation. |
 
-Changes to generated code are made in its template, graph, function or include and exported again; an export overwrites direct code edits.
+Direct edits to generated code are overwritten. Implement changes in the owning source and regenerate affected output.
 
 ## Templates and functions
 
-| Template file | Template shader | Graph exported in the package |
-|---|---|---|
-| `Shaders/Lit/Hybrid Lit Template.shader` | `Hidden/Universal/Hybrid Lit` | `Universal Render Pipeline/HD Lit` |
-| `Shaders/Lit/Hybrid Unlit Template.shader` | `Hidden/Universal/Hybrid Unlit` | none |
-| `Shaders/Fabric/Fabric Template.shader` | `Hidden/Universal/Fabric` | `Universal Render Pipeline/HD Fabric` |
-| `Shaders/Skin/Skin Template.shader` | `Hidden/Universal/Skin` | `Universal Render Pipeline/HD Skin` |
-| `Shaders/Hair/Hair Template.shader` | `Hidden/Universal/Hair` | `Universal Render Pipeline/HD Hair` |
-| `Shaders/Water/Water Template.shader` | `Hidden/Universal/Water` | `Universal Render Pipeline/Water` |
-
-Paths are relative to the package root, and each generated shader sits next to its template. The package's ASE functions live in `ShaderLibrary/ASE`: `HD Surface Input`, used by HD Lit, HD Fabric, HD Skin and HD Hair, and `Normal Strength` and `Tilling And Offset`, used by Water.
-
-Templates are also a public authoring surface: applications build their own graphs on them. Those graphs keep the template text of their last export, so a template change reaches them when they are exported again. Ports, options, properties and passes form the template's authoring interface.
+The package supplies Lit, Unlit, Skin, Hair, Fabric and Water templates. Templates are also application authoring interfaces: their ports, options, properties and passes must remain meaningful for external graphs. Shared functions preserve asset identity so referencing graphs resolve the intended source.
 
 ## Impact
 
-Graphs reference their template and functions by GUID in their serialized block.
+Template and function changes affect every referencing graph. A graph-only edit affects that material graph. Shared includes reach their consumers on import; exporting is necessary when embedded template/function output changes.
 
-- **Template.** Affects every graph exported from it. Pass layout, `UnityPerMaterial` and shared coverage changes usually affect all of them.
-- **Function.** Affects every graph that references it.
-- **Graph.** Affects only that graph.
-- **Shared include.** Reaches every generated and hand-written shader that includes it on import. An export is needed only when the template text around the include changes.
-
-Affected package graphs are exported with their template or function change. Renamed or removed material properties also update the package materials that use them.
+Identify affected package graphs and regenerate them in the same change. Material-property changes also update affected package materials. External graph consumers need re-export when their generated template text becomes stale.
 
 ## Export and convergence
 
-- **Editor state.** Each graph is loaded, exported and saved separately because shared editor state, such as master pass data, can carry into the next graph.
-- **Authored pass selection.** Available Passes is separate from Custom Options. Preserve both when rebuilding template nodes; restore pass visibility by pass name. Background exports apply the option actions before saving, so their selected defines and pragmas reach the generated code. Unless pass topology is intentionally changed, the exported pass names and LightMode tags must match the graph's previous output.
-- **Port-driven options.** `Port:` entries use the connection state seen when the graph loads. After connections change in the same session, reload and export applies the matching defines, such as `_NORMALMAP`, `_EMISSION`, `ASE_BAKEDGI`, `_GBUFFER_NORMAL_OVERRIDE` and `_GBUFFER_SMOOTHNESS_OVERRIDE`.
-- **Pass layout.** After a template pass layout change, the first export can leave stale master pass data in the graph; a subsequent reload and export clears it. Options that exclude a pass drop connections into that pass's master node on reload.
-- **Export metadata.** Each generated shader records the exporting ASE version in its header and graph metadata. Generated shader sources use CRLF line endings.
+Load and export graphs independently to avoid shared Editor state contaminating another graph. Preserve both authored pass selection and option choices; changed connections must be reflected in connection-driven options.
+
+After a topology or connection change, reload and export until another export produces no semantic change. Review pass identity, selected options and connections against the intended change; a successful export alone does not prove preservation. Generated metadata must agree with the exporting ASE version.
 
 ## Generated shader contract
 
-- The generated shader satisfies [Materials and Shaders](materials-and-shaders.md) for pass names, LightMode tags, render state, `UnityPerMaterial` layout, keywords and stencil properties.
-- Alpha clip, double-sided, vertex offset, normal reconstruction, LOD cross-fade and coverage agree across every pass the template provides: main color, Forward GBuffer, depth, post depth, OIT, motion vector, shadow and subsurface.
-- Texture reads outside the fragment stage use an explicit LOD.
-- Resource access remains compatible with SRP Batcher, GPU Resident Drawer, DOTS instancing and the target platform limits.
+Generated output satisfies [Materials and Shaders](materials-and-shaders.md). Geometry, alpha, normals, culling and LOD coverage agree across color and auxiliary passes. Resource access remains valid across shader stages, target platforms, SRP Batcher, GPU Resident Drawer and DOTS.
+
+Sampler sharing preserves filtering, addressing and supported platform behavior. Verification covers the combined feature configurations that consume the generated shader; reducing resource counts cannot silently change material sampling.

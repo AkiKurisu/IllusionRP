@@ -7,136 +7,76 @@
 | Date | 2026-10-04 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Rendering Pipeline](rendering-pipeline.md) |
 
-IllusionRP renders materials on the Forward and Forward+ paths. This spec defines the material shader families, their passes and LightMode tags, the Forward GBuffer that material passes write, the stencil bits they own, the `UnityPerMaterial` and keyword rules, and the lighting contracts that apply across families: rectangle area lights and Fabric anisotropy.
+IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
 
 ## Ownership
 
-- **Color owner.** A material's color comes from its main color pass, or from `OIT` for order-independent transparent coverage. Every other pass produces data only: depth, normals, smoothness, motion, shadows, subsurface diffuse or water reflection data.
-- **Sources.** Templates own pass topology, LightMode tags, fixed render state and `UnityPerMaterial`; graphs own material inputs; generated shaders are rebuilt from both, as [ASE Shader Workflow](ase-shader-workflow.md) defines. Shared HLSL owns surface setup, BRDFs, coverage, shadows, global illumination and packing.
-- **Material state.** The Hybrid Lit material inspector, used by Hybrid Lit, Hybrid Complex Lit and by default by the Hybrid Lit template, keeps pass enabled state, keywords and the hidden stencil properties in sync with the surface type and material options. `HybridLitShader.SynchronizePasses(Material)` is the shared Editor entry point for the inspector and asset pipelines to synchronize pass state directly from material properties, without requiring an open inspector or changing keywords, render queue or stencil properties. The packaged template shaders use the ASE material inspector, which changes neither pass state nor stencil properties.
-- **Diffusion profiles.** Editor code binds a profile with `DiffusionProfileMaterialUtility.SetProfile(material, profile, propertyName)`, where `propertyName` defaults to `_DiffusionProfile`. It writes the profile asset GUID as a vector to `<propertyName>_Asset` and the profile hash, reinterpreted as a float, to `<propertyName>`. A null profile clears both; a material without both properties, or a profile that is not a saved asset, is rejected with an exception.
+- Templates own pass topology and fixed rendering contracts; graphs own material inputs; shared shading code owns surface and lighting evaluation. Generated shaders follow [ASE Shader Workflow](ase-shader-workflow.md).
+- Main color and OIT are the final-color owners. Depth, normals, motion, shadows, subsurface diffuse and water data are auxiliary outputs.
+- Material inspectors and asset import pipelines must keep surface options and enabled passes consistent. Programmatic import must not depend on an inspector having been opened. Pass synchronization alone does not replace keyword, queue or stencil normalization.
+- Diffusion profile binding preserves both the profile asset identity and its runtime lookup identity. Clearing a profile clears both; an unsaved or incompatible binding is invalid.
 
 ## Shader families
 
-Pass names are listed with their LightMode in parentheses where the two differ.
+Lit and Complex Lit share the general surface contract. Skin splits diffuse lighting when screen-space subsurface scattering runs. Hair separates core and fringe coverage. Fabric supports optional transparent-depth reception. Water supplies transparent reflection data. Unlit has no Forward GBuffer.
 
-| Shader | Source | Main color pass | Other passes |
-|---|---|---|---|
-| `Universal Render Pipeline/Hybrid Lit` | Hand-written | `ForwardLit` (`UniversalForward`) | `OITTransparent` (`OIT`), `ForwardGBuffer`, `DepthOnly`, `ShadowCaster`, `GBuffer` (`UniversalGBuffer`), `Meta`, `Universal2D`, `MotionVectors`, `XRMotionVectors` |
-| `Universal Render Pipeline/Hybrid Complex Lit` | Hand-written | `ForwardLit` (`UniversalForwardOnly`) | Same as Hybrid Lit |
-| `Universal Render Pipeline/HD Lit` | Hybrid Lit template | `Forward` (`UniversalForward`) | `ForwardGBuffer`, `ShadowCaster`, `GBuffer` (`UniversalGBuffer`), `Meta`, `MotionVectors` |
-| `Universal Render Pipeline/HD Skin` | Skin template | `Forward` (`UniversalForward`) | `SubsurfaceDiffuse`, `ForwardGBuffer`, `ShadowCaster`, `MotionVectors` |
-| `Universal Render Pipeline/HD Hair` | Hair template | `Forward` (`UniversalForwardOnly`) | `OITTransparent` (`OIT`), `PostDepthOnly`, `ForwardGBuffer`, `ShadowCaster`, `MotionVectors` |
-| `Universal Render Pipeline/HD Fabric` | Fabric template | `Forward` (`UniversalForwardOnly`) | `PostDepthOnly`, `ForwardGBuffer`, `ShadowCaster`, `GBuffer` (`UniversalGBuffer`), `MotionVectors` |
-| `Universal Render Pipeline/Water` | Water template | `Forward` (`UniversalForwardOnly`) | `WaterSSRData`, `MotionVectors` |
-
-Template options decide which template passes a graph keeps:
-
-- **Forward Only** switches the main pass between `UniversalForward` and `UniversalForwardOnly` and drops `GBuffer`; Transmission, Translucency and Clear Coat force it on.
-- **Cast Shadows**, **Motion Vectors**, **XR Motion Vectors** and **Meta Pass** keep or drop `ShadowCaster`, `MotionVectors`, `XRMotionVectors` and `Meta`.
-- **Multi Pass** (Hair) keeps `OITTransparent` and `PostDepthOnly`; **Receive Occlusion** (Fabric) keeps `PostDepthOnly`; a transparent Water surface keeps `WaterSSRData`.
-- The Hybrid Unlit template never emits `ForwardGBuffer`, and the Water template has none.
-
-The `UniversalGBuffer` passes are part of the existing topology, but IllusionRP does not support the Deferred path for these materials; they do not define a Deferred material ABI.
+Template options select auxiliary passes such as shadows, motion and baking. Features that require Forward-only lighting keep that choice consistent across authored options and generated output.
 
 ## Pass contract
 
-| LightMode | Role |
+Pass LightModes are the public boundary between shaders, renderer lists and build stripping:
+
+| LightMode | Purpose |
 |---|---|
-| `UniversalForward`, `UniversalForwardOnly` | Final surface color with direct and indirect lighting, drawn by URP. |
-| `ForwardGBuffer` | Smoothness, camera normals and depth for screen-space lighting, drawn from every render queue. |
-| `SubsurfaceDiffuse` | Skin diffuse irradiance and albedo for screen-space subsurface scattering, drawn from the opaque queue. It writes no final color. |
-| `OIT` | Weighted blended OIT accumulation and revealage, drawn from every render queue within the OIT layer mask. |
-| `PostDepthOnly` | Depth of transparent coverage after the prepass; it also writes the Forward GBuffer smoothness target. |
-| `WaterSSRData` | Transparent water normal, smoothness and depth for transparent screen-space reflections, drawn from the transparent queue. |
-| `ShadowCaster` | URP shadow maps, per-object shadows and area light shadows. |
-| `DepthOnly` | URP depth requirements; it never replaces `ForwardGBuffer`. |
-| `MotionVectors`, `XRMotionVectors` | URP motion vectors. |
-| `Meta` | Lightmap baking inputs. |
+| `UniversalForward`, `UniversalForwardOnly` | Final surface color through URP. |
+| `ForwardGBuffer` | Surface depth, normals and smoothness for screen-space lighting. |
+| `SubsurfaceDiffuse` | Opaque Skin diffuse inputs, not final color. |
+| `OIT` | Order-independent accumulation for enabled coverage, including opaque-queue Hair fringes. |
+| `PostDepthOnly` | Transparent coverage depth and corresponding screen-space smoothness update. |
+| `WaterSSRData` | Transparent water reflection surface information. |
+| `ShadowCaster` | Standard, per-object and area-light shadow production. |
+| `DepthOnly`, motion and baking passes | URP depth, motion and lightmap requirements; none replaces Forward GBuffer. |
 
-[Transparency](transparency.md) owns the behavior of `OIT`, `PostDepthOnly` and `WaterSSRData`.
-
-- **Single owner.** A transparent Hybrid Lit or Hybrid Complex Lit material is shaded by the main color pass or by `OIT`, never both. Pass synchronization reads `_Surface` and `_OrderIndependent` from the material: transparent materials disable `ForwardGBuffer`, and enable `OIT` only with `_OrderIndependent` on. `UniversalForward` and `UniversalForwardOnly` are enabled when `OIT` is disabled. Opaque materials disable `OIT` and restore the main color pass and `ForwardGBuffer`.
-- **Hair multipass.** Hair splits one material into an opaque-queue core, shaded by the main pass, and a fringe, shaded by `OIT`; the split and its cutoffs are defined in [Transparency](transparency.md#hair-fringe). Every Hair pass shares vertex deformation, culling and alpha, so no seam opens between core and fringe.
+Transparent Hybrid Lit and Complex Lit use either their main color pass or OIT, never both, and do not write Forward GBuffer. Opaque materials restore the main pass and Forward GBuffer and disable OIT. Hair intentionally uses both color owners for disjoint core/fringe coverage; see [Transparency](transparency.md#hair-fringe).
 
 ## Forward GBuffer
 
-On the Forward and Forward+ paths, the renderer draws every enabled `ForwardGBuffer` pass of every render queue in one prepass, sorted like opaques, with depth writes on and a less-or-equal depth test regardless of the pass's own depth state. Stencil comes from the pass. Material shaders have no `DepthNormals` or `DepthNormalsOnly` pass: `ForwardGBuffer` is their depth and normals output. [Rendering Pipeline](rendering-pipeline.md) places this prepass in the frame.
+The renderer draws enabled Forward GBuffer passes before screen-space lighting. This is the material depth/normal prepass, not a Deferred lighting buffer. It owns opaque depth, world-space normals and smoothness, clears its camera-local output, and publishes it consistently to consumers.
 
-| Attachment | Content |
-|---|---|
-| Color 0 | `_ForwardGBuffer`, smoothness written to every channel. |
-| Color 1 | `_CameraNormalsTexture`, the world-space unit normal in RGB and zero in A, matching URP's depth-normals packing without octahedral encoding. |
-| Depth | The camera depth target. |
+Every contributing pass matches main-color geometry, alpha clipping, LOD transitions and culling. Transparent materials do not contribute; opaque-queue Hair cores do. Optional graph overrides may simplify screen-space normal and smoothness but cannot change coverage, stencil or depth.
 
-- **Format.** `_ForwardGBuffer` is R8 UNorm when that format supports blending, otherwise B8G8R8A8 UNorm. With wet surfaces it uses the RGBA8 packed layout that [Wet Surface Decals](wet-surface-decals.md) defines.
-- **Lifetime.** The target is cleared to zero before the pass and published as the global `_ForwardGBuffer`, with `_CameraNormalsTexture`, after it.
-- **Parity.** Every `ForwardGBuffer` pass matches its main color pass in vertex deformation, alpha clip, LOD cross-fade and culling.
-- **PRT baking.** Lit, Fabric, Skin and Hair reuse this pass with the bake-only `_PRT_CAPTURE` variant. It writes one FP32 target selected by the capture mode, using authored main Forward normal and diffuse inputs. Normal rendering keeps the regular MRT signature; no separate PRTCapture pass is required. See [PRT](precomputed-radiance-transfer.md).
-- **Transparency.** Transparent surfaces do not draw `ForwardGBuffer`; the multipass Hair core draws it from the opaque queue. The Hybrid Lit inspector disables the pass for transparent materials and enables it for opaque ones.
-- **Override ports.** The templates' `ForwardGBuffer` pass has two ports not linked to the main pass: `GBuffer Normal` (tangent space) and `GBuffer Smoothness`. A connected port defines `_GBUFFER_NORMAL_OVERRIDE` or `_GBUFFER_SMOOTHNESS_OVERRIDE` in that pass only, as a define rather than a keyword, and the pass writes the port value; an unconnected port follows the main pass's `Normal` or `Smoothness`. Overrides may only simplify the normal and smoothness that screen-space consumers see; they never change alpha clip, depth, stencil or coverage. The `Wet Base Color`, `Wet Metallic` and `Wet Specular` ports belong to [Wet Surface Decals](wet-surface-decals.md).
-- **Hand-written passes.** The Hybrid Lit `ForwardGBuffer` pass samples only what alpha, normal and smoothness need, unless the wet layout needs the full surface, and declares the same smoothness-source keywords as the main pass, including `_METALLICSPECGLOSSMAP`.
-- **Normal encoding.** `_GBUFFER_NORMALS_OCT` belongs to URP's Deferred GBuffer; `ForwardGBuffer` passes do not declare it.
+Wet surfaces extend the surface description and update it before screen-space consumers; see [Wet Surface Decals](wet-surface-decals.md). [PRT baking](precomputed-radiance-transfer.md) reuses authored material inputs through a bake-only capture variant and keeps its output separate from normal rendering.
 
 ## Screen-space receivers
 
-- **Opaque surfaces.** Opaque surfaces sample screen-space ambient occlusion, reflections, global illumination and the screen-space main light shadow whenever the matching keyword is on; the stencil bits below opt pixels out of ambient occlusion and reflections.
-- **Transparent surfaces.** A transparent surface (`_SURFACE_TYPE_TRANSPARENT`) samples them only when it also defines `_TRANSPARENT_WRITE_DEPTH`, which marks a surface that writes its depth in `PostDepthOnly`, as the Fabric template's Receive Occlusion option does. Such a surface keeps the screen-space main light shadow after the cascade shadow keywords are restored for transparents; other transparent surfaces use the main light shadow map.
-- **Hair.** With the Hair template's Multi Pass option on, Hair samples screen-space global illumination even when its surface type is transparent.
+Opaque surfaces receive supported screen-space lighting subject to material opt-outs. Ordinary transparency cannot sample those opaque surface results. A transparent material that participates in post-depth may opt into screen-space reception; its coverage must match the depth it supplies. Post-depth receivers retain screen-space main-light shadows after the camera restores shadow-map keywords; ordinary transparent surfaces use shadow maps. Multipass Hair additionally supports screen-space indirect lighting.
+
+Sampling eligibility and keyword reachability are different: global SSR/AO keywords remain camera-wide even where a material does not sample their output. [Shader Variant Stripping](shader-variant-stripping.md) preserves the reachable state.
 
 ## Stencil
 
-Material passes own two stencil bits:
+Material stencil expresses ambient-occlusion opt-out and reflection reception without disturbing unrelated bits. Skin and Hair do not write those flags and use their default AO/SSR behavior. The material inspector owns flag synchronization; generated materials without it retain authored defaults.
 
-| Bit | Meaning | Reader |
-|---:|---|---|
-| `0x01` | The surface does not receive screen-space ambient occlusion. | Ambient occlusion skips the pixel. |
-| `0x04` | The surface receives screen-space reflections. | SSR traces only pixels with the bit set. |
-
-- **Writes.** Writer passes write `_StencilRefDepth` under `_StencilWriteMaskDepth` with compare Always and pass Replace. The write mask is `0x05`, so the two bits are updated together without touching any other bit.
-- **Writers.** The `ForwardGBuffer` pass of Hybrid Lit, Hybrid Complex Lit and the Lit and Fabric templates; the `DepthOnly` pass of the Lit, Fabric and Water templates; and the Fabric `PostDepthOnly` pass. The Skin and Hair templates write neither bit, so their surfaces receive ambient occlusion and are not traced by SSR.
-- **Values.** The Hybrid Lit inspector rebuilds the reference from zero: bit `0x04` when `_ScreenSpaceReflections` is on and bit `0x01` when `_ScreenSpaceAmbientOcclusion` is off. Shaders without that inspector keep the property defaults, reference 4 and mask 5: traced by SSR and receiving ambient occlusion.
-- **VRS classification.** The `IllusionStencilUsage.CharacterSkin` and `CharacterHair` constants, and the shader-side skin, hair and subsurface bits (`0x01`, `0x02`, `0x08`), have no writer among the package's shaders. Stencil VRS reads bits `0x01` to `0x08` as skin, hair, SSR and subsurface to choose a shading rate, so its classification overlaps the AO opt-out bit.
-- **Other writers.** URP's `XRMotionVectors` passes write bit `0x01` for XR object motion. The transparent overdraw stencil state comes from the renderer feature's `oitOverrideStencil` settings, not from a fixed bit.
-- **Later features.** Rectangle area lights and wet surfaces add no stencil bits; wet coverage is a separate target because bit `0x01` belongs to ambient occlusion.
+Wet coverage uses a separate resource rather than claiming an existing stencil bit. VRS classification and XR motion overlap existing stencil meanings; they cannot be treated as independent material classifications. New consumers must reconcile existing writers before assigning meaning.
 
 ## Shader data layout
 
-- **One layout.** Every SubShader and pass of a shader declares the same `UnityPerMaterial` fields, with the same types, order and packing. Template option fields, such as transmission or tessellation values, are declared identically in every pass.
-- **No resources.** Textures and samplers are never declared in `UnityPerMaterial`.
-- **Pass defines.** Pass-specific defines do not change the final buffer layout.
-- **Reachable paths.** Alpha clip, normal map, LOD cross-fade, instancing, DOTS instancing, SRP Batcher and GPU Resident Drawer paths reach the same code in the template and in the generated shader.
-- **Pass interface.** Runtime renderer lists and build stripping use the same pass names and LightMode tags ([Shader Variant Stripping](shader-variant-stripping.md)).
-- **Cascade biases.** `_MainLightShadowCascadeBiases` is a global array of five vectors. The first four hold the world-space receiver bias of each main light cascade, computed from URP's shadow bias for the main light with that cascade's projection and resolution; cascades that are not in use stay zero. The fifth entry is always zero and serves positions outside every cascade. Fragment shadow bias reads it.
+All passes of a material share a consistent material parameter layout, including optional features. Pass-local defines cannot change that layout. Texture resources remain outside the material constant buffer.
+
+Generated and hand-written paths preserve coverage and material behavior across instancing, DOTS, SRP Batcher and GPU Resident Drawer. Runtime drawing and stripping agree on pass identity. Combined feature configurations must stay within platform resource limits; sampler sharing requires equivalent filtering and addressing, including platform-specific shadow behavior.
 
 ## Keywords
 
-- **Global keywords.** Material passes compile the global keywords that [Rendering Pipeline](rendering-pipeline.md#global-state) defines. They follow the renderer feature's serialized settings, not Volumes or runtime switches, so a runtime switch never changes a material's variant.
-- **Material keywords.** Fabric declares `_ANISOTROPY_ON` and `_SHEEN_VELET` as local keywords. Water declares `_WATER_REFLECTION_LEGACY`, which [Water](water.md) owns.
+Renderer-capability keywords remain stable while runtime switches and Volumes control work through neutral inputs. Material-local options remain material-local. Changing a runtime switch cannot require a stripped material variant; see [Rendering Pipeline](rendering-pipeline.md#global-state).
 
 ## Rectangle area lights
 
-- **Keyword axis.** Area lighting compiles under `multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH`. The axis is declared by the main color pass of the Lit, Skin, Hair, Fabric and Water templates, the Hair `OITTransparent` pass, the Skin `SubsurfaceDiffuse` pass, and the `ForwardLit` and `OITTransparent` passes of Hybrid Lit and Hybrid Complex Lit. Shaders derive `_AREA_LIGHTS` in the fragment stage from either tier keyword and never declare it.
-- **Resident tier.** While the renderer feature's `areaLights` setting is on, the selected tier keyword stays enabled. When area lights are off for a camera ([Rendering Pipeline](rendering-pipeline.md#enablement)) or no rectangle light is visible, `_AreaLightCount` is zero and each family skips its area loop with a dynamic branch. The off variant serves only renderers without area lights.
-- **Coupled quality.** `areaShadowFilteringQuality` selects both the keyword tier and the area shadow filtering; neither is changed alone.
-- **Lit and Water.** A diffuse lobe matching the family's punctual diffuse model, a GGX specular lobe and an optional clear coat lobe. Water uses Lit lighting, evaluates area lights only in its main color pass, and `WaterSSRData` still writes only normal, smoothness and depth.
-- **Skin.** Diffuse and transmission are evaluated with the diffuse lighting, in `SubsurfaceDiffuse` while `_SCREEN_SPACE_SSS` is enabled and in the main pass otherwise; the dual-lobe specular is evaluated in the main pass.
-- **Fabric.** Lambert diffuse lit from both sides, and a GGX base lobe and a Charlie sheen lobe mixed by the sheen intensity. Anisotropy is not applied.
-- **Hair.** A most-representative-point approximation instead of LTC.
-- **Units.** Area diffuse and specular results are multiplied by π once, at the shared evaluation exit, to match URP's direct light convention, which omits the 1/π of Lambert diffuse.
-- **Cookies.** Cookies add no keyword: LTC evaluation samples the cookie in a dynamic branch when a light's cookie mode is not none. The Hair approximation does not sample cookies.
+Area-light quality and shadow filtering form one coupled capability. Cameras with no active lights publish an empty light set while retaining that capability's keyword state. Cookies do not introduce a material keyword axis.
+
+Lit and Water use their surface diffuse/specular models, including optional coat; Water evaluates lighting only in its color pass. Skin evaluates diffuse/transmission in the split diffuse path when active and specular in the main path. Fabric supports diffuse and sheen but not area-light anisotropy. Hair uses its approximation and does not sample cookies.
+
+All families adapt area-light energy to URP's lighting convention exactly once. Auxiliary reflection-data passes never duplicate final lighting.
 
 ## Fabric anisotropy
 
-`_ANISOTROPY_ON`, toggled by `_Anisotropy_On` and compiled in the main color pass, selects anisotropic direct lighting. The tangent and bitangent come from the mesh tangent frame tilted by the tangent-space normal scaled by `_NormalAniso`, and `_Anisotropy_Intensity` is the anisotropy `A` in [-1, 1]. Let `a` be URP's `BRDFData.roughness`, the perceptual roughness squared, and `s` the sheen intensity:
-
-```text
-aT = max(a * (1 + A), 0.001)
-aB = max(a * (1 - A), 0.001)
-anisoSpecular = PI * DV_SmithJointGGXAniso(aT, aB) * F_Schlick(F0, VdotH)
-directSpecular = lerp(anisoSpecular, sheenSpecular, s)
-```
-
-- **Width.** The base highlight width follows the material smoothness through URP's roughness mapping; `BRDFData.roughness2` is not used.
-- **π adaptation.** The anisotropic GGX lobe is normalized like HDRP's, so it is multiplied by π exactly once, before it is mixed with sheen, to match URP's direct light convention. The sheen lobe uses distributions without the 1/π factor and is not scaled again.
-- **Reach.** Anisotropy applies to the main and additional punctual lights only. Environment reflection stays isotropic and is never scaled by π, and area lights drop anisotropy.
+Anisotropy affects punctual direct lighting and follows the material's tangent frame, normal and smoothness. It blends consistently with the cloth sheen response. Environment reflections remain isotropic; area lighting does not apply anisotropy. Energy normalization is applied once at the shading-convention boundary.
