@@ -3046,8 +3046,6 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
                 "LightMode" = "ForwardGBuffer"
             }
 
-			Blend One Zero
-			AlphaToMask Off
 			ZWrite On
             Cull[_Cull]
             ZTest LEqual
@@ -3069,7 +3067,6 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 
 			#pragma vertex vert
 			#pragma fragment frag
-			#pragma multi_compile _ _PRT_CAPTURE
 
 			#if defined( _SPECULAR_SETUP ) && defined( ASE_LIGHTING_SIMPLE )
 				#if defined( _SPECULARHIGHLIGHTS_OFF )
@@ -3349,23 +3346,15 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 			}
 			#endif
 
-			#if defined(_PRT_CAPTURE)
-			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PrecomputeRadianceTransfer/PRTCapture.hlsl"
-			#endif
 			#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurfaceResponse.hlsl"
 			float _WetSurfacePackedEnabled;
 
 			void frag ( PackedVaryings input
-								, FRONT_FACE_TYPE facing : FRONT_FACE_SEMANTIC
 								#if defined( ASE_DEPTH_WRITE_ON )
 								,out float outputDepth : ASE_SV_DEPTH
 								#endif
-								#if defined(_PRT_CAPTURE)
-								, out float4 outCapture : SV_Target0
-								#else
 								, out half4 outSmoothness : SV_Target0
 								, out half4 outNormalWS : SV_Target1
-								#endif
 								/*ase_frag_input*/ )
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
@@ -3402,15 +3391,8 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 					BitangentWS = cross(NormalWS, -TangentWS);
 				#endif
 
-				/*ase_local_var:vf*/float FaceSign = IS_FRONT_VFACE(facing, 1.0, -1.0);
-
 				/*ase_frag_code:input=PackedVaryings*/
 
-				#if defined(_PRT_CAPTURE)
-				float3 BaseColor = /*ase_frag_out:Base Color;Float3;45;-1;_BaseColor*/float3(0.5, 0.5, 0.5)/*end*/;
-				float Metallic = /*ase_frag_out:Metallic;Float;46;-1;_Metallic*/0/*end*/;
-				float3 Specular = /*ase_frag_out:Specular;Float3;47;-1;_Specular*/0.5/*end*/;
-				#endif
 				float3 Normal = /*ase_frag_out:Normal;Float3;1;-1;_FragNormal*/float3(0, 0, 1)/*end*/;
 				float Smoothness = /*ase_frag_out:Smoothness;Float;0;-1;_Smoothness*/0.5/*end*/;
 				float3 GBufferNormalTS = /*ase_frag_out:GBuffer Normal;Float3;40;40*/float3(0, 0, 1)/*end*/;
@@ -3433,11 +3415,6 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 					outputDepth = DepthValue;
 				#endif
 
-				#if defined(_PRT_CAPTURE)
-				float3 captureNormalWS = PRTCaptureNormalWS(Normal, NormalWS, TangentWS, BitangentWS, FaceSign);
-				outCapture = PRTCaptureOutput(PositionWS, captureNormalWS,
-					PRTDiffuseReflectance(BaseColor, Metallic, Specular));
-				#else
 				#if defined(_GBUFFER_SMOOTHNESS_OVERRIDE)
 					half s = GBufferSmoothness;
 				#else
@@ -3469,7 +3446,6 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 					float3 normalWS = NormalWS;
 				#endif
 				outNormalWS = half4(NormalizeNormalPerPixel(normalWS), 0.0);
-				#endif
 			}
 
 			ENDHLSL

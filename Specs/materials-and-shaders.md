@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.3.3 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-06 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -45,7 +45,7 @@ The renderer draws enabled Forward GBuffer passes before screen-space lighting. 
 
 Every contributing pass matches main-color geometry, alpha clipping, LOD transitions and culling. Transparent materials do not contribute; opaque-queue Hair cores do. Optional graph overrides may simplify screen-space normal and smoothness but cannot change coverage, stencil or depth.
 
-Wet surfaces extend the surface description and update it before screen-space consumers; see [Wet Surface Decals](wet-surface-decals.md). [PRT baking](precomputed-radiance-transfer.md) reuses authored material inputs through a bake-only capture variant and keeps its output separate from normal rendering.
+Wet surfaces extend the surface description and update it before screen-space consumers; see [Wet Surface Decals](wet-surface-decals.md). [PRT baking](precomputed-radiance-transfer.md) reuses authored material inputs through the path tracing pass and keeps its output separate from normal rendering.
 
 ## Screen-space receivers
 

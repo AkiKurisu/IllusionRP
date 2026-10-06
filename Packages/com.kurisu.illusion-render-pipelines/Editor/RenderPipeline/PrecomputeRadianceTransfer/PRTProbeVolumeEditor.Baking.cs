@@ -6,12 +6,11 @@ namespace Illusion.Rendering.Editor
 {
     internal partial class PRTProbeVolumeEditor
     {
-        private SerializedProperty _asset, _bakeResolution, _bakeSampleCount, _bakeSeed, _sectorWidth;
+        private SerializedProperty _asset, _bakeSampleCount, _bakeSeed, _sectorWidth;
 
         private void InitializeBakeProperties()
         {
             _asset = Properties.Find(volume => volume.asset);
-            _bakeResolution = Properties.Find(volume => volume.bakeResolution);
             _bakeSampleCount = Properties.Find(volume => volume.bakeSampleCount);
             _bakeSeed = Properties.Find(volume => volume.bakeSeed);
             _sectorWidth = Properties.Find(volume => volume.sectorWidth);
@@ -22,7 +21,6 @@ namespace Illusion.Rendering.Editor
             if (Foldout("Baking", true))
             {
                 EditorGUILayout.PropertyField(_asset, Styles.Asset);
-                EditorGUILayout.PropertyField(_bakeResolution, Styles.BakeResolution);
                 EditorGUILayout.PropertyField(_bakeSampleCount, Styles.SampleCount);
                 EditorGUILayout.PropertyField(_bakeSeed, Styles.SampleSeed);
                 EditorGUILayout.PropertyField(_sectorWidth, Styles.SectorWidth);

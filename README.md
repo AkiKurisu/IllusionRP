@@ -186,7 +186,9 @@ Include <b>Screen Space Reflection</b> based on [EricHu33/URP_SSR](https://githu
 
 Support 3 algorithms: <b>View Space Linear Search</b>, <b>Screen Space Linear Search</b> and <b>Hiz Search</b>.
 
-Include <b>Precomputed Radiance Transfer Global Illumination (PRTGI)</b> based on [AKGWSB/CasualPRT](https://github.com/AKGWSB/CasualPRT).
+Include <b>Precomputed Radiance Transfer Global Illumination (PRTGI)</b> based on [AKGWSB/CasualPRT](https://github.com/AKGWSB/CasualPRT) and [Global Illumination in Tom Clancy's The Division](https://mrakobes.com/Nikolay.Stefanov.GDC.2016.pdf).
+
+Support <b>Sector Relighting</b>, <b>Camera Cascades</b> and a <b>Ray Traced Baker</b>.
 
 ![PRTGI](Documentations/images/prtgi.png)
 
@@ -299,6 +301,8 @@ Hair: [hair33.png by OwlishMedia](https://opengameart.org/content/hair-alphas-fo
 [EricHu33/URP_SSR](https://github.com/EricHu33/URP_SSR)
 
 [AKGWSB/CasualPRT](https://github.com/AKGWSB/CasualPRT)
+
+[Ubisoft Massive - Global Illumination in Tom Clancy's The Division](https://mrakobes.com/Nikolay.Stefanov.GDC.2016.pdf)
 
 [HigashiSan/Weighted-Blended-OIT-in-Unity-URP](https://github.com/HigashiSan/Weighted-Blended-OIT-in-Unity-URP)
 

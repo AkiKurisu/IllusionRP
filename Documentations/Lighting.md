@@ -433,7 +433,6 @@ To see which cascade lights each pixel, enable **PRT Cascades** under **Illusion
 | Property | Description |
 |----------|-------------|
 | **Asset** | PRT Probe Volume Asset that stores the baked transport. Created next to the scene when empty. |
-| **Capture Resolution** | Cubemap resolution used to capture surfels for each probe. |
 | **Samples Per Probe** | Number of directions integrated for each probe. |
 | **Sampling Seed** | Seed of the deterministic sample directions. |
 | **Sector Size** | Probe columns per sector along X and Z. Smaller sectors stream at a finer granularity. |
@@ -447,6 +446,8 @@ Follow these steps to bake PRTGI data for your scene:
 3. In the Inspector, configure the Probe Grid and Probe Placement settings according to your scene requirements.
 4. Optionally assign a **Probe Volume Asset** in the Baking section; one is created next to the scene otherwise.
 5. Click the **Generate Lighting** button at the bottom of the Inspector to start the baking process.
+
+Baking traces rays against the static geometry and shades the hits with each material's Path Tracing pass, so it requires DirectX 12 with a ray tracing GPU, and every static material needs a Path Tracing pass. Vertex animation such as wind is not captured.
 
 ![Baking](./images/prt_baking.png)
 

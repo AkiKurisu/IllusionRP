@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.3.3 |
 | Status | Draft |
-| Date | 2026-10-04 |
+| Date | 2026-10-06 |
 
 ## Rendering Modes
 
@@ -49,6 +49,8 @@ Use existing renderers, meshes, materials and property overrides with their orig
 | Skin | Dual-lobe reflection and closed-volume subsurface scattering. |
 | Hair | Card geometry with fiber-direction scattering and card-volume color semantics. |
 | Unlit | Presentation color and emission, without a lit scattering model. |
+
+[PRT baking](precomputed-radiance-transfer.md) shades its first hits with the same material evaluation, binding only the hit tables, not camera or frame state.
 
 Coverage decides whether a hit exists; physical transmission decides scattering after acceptance. Main, shadow and subsurface rays preserve the material's coverage contract. Shadow rays continue straight through uncovered/transmitting portions with colored transmission.
 

@@ -30,7 +30,7 @@ namespace Illusion.Rendering.Editor
         }, "PRT Reflections");
         internal static async void BakePlacementPreview(PRTProbeVolume volume) => await RunBake(async token =>
         {
-            using var baker = new PRTBaker(volume.bakeResolution);
+            using var baker = new PRTBaker();
             await baker.BakePlacementPreview(volume, token);
             SceneView.RepaintAll();
         }, "PRT Probe Placement");
@@ -59,7 +59,7 @@ namespace Illusion.Rendering.Editor
         {
             if (!volume.asset && !InitializeProbeVolumeData(volume)) return;
             int progress = Progress.Start($"Bake PRT Volume ({volume.name})", options: Progress.Options.Managed);
-            using var baker = new PRTBaker(volume.bakeResolution);
+            using var baker = new PRTBaker();
             baker.OnProgressUpdate = (status, value) => Progress.Report(progress, value, status);
             try
             {
@@ -74,7 +74,7 @@ namespace Illusion.Rendering.Editor
         {
             if (!probe) return;
             int progress = Progress.Start($"Bake Reflection Normalization ({probe.name})", options: Progress.Options.Managed);
-            using var baker = new PRTBaker(PRTBakeResolution._512);
+            using var baker = new PRTBaker();
             try
             {
                 token.ThrowIfCancellationRequested();

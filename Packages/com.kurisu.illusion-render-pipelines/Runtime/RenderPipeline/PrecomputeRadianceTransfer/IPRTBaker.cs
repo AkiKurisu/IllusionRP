@@ -6,12 +6,6 @@ using System.Threading.Tasks;
 
 namespace Illusion.Rendering.PRTGI
 {
-    public enum PRTBakeResolution
-    {
-        [InspectorName("128 × 128")] _128 = 128,
-        [InspectorName("256 × 256")] _256 = 256,
-        [InspectorName("512 × 512")] _512 = 512
-    }
 #if UNITY_EDITOR
     internal readonly struct PRTProbeBakeSamples
     {
@@ -35,7 +29,8 @@ namespace Illusion.Rendering.PRTGI
         void UpdateProgress(string status, float progress);
         Task<PRTProbeBakeSamples[]> CaptureProbesAsync(Vector3[] capturePositions, Vector4[] directionAndIntegralWeights,
             CancellationToken cancellationToken);
-        PRTProbePlacement PlaceProbe(Vector3 position, float geometryBias, float rayOriginBias, float searchDistance);
+        Task<PRTProbePlacement[]> PlaceProbesAsync(Vector3[] positions, Vector2[] geometryAndRayOriginBiases, float searchDistance,
+            CancellationToken cancellationToken);
     }
 #endif
 }

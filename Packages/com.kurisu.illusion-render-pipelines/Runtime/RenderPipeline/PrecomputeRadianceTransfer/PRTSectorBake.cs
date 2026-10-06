@@ -1,5 +1,9 @@
 #if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.ExceptionServices;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace Illusion.Rendering.PRTGI
@@ -36,10 +40,22 @@ namespace Illusion.Rendering.PRTGI
         private int SectorIndex(int id) => id / (_grid.count.y * _grid.count.z) / _width * _columnsZ
             + id % _grid.count.z / _width;
 
-        public void AddProbe(int id, PRTCaptureSample[] samples, Vector4[] directions, Vector3 offset, uint validity)
+        // Each sector accumulates its own probes in id order on one thread, so results do not depend on scheduling.
+        public void AddProbes(int first, PRTProbeBakeSamples[] captures, Vector4[] directions, Vector3[] offsets, uint[] validity)
         {
-            Metadata[id] = new PRTProbeMetadata { captureOffset = offset, validity = validity };
-            _sectors[SectorIndex(id)].AddProbe(_localIds[id], samples, directions, offset, validity);
+            for (int i = 0; i < captures.Length; i++)
+                Metadata[first + i] = new PRTProbeMetadata { captureOffset = offsets[i], validity = validity[i] };
+            Run(() => Parallel.ForEach(Enumerable.Range(0, captures.Length).GroupBy(i => SectorIndex(first + i)), group =>
+            {
+                foreach (int i in group)
+                    _sectors[group.Key].AddProbe(_localIds[first + i], captures[i].surfels, directions, offsets[i], validity[i]);
+            }));
+        }
+
+        private static void Run(Action action)
+        {
+            try { action(); }
+            catch (AggregateException exception) { ExceptionDispatchInfo.Capture(exception.Flatten().InnerExceptions[0]).Throw(); }
         }
 
         public PRTSectorData[] Complete()
@@ -49,7 +65,7 @@ namespace Illusion.Rendering.PRTGI
                 if ((Metadata[id].validity >> 24) != 0) valid.Add(id);
             var nearest = new PRTNearestProbe(_grid, valid);
             var result = new PRTSectorData[_sectors.Length];
-            for (int i = 0; i < result.Length; i++)
+            Run(() => Parallel.For(0, result.Length, i =>
             {
                 var sector = _sectors[i].GenerateSector(nearest.Find);
                 sector.coordinate = new Vector2Int(i / _columnsZ, i % _columnsZ);
@@ -57,7 +73,7 @@ namespace Illusion.Rendering.PRTGI
                 if (sector.surfels.Length == 0)
                     sector.surfelBounds = new Bounds(_grid.GetPosition(sector.probeIds[0]), Vector3.zero);
                 result[i] = sector;
-            }
+            }));
             return result;
         }
     }

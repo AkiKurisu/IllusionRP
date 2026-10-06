@@ -30,7 +30,6 @@ namespace Illusion.Rendering.PRTGI
         internal float shadowCacheDebugSurfelSize = 0.05f;
         
         [SerializeField, HideInInspector] 
-        internal PRTBakeResolution bakeResolution = PRTBakeResolution._256;
 
         private PRTProbeDebugData[] _probeDebugData;
         

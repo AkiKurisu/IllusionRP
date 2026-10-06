@@ -299,10 +299,6 @@ namespace Illusion.Rendering
 
         private SetKeywordPass _disablePRTGIPass;
 
-#if UNITY_EDITOR
-        private PRTGBufferCapturePass _prtGBufferCapturePass;
-#endif
-
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         private ExposureDebugPass _exposureDebugPass;
         
@@ -421,10 +417,6 @@ namespace Illusion.Rendering
             _setupPass = new SetupPass(this, _rendererData);
             _transparentStencilVRSPass = new StencilVRSGenerationPass(IllusionRenderPassEvent.TransparentStencilVRSPass);
 
-#if UNITY_EDITOR
-            _prtGBufferCapturePass = new PRTGBufferCapturePass();
-#endif
-
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             _exposureDebugPass = new ExposureDebugPass(_rendererData);
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
@@ -443,14 +435,6 @@ namespace Illusion.Rendering
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-#if UNITY_EDITOR
-            if (PRTGBufferCaptureBridge.TryGet(renderingData.cameraData.camera, out _))
-            {
-                renderer.EnqueuePass(_prtGBufferCapturePass);
-                return;
-            }
-#endif
-
             var config = IllusionRuntimeRenderingConfig.Get();
             bool isPreviewCamera = renderingData.cameraData.cameraType == CameraType.Preview;
             bool isGameCamera = renderingData.cameraData.cameraType == CameraType.Game;
@@ -881,10 +865,6 @@ namespace Illusion.Rendering
             SafeDispose(ref _setupPass);
             SafeDispose(ref _dlssNeuralRenderingBackend);
             DisposePathTracing();
-
-#if UNITY_EDITOR
-            _prtGBufferCapturePass = null;
-#endif
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             IllusionDebugPanels.Unregister(this);

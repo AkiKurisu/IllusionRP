@@ -2,16 +2,16 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.3.3 |
 | Status | Living |
-| Date | 2026-10-05 |
+| Date | 2026-10-06 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 Stripping removes only states that the complete build target cannot reach. Renderer capabilities and content usage are separate inputs; neither the currently open scene nor one changed asset represents the whole build.
 
 ## Switch
 
-Strip Unused Variants controls capability-based removal. Turning it off preserves runtime capability states. Mandatory Editor-only removal and static authoring filters remain independent. Invalid target data conservatively keeps variants and does not overwrite derived target prefilters.
+Strip Unused Variants controls capability-based removal. Turning it off preserves runtime capability states. Static authoring filters remain independent. Invalid target data conservatively keeps variants and does not overwrite derived target prefilters.
 
 ## Build stages
 
@@ -20,8 +20,6 @@ Strip Unused Variants controls capability-based removal. Turning it off preserve
 3. Apply keyword rules across the target renderer set.
 4. Supplement URP/Core processing with reachable SH/reflection-atlas combinations and whole-pass rules.
 5. Apply build-scoped content evidence to OIT, then compile the retained programs.
-
-Editor-only PRT capture is always removed from runtime shader builds, independently of capability settings, while Editor compilation retains it for baking.
 
 ## Capabilities
 

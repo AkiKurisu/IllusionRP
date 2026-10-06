@@ -425,8 +425,6 @@ Shader "Universal Render Pipeline/Hybrid Lit"
                 "LightMode" = "ForwardGBuffer"
             }
 
-            Blend One Zero
-            AlphaToMask Off
             ZWrite On
             Cull[_Cull]
             ZTest LEqual
@@ -465,8 +463,7 @@ Shader "Universal Render Pipeline/Hybrid Lit"
 
             #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/HybridLitForwardGBufferPass.hlsl"
 
-            #pragma multi_compile _ _PRT_CAPTURE
-            #pragma vertex LitForwardGBufferVertex
+            #pragma vertex DepthNormalsVertex
             #pragma fragment LitForwardGBufferMRTFragment
             ENDHLSL
         }
@@ -589,7 +586,6 @@ Shader "Universal Render Pipeline/Hybrid Lit"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Universal2D.hlsl"
             ENDHLSL
         }
-
 
         Pass
         {

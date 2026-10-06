@@ -77,7 +77,7 @@ MonoBehaviour:
   copyChannelCS: {fileID: 7200000, guid: c375962f953a8544b9a2dc9b05982390, type: 3}
   prtBrickRelightCS: {fileID: 7200000, guid: b1f6253decf2ab64f8999b858a65ee5b, type: 3}
   prtProbeRelightCS: {fileID: 7200000, guid: c4e4013646393af4b8004d205e0be036, type: 3}
-  prtSurfelSampleCS: {fileID: 7200000, guid: 6d00355db14e92f4db4cee326f26738d, type: 3}
+  prtBakeTraceRS: {fileID: 4807578003741378534, guid: 3f6a1c9e2b7d4e58a0c4d2f1e8b93a71, type: 3}
   reflectionProbeSampleCS: {fileID: 7200000, guid: 3059759fa8654864926090e1c50cdca9, type: 3}
   volumetricFogRaymarchCS: {fileID: 7200000, guid: fc93eaa800b54824f90d9d95933259bd, type: 3}
   volumetricFogBlurCS: {fileID: 7200000, guid: fec63be0d22958f4db7201d00e26e8f4, type: 3}

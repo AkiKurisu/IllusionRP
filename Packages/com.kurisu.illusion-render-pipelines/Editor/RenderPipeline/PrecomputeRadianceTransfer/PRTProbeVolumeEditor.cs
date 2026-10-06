@@ -233,7 +233,6 @@ namespace Illusion.Rendering.Editor
             public static readonly GUIContent RelightShadow = new("Shadows", "Use existing shadow maps for visibility when relighting.");
 
             public static readonly GUIContent Asset = new("Asset", "Baked transport for this volume. Created next to the scene when empty.");
-            public static readonly GUIContent BakeResolution = new("Capture Resolution", "Cubemap resolution used to capture surfels for each probe.");
             public static readonly GUIContent SampleCount = new("Samples Per Probe", "Number of directions integrated for each probe.");
             public static readonly GUIContent SampleSeed = new("Sampling Seed", "Seed of the deterministic sample directions.");
             public static readonly GUIContent SectorWidth = new("Sector Size", "Probe columns per sector along X and Z. Smaller sectors stream at a finer granularity.");

@@ -74,14 +74,6 @@ namespace Illusion.Rendering.Editor
             if (!shader || compilerDataList == null || compilerDataList.Count == 0)
                 return;
 
-            LocalKeyword capture = shader.keywordSpace.FindKeyword("_PRT_CAPTURE");
-            if (capture.isValid)
-                for (int i = compilerDataList.Count - 1; i >= 0; i--)
-                    if (compilerDataList[i].shaderKeywordSet.IsEnabled(capture))
-                        compilerDataList.RemoveAt(i);
-            if (compilerDataList.Count == 0)
-                return;
-
             IllusionShaderBuildData buildData = ShaderBuildPreprocessor.CurrentData;
             if (buildData == null || !buildData.IsValid || !buildData.StripUnusedVariants)
                 return;
