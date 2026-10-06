@@ -107,11 +107,11 @@ namespace Illusion.Rendering.PRTGI
             _selected.Clear();
             int uploadBudget = (int)Math.Min(int.MaxValue, Mathf.Max(1, _volume.uploadBudgetMiB) * 1048576L);
             long residentBudget = (long)Mathf.Max(1, _volume.sectorBudgetMiB) * 1024 * 1024;
-            residency.BeginFrame(graph, scheduler.NearSector, scheduler.BackgroundSector, residentBudget);
+            residency.BeginFrame(scheduler.NearSector, scheduler.BackgroundSector, residentBudget);
             foreach (int id in requested)
             {
                 var lights = PRTRelightWorldLighting.Select(world, _volume.asset.Sectors[id].surfelBounds);
-                var sector = residency.Request(graph, id, lights, residentBudget);
+                var sector = residency.Request(id, lights, residentBudget);
                 if (sector == null) continue;
                 if (!sector.Ready)
                     residency.UploadedBytes += sector.RecordUpload(graph, uploadBudget - residency.UploadedBytes);

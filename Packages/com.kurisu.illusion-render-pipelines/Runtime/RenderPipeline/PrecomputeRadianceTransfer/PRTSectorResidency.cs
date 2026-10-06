@@ -1,23 +1,18 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine.Rendering;
-using UnityEngine.Rendering.RenderGraphModule;
 
 namespace Illusion.Rendering.PRTGI
 {
     internal sealed class PRTSectorResidency : IDisposable
     {
-        private sealed class Eviction
-        {
-            public PRTSectorResidency owner;
-            public PRTSectorResident resident;
-        }
         private readonly PRTProbeVolumeAsset _asset;
         private readonly Dictionary<int, PRTSectorResident> _residents = new();
         private readonly Dictionary<int, Dictionary<uint, PRTWorldShadowCacheEntry[]>> _saved = new();
         private readonly List<PRTSectorResident> _completed = new();
+        private const uint EvictionPatience = 4;
+        private readonly List<(PRTSectorResident resident, AsyncGPUReadbackRequest request, uint frame)> _evictions = new();
         private readonly HashSet<int> _protected = new();
-        private bool _disposed;
         public long Bytes { get; private set; }
         public long PeakBytes { get; private set; }
         public int UploadedBytes { get; set; }
@@ -26,8 +21,18 @@ namespace Illusion.Rendering.PRTGI
         public IEnumerable<PRTSectorResident> Residents => _residents.Values;
         public PRTSectorResidency(PRTProbeVolumeAsset asset) => _asset = asset;
 
-        public void BeginFrame(RenderGraph graph, int near, int background, long budget)
+        public void BeginFrame(int near, int background, long budget)
         {
+            // Edit Mode can leave readbacks pending indefinitely; a late eviction waits so the budget cannot deadlock.
+            for (int i = _evictions.Count - 1; i >= 0; i--)
+            {
+                var (evicted, request, frame) = _evictions[i];
+                request.Update();
+                if (!request.done && PRTRelightFrame.Index - frame < EvictionPatience) continue;
+                if (!request.done) request.WaitForCompletion();
+                _evictions.RemoveAt(i);
+                CompleteEviction(evicted, request);
+            }
             foreach (var resident in _completed)
             {
                 Bytes -= resident.Bytes;
@@ -50,13 +55,13 @@ namespace Illusion.Rendering.PRTGI
                     if (!candidate.Evicting && !candidate.ReadbackFailed && !_protected.Contains(candidate.Index) &&
                         (oldest == null || candidate.LastUsed < oldest.LastUsed)) oldest = candidate;
                 if (oldest == null) break;
-                Evict(graph, oldest);
+                Evict(oldest);
                 retiring += oldest.Bytes;
             }
             if (Bytes > budget) Pressure = $"{Bytes}/{budget} bytes allocated, including protected sectors and pending eviction.";
         }
 
-        public PRTSectorResident Request(RenderGraph graph, int id, PRTRelightLightingSnapshot lights, long budget)
+        public PRTSectorResident Request(int id, PRTRelightLightingSnapshot lights, long budget)
         {
             _protected.Add(id);
             if (_residents.TryGetValue(id, out var resident))
@@ -64,7 +69,7 @@ namespace Illusion.Rendering.PRTGI
                 if (resident.Evicting) return null;
                 if (!resident.Lighting.SetInput(lights))
                 {
-                    Evict(graph, resident);
+                    Evict(resident);
                     return null;
                 }
                 resident.LastUsed = PRTRelightFrame.Index;
@@ -77,7 +82,7 @@ namespace Illusion.Rendering.PRTGI
                 foreach (var candidate in _residents.Values)
                     if (!candidate.Evicting && !candidate.ReadbackFailed && !_protected.Contains(candidate.Index) &&
                         (oldest == null || candidate.LastUsed < oldest.LastUsed)) oldest = candidate;
-                if (oldest != null) Evict(graph, oldest);
+                if (oldest != null) Evict(oldest);
                 Pressure = $"Sector {id} needs {bytes} bytes; {Bytes}/{budget} bytes allocated, including pending eviction.";
                 return null;
             }
@@ -89,7 +94,7 @@ namespace Illusion.Rendering.PRTGI
             return resident;
         }
 
-        private void Evict(RenderGraph graph, PRTSectorResident resident)
+        private void Evict(PRTSectorResident resident)
         {
             if (resident.ReadbackFailed)
             {
@@ -98,23 +103,12 @@ namespace Illusion.Rendering.PRTGI
             }
             resident.Evicting = true;
             if (!resident.Ready) { _completed.Add(resident); return; }
-            using var builder = graph.AddUnsafePass<Eviction>($"PRT preserve sector {resident.Index} shadows", out var pass);
-            pass.owner = this; pass.resident = resident;
-            builder.UseBuffer(graph.ImportBuffer(resident.Lighting.ShadowCacheBuffer), AccessFlags.Read);
-            builder.AllowPassCulling(false);
-            builder.SetRenderFunc(static (Eviction data, UnsafeGraphContext context) =>
-            {
-                // Pass data is pooled by the render graph; the callback must not read it after this frame.
-                var owner = data.owner;
-                var evicted = data.resident;
-                CommandBufferHelpers.GetNativeCommandBuffer(context.cmd).RequestAsyncReadback(evicted.Lighting.ShadowCacheBuffer,
-                    request => owner.CompleteEviction(evicted, request));
-            });
+            // An evicting sector is never relit again, so its cache holds the last frame's writes.
+            _evictions.Add((resident, AsyncGPUReadback.Request(resident.Lighting.ShadowCacheBuffer), PRTRelightFrame.Index));
         }
 
         private void CompleteEviction(PRTSectorResident resident, AsyncGPUReadbackRequest request)
         {
-            if (_disposed) { resident.Dispose(); return; }
             if (request.hasError)
             {
                 resident.Evicting = false;
@@ -128,10 +122,9 @@ namespace Illusion.Rendering.PRTGI
 
         public void Dispose()
         {
-            _disposed = true;
-            foreach (var resident in _residents.Values)
-                if (!resident.Evicting || _completed.Contains(resident)) resident.Dispose();
-            _residents.Clear(); _saved.Clear(); _completed.Clear();
+            foreach (var (_, request, _) in _evictions) request.WaitForCompletion();
+            foreach (var resident in _residents.Values) resident.Dispose();
+            _residents.Clear(); _saved.Clear(); _completed.Clear(); _evictions.Clear();
         }
     }
 }
