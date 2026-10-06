@@ -94,7 +94,9 @@ namespace Illusion.Rendering.Editor
                 foreach (Vector3 direction in Directions)
                 {
                     Ray ray = new(current - direction * rayOriginBias, direction);
-                    if (!Trace(ray, searchDistance + rayOriginBias, out float distance, out Vector3 normal)) continue;
+                    // Occupancy needs unbounded rays: a probe deeper inside geometry than the search distance would
+                    // otherwise see no faces and pass as outside. The search distance only limits the exit offset.
+                    if (!Trace(ray, float.PositiveInfinity, out float distance, out Vector3 normal)) continue;
                     if (Vector3.Dot(direction, normal) <= 0f) { front++; continue; }
                     back++;
                     if (distance < nearest)
