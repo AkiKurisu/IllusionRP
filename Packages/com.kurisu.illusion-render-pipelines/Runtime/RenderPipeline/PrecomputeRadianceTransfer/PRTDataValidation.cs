@@ -5,7 +5,7 @@ namespace Illusion.Rendering.PRTGI
     internal static class PRTDataValidation
     {
         internal static bool IsFinite(Vector3 v) => float.IsFinite(v.x) && float.IsFinite(v.y) && float.IsFinite(v.z);
-        internal static bool Validate(PRTProbeGrid grid, int width, PRTProbeMetadata[] probes,
+        internal static bool Validate(PRTProbeGrid grid, int width, int sampleCount, PRTProbeMetadata[] probes,
             PRTSectorData[] sectors, out string reason)
         {
             reason = null;
@@ -13,7 +13,7 @@ namespace Illusion.Rendering.PRTGI
             if (grid.count.x < 1 || grid.count.y < 1 || grid.count.z < 1 || count > int.MaxValue ||
                 !float.IsFinite(grid.spacing) || grid.spacing <= 0 || !IsFinite(grid.origin))
                 return Fail("Invalid probe grid.", out reason);
-            if (width < 1 || probes == null || probes.Length != count || sectors == null ||
+            if (width < 1 || sampleCount < 1 || probes == null || probes.Length != count || sectors == null ||
                 sectors.Length != ((grid.count.x + width - 1) / width) * ((grid.count.z + width - 1) / width))
                 return Fail("Sector layout is missing or does not match the probe grid. Rebake the transport.", out reason);
             var seen = new bool[count];
@@ -21,7 +21,7 @@ namespace Illusion.Rendering.PRTGI
             {
                 var data = sectors[i];
                 if (data?.surfels == null || data.bricks == null || data.factors == null || data.probes == null ||
-                    data.skySamples == null || data.probeIds == null || data.probeIds.Length != data.probes.Length ||
+                    data.skyVisibility == null || data.probeIds == null || data.probeIds.Length != data.probes.Length ||
                     data.probeIds.Length == 0 || !IsFinite(data.surfelBounds.center) || !IsFinite(data.surfelBounds.size))
                     return Fail("Incomplete sector transport.", out reason);
                 int previous = -1;
@@ -34,34 +34,34 @@ namespace Illusion.Rendering.PRTGI
                     seen[id] = true;
                     previous = id;
                 }
-                if (!ValidateSector(data, probes, out reason)) return false;
+                if (!ValidateSector(data, sampleCount, probes, out reason)) return false;
             }
             foreach (bool assigned in seen) if (!assigned) return Fail("Probe has no sector.", out reason);
             return true;
         }
 
-        private static bool ValidateSector(PRTSectorData data, PRTProbeMetadata[] probes, out string reason)
+        private static bool ValidateSector(PRTSectorData data, int sampleCount, PRTProbeMetadata[] probes, out string reason)
         {
             reason = null;
             foreach (Surfel surfel in data.surfels)
-                if (surfel.flags != 0 || !IsFinite(surfel.position) || !IsFinite(surfel.normal) ||
-                    !IsFinite(surfel.albedo) || surfel.normal.sqrMagnitude < 0.5f || surfel.materialKey == 0 ||
-                    surfel.nearestProbe < -1 || surfel.nearestProbe >= probes.Length ||
+                if (surfel.nearestProbe < -1 || surfel.nearestProbe >= probes.Length ||
                     surfel.nearestProbe >= 0 && (probes[surfel.nearestProbe].validity >> 24) == 0)
                     return Fail("Transport contains an invalid geometry surfel.", out reason);
             foreach (SurfelIndices brick in data.bricks)
                 if (brick.count < 1 || !Contains(brick.start, brick.count, data.surfels.Length))
                     return Fail("Invalid brick surfel range.", out reason);
             foreach (BrickFactor factor in data.factors)
-                if (factor.brickIndex < 0 || factor.brickIndex >= data.bricks.Length || !factor.IsFinite || factor.sh0 <= 0)
+                if (factor.BrickIndex >= data.bricks.Length || !factor.IsFinite || factor[0] <= 0)
                     return Fail("Invalid probe-to-brick transfer.", out reason);
-            foreach (PRTSkySample sky in data.skySamples)
-                if (!IsFinite(sky.direction) || Mathf.Abs(sky.direction.sqrMagnitude - 1f) > 0.001f ||
-                    !float.IsFinite(sky.weight) || sky.weight <= 0)
-                    return Fail("Invalid sky visibility sample.", out reason);
+            int words = PRTSkyVisibility.Words(sampleCount);
+            uint lastWord = sampleCount % 32 == 0 ? uint.MaxValue : (1u << (sampleCount % 32)) - 1u;
+            if (data.skyVisibility.Length != data.probes.Length * words)
+                return Fail("Sky visibility does not match the bake direction table.", out reason);
+            for (int i = words - 1; i < data.skyVisibility.Length; i += words)
+                if ((data.skyVisibility[i] & ~lastWord) != 0)
+                    return Fail("Sky visibility references directions outside the bake direction table.", out reason);
             foreach (PRTProbeData probe in data.probes)
-                if (!Contains(probe.factorStart, probe.factorCount, data.factors.Length) ||
-                    !Contains(probe.skyStart, probe.skyCount, data.skySamples.Length) || !IsFinite(probe.captureOffset))
+                if (!Contains(probe.factorStart, probe.factorCount, data.factors.Length) || !IsFinite(probe.captureOffset))
                     return Fail("Invalid probe transport range or capture offset.", out reason);
             return true;
         }

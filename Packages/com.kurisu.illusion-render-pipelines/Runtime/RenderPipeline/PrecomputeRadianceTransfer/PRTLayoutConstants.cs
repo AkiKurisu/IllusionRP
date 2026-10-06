@@ -8,31 +8,53 @@ namespace Illusion.Rendering.PRTGI
     [StructLayout(LayoutKind.Sequential)]
     internal struct PRTLayoutConstants
     {
+        public const int MaxCascades = 4;
         public Vector4 origin;
         public int4 gridMinimum;
         public int4 gridCount;
-        public int4 windowMinimum;
-        public int4 windowCount;
+        public int4 slotCount;
         public float spacing;
         public uint generation;
         public uint enabled;
-        public uint padding;
-        public const int Stride = 96;
+        public uint cascadeCount;
+        public Vector4 cascadeCenter;
+        public int4 cascadeMinimum0, cascadeMinimum1, cascadeMinimum2, cascadeMinimum3;
+        public int4 cascadeCount0, cascadeCount1, cascadeCount2, cascadeCount3;
+        public const int Stride = 224;
         public static readonly int ShaderId = Shader.PropertyToID("PRTProbeVolumeConstants");
 
-        public static PRTLayoutConstants Create(PRTProbeGrid grid, Vector3Int minimum, Vector3Int count, uint generation)
+        // Cascade windows are in level-local node coordinates; level c has spacing * 2^c. The count's w holds a mask of
+        // the axes along which the window is smaller than its level and therefore scrolls with the camera.
+        public static PRTLayoutConstants Create(PRTProbeGrid grid, Vector3Int slots, uint generation,
+            Vector3 center = default, Vector3Int[] minimum = null, Vector3Int[] count = null, Vector3Int[] levels = null)
         {
-            return new PRTLayoutConstants
+            var constants = new PRTLayoutConstants
             {
                 origin = new Vector4(grid.origin.x, grid.origin.y, grid.origin.z, 0),
                 gridMinimum = new int4(grid.min.x, grid.min.y, grid.min.z, 0),
                 gridCount = new int4(grid.count.x, grid.count.y, grid.count.z, 0),
-                windowMinimum = new int4(minimum.x, minimum.y, minimum.z, 0),
-                windowCount = new int4(count.x, count.y, count.z, 0),
+                slotCount = new int4(slots.x, slots.y, slots.z, 0),
                 spacing = grid.spacing,
                 generation = generation,
-                enabled = 1
+                enabled = 1,
+                cascadeCenter = center
             };
+            if (minimum == null) return constants;
+            constants.cascadeCount = (uint)minimum.Length;
+            for (int i = 0; i < minimum.Length; i++)
+            {
+                var min = new int4(minimum[i].x, minimum[i].y, minimum[i].z, 0);
+                int scrolls = (count[i].x < levels[i].x ? 1 : 0) | (count[i].y < levels[i].y ? 2 : 0) | (count[i].z < levels[i].z ? 4 : 0);
+                var size = new int4(count[i].x, count[i].y, count[i].z, scrolls);
+                switch (i)
+                {
+                    case 0: constants.cascadeMinimum0 = min; constants.cascadeCount0 = size; break;
+                    case 1: constants.cascadeMinimum1 = min; constants.cascadeCount1 = size; break;
+                    case 2: constants.cascadeMinimum2 = min; constants.cascadeCount2 = size; break;
+                    default: constants.cascadeMinimum3 = min; constants.cascadeCount3 = size; break;
+                }
+            }
+            return constants;
         }
 
         public static GraphicsBuffer Allocate()

@@ -119,6 +119,7 @@ namespace Illusion.Rendering.PRTGI
             hash.Append((int)bakeResolution); hash.Append(bakeSampleCount); hash.Append(unchecked((int)bakeSeed));
             hash.Append(sectorWidth);
             hash.Append(SurfelGrid.DefaultBrickSize); hash.Append(SurfelGrid.MergeDistance);
+            hash.Append(Surfel.Stride); hash.Append(BrickFactor.Stride);
             foreach (PRTProbeAdjustmentVolume volume in GetPlacementVolumes())
             {
                 if (!volume || volume.mode is PRTProbeAdjustmentMode.IntensityScale or PRTProbeAdjustmentMode.InvalidateProbes) continue;

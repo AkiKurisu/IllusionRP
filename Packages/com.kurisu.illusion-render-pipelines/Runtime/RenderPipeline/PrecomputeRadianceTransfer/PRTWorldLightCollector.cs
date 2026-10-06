@@ -80,7 +80,9 @@ namespace Illusion.Rendering.PRTGI
                     HashCode.Combine(item.Gpu.PositionType.w, item.SpotAngle, item.Gpu.DirectionRange.w, item.CastsShadows));
                 if (!_epochs.TryGetValue(id, out var previous) || previous.hash != shadowHash)
                 {
-                    if (++_nextEpoch == 0) _nextEpoch++;
+                    // Cached visibility stores 24 epoch bits and reserves 0 for empty entries.
+                    _nextEpoch = (_nextEpoch + 1) & 0xFFFFFFu;
+                    if (_nextEpoch == 0) _nextEpoch = 1;
                     previous = (shadowHash, _nextEpoch);
                     _epochs[id] = previous;
                 }

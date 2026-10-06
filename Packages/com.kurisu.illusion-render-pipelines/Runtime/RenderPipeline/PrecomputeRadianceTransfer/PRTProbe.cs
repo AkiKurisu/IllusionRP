@@ -1,11 +1,8 @@
-using System;
 using UnityEngine;
-using UnityEngine.Rendering;
-using UObject = UnityEngine.Object;
 
 namespace Illusion.Rendering.PRTGI
 {
-    public partial class PRTProbe : IDisposable
+    public class PRTProbe
     {
         /// <summary>
         /// Index in the volume grid
@@ -26,13 +23,6 @@ namespace Illusion.Rendering.PRTGI
             Index = index;
             _relativePosition = relativePosition;
             _volume = probeVolume;
-        }
-
-        public void Dispose()
-        {
-#if UNITY_EDITOR
-            ReleaseDebugObject();
-#endif
         }
     }
 }

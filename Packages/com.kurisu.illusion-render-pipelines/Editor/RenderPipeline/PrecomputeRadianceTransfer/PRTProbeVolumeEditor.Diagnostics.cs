@@ -14,7 +14,6 @@ namespace Illusion.Rendering.Editor
         private SerializedProperty _shadowCacheDebugSurfelSize;
         private SerializedProperty _enableShadowCacheStats;
         private SerializedProperty _shadowCacheStatsReadbackInterval;
-        private SerializedProperty _shadowCacheMaxAge;
 
         private void InitializeDebugProperties()
         {
@@ -26,7 +25,6 @@ namespace Illusion.Rendering.Editor
             _shadowCacheDebugSurfelSize = Properties.Find(volume => volume.shadowCacheDebugSurfelSize);
             _enableShadowCacheStats = Properties.Find(volume => volume.enableShadowCacheStats);
             _shadowCacheStatsReadbackInterval = Properties.Find(volume => volume.shadowCacheStatsReadbackInterval);
-            _shadowCacheMaxAge = Properties.Find(volume => volume.shadowCacheMaxAge);
         }
 
         private void DrawDebugSettings()
@@ -73,12 +71,6 @@ namespace Illusion.Rendering.Editor
                     EditorGUI.indentLevel--;
                 }
 
-                if (_enableRelightShadow.boolValue &&
-                    (_enableShadowCacheStats.boolValue || mode == ProbeVolumeDebugMode.ShadowCache))
-                {
-                    EditorGUILayout.PropertyField(_shadowCacheMaxAge, Styles.ShadowCacheMaxAge);
-                }
-
                 DrawRuntimeStatus();
             }
 
@@ -97,8 +89,10 @@ namespace Illusion.Rendering.Editor
             if (Target.EvictingSectors > 0) sectors += $"  ·  {Target.EvictingSectors} evicting";
             Row("Sectors", sectors);
             Row("Sector Memory", $"{FormatBytes(Target.ResidentBytes)}  ·  peak {FormatBytes(Target.PeakResidentBytes)}");
-            Row("Probe Memory", FormatBytes(Target.FixedGpuBytes));
+            Row("Probe Memory", $"{FormatBytes(Target.FixedGpuBytes)}  ·  {Target.PyramidLevels} pyramid levels");
             Row("Frame Upload", FormatBytes(Target.FrameUploadBytes));
+            if (Target.CascadeBounds.Length > 0)
+                Row("Cascades", string.Join("  ·  ", System.Linq.Enumerable.Select(Target.CascadeBounds, b => $"{b.size.x:0}×{b.size.y:0}×{b.size.z:0} m")));
             if (!string.IsNullOrEmpty(Target.ResidencyPressure))
                 EditorGUILayout.HelpBox(Target.ResidencyPressure, MessageType.Warning);
 
@@ -125,10 +119,8 @@ namespace Illusion.Rendering.Editor
             }
 
             Row("Preview Light", $"{Target.ShadowPreviewLightName} (sector {Target.ShadowPreviewSector})");
-            Row("Lookups", $"{stats.cacheHits:N0} hits  ·  {stats.cacheMisses:N0} misses  of {stats.evaluated:N0}");
-            Row("Visibility", $"{stats.shadowmapSamples:N0} shadow map  ·  {stats.fallbackFromCache:N0} cached  ·  " +
-                              $"{stats.uncoveredNoCache:N0} unknown");
-            Row("Invalidated", $"{stats.invalidByEpoch:N0} by light change  ·  {stats.invalidByAge:N0} old");
+            Row("Visibility", $"{stats.shadowmapSamples:N0} shadow map  ·  {stats.cacheHits:N0} cached  ·  " +
+                              $"{stats.unknown:N0} unknown  of {stats.evaluated:N0}");
             DrawSurfelSnapshot("Global Surfels", Target.LatestShadowCacheGlobalStats);
             DrawSurfelSnapshot("Window Surfels", Target.LatestShadowCacheWindowStats);
         }
@@ -138,9 +130,7 @@ namespace Illusion.Rendering.Editor
             if (!stats.valid || stats.surfelCount == 0)
                 return;
 
-            string summary = $"{Percent(stats.surfelReady, stats.surfelCount)} ready  ·  " +
-                             $"{Percent(stats.surfelFresh, stats.surfelCount)} fresh  ·  " +
-                             $"{Percent(stats.surfelStale, stats.surfelCount)} old  ·  visibility {stats.surfelMeanShadow:F2}";
+            string summary = $"{Percent(stats.surfelReady, stats.surfelCount)} ready  ·  visibility {stats.surfelMeanShadow:F2}";
             if (stats.surfelInvalidEpoch + stats.surfelUninitialized > 0)
                 summary += $"  ·  {stats.surfelInvalidEpoch:N0} invalid  ·  {stats.surfelUninitialized:N0} uninitialized";
             Row(label, summary);

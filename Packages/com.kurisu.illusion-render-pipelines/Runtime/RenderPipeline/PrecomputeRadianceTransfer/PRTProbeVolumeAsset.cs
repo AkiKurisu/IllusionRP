@@ -34,11 +34,11 @@ namespace Illusion.Rendering.PRTGI
         public bool TryValidate(out string reason)
         {
             if (!hasValidData) { reason = "The probe volume has not been baked."; return false; }
-            return PRTDataValidation.Validate(grid, sectorWidth, probes, sectors, out reason);
+            return PRTDataValidation.Validate(grid, sectorWidth, signature.sampleCount, probes, sectors, out reason);
         }
         public void SetBakedData(PRTProbeGrid layout, PRTBakeSignature inputSignature, Bounds bounds, int width, PRTProbeMetadata[] metadata, PRTSectorData[] data)
         {
-            if (!PRTDataValidation.Validate(layout, width, metadata, data, out string reason)) throw new ArgumentException(reason, nameof(data));
+            if (!PRTDataValidation.Validate(layout, width, inputSignature.sampleCount, metadata, data, out string reason)) throw new ArgumentException(reason, nameof(data));
             grid = layout;
             signature = inputSignature;
             geometryBounds = bounds;

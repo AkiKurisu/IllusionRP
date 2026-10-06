@@ -14,10 +14,13 @@ namespace Illusion.Rendering.PRTGI
         public GraphicsBuffer PreviousMetadata { get; }
         public GraphicsBuffer Ready { get; }
         public GraphicsBuffer Layout { get; }
+        public GraphicsBuffer Directions { get; }
+        public int DirectionCount { get; }
         public uint Generation { get; private set; }
         public uint[] SectorRevisions { get; }
         public uint[] SectorFrames { get; }
-        public long FixedBytes => (long)ProbeCount * (9 * 16 + 12) + PRTLayoutConstants.Stride;
+        public long FixedBytes => (long)ProbeCount * (9 * 16 + 12) + PRTLayoutConstants.Stride + Pyramid.Bytes;
+        public PRTProbePyramid Pyramid { get; }
         public PRTSectorResidency Residency { get; }
         public PRTSectorScheduler Scheduler { get; }
         public float Residual { get; internal set; } = float.NaN;
@@ -32,11 +35,15 @@ namespace Illusion.Rendering.PRTGI
             Metadata = Upload(volume.GetValidityMasks(), 4, "PRT input metadata");
             PreviousMetadata = Upload(new uint[ProbeCount], 4, "PRT committed metadata");
             Ready = Upload(new uint[ProbeCount], 4, "PRT global ready state");
+            var signature = volume.asset.Signature;
+            DirectionCount = signature.sampleCount;
+            Directions = Upload(PRTBakeSampling.GenerateDirections(DirectionCount, signature.seed), 16, "PRT bake directions");
             Layout = PRTLayoutConstants.Allocate();
-            Layout.SetData(new[] { PRTLayoutConstants.Create(Grid, Grid.min, Grid.count, 0) });
+            Layout.SetData(new[] { PRTLayoutConstants.Create(Grid, Grid.count, 0) });
             SectorRevisions = new uint[volume.asset.Sectors.Length];
             SectorFrames = new uint[SectorRevisions.Length];
             Residency = new PRTSectorResidency(volume.asset);
+            Pyramid = new PRTProbePyramid(Grid);
             Scheduler = new PRTSectorScheduler(volume.asset);
         }
 
@@ -58,7 +65,8 @@ namespace Illusion.Rendering.PRTGI
         {
             Disposed = true;
             Residency.Dispose();
-            Previous.Dispose(); Metadata.Dispose(); PreviousMetadata.Dispose(); Ready.Dispose(); Layout.Dispose();
+            Previous.Dispose(); Metadata.Dispose(); PreviousMetadata.Dispose(); Ready.Dispose(); Layout.Dispose(); Directions.Dispose();
+            Pyramid.Dispose();
         }
     }
 }

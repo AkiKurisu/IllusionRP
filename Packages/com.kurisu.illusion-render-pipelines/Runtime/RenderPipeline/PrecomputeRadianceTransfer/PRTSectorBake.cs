@@ -36,7 +36,7 @@ namespace Illusion.Rendering.PRTGI
         private int SectorIndex(int id) => id / (_grid.count.y * _grid.count.z) / _width * _columnsZ
             + id % _grid.count.z / _width;
 
-        public void AddProbe(int id, Surfel[] samples, Vector4[] directions, Vector3 offset, uint validity)
+        public void AddProbe(int id, PRTCaptureSample[] samples, Vector4[] directions, Vector3 offset, uint validity)
         {
             Metadata[id] = new PRTProbeMetadata { captureOffset = offset, validity = validity };
             _sectors[SectorIndex(id)].AddProbe(_localIds[id], samples, directions, offset, validity);
@@ -51,18 +51,11 @@ namespace Illusion.Rendering.PRTGI
             var result = new PRTSectorData[_sectors.Length];
             for (int i = 0; i < result.Length; i++)
             {
-                var sector = _sectors[i].GenerateSector();
+                var sector = _sectors[i].GenerateSector(nearest.Find);
                 sector.coordinate = new Vector2Int(i / _columnsZ, i % _columnsZ);
                 sector.probeIds = _ids[i].ToArray();
-                sector.surfelBounds = new Bounds(_grid.GetPosition(sector.probeIds[0]), Vector3.zero);
-                for (int j = 0; j < sector.surfels.Length; j++)
-                {
-                    var surfel = sector.surfels[j];
-                    surfel.nearestProbe = nearest.Find(surfel.position);
-                    sector.surfels[j] = surfel;
-                    if (j == 0) sector.surfelBounds = new Bounds(surfel.position, Vector3.zero);
-                    else sector.surfelBounds.Encapsulate(surfel.position);
-                }
+                if (sector.surfels.Length == 0)
+                    sector.surfelBounds = new Bounds(_grid.GetPosition(sector.probeIds[0]), Vector3.zero);
                 result[i] = sector;
             }
             return result;

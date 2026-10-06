@@ -40,7 +40,6 @@ namespace Illusion.Rendering.PRTGI
         // Debug colors
         private static readonly Color DefaultColor = Color.yellow;
 
-        private static readonly Color SkyColor = Color.blue;
 
         private static readonly Color NormalColor = Color.green;
         
@@ -48,13 +47,12 @@ namespace Illusion.Rendering.PRTGI
 
         private const float NormalLength = 0.25f;
 
-        private const float SkyRayLength = 25.0f;
 
         private const int MaxShadowCacheBrickLabels = 8;
-                
-        private Vector3? _lastClosestBoundingBoxCenter;
 
-        private Vector3Int? _lastClosestBoundingBoxMin;
+        // Probe index labels are drawn only within this many probe spacings of the camera.
+        private const float ProbeLabelDistance = 3f;
+                
         
         private void OnDrawGizmos()
         {
@@ -69,21 +67,11 @@ namespace Illusion.Rendering.PRTGI
             if (debugMode == ProbeVolumeDebugMode.None)
                 return;
 
-            if (_mainCamera)
-            {
-                // Draw camera position and local probes
-                if (IsCameraInsideVolume(_mainCamera.transform.position))
-                {
-                    // Draw bounding box
-                    DrawBoundingBox();
-                }
-                else
-                {
-                    // Draw the closest bounding box result
-                    DrawClosestBoundingBoxResult();
-                }
-            }
+            DrawCascadeWindows();
 
+            Camera camera = Camera.current;
+            Vector3 cameraPosition = camera ? camera.transform.position : Vector3.positiveInfinity;
+            float labelDistance = ProbeLabelDistance * probeGridSize;
             for (int i = 0; i < Probes.Length; i++)
             {
                 if (Probes[i] == null)
@@ -92,7 +80,8 @@ namespace Illusion.Rendering.PRTGI
                 Vector3 probePos = Probes[i].Position;
 
                 // Draw probe index
-                if (debugMode != ProbeVolumeDebugMode.ShadowCache)
+                if (debugMode != ProbeVolumeDebugMode.ShadowCache &&
+                    (probePos - cameraPosition).sqrMagnitude <= labelDistance * labelDistance)
                 {
                     DrawProbeIndex(i, probePos);
                 }
@@ -105,10 +94,6 @@ namespace Illusion.Rendering.PRTGI
                 else if (debugMode == ProbeVolumeDebugMode.ProbeGridWithVirtualOffset)
                 {
                     DrawProbeGridWithVirtualOffset(i, probePos);
-                }
-                else if (debugMode == ProbeVolumeDebugMode.ProbeRadiance)
-                {
-                    DrawProbeRadiance(i, probePos);
                 }
                 else if (debugMode == ProbeVolumeDebugMode.ShadowCache)
                 {
@@ -159,7 +144,7 @@ namespace Illusion.Rendering.PRTGI
             if (selectedProbeIndex == index && (debugMode == ProbeVolumeDebugMode.ShadowCache || selectedProbeDebugMode != ProbeDebugMode.IrradianceSphere))
             {
                 var sector = asset.Sectors[asset.SectorIndex(index)];
-                data.EnsureGeometry(sector.probes[asset.LocalProbeIndex(index)], sector.factors, sector.bricks, sector.surfels);
+                data.EnsureGeometry(sector, sector.probes[asset.LocalProbeIndex(index)]);
             }
             return data;
         }
@@ -197,19 +182,6 @@ namespace Illusion.Rendering.PRTGI
 
             // Draw connections to neighboring probes
             DrawProbeConnections(probeIndex, probePos);
-        }
-
-
-        /// <summary>
-        /// Draw probe radiance visualization
-        /// </summary>
-        /// <param name="probeIndex">Index of the probe</param>
-        /// <param name="probePos">Position of the probe</param>
-        private void DrawProbeRadiance(int probeIndex, Vector3 probePos)
-        {
-            // This would show radiance data if available
-            Gizmos.color = Color.green;
-            Gizmos.DrawSphere(probePos, probeHandleSize * 0.08f);
         }
 
 
@@ -289,8 +261,8 @@ namespace Illusion.Rendering.PRTGI
             for (int factorIndex = factorIndices.factorStart; factorIndex < factorIndices.factorStart + factorIndices.factorCount; factorIndex++)
             {
                 var factor = cellData.factors[factorIndex];
-                var brickIndex = factor.brickIndex;
-                var weight = factor.sh0 / 3.544907702f;
+                var brickIndex = factor.BrickIndex;
+                var weight = factor[0] / 3.544907702f;
                 var brick = cellData.bricks[brickIndex];
                 
                 // Draw surfels in this brick
@@ -298,12 +270,12 @@ namespace Illusion.Rendering.PRTGI
                 const float surfelSize = 0.05f;
                 for (int j = brick.start; j <= brick.start + brick.count - 1; j++)
                 {
-                    var surfel = cellData.surfels[j];
+                    var surfel = PRTProbeDebugData.Decode(cellData, j);
                     // Draw surfel position
                     Gizmos.DrawSphere(surfel.position, surfelSize);
                     // Draw normal
                     Gizmos.color = Color.blue;
-                    Gizmos.DrawLine(surfel.position, surfel.position + surfel.normal * 0.2f);
+                    Gizmos.DrawLine(surfel.position, surfel.position + surfel.Normal * 0.2f);
                     Gizmos.color = Color.yellow;
                 }
                 
@@ -314,7 +286,7 @@ namespace Illusion.Rendering.PRTGI
                 // Find brick bounds from its surfels
                 for (int j = brick.start; j <= brick.start + brick.count - 1; j++)
                 {
-                    var surfel = cellData.surfels[j];
+                    var surfel = PRTProbeDebugData.Decode(cellData, j);
                     minX = Mathf.Min(minX, surfel.position.x);
                     minY = Mathf.Min(minY, surfel.position.y);
                     minZ = Mathf.Min(minZ, surfel.position.z);
@@ -333,7 +305,7 @@ namespace Illusion.Rendering.PRTGI
                 var size = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
                 
                 // Draw brick wireframe with weight-based alpha and color
-                var mainDir = GetMainDirection(cellData.surfels[brick.start].normal);
+                var mainDir = GetMainDirection(cellData.surfels[brick.start].Normal);
                 var baseColor = GetDirectionColor(mainDir);
                 
                 // Modulate color intensity based on weight
@@ -368,57 +340,18 @@ namespace Illusion.Rendering.PRTGI
             };
         }
 
-        /// <summary>
-        /// Draw bounding box for debugging
-        /// </summary>
-        private void DrawBoundingBox()
+        private static readonly Color[] CascadeColors =
         {
-            if (_currentBoundingBox.size == Vector3.zero)
-                return;
-            
-            // Draw filled bounding box with transparency
-            Color transparentRed = new Color(1.0f, 0.0f, 0.0f, 0.4f);
-            Gizmos.color = transparentRed;
-            Gizmos.DrawCube(_currentBoundingBox.center, _currentBoundingBox.size);
-        }
+            new(1f, 0.25f, 0.2f), new(1f, 0.8f, 0.2f), new(0.3f, 0.9f, 0.4f), new(0.3f, 0.7f, 1f)
+        };
 
-        /// <summary>
-        /// Draw the result of FindClosestValidBoundingBox for debugging
-        /// </summary>
-        private void DrawClosestBoundingBoxResult()
+        private void DrawCascadeWindows()
         {
-            if (!_lastClosestBoundingBoxCenter.HasValue || !_lastClosestBoundingBoxMin.HasValue) return;
-            
-            // Draw the closest bounding box center as a large sphere
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawSphere(_lastClosestBoundingBoxCenter.Value, 0.3f);
-            
-            // Draw a wireframe sphere around it
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawWireSphere(_lastClosestBoundingBoxCenter.Value, 0.4f);
-            
-            // Draw a line from camera to the closest bounding box center
-            if (_mainCamera)
+            for (int level = 0; level < CascadeBounds.Length; level++)
             {
-                Gizmos.color = Color.magenta;
-                Gizmos.DrawLine(_mainCamera.transform.position, _lastClosestBoundingBoxCenter.Value);
+                Gizmos.color = CascadeColors[level % CascadeColors.Length];
+                Gizmos.DrawWireCube(CascadeBounds[level].center, CascadeBounds[level].size);
             }
-            
-            // Draw the closest bounding box as a wireframe cube
-            Vector3 closestBoundingBoxSize = new Vector3(
-                (CurrentVoxelGrid.X - 1) * probeGridSize,
-                (CurrentVoxelGrid.Y - 1) * probeGridSize,
-                (CurrentVoxelGrid.Z - 1) * probeGridSize
-            );
-            Vector3 closestBoundingBoxMin = transform.position + new Vector3(
-                _lastClosestBoundingBoxMin.Value.x * probeGridSize,
-                _lastClosestBoundingBoxMin.Value.y * probeGridSize,
-                _lastClosestBoundingBoxMin.Value.z * probeGridSize
-            );
-            Vector3 closestBoundingBoxCenter = closestBoundingBoxMin + closestBoundingBoxSize * 0.5f;
-            
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawWireCube(closestBoundingBoxCenter, closestBoundingBoxSize);
         }
 
         private static SurfelDirection GetMainDirection(Vector3 normal)
@@ -461,9 +394,7 @@ namespace Illusion.Rendering.PRTGI
             for (int i = 0; i < debugData.LocalSurfels.Length; i++)
             {
                 Vector3 dir = GetSurfelDirection(debugData.LocalSurfels[i], probePos);
-                bool isSky = IsSky(debugData.LocalSurfels[i]);
-
-                Gizmos.color = isSky ? SkyColor : DefaultColor;
+                Gizmos.color = DefaultColor;
                 Gizmos.DrawSphere(dir + probePos, SphereSize * probeHandleSize);
             }
         }
@@ -477,21 +408,10 @@ namespace Illusion.Rendering.PRTGI
         {
             for (int i = 0; i < debugData.LocalSurfels.Length; i++)
             {
-                Surfel surfel = debugData.LocalSurfels[i];
-                Vector3 dir = GetSurfelDirection(surfel, probePos);
-                bool isSky = IsSky(surfel);
-
-                Gizmos.color = isSky ? SkyColor : DefaultColor;
-
-                if (isSky)
-                {
-                    Gizmos.DrawLine(probePos, probePos + dir * SkyRayLength);
-                }
-                else
-                {
-                    Gizmos.DrawLine(probePos, surfel.position);
-                    Gizmos.DrawSphere(surfel.position, SurfelSize);
-                }
+                PRTDebugSurfel surfel = debugData.LocalSurfels[i];
+                Gizmos.color = DefaultColor;
+                Gizmos.DrawLine(probePos, surfel.position);
+                Gizmos.DrawSphere(surfel.position, SurfelSize);
             }
         }
 
@@ -504,17 +424,15 @@ namespace Illusion.Rendering.PRTGI
         {
             for (int i = 0; i < debugData.LocalSurfels.Length; i++)
             {
-                Surfel surfel = debugData.LocalSurfels[i];
-                bool isSky = IsSky(surfel);
-
-                Gizmos.color = isSky ? SkyColor : DefaultColor;
+                PRTDebugSurfel surfel = debugData.LocalSurfels[i];
+                Gizmos.color = DefaultColor;
 
                 // Draw surfel position
                 Gizmos.DrawSphere(surfel.position, SurfelSize);
 
                 // Draw normal
                 Gizmos.color = NormalColor;
-                Gizmos.DrawLine(surfel.position, surfel.position + surfel.normal * NormalLength);
+                Gizmos.DrawLine(surfel.position, surfel.position + surfel.Normal * NormalLength);
                 Gizmos.color = DefaultColor;
             }
         }
@@ -525,21 +443,12 @@ namespace Illusion.Rendering.PRTGI
         /// <param name="surfel">Surfel data</param>
         /// <param name="probePos">Probe position</param>
         /// <returns>Normalized direction vector</returns>
-        private static Vector3 GetSurfelDirection(Surfel surfel, Vector3 probePos)
+        private static Vector3 GetSurfelDirection(PRTDebugSurfel surfel, Vector3 probePos)
         {
             Vector3 dir = surfel.position - probePos;
             return dir.normalized;
         }
 
-        /// <summary>
-        /// Check if surfel represents sky
-        /// </summary>
-        /// <param name="surfel">Surfel data</param>
-        /// <returns>True if surfel is sky</returns>
-        private static bool IsSky(Surfel surfel)
-        {
-            return (surfel.flags & Surfel.SkyMiss) != 0;
-        }
     }
 }
 #endif

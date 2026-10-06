@@ -16,8 +16,8 @@ namespace Illusion.Rendering.PRTGI
     internal readonly struct PRTProbeBakeSamples
     {
         public readonly Vector3 capturePosition;
-        public readonly Surfel[] surfels;
-        public PRTProbeBakeSamples(Vector3 position, Surfel[] samples) { capturePosition = position; surfels = samples; }
+        public readonly PRTCaptureSample[] surfels;
+        public PRTProbeBakeSamples(Vector3 position, PRTCaptureSample[] samples) { capturePosition = position; surfels = samples; }
     }
     internal readonly struct PRTProbePlacement
     {

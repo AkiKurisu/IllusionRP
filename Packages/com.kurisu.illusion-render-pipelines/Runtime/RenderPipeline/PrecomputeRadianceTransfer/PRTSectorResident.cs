@@ -38,7 +38,7 @@ namespace Illusion.Rendering.PRTGI
             Factors = Allocate(data.factors, BrickFactor.Stride, "factors");
             Probes = Allocate(data.probes, PRTProbeData.Stride, "probe ranges");
             ProbeIds = Allocate(data.probeIds, 4, "global probe IDs");
-            Sky = Allocate(data.skySamples, PRTSkySample.Stride, "sky");
+            Sky = Allocate(data.skyVisibility, 4, "sky visibility");
             Radiance = Allocate(new Vector4[data.bricks.Length], 16, "brick radiance");
             Next = Allocate(new Vector4[data.probes.Length * 9], 16, "probe scratch");
             Residuals = Allocate(new Vector4[data.probes.Length], 16, "residuals");
@@ -57,10 +57,10 @@ namespace Illusion.Rendering.PRTGI
         }
 
         public static long Estimate(PRTSectorData data, PRTRelightLightingSnapshot lights) =>
-            (long)Mathf.Max(1, data.surfels.Length) * Surfel.Stride + Mathf.Max(1, data.bricks.Length) * 24L
+            (long)Mathf.Max(1, data.surfels.Length) * Surfel.Stride + Mathf.Max(1, data.bricks.Length) * (SurfelIndices.Stride + 16L)
             + Mathf.Max(1, data.factors.Length) * (long)BrickFactor.Stride
             + Mathf.Max(1, data.probes.Length) * (PRTProbeData.Stride + 4L + 9L * 16 + 16)
-            + Mathf.Max(1, data.skySamples.Length) * (long)PRTSkySample.Stride
+            + Mathf.Max(1, data.skyVisibility.Length) * 4L
             + PRTRelightWorldLighting.Estimate(lights, data.surfels.Length);
 
         public int RecordUpload(RenderGraph graph, int budget)

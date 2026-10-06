@@ -380,7 +380,7 @@ Precomputed Radiance Transfer Global Illumination (PRTGI) provides stable, low-q
 To use PRTGI, you need to create a PRT Probe Volume component in your scene:
 
 1. Create an empty GameObject in your scene and add the **PRT Probe Volume** component.
-2. Position and scale the volume to cover the area where you want indirect lighting.
+2. Position and scale the volume to cover the area where you want indirect lighting. Place the lowest probe layer slightly below the ground: **Auto Placement** pushes buried probes onto the surface, while surfaces below the lowest layer fall outside the volume and use the fallback lighting.
 3. Configure the probe grid settings based on your scene's scale and detail requirements.
 
 ![Settings](./images/prt_settings.png)
@@ -409,7 +409,8 @@ The line below the grid summarizes the probe count, the covered extent and the r
 
 | Property | Description |
 |----------|-------------|
-| **Camera Window** | Probes around the camera that are published to material shading, per axis. Clamped to the probe count. |
+| **Camera Window** | Probes per axis in each camera cascade. Clamped to the probe count. |
+| **Cascades** | Number of nested camera windows (1-4). Each cascade doubles the probe spacing, so distant geometry still receives prefiltered PRT lighting. Coarser cascades are skipped once a finer one covers the whole volume. |
 | **Sectors Per Frame** | Maximum number of sectors relit each frame. |
 | **Upload Budget (MiB)** | Maximum sector transport uploaded to the GPU each frame. |
 | **Resident Budget (MiB)** | Maximum sector transport kept resident on the GPU. |
@@ -423,7 +424,9 @@ The line below the grid summarizes the probe count, the covered extent and the r
 | **Handle Size** | Size of probe handles in the Scene view. |
 | **Statistics** | Reads back solver residuals and shadow cache counters from the GPU. |
 
-While the volume is relighting, a **Runtime** block reports resident sectors, GPU memory and the upload of the current frame.
+While the volume is relighting, a **Runtime** block reports resident sectors, GPU memory, the upload of the current frame and the extent of each cascade. Any visualization other than **None** also draws the cascade windows in the Scene view, colored from fine (red) to coarse (blue).
+
+To see which cascade lights each pixel, enable **PRT Cascades** under **Illusion Debug > Debug Views** in the Rendering Debugger. Pixels take the colors of the cascades they blend, red, yellow, green and blue from fine to coarse; grey pixels fall back to ambient lighting.
 
 ### Baking
 
@@ -473,6 +476,7 @@ PRTGI runtime performance is primarily affected by the following factors:
 - **Probe Count**: More probes increase memory usage and relighting cost. Balance detail requirements with performance.
 - **Sectors Per Frame**: Higher values converge faster after lighting changes but cost more GPU time each frame.
 - **Upload and Resident Budgets**: Larger budgets keep more sectors on the GPU and reduce streaming latency at the cost of memory.
+- **Cascades**: Each cascade adds nine texture samples in its one-cell transition band. Coarse cascades average lighting over larger regions, so small enclosed rooms seen from far away can appear lighter or darker than up close.
 
 # Screen Space Global Illumination (SSGI)
 

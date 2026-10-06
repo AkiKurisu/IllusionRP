@@ -141,6 +141,8 @@ namespace Illusion.Rendering
                     c => c.EnablePerObjectShadowDebug, (c, v) => c.EnablePerObjectShadowDebug = v),
                 Toggle("Stencil VRS", "Visualize the stencil variable rate shading mask.",
                     c => c.EnableVrsDebug, (c, v) => c.EnableVrsDebug = v),
+                Toggle("PRT Cascades", "Color pixels by the PRT camera cascades that light them (red, yellow, green, blue from fine to coarse; grey falls back).",
+                    c => c.EnablePRTCascadesDebug, (c, v) => c.EnablePRTCascadesDebug = v),
                 Toggle("Area Light Shadow Atlas", "Overlay the area light shadow atlas.",
                     c => c.EnableAreaLightShadowAtlasDebug, (c, v) => c.EnableAreaLightShadowAtlasDebug = v),
                 Indented("AreaLightShadowAtlasRange", () => !Config.EnableAreaLightShadowAtlasDebug,

@@ -12,10 +12,7 @@ namespace Illusion.Rendering.PRTGI
     {
         private readonly IllusionRendererData _rendererData;
         private readonly ComputeShader _brickShader, _probeShader;
-        private readonly int _brickKernel, _probeKernel, _commitKernel, _publishKernel;
-#if UNITY_EDITOR
-        private readonly int _debugKernel;
-#endif
+        private readonly int _brickKernel, _probeKernel, _commitKernel, _publishKernel, _pyramidProbeKernel, _pyramidLevelKernel, _publishLevelKernel;
         private readonly PRTWorldLightCollector _lightCollector = new();
         private readonly List<PRTSectorResident> _selected = new();
         private readonly Dictionary<Camera, PRTCameraPublication> _publications = new();
@@ -38,10 +35,10 @@ namespace Illusion.Rendering.PRTGI
             _probeKernel = _probeShader.FindKernel("CSMain");
             _commitKernel = _probeShader.FindKernel("CSCommit");
             _publishKernel = _probeShader.FindKernel("CSPublish");
+            _pyramidProbeKernel = _probeShader.FindKernel("CSPyramidFromProbes");
+            _pyramidLevelKernel = _probeShader.FindKernel("CSPyramidDownsample");
+            _publishLevelKernel = _probeShader.FindKernel("CSPublishLevel");
             _neutral = new PRTNeutralPublication(_probeShader);
-#if UNITY_EDITOR
-            _debugKernel = _probeShader.FindKernel("CSCopyDebug");
-#endif
             InitializeReflectionNormalization();
             profilingSampler = new ProfilingSampler("PRT Relight");
             renderPassEvent = IllusionRenderPassEvent.PrecomputedRadianceTransferRelightPass;
@@ -79,16 +76,15 @@ namespace Illusion.Rendering.PRTGI
             Vector3Int count = new(Mathf.Clamp(volume.voxelProbeSize.x, 1, _solver.Grid.count.x),
                 Mathf.Clamp(volume.voxelProbeSize.y, 1, _solver.Grid.count.y),
                 Mathf.Clamp(volume.voxelProbeSize.z, 1, _solver.Grid.count.z));
-            if (!_publications.TryGetValue(camera.camera, out var publication) || publication.Count != count)
+            int cascades = Mathf.Clamp(volume.cascadeCount, 1, PRTLayoutConstants.MaxCascades);
+            if (!_publications.TryGetValue(camera.camera, out var publication) || publication.Slots != count ||
+                publication.RequestedCascades != cascades)
             {
                 publication?.Dispose();
-                publication = new PRTCameraPublication(camera.camera, _solver.Grid, count);
+                publication = new PRTCameraPublication(camera.camera, _solver.Grid, _solver.Pyramid, count, cascades);
                 _publications[camera.camera] = publication;
             }
-            publication.Record(graph, frameData, _solver, volume, _probeShader, _publishKernel);
-#if UNITY_EDITOR
-            RecordProbeDebug(graph);
-#endif
+            publication.Record(graph, frameData, _solver, volume, _probeShader, _publishKernel, _publishLevelKernel);
             RemoveUnusedCameras();
         }
 
@@ -130,7 +126,6 @@ namespace Illusion.Rendering.PRTGI
                 var lighting = sector.Lighting;
                 lighting.FragmentShadowBias = FragmentShadowBias;
                 lighting.CollectStats = _volume.enableShadowCacheStats;
-                lighting.MaxShadowAge = (uint)Mathf.Max(1, _volume.shadowCacheMaxAge);
                 RecordBricks(graph, sector, lighting.Record(graph, frameData));
                 RecordProbes(graph, environment, sector);
             }
@@ -139,6 +134,7 @@ namespace Illusion.Rendering.PRTGI
                 RecordCommit(graph, sector);
                 scheduler.Updated(sector.Index);
             }
+            _solver.Pyramid.Record(graph, _probeShader, _pyramidProbeKernel, _pyramidLevelKernel, _solver, _volume.asset, _selected);
             RecordShadowDiagnostics(graph, _selected[0]);
             RecordResidualDiagnostics(graph);
         }

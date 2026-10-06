@@ -15,14 +15,13 @@ namespace Illusion.Rendering.PRTGI
             internal PRTWorldLightGpu[] LightValues;
             internal PRTShadowFaceGpu[] FaceValues;
         }
-        private static readonly uint[] EmptyStats = new uint[8];
+        private static readonly uint[] EmptyStats = new uint[PRTProbeVolume.ShadowCacheStats.CounterCount];
         private readonly List<PRTShadowFaceGpu> _faces = new();
         private readonly GraphicsBuffer _lights, _shadowFaces;
         private readonly int _surfelCount;
         private readonly uint[] _cacheLightIds;
         internal bool CollectStats { get; set; }
         internal bool FragmentShadowBias { get; set; }
-        internal uint MaxShadowAge { get; set; } = 30;
         internal uint PreviewCacheOffset { get; private set; }
         internal uint PreviewVisibilityEpoch { get; private set; }
         internal string PreviewLightName { get; private set; }
@@ -61,7 +60,7 @@ namespace Illusion.Rendering.PRTGI
             _lights = Allocate(snapshot.Lights.Length, PRTWorldLightGpu.Stride, "lights");
             _shadowFaces = Allocate(snapshot.Lights.Length * 6, PRTShadowFaceGpu.Stride, "existing shadow faces");
             ShadowCacheBuffer = Allocate(ShadowCount(snapshot) * surfels, PRTWorldShadowCacheEntry.Stride, "shadow cache");
-            StatsBuffer = Allocate(8, 4, "stats");
+            StatsBuffer = Allocate(PRTProbeVolume.ShadowCacheStats.CounterCount, 4, "stats");
             var ids = new List<uint>();
             foreach (var light in snapshot.Lights) if (light.CastsShadows) ids.Add(light.Gpu.LightId);
             _cacheLightIds = ids.ToArray();
@@ -141,8 +140,7 @@ namespace Illusion.Rendering.PRTGI
                 MainShadowTexture = resources.mainShadowsTexture.IsValid() ? resources.mainShadowsTexture : graph.defaultResources.defaultShadowTexture,
                 AdditionalShadowTexture = resources.additionalShadowsTexture.IsValid() ? resources.additionalShadowsTexture : graph.defaultResources.defaultShadowTexture,
                 LightCount = (uint)Active.Lights.Length, SurfelCount = (uint)_surfelCount,
-                SceneFrame = PRTRelightFrame.Index, PreviewCacheOffset = PreviewCacheOffset,
-                CollectStats = CollectStats, MaxShadowAge = MaxShadowAge
+                PreviewCacheOffset = PreviewCacheOffset, CollectStats = CollectStats
             };
             using var builder = graph.AddUnsafePass<UploadData>("PRT sector world lighting inputs", out var upload);
             builder.UseBuffer(result.LightHandle, AccessFlags.Write);
@@ -173,9 +171,7 @@ namespace Illusion.Rendering.PRTGI
             cmd.SetComputeTextureParam(shader, kernel, "_PRTWorldAdditionalShadows", resources.AdditionalShadowTexture);
             cmd.SetComputeIntParam(shader, "_PRTWorldLightCount", (int)resources.LightCount);
             cmd.SetComputeIntParam(shader, "_PRTWorldSurfelCount", (int)resources.SurfelCount);
-            cmd.SetComputeIntParam(shader, "_PRTWorldSceneFrame", (int)resources.SceneFrame);
             cmd.SetComputeIntParam(shader, "_PRTWorldStatsEnabled", resources.CollectStats ? 1 : 0);
-            cmd.SetComputeIntParam(shader, "_PRTWorldMaxShadowAge", (int)resources.MaxShadowAge);
         }
 
         public void Dispose()

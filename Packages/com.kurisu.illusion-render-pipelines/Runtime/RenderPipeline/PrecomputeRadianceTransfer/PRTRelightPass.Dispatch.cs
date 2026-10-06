@@ -16,6 +16,7 @@ namespace Illusion.Rendering.PRTGI
         {
             public ComputeShader shader;
             public int kernel, brickCount;
+            public Bounds surfelBounds;
             public GraphicsBuffer layout, previous, metadata, ready, surfels, bricks, radiance;
             public PRTWorldLightingResources lighting;
         }
@@ -29,6 +30,7 @@ namespace Illusion.Rendering.PRTGI
                 data.shader = _brickShader;
                 data.kernel = _brickKernel;
                 data.brickCount = sector.Data.bricks.Length;
+                data.surfelBounds = sector.Data.surfelBounds;
                 data.ready = _solver.Ready;
                 data.layout = _solver.Layout;
                 data.previous = _solver.Previous;
@@ -62,8 +64,13 @@ namespace Illusion.Rendering.PRTGI
                     command.SetComputeBufferParam(pass.shader, pass.kernel, "_brickInfo", pass.bricks);
                     command.SetComputeBufferParam(pass.shader, pass.kernel, "_brickRadiance", pass.radiance);
                     command.SetComputeIntParam(pass.shader, "_brickCount", pass.brickCount);
+                    command.SetComputeVectorParam(pass.shader, "_surfelBoundsMin", pass.surfelBounds.min);
+                    command.SetComputeVectorParam(pass.shader, "_surfelBoundsSize", pass.surfelBounds.size);
                     command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtReady", pass.ready);
-                    command.DispatchCompute(pass.shader, pass.kernel, (pass.brickCount + 63) / 64, 1, 1);
+                    // One group per brick, folded into Y past the per-dimension group limit.
+                    int groupsX = Mathf.Min(pass.brickCount, 65535);
+                    command.SetComputeIntParam(pass.shader, "_brickGroupsX", groupsX);
+                    command.DispatchCompute(pass.shader, pass.kernel, groupsX, (pass.brickCount + groupsX - 1) / groupsX, 1);
                 });
             }
         }
@@ -72,7 +79,8 @@ namespace Illusion.Rendering.PRTGI
         {
             public ComputeShader shader;
             public int kernel, count;
-            public GraphicsBuffer layout, probes, ids, factors, sky, radiance, previous, next, metadata, residuals;
+            public GraphicsBuffer layout, probes, ids, factors, sky, directions, radiance, previous, next, metadata, residuals;
+            public int directionCount;
             public Texture environment;
             public float environmentIntensity;
         }
@@ -87,6 +95,8 @@ namespace Illusion.Rendering.PRTGI
             data.probes = sector.Probes;
             data.factors = sector.Factors;
             data.sky = sector.Sky;
+            data.directions = _solver.Directions;
+            data.directionCount = _solver.DirectionCount;
             data.radiance = sector.Radiance;
             data.previous = _solver.Previous;
             data.next = sector.Next;
@@ -99,6 +109,7 @@ namespace Illusion.Rendering.PRTGI
             builder.UseBuffer(graph.ImportBuffer(data.probes), AccessFlags.Read);
             builder.UseBuffer(graph.ImportBuffer(data.factors), AccessFlags.Read);
             builder.UseBuffer(graph.ImportBuffer(data.sky), AccessFlags.Read);
+            builder.UseBuffer(graph.ImportBuffer(data.directions), AccessFlags.Read);
             builder.UseBuffer(graph.ImportBuffer(data.radiance), AccessFlags.Read);
             builder.UseBuffer(graph.ImportBuffer(data.previous), AccessFlags.Read);
             builder.UseBuffer(graph.ImportBuffer(data.metadata), AccessFlags.Read);
@@ -113,7 +124,9 @@ namespace Illusion.Rendering.PRTGI
                 PRTLayoutConstants.Bind(command, pass.shader, pass.layout);
                 command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtProbeData", pass.probes);
                 command.SetComputeBufferParam(pass.shader, pass.kernel, "_factors", pass.factors);
-                command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtSkySamples", pass.sky);
+                command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtSkyVisibility", pass.sky);
+                command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtBakeDirections", pass.directions);
+                command.SetComputeIntParam(pass.shader, "_prtBakeDirectionCount", pass.directionCount);
                 command.SetComputeBufferParam(pass.shader, pass.kernel, "_brickRadiance", pass.radiance);
                 command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtPreviousSH", pass.previous);
                 command.SetComputeBufferParam(pass.shader, pass.kernel, "_prtNextSH", pass.next);

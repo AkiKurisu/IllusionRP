@@ -5,8 +5,7 @@ namespace Illusion.Rendering.PRTGI
 {
     public enum SurfelDirection { PosX, NegX, PosY, NegY, PosZ, NegZ }
 
-    [Serializable]
-    public struct Surfel
+    public struct PRTCaptureSample
     {
         public const int Stride = 56;
         public const uint SkyMiss = 1;
@@ -15,11 +14,69 @@ namespace Illusion.Rendering.PRTGI
         public int nearestProbe;
     }
 
+    // Layout shared with Surfel in ProbeVolume.hlsl. Positions are unorm16 within the sector's surfel bounds, normals
+    // octahedral unorm12 and albedo sRGB unorm8.
+    [Serializable]
+    public struct Surfel
+    {
+        public const int Stride = 16;
+        public uint positionXY, positionZAlbedoRG, normalAlbedoB;
+        public int nearestProbe;
+
+        public static Surfel Create(Vector3 position, Vector3 normal, Vector3 albedo, Bounds bounds, int nearestProbe)
+        {
+            Vector3 size = bounds.size, min = bounds.min;
+            uint Axis(int axis) => size[axis] > 0 ? (uint)Mathf.RoundToInt(Mathf.Clamp01((position[axis] - min[axis]) / size[axis]) * 65535f) : 0u;
+            uint Color(float value) => (uint)Mathf.RoundToInt(Mathf.LinearToGammaSpace(Mathf.Clamp01(value)) * 255f);
+            Vector2 e = EncodeNormal(normal);
+            uint nx = (uint)Mathf.RoundToInt((e.x * 0.5f + 0.5f) * 4095f), ny = (uint)Mathf.RoundToInt((e.y * 0.5f + 0.5f) * 4095f);
+            return new Surfel
+            {
+                positionXY = Axis(0) | Axis(1) << 16,
+                positionZAlbedoRG = Axis(2) | Color(albedo.x) << 16 | Color(albedo.y) << 24,
+                normalAlbedoB = nx | ny << 12 | Color(albedo.z) << 24,
+                nearestProbe = nearestProbe
+            };
+        }
+
+        public Vector3 Position(Bounds bounds)
+        {
+            var q = new Vector3(positionXY & 0xFFFF, positionXY >> 16, positionZAlbedoRG & 0xFFFF) / 65535f;
+            return bounds.min + Vector3.Scale(q, bounds.size);
+        }
+
+        public Vector3 Normal
+        {
+            get
+            {
+                var e = new Vector2((normalAlbedoB & 0xFFF) / 4095f * 2f - 1f, (normalAlbedoB >> 12 & 0xFFF) / 4095f * 2f - 1f);
+                var n = new Vector3(e.x, e.y, 1f - Mathf.Abs(e.x) - Mathf.Abs(e.y));
+                float t = Mathf.Clamp01(-n.z);
+                n.x += n.x >= 0 ? -t : t;
+                n.y += n.y >= 0 ? -t : t;
+                return n.normalized;
+            }
+        }
+
+        public Vector3 Albedo => new(Mathf.GammaToLinearSpace((positionZAlbedoRG >> 16 & 0xFF) / 255f),
+            Mathf.GammaToLinearSpace((positionZAlbedoRG >> 24) / 255f), Mathf.GammaToLinearSpace((normalAlbedoB >> 24) / 255f));
+
+        private static Vector2 EncodeNormal(Vector3 n)
+        {
+            n /= Mathf.Abs(n.x) + Mathf.Abs(n.y) + Mathf.Abs(n.z);
+            var e = new Vector2(n.x, n.y);
+            if (n.z < 0)
+                e = new Vector2((1f - Mathf.Abs(n.y)) * (n.x >= 0 ? 1 : -1), (1f - Mathf.Abs(n.x)) * (n.y >= 0 ? 1 : -1));
+            return new Vector2(Mathf.Clamp(e.x, -1, 1), Mathf.Clamp(e.y, -1, 1));
+        }
+    }
+
     [Serializable]
     public struct SurfelIndices
     {
-        public const int Stride = 8;
+        public const int Stride = 16;
         public int start, count;
+        public uint renderingLayerMask, objectLayerMask;
     }
 
     [Serializable]
@@ -30,10 +87,35 @@ namespace Illusion.Rendering.PRTGI
         public FactorIndices(int start, int count) { this.start = start; this.count = count; }
     }
 
+    // Layout shared with BrickFactor in ProbeVolume.hlsl: a sector-local brick index and nine half coefficients.
     [Serializable]
     public struct BrickFactor
     {
-        public const int Stride = 40;
+        public const int Stride = 20;
+        public const int MaxBricks = 65536;
+        public uint brickSh0, sh12, sh34, sh56, sh78;
+
+        public int BrickIndex => (int)(brickSh0 & 0xFFFF);
+
+        public float this[int coefficient] => coefficient == 0
+            ? Mathf.HalfToFloat((ushort)(brickSh0 >> 16))
+            : Mathf.HalfToFloat((ushort)(Word(coefficient) >> ((coefficient - 1) % 2 * 16)));
+
+        private uint Word(int coefficient) => ((coefficient - 1) / 2) switch { 0 => sh12, 1 => sh34, 2 => sh56, _ => sh78 };
+
+        public bool IsFinite
+        {
+            get
+            {
+                for (int i = 0; i < 9; i++) if (!float.IsFinite(this[i])) return false;
+                return true;
+            }
+        }
+    }
+
+    // Bake-time accumulator of a probe's transfer from one brick.
+    public struct BrickTransfer
+    {
         public int brickIndex;
         public float sh0, sh1, sh2, sh3, sh4, sh5, sh6, sh7, sh8;
 
@@ -51,26 +133,30 @@ namespace Illusion.Rendering.PRTGI
             sh8 += 0.5462742153f * (x * x - y * y) * w;
         }
 
-        public bool IsFinite => float.IsFinite(sh0) && float.IsFinite(sh1) && float.IsFinite(sh2) &&
-            float.IsFinite(sh3) && float.IsFinite(sh4) && float.IsFinite(sh5) && float.IsFinite(sh6) &&
-            float.IsFinite(sh7) && float.IsFinite(sh8);
-    }
-
-    [Serializable]
-    public struct PRTSkySample
-    {
-        public const int Stride = 16;
-        public Vector3 direction;
-        public float weight;
+        public BrickFactor Encode()
+        {
+            static uint Pair(float a, float b) => (uint)Mathf.FloatToHalf(a) | (uint)Mathf.FloatToHalf(b) << 16;
+            return new BrickFactor
+            {
+                brickSh0 = (uint)brickIndex | (uint)Mathf.FloatToHalf(sh0) << 16,
+                sh12 = Pair(sh1, sh2), sh34 = Pair(sh3, sh4), sh56 = Pair(sh5, sh6), sh78 = Pair(sh7, sh8)
+            };
+        }
     }
 
     [Serializable]
     public struct PRTProbeData
     {
-        public const int Stride = 32;
-        public int factorStart, factorCount, skyStart, skyCount;
+        public const int Stride = 24;
+        public int factorStart, factorCount;
         public Vector3 captureOffset;
         public uint validity;
+    }
+
+    // Sky visibility is one bit per bake direction; the directions are regenerated from the bake signature.
+    public static class PRTSkyVisibility
+    {
+        public static int Words(int sampleCount) => (sampleCount + 31) / 32;
     }
 
     [Serializable]
@@ -123,7 +209,7 @@ namespace Illusion.Rendering.PRTGI
         public SurfelIndices[] bricks = Array.Empty<SurfelIndices>();
         public BrickFactor[] factors = Array.Empty<BrickFactor>();
         public PRTProbeData[] probes = Array.Empty<PRTProbeData>();
-        public PRTSkySample[] skySamples = Array.Empty<PRTSkySample>();
+        public uint[] skyVisibility = Array.Empty<uint>();
     }
 
     [Serializable]

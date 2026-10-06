@@ -5,32 +5,35 @@ using UnityEngine;
 
 namespace Illusion.Rendering.PRTGI
 {
+    // Decoded surfel for debug drawing.
+    internal readonly struct PRTDebugSurfel
+    {
+        public readonly Vector3 position, Normal;
+        public PRTDebugSurfel(Vector3 position, Vector3 normal) { this.position = position; Normal = normal; }
+    }
+
     internal sealed class PRTProbeDebugData : IDisposable
     {
-        public Surfel[] LocalSurfels { get; private set; } = Array.Empty<Surfel>();
+        public PRTDebugSurfel[] LocalSurfels { get; private set; } = Array.Empty<PRTDebugSurfel>();
         public int[] LocalSurfelIndices { get; private set; } = Array.Empty<int>();
-        public GraphicsBuffer CoefficientSH9 { get; }
         private bool _geometryReady;
 
-        public PRTProbeDebugData()
-        {
-            CoefficientSH9 = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 27, 4);
-            CoefficientSH9.SetData(new float[27]);
-        }
+        public static PRTDebugSurfel Decode(PRTSectorData sector, int index) =>
+            new(sector.surfels[index].Position(sector.surfelBounds), sector.surfels[index].Normal);
 
-        public void EnsureGeometry(PRTProbeData probe, BrickFactor[] factors, SurfelIndices[] bricks, Surfel[] surfels)
+        public void EnsureGeometry(PRTSectorData sector, PRTProbeData probe)
         {
             if (_geometryReady)
                 return;
             _geometryReady = true;
-            var geometry = new List<Surfel>();
+            var geometry = new List<PRTDebugSurfel>();
             var indices = new List<int>();
             for (int i = probe.factorStart; i < probe.factorStart + probe.factorCount; i++)
             {
-                SurfelIndices range = bricks[factors[i].brickIndex];
+                SurfelIndices range = sector.bricks[sector.factors[i].BrickIndex];
                 for (int index = range.start; index < range.start + range.count; index++)
                 {
-                    geometry.Add(surfels[index]);
+                    geometry.Add(Decode(sector, index));
                     indices.Add(index);
                 }
             }
@@ -40,7 +43,6 @@ namespace Illusion.Rendering.PRTGI
 
         public void Dispose()
         {
-            CoefficientSH9.Dispose();
             LocalSurfels = null;
             LocalSurfelIndices = null;
         }
