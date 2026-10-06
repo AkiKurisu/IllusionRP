@@ -387,50 +387,53 @@ To use PRTGI, you need to create a PRT Probe Volume component in your scene:
 
 ## Properties
 
-### Grid Settings
+### Probe Grid
 
 | Property | Description |
 |----------|-------------|
-| **Probe Size X/Y/Z** | Number of probes along each axis. More probes provide finer detail but increase bake time and memory usage. |
-| **Probe Grid Size** | Spacing between probes in world units. Smaller values capture more detail but require more probes. |
+| **Probe Count** | Number of probes along X, Y and Z. More probes capture finer detail but increase bake time and memory. |
+| **Probe Spacing** | Distance between neighboring probes in meters. |
+
+The line below the grid summarizes the probe count, the covered extent and the resulting number of sectors.
 
 ### Probe Placement
 
 | Property | Description |
 |----------|-------------|
-| **Enable Bake Preprocess** | When enabled, performs preprocessing to optimize probe placement before baking. |
-| **Virtual Offset** | Offset applied to probe positions to avoid placing probes inside geometry (X, Y, Z). |
-| **Geometry Bias** | Bias value to prevent probes from being placed too close to surfaces (0-1). |
-| **Ray Origin Bias** | Offset applied to ray origins during baking to avoid self-intersection artifacts (0-1). |
+| **Auto Placement** | Searches for a capture position outside geometry for each probe while baking. Adjustment Volumes only apply when enabled. |
+| **Offset** | Offset added to every probe before the placement search. |
+| **Geometry Bias** | How far a probe's capture point is pushed out of geometry (0-1). |
+| **Ray Origin Bias** | Distance between a probe's center and the origin of its placement rays (0-1). |
 
-### Relight Settings
-
-| Property | Description |
-|----------|-------------|
-| **Multi Frame Relight** | Distributes relighting computation across multiple frames for smoother performance. |
-| **Probes Per Frame Update** | Number of probes updated per frame when Multi Frame Relight is enabled. |
-| **Local Probe Count** | Number of nearby probes sampled for each pixel during rendering. |
-
-### Voxel Settings
+### Relight
 
 | Property | Description |
 |----------|-------------|
-| **Voxel Probe Size** | Size of voxels used for probe interpolation (X, Y, Z). Affects the smoothness of GI transitions. |
+| **Camera Window** | Probes around the camera that are published to material shading, per axis. Clamped to the probe count. |
+| **Sectors Per Frame** | Maximum number of sectors relit each frame. |
+| **Upload Budget (MiB)** | Maximum sector transport uploaded to the GPU each frame. |
+| **Resident Budget (MiB)** | Maximum sector transport kept resident on the GPU. |
+| **Shadows** | Uses existing shadow maps for visibility when relighting. |
 
-### Debug Settings
-
-| Property | Description |
-|----------|-------------|
-| **Volume Debug Mode** | Visualization mode for debugging probe placement and data. Options include **Probe Grid With Virtual Offset**. |
-| **Bake Virtual Offset** | Button to bake virtual offset data for probe placement optimization. |
-| **Probe Handle Size** | Size of probe gizmos displayed in the Scene view. |
-
-### Bake Settings
+### Debug
 
 | Property | Description |
 |----------|-------------|
-| **Probe Volume Asset** | Reference to the PRT Probe Volume Asset that stores baked data. |
-| **Bake Resolution** | Resolution of the baking process. Higher values produce more accurate results but take longer to bake. |
+| **Visualization** | Scene view visualization: **Probe Grid**, **Probe Grid With Virtual Offset** (with a **Preview Placement** button), **Probe Radiance** or **Shadow Cache**. |
+| **Handle Size** | Size of probe handles in the Scene view. |
+| **Statistics** | Reads back solver residuals and shadow cache counters from the GPU. |
+
+While the volume is relighting, a **Runtime** block reports resident sectors, GPU memory and the upload of the current frame.
+
+### Baking
+
+| Property | Description |
+|----------|-------------|
+| **Asset** | PRT Probe Volume Asset that stores the baked transport. Created next to the scene when empty. |
+| **Capture Resolution** | Cubemap resolution used to capture surfels for each probe. |
+| **Samples Per Probe** | Number of directions integrated for each probe. |
+| **Sampling Seed** | Seed of the deterministic sample directions. |
+| **Sector Size** | Probe columns per sector along X and Z. Smaller sectors stream at a finer granularity. |
 
 ## Baking Workflow
 
@@ -438,28 +441,22 @@ Follow these steps to bake PRTGI data for your scene:
 
 1. Select the GameObject with the **PRT Probe Volume** component.
 2. Make scene objects tag with **Static**.
-3. In the Inspector, configure the Grid Settings and Probe Placement parameters according to your scene requirements.
-4. Assign or create a **Probe Volume Asset** in the Bake Settings section to store the baked data.
+3. In the Inspector, configure the Probe Grid and Probe Placement settings according to your scene requirements.
+4. Optionally assign a **Probe Volume Asset** in the Baking section; one is created next to the scene otherwise.
 5. Click the **Generate Lighting** button at the bottom of the Inspector to start the baking process.
 
 ![Baking](./images/prt_baking.png)
 
-During baking, a **Background Tasks** window will appear showing the progress. The window displays the current probe being processed (e.g., "Sampling surfels for probe 29/180") along with a progress percentage and estimated time. You can click **Cancel Baking** to abort the process if needed.
+During baking, a **Background Tasks** window shows the progress. You can click **Cancel Baking** to abort the process; incomplete work never replaces a valid asset.
 
 > [!Warning]
 > **Do not modify the scene or edit code while baking is in progress.** Changing scene geometry, lighting, or scripts during the bake process may cause incorrect results or baking failures. Wait for the baking to complete before making any changes.
 
 ## Baked Data
 
-After baking completes, the **PRT Probe Volume Asset** stores all the computed data. You can inspect the asset to view statistics about the baked data:
+After baking completes, the **PRT Probe Volume Asset** stores the probe metadata and the sector transport. The asset inspector summarizes the probe grid, the sector layout, the sampling settings and the total data size. Expand **Memory Breakdown** to see the size of each buffer.
 
 ![Results](./images/prt_volume_data.png)
-
-The asset inspector displays:
-
-- **Data Counts**: Number of Surfels, Bricks, Factors, and Probes in the baked data.
-- **Memory Usage**: Memory consumption breakdown for each data type (Surfels, Bricks, Factors, Probes) and the total size.
-- **Statistics**: Average Factors per Probe and Average Surfels per Brick, which indicate the complexity of your scene's lighting.
 
 ## Enabling PRTGI in the Renderer
 
@@ -473,11 +470,9 @@ To use the baked PRTGI data at runtime:
 
 PRTGI runtime performance is primarily affected by the following factors:
 
-- **Probe Count**: More probes increase memory usage and sampling cost. Balance detail requirements with performance.
-- **Local Probe Count**: Higher values produce smoother interpolation but cost more per pixel.
-- **Probes Per Frame Update**: When using Multi Frame Relight, higher values update lighting faster but may cause frame rate hitches.
-
-For mobile platforms, use fewer probes with larger grid spacing and enable Multi Frame Relight to distribute the update cost.
+- **Probe Count**: More probes increase memory usage and relighting cost. Balance detail requirements with performance.
+- **Sectors Per Frame**: Higher values converge faster after lighting changes but cost more GPU time each frame.
+- **Upload and Resident Budgets**: Larger budgets keep more sectors on the GPU and reduce streaming latency at the cost of memory.
 
 # Screen Space Global Illumination (SSGI)
 
