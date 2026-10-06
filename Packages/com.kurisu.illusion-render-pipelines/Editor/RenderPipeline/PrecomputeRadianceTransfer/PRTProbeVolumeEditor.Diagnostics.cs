@@ -6,66 +6,156 @@ namespace Illusion.Rendering.Editor
 {
     internal partial class PRTProbeVolumeEditor
     {
-        private void DrawSolverStatus()
+        private SerializedProperty _debugMode;
+        private SerializedProperty _selectedProbeDebugMode;
+        private SerializedProperty _probeHandleSize;
+        private SerializedProperty _shadowCacheDebugReadbackInterval;
+        private SerializedProperty _shadowCacheDebugShowLabels;
+        private SerializedProperty _shadowCacheDebugSurfelSize;
+        private SerializedProperty _enableShadowCacheStats;
+        private SerializedProperty _shadowCacheStatsReadbackInterval;
+        private SerializedProperty _shadowCacheMaxAge;
+
+        private void InitializeDebugProperties()
         {
-            using (new EditorGUI.DisabledScope(true))
+            _debugMode = Properties.Find(volume => volume.debugMode);
+            _selectedProbeDebugMode = Properties.Find(volume => volume.selectedProbeDebugMode);
+            _probeHandleSize = Properties.Find(volume => volume.probeHandleSize);
+            _shadowCacheDebugReadbackInterval = Properties.Find(volume => volume.shadowCacheDebugReadbackInterval);
+            _shadowCacheDebugShowLabels = Properties.Find(volume => volume.shadowCacheDebugShowLabels);
+            _shadowCacheDebugSurfelSize = Properties.Find(volume => volume.shadowCacheDebugSurfelSize);
+            _enableShadowCacheStats = Properties.Find(volume => volume.enableShadowCacheStats);
+            _shadowCacheStatsReadbackInterval = Properties.Find(volume => volume.shadowCacheStatsReadbackInterval);
+            _shadowCacheMaxAge = Properties.Find(volume => volume.shadowCacheMaxAge);
+        }
+
+        private void DrawDebugSettings()
+        {
+            if (Foldout("Debug", true))
             {
-                EditorGUILayout.IntField("Sectors Updated", Target.UpdatedSectors);
-                EditorGUILayout.IntField("Resident Sectors", Target.ResidentSectors);
-                EditorGUILayout.IntField("Uploading Sectors", Target.UploadingSectors);
-                EditorGUILayout.IntField("Evicting Sectors", Target.EvictingSectors);
-                EditorGUILayout.LongField("Sector GPU Bytes", Target.ResidentBytes);
-                EditorGUILayout.LongField("Peak Sector GPU Bytes", Target.PeakResidentBytes);
-                EditorGUILayout.LongField("Global Probe GPU Bytes", Target.FixedGpuBytes);
-                EditorGUILayout.IntField("Uploaded Bytes", Target.FrameUploadBytes);
-                EditorGUILayout.IntField("Shadow Preview Sector", Target.ShadowPreviewSector);
-                EditorGUILayout.FloatField("Scaled Residual (diagnostic)", Target.SolverResidual);
-                EditorGUILayout.FloatField("Absolute Residual", Target.SolverAbsoluteResidual);
-                EditorGUILayout.IntField("Non-finite Values", Target.SolverNonFiniteCount);
-                EditorGUILayout.LongField("Published Revision", Target.PublishedGeneration);
-                if (!string.IsNullOrEmpty(Target.ResidencyPressure)) EditorGUILayout.HelpBox(Target.ResidencyPressure, MessageType.Warning);
+                EditorGUILayout.PropertyField(_debugMode, Styles.Visualization);
+                var mode = (ProbeVolumeDebugMode)_debugMode.enumValueIndex;
+                EditorGUI.indentLevel++;
+                switch (mode)
+                {
+                    case ProbeVolumeDebugMode.ProbeRadiance:
+                        EditorGUILayout.PropertyField(_selectedProbeDebugMode, Styles.ProbeDebugMode);
+                        break;
+                    case ProbeVolumeDebugMode.ShadowCache:
+                        EditorGUILayout.PropertyField(_shadowCacheDebugReadbackInterval, Styles.ShadowReadbackInterval);
+                        EditorGUILayout.PropertyField(_shadowCacheDebugShowLabels, Styles.ShadowShowLabels);
+                        EditorGUILayout.PropertyField(_shadowCacheDebugSurfelSize, Styles.ShadowSurfelSize);
+                        Row("Snapshot", Target.HasShadowCacheDebugSnapshot
+                            ? $"Scene tick {Target.LatestShadowCacheDebugFrameIndex}"
+                            : "Waiting for readback");
+                        break;
+                }
+
+                if (mode != ProbeVolumeDebugMode.None)
+                    EditorGUILayout.PropertyField(_probeHandleSize, Styles.ProbeHandleSize);
+
+                if (mode == ProbeVolumeDebugMode.ProbeGridWithVirtualOffset)
+                {
+                    using (new EditorGUI.DisabledScope(Application.isPlaying))
+                    {
+                        Rect rect = EditorGUI.IndentedRect(EditorGUILayout.GetControlRect());
+                        if (GUI.Button(rect, Styles.PlacementPreview))
+                            PRTBakeManager.BakePlacementPreview(Target);
+                    }
+                }
+                EditorGUI.indentLevel--;
+
+                EditorGUILayout.PropertyField(_enableShadowCacheStats, Styles.CollectStats);
+                if (_enableShadowCacheStats.boolValue)
+                {
+                    EditorGUI.indentLevel++;
+                    EditorGUILayout.PropertyField(_shadowCacheStatsReadbackInterval, Styles.StatsReadbackInterval);
+                    EditorGUI.indentLevel--;
+                }
+
+                if (_enableRelightShadow.boolValue &&
+                    (_enableShadowCacheStats.boolValue || mode == ProbeVolumeDebugMode.ShadowCache))
+                {
+                    EditorGUILayout.PropertyField(_shadowCacheMaxAge, Styles.ShadowCacheMaxAge);
+                }
+
+                DrawRuntimeStatus();
             }
+
+            EditorGUILayout.Space();
+        }
+
+        private void DrawRuntimeStatus()
+        {
+            if (!Target.isActiveAndEnabled || Target.ResidentSectors == 0 && Target.PublishedGeneration == 0)
+                return;
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Runtime", EditorStyles.boldLabel);
+            string sectors = $"{Target.ResidentSectors} resident  ·  {Target.UpdatedSectors} updated";
+            if (Target.UploadingSectors > 0) sectors += $"  ·  {Target.UploadingSectors} uploading";
+            if (Target.EvictingSectors > 0) sectors += $"  ·  {Target.EvictingSectors} evicting";
+            Row("Sectors", sectors);
+            Row("Sector Memory", $"{FormatBytes(Target.ResidentBytes)}  ·  peak {FormatBytes(Target.PeakResidentBytes)}");
+            Row("Probe Memory", FormatBytes(Target.FixedGpuBytes));
+            Row("Frame Upload", FormatBytes(Target.FrameUploadBytes));
+            if (!string.IsNullOrEmpty(Target.ResidencyPressure))
+                EditorGUILayout.HelpBox(Target.ResidencyPressure, MessageType.Warning);
+
+            if (!Target.enableShadowCacheStats) return;
+
+            Row("Solver Residual", float.IsFinite(Target.SolverResidual)
+                ? $"{Target.SolverResidual:G3} scaled  ·  {Target.SolverAbsoluteResidual:G3} absolute"
+                : "Waiting for readback");
+            if (Target.SolverNonFiniteCount > 0)
+                EditorGUILayout.HelpBox($"Solver produced {Target.SolverNonFiniteCount:N0} non-finite values.", MessageType.Warning);
+
+            if (Target.enableRelightShadow) DrawShadowCacheStats();
         }
 
         private void DrawShadowCacheStats()
         {
-            EditorGUILayout.PropertyField(_shadowCacheStatsReadbackInterval,
-                Styles.ShadowCacheStatsReadbackIntervalLabel);
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Shadow Cache", EditorStyles.boldLabel);
             var stats = Target.LatestShadowCacheStats;
-            using (new EditorGUI.DisabledScope(true))
+            if (!stats.valid)
             {
-                EditorGUILayout.Toggle("Stats Valid", stats.valid);
-                EditorGUILayout.LongField("Evaluated", stats.evaluated);
-                EditorGUILayout.LongField("Cache Hits", stats.cacheHits);
-                EditorGUILayout.LongField("Cache Misses", stats.cacheMisses);
-                EditorGUILayout.LongField("Invalid Epoch", stats.invalidByEpoch);
-                EditorGUILayout.LongField("Old Cached Samples", stats.invalidByAge);
-                EditorGUILayout.LongField("Existing Map Samples", stats.shadowmapSamples);
-                EditorGUILayout.LongField("Cached Samples Outside Map", stats.fallbackFromCache);
-                EditorGUILayout.LongField("Unknown Visibility", stats.uncoveredNoCache);
-                EditorGUILayout.TextField("Preview Light", Target.ShadowPreviewLightName ?? string.Empty);
-                EditorGUILayout.IntField("Preview Light ID", Target.ShadowPreviewLightId);
-                EditorGUILayout.LabelField("Global Preview", EditorStyles.boldLabel);
-                DrawShadowCacheSnapshotStats(Target.LatestShadowCacheGlobalStats);
-                EditorGUILayout.LabelField("Window Preview", EditorStyles.boldLabel);
-                DrawShadowCacheSnapshotStats(Target.LatestShadowCacheWindowStats);
+                Row("Status", "Waiting for readback");
+                return;
             }
+
+            Row("Preview Light", $"{Target.ShadowPreviewLightName} (sector {Target.ShadowPreviewSector})");
+            Row("Lookups", $"{stats.cacheHits:N0} hits  ·  {stats.cacheMisses:N0} misses  of {stats.evaluated:N0}");
+            Row("Visibility", $"{stats.shadowmapSamples:N0} shadow map  ·  {stats.fallbackFromCache:N0} cached  ·  " +
+                              $"{stats.uncoveredNoCache:N0} unknown");
+            Row("Invalidated", $"{stats.invalidByEpoch:N0} by light change  ·  {stats.invalidByAge:N0} old");
+            DrawSurfelSnapshot("Global Surfels", Target.LatestShadowCacheGlobalStats);
+            DrawSurfelSnapshot("Window Surfels", Target.LatestShadowCacheWindowStats);
         }
 
-        private static void DrawShadowCacheSnapshotStats(PRTProbeVolume.ShadowCacheGlobalStats stats)
+        private static void DrawSurfelSnapshot(string label, PRTProbeVolume.ShadowCacheGlobalStats stats)
         {
-            EditorGUILayout.Toggle("Snapshot Valid", stats.valid);
-            EditorGUILayout.LongField("Scene Tick", stats.frameIndex);
-            EditorGUILayout.LongField("Visibility Epoch", stats.epoch);
-            EditorGUILayout.TextField("Ready", FormatCount(stats.surfelReady, stats.surfelCount));
-            EditorGUILayout.TextField("Fresh", FormatCount(stats.surfelFresh, stats.surfelCount));
-            EditorGUILayout.TextField("Old Samples", FormatCount(stats.surfelStale, stats.surfelCount));
-            EditorGUILayout.TextField("Invalid Epoch", FormatCount(stats.surfelInvalidEpoch, stats.surfelCount));
-            EditorGUILayout.TextField("Uninitialized", FormatCount(stats.surfelUninitialized, stats.surfelCount));
-            EditorGUILayout.FloatField("Mean Visibility", stats.surfelMeanShadow);
+            if (!stats.valid || stats.surfelCount == 0)
+                return;
+
+            string summary = $"{Percent(stats.surfelReady, stats.surfelCount)} ready  ·  " +
+                             $"{Percent(stats.surfelFresh, stats.surfelCount)} fresh  ·  " +
+                             $"{Percent(stats.surfelStale, stats.surfelCount)} old  ·  visibility {stats.surfelMeanShadow:F2}";
+            if (stats.surfelInvalidEpoch + stats.surfelUninitialized > 0)
+                summary += $"  ·  {stats.surfelInvalidEpoch:N0} invalid  ·  {stats.surfelUninitialized:N0} uninitialized";
+            Row(label, summary);
         }
 
-        private static string FormatCount(uint count, uint total) => total == 0
-            ? count.ToString() : $"{count} / {total} ({count * 100f / total:F1}%)";
+        private static void Row(string label, string value) =>
+            EditorGUILayout.LabelField(label, value, EditorStyles.wordWrappedLabel);
+
+        private static string Percent(uint count, uint total) => $"{count * 100f / total:0.#}%";
+
+        internal static string FormatBytes(long bytes) => bytes switch
+        {
+            >= 1 << 20 => $"{bytes / 1048576.0:0.##} MiB",
+            >= 1 << 10 => $"{bytes / 1024.0:0.#} KiB",
+            _ => $"{bytes} B"
+        };
     }
 }

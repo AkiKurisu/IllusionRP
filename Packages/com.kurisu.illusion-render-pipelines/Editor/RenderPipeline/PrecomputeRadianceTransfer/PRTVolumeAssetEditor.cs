@@ -1,4 +1,3 @@
-using UnityEngine;
 using System.Linq;
 using UnityEditor;
 using Illusion.Rendering.PRTGI;
@@ -8,41 +7,44 @@ namespace Illusion.Rendering.Editor
     [CustomEditor(typeof(PRTProbeVolumeAsset))]
     internal class PRTVolumeAssetEditor : PropertyFetchEditor<PRTProbeVolumeAsset>
     {
+        private const string MemoryFoldoutKey = "PRTProbeVolumeAsset_Memory";
+
         public override void OnInspectorGUI()
         {
-            if (!Target.TryValidate(out string reason)) EditorGUILayout.HelpBox(reason, MessageType.Warning);
-            var sectors = Target.Sectors;
-            if (sectors == null) return;
-            long bytes = 0;
-            EditorGUILayout.IntField("Sectors", sectors.Length);
-            EditorGUILayout.IntField("Sector Width", Target.SectorWidth);
-            DrawCount("Global Probe Metadata", Target.Probes.Length, 16, ref bytes);
-            DrawCount("Geometry Surfels", sectors.Sum(s => s.surfels.Length), Surfel.Stride, ref bytes);
-            DrawCount("Bricks", sectors.Sum(s => s.bricks.Length), SurfelIndices.Stride, ref bytes);
-            DrawCount("SH9 Transfers", sectors.Sum(s => s.factors.Length), BrickFactor.Stride, ref bytes);
-            DrawCount("Local Probe Ranges", sectors.Sum(s => s.probes.Length), PRTProbeData.Stride, ref bytes);
-            DrawCount("Global Probe IDs", sectors.Sum(s => s.probeIds.Length), 4, ref bytes);
-            DrawCount("Sky Directions", sectors.Sum(s => s.skySamples.Length), PRTSkySample.Stride, ref bytes);
-            EditorGUILayout.LabelField("Array Elements", $"{bytes:N0} bytes ({bytes / 1048576.0:F2} MiB)");
-            if (Target.HasValidData)
+            if (!Target.TryValidate(out string reason))
             {
-                EditorGUILayout.LabelField("Backend", Target.Signature.backend);
-                EditorGUILayout.IntField("Samples Per Probe", Target.Signature.sampleCount);
-                EditorGUILayout.LongField("Seed", Target.Signature.seed);
-                EditorGUILayout.Vector3IntField("Grid", Target.Grid.count);
-                EditorGUILayout.FloatField("Spacing", Target.Grid.spacing);
-                EditorGUILayout.Vector3Field("Origin", Target.Grid.origin);
-                EditorGUILayout.LabelField("Geometry Signature", Target.Signature.geometry.ToString());
-                EditorGUILayout.LabelField("Material Signature", Target.Signature.materials.ToString());
-                EditorGUILayout.LabelField("Settings Signature", Target.Signature.settings.ToString());
-                EditorGUILayout.LabelField("Authoring Input Signature", Target.Signature.authoringInputs.ToString());
+                EditorGUILayout.HelpBox(reason, MessageType.Warning);
+                return;
             }
-        }
-        private static void DrawCount(string label, int count, int stride, ref long bytes)
-        {
-            long size = (long)count * stride;
-            bytes += size;
-            EditorGUILayout.LabelField(label, $"{count:N0} × {stride} bytes = {size:N0}");
+
+            PRTProbeGrid grid = Target.Grid;
+            PRTSectorData[] sectors = Target.Sectors;
+            var buffers = new (string label, long count, int stride)[]
+            {
+                ("Probe Metadata", Target.Probes.Length, 16),
+                ("Geometry Surfels", sectors.Sum(s => (long)s.surfels.Length), Surfel.Stride),
+                ("Bricks", sectors.Sum(s => (long)s.bricks.Length), SurfelIndices.Stride),
+                ("SH9 Transfers", sectors.Sum(s => (long)s.factors.Length), BrickFactor.Stride),
+                ("Sector Probe Ranges", sectors.Sum(s => (long)s.probes.Length), PRTProbeData.Stride),
+                ("Sector Probe IDs", sectors.Sum(s => (long)s.probeIds.Length), 4),
+                ("Sky Directions", sectors.Sum(s => (long)s.skySamples.Length), PRTSkySample.Stride)
+            };
+            long total = buffers.Sum(b => b.count * b.stride);
+
+            EditorGUILayout.LabelField("Probes", $"{grid.ProbeCount:N0}  ({grid.count.x} × {grid.count.y} × {grid.count.z}, {grid.spacing:0.##} m spacing)");
+            EditorGUILayout.LabelField("Sectors", $"{sectors.Length}  ({Target.SectorWidth} × {Target.SectorWidth} probe columns)");
+            EditorGUILayout.LabelField("Sampling", $"{Target.Signature.sampleCount} samples per probe, seed {Target.Signature.seed}");
+            EditorGUILayout.LabelField("Data Size", PRTProbeVolumeEditor.FormatBytes(total));
+
+            bool expanded = SessionState.GetBool(MemoryFoldoutKey, false);
+            bool next = EditorGUILayout.Foldout(expanded, "Memory Breakdown", true);
+            if (next != expanded) SessionState.SetBool(MemoryFoldoutKey, next);
+            if (!next) return;
+
+            EditorGUI.indentLevel++;
+            foreach (var (label, count, stride) in buffers)
+                EditorGUILayout.LabelField(label, $"{count:N0}  ·  {PRTProbeVolumeEditor.FormatBytes(count * stride)}");
+            EditorGUI.indentLevel--;
         }
     }
 }

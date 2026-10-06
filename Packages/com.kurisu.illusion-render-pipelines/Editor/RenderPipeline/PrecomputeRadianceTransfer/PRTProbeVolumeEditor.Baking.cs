@@ -6,41 +6,45 @@ namespace Illusion.Rendering.Editor
 {
     internal partial class PRTProbeVolumeEditor
     {
-        private SerializedProperty _asset, _bakeResolution, _bakeSampleCount, _bakeSeed;
+        private SerializedProperty _asset, _bakeResolution, _bakeSampleCount, _bakeSeed, _sectorWidth;
+
         private void InitializeBakeProperties()
         {
             _asset = Properties.Find(volume => volume.asset);
             _bakeResolution = Properties.Find(volume => volume.bakeResolution);
             _bakeSampleCount = Properties.Find(volume => volume.bakeSampleCount);
             _bakeSeed = Properties.Find(volume => volume.bakeSeed);
+            _sectorWidth = Properties.Find(volume => volume.sectorWidth);
         }
-        private void DrawBakeSettingsSection()
+
+        private void DrawBakeSettings()
         {
-            if (Foldout("Bake Settings", true))
+            if (Foldout("Baking", true))
             {
-                EditorGUILayout.PropertyField(_asset, Styles.ProbeVolumeAssetLabel);
-                EditorGUILayout.PropertyField(_bakeResolution, Styles.BakeResolutionLabel);
-                EditorGUILayout.PropertyField(_bakeSampleCount, new GUIContent("Samples Per Probe"));
-                EditorGUILayout.PropertyField(_bakeSeed, new GUIContent("Sampling Seed"));
-                EditorGUILayout.PropertyField(_sectorWidth, new GUIContent("Sector Width (probe columns)"));
+                EditorGUILayout.PropertyField(_asset, Styles.Asset);
+                EditorGUILayout.PropertyField(_bakeResolution, Styles.BakeResolution);
+                EditorGUILayout.PropertyField(_bakeSampleCount, Styles.SampleCount);
+                EditorGUILayout.PropertyField(_bakeSeed, Styles.SampleSeed);
+                EditorGUILayout.PropertyField(_sectorWidth, Styles.SectorWidth);
             }
-            if (Target.asset && !Target.asset.TryValidate(out string reason))
-                EditorGUILayout.HelpBox(reason, MessageType.Warning);
+
+            EditorGUILayout.Space();
         }
+
         private static void DrawActionButtons()
         {
-            EditorGUILayout.Space();
             if (PRTVolumeManager.IsBaking)
             {
                 if (GUILayout.Button("Cancel Baking")) PRTBakeManager.StopBaking();
                 return;
             }
-            if (ButtonWithDropdownList(Styles.GenerateLightingLabel, Styles.DetailActionLabels, OnActionDropDown))
+            if (ButtonWithDropdownList(Styles.GenerateLighting, Styles.DetailActions, OnActionDropDown))
             {
                 PRTBakeManager.GenerateLighting();
                 GUIUtility.ExitGUI();
             }
         }
+
         private static void OnActionDropDown(object data)
         {
             switch ((int)data)
