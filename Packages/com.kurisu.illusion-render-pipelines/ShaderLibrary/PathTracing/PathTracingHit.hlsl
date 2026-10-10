@@ -1,6 +1,7 @@
 #ifndef ILLUSION_PATH_TRACING_HIT_INCLUDED
 #define ILLUSION_PATH_TRACING_HIT_INCLUDED
 
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Common.hlsl"
 
 static bool g_PathTracingClipped;
 void PathTracingClip(float value) { g_PathTracingClipped = g_PathTracingClipped || value < 0.0; }

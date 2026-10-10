@@ -71,7 +71,7 @@ Shader "Universal Render Pipeline/HD Skin"
 			#error For WebGL2/GLES3, please set your shader target to 3.5 via SubShader options. URP shaders in ASE use target 4.5 by default.
 		#endif
 
-		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+		#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Common.hlsl"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl"
 
 		#ifndef ASE_TESS_FUNCS
@@ -2700,4 +2700,4 @@ WireConnection;69;22;75;1
 WireConnection;74;42;67;0
 WireConnection;74;43;67;49
 ASEEND*/
-//CHKSM=A77F7A9EB1C0600B63288E40F6EBFFA3BB597FE1
+//CHKSM=3085C767DB05D552070C75B2F0F71D3DEF863FD2
