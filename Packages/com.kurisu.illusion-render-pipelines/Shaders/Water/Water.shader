@@ -94,7 +94,7 @@ Shader "Universal Render Pipeline/Water"
 			#error For WebGL2/GLES3, please set your shader target to 3.5 via SubShader options. URP shaders in ASE use target 4.5 by default.
 		#endif
 
-		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+		#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Common.hlsl"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl"
 
 		#ifndef ASE_TESS_FUNCS
@@ -2142,4 +2142,4 @@ WireConnection;1;2;149;0
 WireConnection;1;6;196;0
 WireConnection;1;7;53;0
 ASEEND*/
-//CHKSM=7BFC66DF290A5FBC807230A073EF021CB4E37DBB
+//CHKSM=59AA8210976057CDEA16E61A9306D9C590C37218
