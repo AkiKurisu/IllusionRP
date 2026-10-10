@@ -122,30 +122,15 @@ float3 PRTCascadeCoordinate(float3 worldPosition, uint cascade)
     return ((worldPosition - _prtGridOrigin.xyz) / _prtGridSpacing - float3(_prtGridMin.xyz)) / float(1u << cascade);
 }
 
+// A single-node axis accepts half a cell around its node and never interpolates.
 bool PRTInterpolationCell(float3 coordinate, int3 minimum, int3 count, out int3 cell, out float3 rate)
 {
-    cell = minimum;
-    rate = 0;
-    if (_prtGridSpacing <= 0 || any(count <= 0))
-        return false;
-    [unroll]
-    for (int axis = 0; axis < 3; axis++)
-    {
-        if (count[axis] == 1)
-        {
-            if (abs(coordinate[axis] - float(minimum[axis])) > 0.5)
-                return false;
-        }
-        else
-        {
-            float end = float(minimum[axis] + count[axis] - 1);
-            if (coordinate[axis] < float(minimum[axis]) || coordinate[axis] > end)
-                return false;
-            cell[axis] = min(int(floor(coordinate[axis])), minimum[axis] + count[axis] - 2);
-            rate[axis] = saturate(coordinate[axis] - float(cell[axis]));
-        }
-    }
-    return true;
+    float3 interpolated = float3(count > 1);
+    float3 margin = 0.5 - 0.5 * interpolated;
+    cell = clamp(int3(floor(coordinate)), minimum, max(minimum + count - 2, minimum));
+    rate = saturate(coordinate - float3(cell)) * interpolated;
+    return _prtGridSpacing > 0 && all(count > 0)
+        && all(coordinate >= float3(minimum) - margin) && all(coordinate <= float3(minimum + count - 1) + margin);
 }
 
 float PRTCornerWeight(uint corner, float3 rate)
