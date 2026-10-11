@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.3 |
+| Version | 1.4.0 |
 | Status | Draft |
 | Date | 2026-10-11 |
 

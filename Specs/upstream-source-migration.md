@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-04 |
 | Related Specs | [Render Resources](render-resources.md), [ASE Shader Workflow](ase-shader-workflow.md) |

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-05 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Shader Variant Stripping](shader-variant-stripping.md) |

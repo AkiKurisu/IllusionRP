@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-06 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Transparency](transparency.md), [World Scale](world-scale.md) |

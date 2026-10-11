@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.3 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-11 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md), [Path Tracing](path-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |

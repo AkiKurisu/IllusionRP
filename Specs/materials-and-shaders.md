@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.3 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-11 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Rendering Pipeline](rendering-pipeline.md) |

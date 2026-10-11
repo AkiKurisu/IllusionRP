@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.3.2 |
+| Version | 1.4.0 |
 | Status | Living |
 | Date | 2026-10-11 |
 | Related Specs | [Path Tracing](path-tracing.md), [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
