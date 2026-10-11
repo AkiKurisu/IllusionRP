@@ -99,6 +99,8 @@ namespace Illusion.Rendering.UnityRHI
 #if UNITY_EDITOR
             RhiDomainReload.UnregisterOwner(this);
 #endif
+            if (_contexts.Count > 0)
+                RhiCore.WaitForGpuIdle();
             foreach (DLSSNeuralRenderingCameraContext context in _contexts.Values)
                 context.Dispose();
             _contexts.Clear();
@@ -122,6 +124,7 @@ namespace Illusion.Rendering.UnityRHI
             {
                 if (context.Width == width && context.Height == height)
                     return context;
+                RhiCore.WaitForGpuIdle();
                 context.Dispose();
                 _contexts.Remove(camera);
             }
@@ -137,6 +140,8 @@ namespace Illusion.Rendering.UnityRHI
             foreach (KeyValuePair<Camera, DLSSNeuralRenderingCameraContext> pair in _contexts)
                 if (pair.Key == null)
                     _deadCameras.Add(pair.Key);
+            if (_deadCameras.Count > 0)
+                RhiCore.WaitForGpuIdle();
             foreach (Camera camera in _deadCameras)
             {
                 _contexts[camera].Dispose();

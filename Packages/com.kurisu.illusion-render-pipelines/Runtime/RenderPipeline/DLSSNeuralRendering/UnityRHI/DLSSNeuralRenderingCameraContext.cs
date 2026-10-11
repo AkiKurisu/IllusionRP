@@ -181,6 +181,7 @@ namespace Illusion.Rendering.UnityRHI
             }
         }
 
+        /// <summary>Releases the camera's resources; the caller first waits for the GPU to go idle.</summary>
         public void Dispose()
         {
             if (_disposed) return;
@@ -193,6 +194,8 @@ namespace Illusion.Rendering.UnityRHI
             _depth?.Dispose(); _depth = null;
             _motion?.Dispose(); _motion = null;
             _color?.Dispose(); _color = null;
+            // The wrappers hold the textures' native resources until garbage collection destroys them.
+            Device.Instance.RunGarbageCollection();
             OutputHandle?.Release(); OutputHandle = null;
             DepthHandle?.Release(); DepthHandle = null;
             MotionHandle?.Release(); MotionHandle = null;
