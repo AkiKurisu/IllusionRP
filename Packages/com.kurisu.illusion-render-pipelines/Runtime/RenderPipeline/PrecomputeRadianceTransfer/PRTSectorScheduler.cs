@@ -42,6 +42,11 @@ namespace Illusion.Rendering.PRTGI
             return _requested;
         }
 
+        public void Skip(int sector)
+        {
+            if (sector == _background) _background = (_background + 1) % _asset.Sectors.Length;
+        }
+
         public void Updated(int sector)
         {
             UpdatedCount++;

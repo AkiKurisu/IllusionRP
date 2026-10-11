@@ -113,12 +113,19 @@ namespace Illusion.Rendering.PRTGI
             foreach (int id in requested)
             {
                 var lights = PRTRelightWorldLighting.Select(world, _volume.asset.Sectors[id].surfelBounds);
+                if (residency.Exceeds(id, lights, residentBudget))
+                {
+                    scheduler.Skip(id);
+                    continue;
+                }
                 var sector = residency.Request(id, lights, residentBudget);
                 if (sector == null) continue;
                 if (!sector.Ready)
                     residency.UploadedBytes += sector.RecordUpload(graph, uploadBudget - residency.UploadedBytes);
                 if (sector.Ready) _selected.Add(sector);
             }
+            // A later request can evict a selected sector; its cache readback is already queued.
+            _selected.RemoveAll(static sector => sector.Evicting);
             if (_selected.Count == 0) return;
             RecordMetadata(graph);
             TextureHandle environment = _environment.Record(graph, camera, frameData.Get<UniversalLightData>(),
