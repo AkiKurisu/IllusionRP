@@ -6,7 +6,7 @@
 
 <img src="Documentations/images/banner.png">
 
-Unity high-definition graphics plugin for Universal Render Pipelines.
+Unity high-definition graphics plugin for the Universal Render Pipeline, built for high-end devices.
 
 </div>
 
@@ -19,7 +19,7 @@ Unity high-definition graphics plugin for Universal Render Pipelines.
 - Ground characters and reveal fine surface details with **per-object shadows, contact shadows, PCSS soft shadows, and ground-truth ambient occlusion**.
 - Shape the final image with **volumetric lighting, automatic exposure, convolution bloom, and advanced tonemapping**.
 - Build custom materials with **ready-to-use shaders and Amplify Shader Editor templates** integrated with IllusionRP lighting.
-- Explore **reference and realtime path tracing, DLSS Ray Reconstruction, and experimental DLSS Neural Rendering** on supported hardware.
+- Explore **ray traced global illumination, reference and realtime path tracing, DLSS Ray Reconstruction, and experimental DLSS Neural Rendering** on supported hardware.
 - Support **Unity 2022, Unity 2023, and Unity 6** through their respective version branches.
 
 # Demo
@@ -210,6 +210,15 @@ Include <b>Screen Space Global Illumination</b> based on [jiaozi158/UnitySSGIURP
 
 ![SSGI + PRTGI](Documentations/images/gi_combine.png)
 
+Include <b>Ray Traced Global Illumination (RTGI)</b> based on [NVIDIA-RTX/RTXDI](https://github.com/NVIDIA-RTX/RTXDI) ReSTIR GI and denoised by [NVIDIA-RTX/NRD](https://github.com/NVIDIA-RTX/NRD).
+
+Support <b>Performance</b> mode with one-bounce lighting, and <b>Quality</b> mode with multi-bounce lighting from a [NVIDIA-RTX/SHARC](https://github.com/NVIDIA-RTX/SHARC) radiance cache.
+
+![RTGI](Documentations/images/rtgi.png)
+
+> [!NOTE]
+> `RTGI` requires Direct3D 12 and a GPU with ray tracing support.
+
 ## Post Processing
 
 Include <b>Automatic Exposure</b> ported from HDRP.
@@ -291,6 +300,14 @@ Hair: [hair33.png by OwlishMedia](https://opengameart.org/content/hair-alphas-fo
 [Kuan-Mi/UnityDLSSNR](https://github.com/Kuan-Mi/UnityDLSSNR)
 
 [Kuan-Mi/UnityPathTracing](https://github.com/Kuan-Mi/UnityPathTracing)
+
+[NVIDIA-RTX/RTXPT](https://github.com/NVIDIA-RTX/RTXPT)
+
+[NVIDIA-RTX/RTXDI](https://github.com/NVIDIA-RTX/RTXDI)
+
+[NVIDIA-RTX/NRD](https://github.com/NVIDIA-RTX/NRD)
+
+[NVIDIA-RTX/SHARC](https://github.com/NVIDIA-RTX/SHARC)
 
 [bladesero/GTAO_URP](https://github.com/bladesero/GTAO_URP)
 
