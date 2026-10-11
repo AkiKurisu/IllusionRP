@@ -61,7 +61,7 @@ namespace Bridge
 
     // @IllusionRP: the surface is evaluated by the material closest-hit shader and returned in the payload.
     static PathTracer::SurfaceData loadSurface( const IllusionPathPayload payload, const float3 rayOrigin, const float3 rayDir,
-        const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPosition, DebugContext debug );
+        const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPosition, DebugContext debug, const bool emissionOnly );
 
     static float3 computeSurfaceRayOrigin(const ShadingData shadingData, const ActiveBSDF bsdf, bool outward);
 

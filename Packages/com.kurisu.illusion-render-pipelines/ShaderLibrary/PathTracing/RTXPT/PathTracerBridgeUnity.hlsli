@@ -84,7 +84,7 @@ uint IllusionEmissiveTriangleLightIndex(uint instanceID, uint triangleIndex)
 }
 
 PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, const float3 rayOrigin, const float3 rayDir,
-    const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPos, DebugContext debug )
+    const RayCone rayCone, const int pathVertexIndex, const uint2 pixelPos, DebugContext debug, const bool emissionOnly )
 {
     const bool frontFacing = PathTracingHasSurfaceFlag(payload, PT_SURFACE_FRONT_FACING);
     const float3 faceN = PathTracingUnpackNormal(payload.normalFace);
@@ -139,6 +139,9 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     lpfloat3 bsdfDataDiffuse = (lpfloat3)diffuseOpacity.rgb;
     lpfloat3 bsdfDataSpecular = (lpfloat3)specularRoughness.rgb;
     lpfloat bsdfDataRoughness = (lpfloat)specularRoughness.a;
+#if defined(PT_MIN_PERCEPTUAL_ROUGHNESS)
+    bsdfDataRoughness = max(bsdfDataRoughness, (lpfloat)PT_MIN_PERCEPTUAL_ROUGHNESS);  // @IllusionRP
+#endif
     lpfloat bsdfDataMetallic = (lpfloat)emissionMetallic.a;
     lpfloat bsdfDataSpecularTransmission = (lpfloat)transmission.x * (1.f - bsdfDataMetallic);
     lpfloat bsdfDataDiffuseTransmission = (lpfloat)transmission.y * (1.f - bsdfDataMetallic);
@@ -167,7 +170,14 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
 
     // @IllusionRP: Unity's material pass has already evaluated the surface inputs; HDRP owns all material calculations.
     HDRPBSDF bsdf = (HDRPBSDF)0;
-    bsdf.family = family;
+#if defined(PT_STANDARD_LIT)
+    // @IllusionRP: GI hits shade Skin, Hair and Fabric as HDRP's standard Lit, as its ray traced GBuffer does; Lit keeps its
+    // own model, without transmission under PT_OPAQUE_LIT.
+    const bool standardLit = family == PT_FAMILY_SKIN || family == PT_FAMILY_HAIR || family == PT_FAMILY_FABRIC;
+#else
+    const bool standardLit = false;
+#endif
+    bsdf.family = standardLit ? PT_FAMILY_LIT : family;
     bsdf.thin = thinSurface;
     Illusion::Lit::BSDFData bsdfData = (Illusion::Lit::BSDFData)0;
     bsdfData.diffuseColor = bsdfDataDiffuse;
@@ -186,10 +196,17 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     bsdfData.transmittanceMask = bsdfDataSpecularTransmission;
     if (family == PT_FAMILY_LIT)
     {
+#if defined(PT_OPAQUE_LIT)
+        bsdfData.transmittanceMask = 0.0;  // @IllusionRP
+#else
         if (bsdfData.transmittanceMask > 0.0)
             Illusion::Lit::FillMaterialTransparencyData(diffuseOpacity.rgb / max(1.0 - bsdfDataMetallic, 0.001), bsdfDataMetallic, matIoR,
                 bsdfDataTransmission, thinSurface ? REFRACTION_THIN_DISTANCE : 1.0, 0.0, bsdfData.transmittanceMask, bsdfData);
+#endif
         Illusion::Lit::FillMaterialClearCoatData(bsdfData.coatMask, bsdfData);
+#if defined(PT_MIN_PERCEPTUAL_ROUGHNESS)
+        bsdfData.coatRoughness = max(bsdfData.coatRoughness, PT_MIN_PERCEPTUAL_ROUGHNESS * PT_MIN_PERCEPTUAL_ROUGHNESS);  // @IllusionRP
+#endif
         Illusion::ConvertAnisotropyToRoughness(bsdfData.perceptualRoughness, bsdfData.anisotropy, bsdfData.roughnessT, bsdfData.roughnessB);
     }
     bsdf.diffuseAlbedo = bsdfDataDiffuse;
@@ -202,11 +219,11 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     g_HDRPScatteringGroup = _PathTracingInstanceData[payload.instanceID].scatteringGroup;  // @IllusionRP
     g_HDRPExitInstance = payload.instanceID;  // @IllusionRP
     // @IllusionRP: RTXPT vertex 1 is HDRP segment 0; retain the conditionally remapped Skin sample.
-    float4 materialSamples = family == PT_FAMILY_SKIN
+    float4 materialSamples = bsdf.family == PT_FAMILY_SKIN
         ? Illusion::GetSample4D(pixelPos, g_HDRPSampleIndex, 4 * (pathVertexIndex - 1))
         : SampleSequenceGenerator::Generate(4, SampleGeneratorVertexBase::make(pixelPos, pathVertexIndex, g_HDRPSampleIndex), (SampleGeneratorEffectSeed)38);
-    float materialSample = family == PT_FAMILY_SKIN ? materialSamples.z : materialSamples.x;
-    if (family == PT_FAMILY_SKIN)
+    float materialSample = bsdf.family == PT_FAMILY_SKIN ? materialSamples.z : materialSamples.x;
+    if (bsdf.family == PT_FAMILY_SKIN)
     {
         bsdfData.subsurfaceMask = PathTracingUnpackHalf2(payload.parameters.y).x;
         bsdfData.diffusionProfileIndex = payload.parameters.x;
@@ -227,7 +244,12 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         bsdf.valid = false;
     }
     else
-    if (family == PT_FAMILY_HAIR)
+    if (emissionOnly)
+    {
+        bsdf.valid = false;
+    }
+    else
+    if (bsdf.family == PT_FAMILY_HAIR)
     {
         Illusion::Hair::SurfaceData hairSurface = (Illusion::Hair::SurfaceData)0;
         hairSurface.materialFeatures = MATERIALFEATUREFLAGS_HAIR_MARSCHNER;
@@ -250,7 +272,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         bsdf.hair.Nv = hairData.normalWS;
     }
     else
-    if (family == PT_FAMILY_FABRIC)
+    if (bsdf.family == PT_FAMILY_FABRIC)
     {
         Illusion::Fabric::BSDFData fabricData = (Illusion::Fabric::BSDFData)0;
         const bool silk = (payload.parameters.x & PT_FABRIC_SILK) != 0u;
@@ -281,7 +303,7 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
     else
     {
         bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
-        if (family == PT_FAMILY_SKIN)
+        if (bsdf.family == PT_FAMILY_SKIN)
             bsdf.skinSample = float3(materialSamples.xy, materialSample);
         if (bsdf.material.isSubsurface)
         {

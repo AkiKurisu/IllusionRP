@@ -19,11 +19,9 @@ namespace Illusion.Rendering.PathTracing
             internal int Frame;
             internal PathTracingShaderTime TraceTime;
             internal PathTracingShaderTime CurrentTime;
+            internal PathTracingSharedScene Scene;
             internal PathTracingResources Resources;
             internal IllusionRenderPipelineResources PipelineResources;
-            internal PathTracingEnvironment Environment;
-            internal PathTracingLightCollector Lights;
-            internal PathTracingLightTables LightTables;
             internal PathTracingLightBaker LightBaker;
             internal PathTracingSampleConstants Constants;
             internal Camera Camera;
@@ -82,8 +80,8 @@ namespace Illusion.Rendering.PathTracing
             var viewToClip = GL.GetGPUProjectionMatrix(camera.nonJitteredProjectionMatrix, true);
             var cameraConstants = PathTracingFrameConstants.BuildCamera(camera, width, height, Lens);
 
-            int stateHash = HashCode.Combine(worldToView, viewToClip, world.Scene.SceneHash, _lights.Hash,
-                HashCode.Combine(PathTracingEnvironment.ComputeHash(_lights), PathTracingEnvironment.CameraBackground(camera), Lens.ApertureRadius, Lens.FocusDistance, PathTracingDiffusionProfiles.Capture(_rendererData).ComputeHash()),
+            int stateHash = HashCode.Combine(worldToView, viewToClip, world.Scene.SceneHash, _scene.Lights.Hash,
+                HashCode.Combine(PathTracingEnvironment.ComputeHash(_scene.Lights), PathTracingEnvironment.CameraBackground(camera), Lens.ApertureRadius, Lens.FocusDistance, PathTracingDiffusionProfiles.Capture(_rendererData).ComputeHash()),
                 HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
                     settings.referenceFireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value));
             context.UpdateAccumulation(stateHash, world.Scene.TransformsChanged);
@@ -116,7 +114,7 @@ namespace Illusion.Rendering.PathTracing
                 EnvMapImportanceSamplingParams = new PathTracingEnvMapImportanceSamplingParams
                 {
                     ImportanceInvDim = Vector2.one / PathTracingEnvironment.ImportanceMapSize,
-                    ImportanceBaseMip = (uint)(_environment.ImportanceMapMipCount - 1)
+                    ImportanceBaseMip = (uint)(_scene.Environment.ImportanceMapMipCount - 1)
                 },
                 PtConsts = pathTracer,
                 Debug = new PathTracingDebugConstants { PickX = -1, PickY = -1, ImageWidth = width, ImageHeight = height }
@@ -131,12 +129,10 @@ namespace Illusion.Rendering.PathTracing
             passData.World = world;
             passData.Frame = PathTracingFrame.Index;
             passData.CurrentTime = PathTracingShaderTime.Current;
-            passData.Resources = _resources;
+            passData.Scene = _scene;
+            passData.Resources = _scene.Resources;
             passData.PipelineResources = _rendererData.RuntimeResources;
-            passData.Environment = _environment;
-            passData.Lights = _lights;
-            passData.LightTables = _lightTables;
-            passData.LightBaker = context.GetLightBaker(_lightBakerKernels);
+            passData.LightBaker = context.GetLightBaker(_scene.LightBakerKernels);
             passData.Constants = constants;
             passData.Camera = cameraData.camera;
             passData.ViewMatrix = cameraData.GetViewMatrix();
@@ -165,21 +161,9 @@ namespace Illusion.Rendering.PathTracing
 
         private static void PrepareScene(CommandBuffer cmd, TracePassData data)
         {
-            var lights = data.Lights;
-            using (new ProfilingScope(cmd, Samplers.Environment))
-            {
-                data.Environment.Update(cmd, lights, data.ExposureTexture);
-                cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
-            }
-            using (new ProfilingScope(cmd, Samplers.Lights))
-            {
-                data.World.Emissive.Prepare(cmd);
-                data.LightBaker.UpdateBegin(cmd, lights, data.Environment, data.World.Emissive, data.Camera.transform.position, data.WorldToClip, data.Width, data.Height);
-                data.LightTables.Upload(cmd, lights);
-            }
-            using (new ProfilingScope(cmd, Samplers.Scene))
-                data.World.Build(cmd, data.Frame);
-            data.World.BindHitShaderGlobals(cmd);
+            data.Scene.Prepare(cmd, data.World, data.LightBaker, data.ExposureTexture, data.Camera.transform.position,
+                data.WorldToClip, data.Width, data.Height, data.Frame);
+            cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
         }
 
         private void RecordReferenceTrace(RenderGraph renderGraph, PathTracingCameraContext context, PathTracingWorld world, TextureHandle radiance,

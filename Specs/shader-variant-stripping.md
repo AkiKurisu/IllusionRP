@@ -4,8 +4,8 @@
 |---|---|
 | Version | 1.3.3 |
 | Status | Living |
-| Date | 2026-10-06 |
-| Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md) |
+| Date | 2026-10-11 |
+| Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md), [Path Tracing](path-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 Stripping removes only states that the complete build target cannot reach. Renderer capabilities and content usage are separate inputs; neither the currently open scene nor one changed asset represents the whole build.
 
@@ -18,7 +18,7 @@ Strip Unused Variants controls capability-based removal. Turning it off preserve
 1. Gather every target URP asset and renderer before variant enumeration.
 2. Prefilter keyword axes to the aggregate reachable states.
 3. Apply keyword rules across the target renderer set.
-4. Supplement URP/Core processing with reachable SH/reflection-atlas combinations and whole-pass rules.
+4. Supplement URP/Core processing with reachable SH/reflection-atlas combinations, whole-pass rules and resource-shader rules.
 5. Apply build-scoped content evidence to OIT, then compile the retained programs.
 
 ## Capabilities
@@ -28,6 +28,8 @@ Each target renderer contributes its requirements, including Deferred and 2D req
 A variant may be removed only if every target renderer can do without it. Missing or inconsistent renderer data prevents capability stripping. Shared features whose producer is outside IllusionRP remain unknown rather than being assumed disabled; this applies to screen-space occlusion on renderers without an active Illusion feature.
 
 Derived prefilters are a target-specific cache, not authoring intent. They are updated before Unity enumerates variants.
+
+Ray traced global illumination publishes through the SSR and SSGI seams, so it makes their keyword states reachable on its renderer.
 
 ## Keyword prefiltering
 
@@ -61,6 +63,7 @@ URP GBuffer and 2D passes are removed only when no target renderer needs Deferre
 | `SubsurfaceDiffuse` | Screen-space subsurface scattering. |
 | `WaterSSRData` | Opaque and transparent SSR on the same renderer. |
 | `PostDepthOnly` | Transparent depth, or OIT with transparent overdraw. |
+| `PathTracing` | Path tracing or ray traced global illumination. |
 
 IllusionRP pass rules require matching pass identity and URP pipeline tagging. Unknown, unreadable or unmatched pass metadata is preserved.
 
@@ -77,6 +80,16 @@ Contexts live only for their build, restore an enclosing context on exit and are
 Stripping policy changes invalidate compiled Shader caches. The optional SBP integration contributes the policy version to SBP's callback cache identity without making the core Editor assembly depend on SBP.
 
 Content builders also include policy and per-Shader usage in their own dependency identity, including unknown usage. This must invalidate both incremental decisions made before SBP and affected Shader write operations inside SBP. Per-build usage is not persisted into renderer settings, and global cache deletion is not an invalidation strategy.
+
+## Resource stripping
+
+Graphics and compute shaders referenced by the pipeline resources lose every variant when no target renderer has a capability they serve. Ray tracing shaders have no build callback and are always included.
+
+| Resource shaders | Kept when any target renderer has |
+|---|---|
+| Path tracing scene support: FGD, light baking, environment, environment lighting, emissive, motion and rectangle light shaders | Path tracing or ray traced global illumination. |
+| Path tracing output, reference accumulation and realtime composition shaders | Path tracing. |
+| Ray traced global illumination composite and radiance cache shaders | Ray traced global illumination. |
 
 ## Shader authoring
 

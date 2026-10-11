@@ -299,6 +299,11 @@ namespace Illusion.Rendering
         /// Get whether the renderer can sample screen space indirect diffuse texture.
         /// </summary>
         public bool SampleScreenSpaceIndirectDiffuse { get; internal set; } = true;
+
+        /// <summary>
+        /// Get whether the renderer samples the ray traced indirect diffuse texture.
+        /// </summary>
+        public bool SampleRayTracedIndirectDiffuse { get; internal set; }
         
         /// <summary>
         /// Get whether the renderer can sample screen space reflection texture.
@@ -1193,12 +1198,16 @@ namespace Illusion.Rendering
 
         private IndirectDiffuseMode GetIndirectDiffuseMode()
         {
+            if (SampleRayTracedIndirectDiffuse)
+            {
+                return IndirectDiffuseMode.RayTraced;
+            }
+
             if (SampleScreenSpaceIndirectDiffuse)
             {
                 return IndirectDiffuseMode.ScreenSpace;
             }
 
-            // Raytracing not implement yet.
             return IndirectDiffuseMode.Off;
         }
     }

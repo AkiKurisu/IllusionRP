@@ -15,6 +15,11 @@
 
 #include "Scene/ShadingData.hlsli"
 
+#if defined(PT_SEPARATE_SURFACE_EMISSION)
+// @IllusionRP: the emission a hit adds to the path, kept apart from its light sampling for the radiance cache update.
+static float3 g_PathSurfaceEmission;
+#endif
+
 // Global compile-time path tracer settings for debugging, performance or quality tweaks; could be in a separate file or Config.hlsli but it's convenient to have them in here where they're used.
 namespace PathTracer
 {
@@ -549,7 +554,9 @@ namespace PathTracer
         const bool debugPath = false;
 #endif
 
-        SurfaceData surfaceData = Bridge::loadSurface( payload, rayOrigin, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug);  // @IllusionRP
+        // @IllusionRP: a reference vertex that ends the path only collects emission, so it skips the material evaluation.
+        const bool emissionOnly = PATH_TRACER_MODE==PATH_TRACER_MODE_REFERENCE && path.isTerminatingAtNextBounce();
+        SurfaceData surfaceData = Bridge::loadSurface( payload, rayOrigin, rayDir, path.rayCone, path.getVertexIndex(), path.GetPixelPos(), workingContext.Debug, emissionOnly);  // @IllusionRP
         // @IllusionRP: emissive triangles of a targeted light only light the receivers it targets.
         if (surfaceData.neeTriangleLightIndex != RTXPT_INVALID_LIGHT_INDEX
             && !PathTracingLightAffects(t_LightsEx[surfaceData.neeTriangleLightIndex].TargetIndex, path.receiverInstanceID))
@@ -715,7 +722,11 @@ namespace PathTracer
 
                 float3 radiance = path.GetThp() * surfaceEmission;
                 float specRadianceAvg = path.hasFlag(PathFlags::stablePlaneBaseScatterDiff)?(0.0):(Average(radiance));
+#if defined(PT_SEPARATE_SURFACE_EMISSION)
+                g_PathSurfaceEmission += radiance;  // @IllusionRP
+#else
                 AccumulatePathRadiance( workingContext, path, radiance, specRadianceAvg, path.hasFlag(PathFlags::stablePlaneOnBranch), ShouldCollectGISecondaryRadiance(path) );
+#endif
 
                 //if (path.getVertexIndex()==2)
                 //workingContext.Debug.DrawDebugViz( path.GetPixelPos(), saturate(float4( 0, path.sceneLengthFromDenoisingLayer*1, 0, 1 )) );

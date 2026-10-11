@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add PRTGI sector relighting, camera cascades and a ray traced baker with configurable sample count and surfel merge distance.
+- Add ray traced global illumination for raster cameras, based on ReSTIR GI.
 
 ### Changed
 

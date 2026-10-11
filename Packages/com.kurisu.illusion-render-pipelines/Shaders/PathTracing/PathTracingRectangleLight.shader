@@ -28,6 +28,7 @@ Shader "Hidden/Illusion/PathTracingRectangleLight"
                 surface.smoothness = 0;
                 surface.emission = hit.frontFacing ? _EmissionColor.rgb : 0;
                 PathTracingWriteLitSurface(payload, hit, surface);
+                payload.familyAndFlags |= PT_SURFACE_LIGHT_EMITTER;
             }
             ENDHLSL
         }

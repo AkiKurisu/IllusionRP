@@ -57,6 +57,8 @@ namespace Illusion.Rendering.PathTracing
 
         public RenderTexture DummyFloat { get; }
 
+        public RenderTexture DummyUInt { get; }
+
         public RenderTexture DummyUIntArray { get; }
 
         public GraphicsBuffer DummyStructured { get; }
@@ -71,6 +73,7 @@ namespace Illusion.Rendering.PathTracing
             DummyFloat4 = CreateTexture(GraphicsFormat.R32G32B32A32_SFloat, TextureDimension.Tex2D);
             DummyFloat2 = CreateTexture(GraphicsFormat.R32G32_SFloat, TextureDimension.Tex2D);
             DummyFloat = CreateTexture(GraphicsFormat.R32_SFloat, TextureDimension.Tex2D);
+            DummyUInt = CreateTexture(GraphicsFormat.R32_UInt, TextureDimension.Tex2D);
             DummyUIntArray = CreateTexture(GraphicsFormat.R32_UInt, TextureDimension.Tex2DArray);
         }
 

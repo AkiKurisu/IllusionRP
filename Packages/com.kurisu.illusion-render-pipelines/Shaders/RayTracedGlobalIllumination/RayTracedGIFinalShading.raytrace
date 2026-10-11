@@ -1,0 +1,12 @@
+#pragma max_recursion_depth 1
+#pragma only_renderers d3d11
+
+#define WITH_NRD 1
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/FullSample/LightingPasses/GI/FinalShading.hlsl"
+
+[shader("miss")]
+void Miss_FinalShading(inout IllusionPathPayload payload : SV_RayPayload)
+{
+    payload.hitT = PT_MISS_T;
+}

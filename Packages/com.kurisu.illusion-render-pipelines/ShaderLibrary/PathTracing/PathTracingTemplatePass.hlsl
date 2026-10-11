@@ -41,6 +41,13 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
     if (!PathTracingAcceptShadowCaster(payload))
         return;
 #if defined(_ALPHATEST_ON) || defined(PATH_TRACING_TRANSMITS_SHADOWS)
+#if defined(PATH_TRACING_TRANSMITS_SHADOWS)
+    if (PathTracingSkipsTransmission(payload))
+    {
+        IgnoreHit();
+        return;
+    }
+#endif
 #if (defined(_SURFACE_TYPE_TRANSPARENT) || defined(_PATH_TRACING_TRANSMISSION_THIN)) && !defined(_PATH_TRACING_TRANSMISSION_REFRACTIVE)
     if (PathTracingIsCulledFace())
     {

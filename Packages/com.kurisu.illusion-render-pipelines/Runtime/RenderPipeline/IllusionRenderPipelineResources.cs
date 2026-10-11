@@ -50,6 +50,23 @@ namespace Illusion.Rendering
 
         public Shader pathTracingRectangleLightShader;
 
+        [Header("Ray Traced Global Illumination")]
+        public UnityEngine.Rendering.RayTracingShader rayTracedGIInitialSamplesRS;
+
+        public UnityEngine.Rendering.RayTracingShader rayTracedGITemporalResamplingRS;
+
+        public UnityEngine.Rendering.RayTracingShader rayTracedGISpatialResamplingRS;
+
+        public UnityEngine.Rendering.RayTracingShader rayTracedGIFinalShadingRS;
+
+        public ComputeShader rayTracedGICompositeCS;
+
+        public UnityEngine.Rendering.RayTracingShader rayTracedGIInitialSamplesQualityRS;
+
+        public UnityEngine.Rendering.RayTracingShader rayTracedGIRadianceCacheUpdateRS;
+
+        public ComputeShader rayTracedGIRadianceCacheCS;
+
         [Header("Area Lights")]
         public Shader areaLightShadowClearShader;
 

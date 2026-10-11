@@ -37,6 +37,7 @@ namespace Illusion.Rendering.Editor
         DeferredRendering = 1L << 18,
         Renderer2D = 1L << 19,
         UnmanagedScreenSpaceOcclusion = 1L << 20,
+        RayTracedGlobalIllumination = 1L << 21,
         All = ~0
     }
 
@@ -44,14 +45,14 @@ namespace Illusion.Rendering.Editor
     {
         private readonly ShaderFeatures[] _rendererFeatures;
 
-        private readonly HashSet<int> _pathTracingShaders;
+        private readonly Dictionary<int, ShaderFeatures> _resourceShaders;
 
         internal IllusionShaderBuildData(
             BuildTarget target,
             bool isValid,
             bool stripUnusedVariants,
             ShaderFeatures[] rendererFeatures,
-            HashSet<int> pathTracingShaders = null,
+            Dictionary<int, ShaderFeatures> resourceShaders = null,
             UrpKeywordState[] urpKeywordStates = null,
             bool stripUrpVariants = false)
         {
@@ -59,7 +60,7 @@ namespace Illusion.Rendering.Editor
             IsValid = isValid;
             StripUnusedVariants = stripUnusedVariants;
             _rendererFeatures = rendererFeatures ?? Array.Empty<ShaderFeatures>();
-            _pathTracingShaders = pathTracingShaders ?? new HashSet<int>();
+            _resourceShaders = resourceShaders ?? new Dictionary<int, ShaderFeatures>();
             UrpKeywordStates = urpKeywordStates ?? Array.Empty<UrpKeywordState>();
             StripUrpVariants = stripUrpVariants;
         }
@@ -88,9 +89,9 @@ namespace Illusion.Rendering.Editor
             return false;
         }
 
-        internal bool IsPathTracingShader(UnityEngine.Object shader)
+        internal bool IsUnreachableResourceShader(UnityEngine.Object shader)
         {
-            return _pathTracingShaders.Contains(shader.GetInstanceID());
+            return _resourceShaders.TryGetValue(shader.GetInstanceID(), out ShaderFeatures required) && !AnyRendererSupports(required);
         }
     }
 
@@ -254,34 +255,38 @@ namespace Illusion.Rendering.Editor
                 valid,
                 stripUnusedVariants,
                 rendererFeatures.ToArray(),
-                GetPathTracingShaders(),
+                GetResourceShaders(),
                 urpKeywordStates.ToArray(),
                 stripUnusedVariants && UrpBuildPreprocessor.s_StripUnusedVariants);
         }
 
-        private static HashSet<int> GetPathTracingShaders()
+        // Pipeline resource shaders that only path tracing or ray traced global illumination can reach.
+        private static Dictionary<int, ShaderFeatures> GetResourceShaders()
         {
-            var shaders = new HashSet<int>();
+            var shaders = new Dictionary<int, ShaderFeatures>();
             var resources = Resources.Load<IllusionRenderPipelineResources>(nameof(IllusionRenderPipelineResources));
             if (!resources)
                 return shaders;
-            UnityEngine.Object[] candidates =
+            const ShaderFeatures sharedScene = ShaderFeatures.PathTracing | ShaderFeatures.RayTracedGlobalIllumination;
+            (UnityEngine.Object Shader, ShaderFeatures Required)[] candidates =
             {
-                resources.pathTracingFGDShader,
-                resources.pathTracingAccumulationCS,
-                resources.pathTracingLightsBakerCS,
-                resources.pathTracingEnvironmentCS,
-                resources.pathTracingEmissiveCS,
-                resources.pathTracingRealtimeCS,
-                resources.pathTracingMotionCS,
-                resources.pathTracingOutputShader,
-                resources.pathTracingEnvironmentLightingShader,
-                resources.pathTracingRectangleLightShader
+                (resources.pathTracingFGDShader, sharedScene),
+                (resources.pathTracingLightsBakerCS, sharedScene),
+                (resources.pathTracingEnvironmentCS, sharedScene),
+                (resources.pathTracingEmissiveCS, sharedScene),
+                (resources.pathTracingMotionCS, sharedScene),
+                (resources.pathTracingEnvironmentLightingShader, sharedScene),
+                (resources.pathTracingRectangleLightShader, sharedScene),
+                (resources.pathTracingAccumulationCS, ShaderFeatures.PathTracing),
+                (resources.pathTracingRealtimeCS, ShaderFeatures.PathTracing),
+                (resources.pathTracingOutputShader, ShaderFeatures.PathTracing),
+                (resources.rayTracedGICompositeCS, ShaderFeatures.RayTracedGlobalIllumination),
+                (resources.rayTracedGIRadianceCacheCS, ShaderFeatures.RayTracedGlobalIllumination)
             };
-            foreach (UnityEngine.Object shader in candidates)
+            foreach (var (shader, required) in candidates)
             {
                 if (shader)
-                    shaders.Add(shader.GetInstanceID());
+                    shaders[shader.GetInstanceID()] = required;
             }
             return shaders;
         }
@@ -289,9 +294,9 @@ namespace Illusion.Rendering.Editor
         private static ShaderFeatures GetFeatures(IllusionRendererFeature feature)
         {
             ShaderFeatures features = ShaderFeatures.MainLightShadowsScreen;
-            if (feature.screenSpaceReflection)
+            if (feature.screenSpaceReflection || feature.rayTracedGlobalIllumination)
                 features |= ShaderFeatures.ScreenSpaceReflection;
-            if (feature.screenSpaceGlobalIllumination)
+            if (feature.screenSpaceGlobalIllumination || feature.rayTracedGlobalIllumination)
                 features |= ShaderFeatures.ScreenSpaceGlobalIllumination;
             if (feature.groundTruthAO)
                 features |= ShaderFeatures.ScreenSpaceOcclusion;
@@ -317,6 +322,8 @@ namespace Illusion.Rendering.Editor
                 features |= ShaderFeatures.TransparentScreenSpaceReflection;
             if (feature.pathTracing)
                 features |= ShaderFeatures.PathTracing;
+            if (feature.rayTracedGlobalIllumination)
+                features |= ShaderFeatures.RayTracedGlobalIllumination;
             if (feature.areaLights)
             {
                 features |= ShaderFeatures.AreaLights;

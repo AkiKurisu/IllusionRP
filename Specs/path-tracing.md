@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.3 |
 | Status | Draft |
-| Date | 2026-10-06 |
+| Date | 2026-10-11 |
 
 ## Rendering Modes
 
@@ -40,7 +40,7 @@ Realtime stable surfaces organize transport and reconstruction without introduci
 
 ## Scene and Material Inputs
 
-Use existing renderers, meshes, materials and property overrides with their original object/slot scope and precedence. Authored UVs, normal mapping and procedural inputs remain part of hit evaluation. Geometric orientation and ray placement are distinct from shading normals.
+Use existing renderers, meshes, materials and property overrides with their original object/slot scope and precedence. Authored UVs, normal mapping and procedural inputs remain part of hit evaluation. Geometric orientation and ray placement are distinct from shading normals. The participating scene, its lights and the lighting environment are prepared once per frame by a renderer-level scene shared with [ray traced global illumination](ray-traced-global-illumination.md); accumulation, stable planes, reconstruction and adaptive light sampling feedback remain path tracing's own.
 
 | Model | Contract |
 |---|---|

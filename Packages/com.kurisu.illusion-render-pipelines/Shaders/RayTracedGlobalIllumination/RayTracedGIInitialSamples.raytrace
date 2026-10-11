@@ -1,0 +1,18 @@
+#pragma max_recursion_depth 1
+#pragma only_renderers d3d11
+
+#define PATH_TRACER_MODE PATH_TRACER_MODE_REFERENCE
+#define RTXPT_PIPELINE_PERMUTATION_NAME GI
+// Performance mode, as the RTXDI sample's secondary surfaces: the receiver is vertex 1 and the secondary surface vertex 2,
+// which light sampling alone lights, with every specular lobe at least as rough as RTXDI's minimum secondary roughness.
+#define PT_BOUNCE_COUNT 2
+#define PT_DIFFUSE_BOUNCE_COUNT 2
+#define PT_NEE_ONLY
+#define PT_MIN_PERCEPTUAL_ROUGHNESS 0.5
+// As HDRP's ray traced GBuffer does, secondary surfaces are shaded as standard Lit, which keeps the coat but not transmission,
+// and GI rays pass through the surfaces that transmit, as HDRP's GI rays pass through transparent objects.
+#define PT_STANDARD_LIT
+#define PT_OPAQUE_LIT
+#define RAY_TRACED_GI_SKIP_TRANSMISSION
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIInitialSamples.hlsl"

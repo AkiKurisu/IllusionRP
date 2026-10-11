@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.2 |
 | Status | Living |
-| Date | 2026-10-06 |
+| Date | 2026-10-11 |
 
 Core design principles, rendering flows and source workflows for IllusionRP. These specifications explain how the system fits together and the behaviors that changes must preserve.
 
@@ -40,5 +40,6 @@ Keep an interface or resource name only when it identifies a necessary integrati
 | [World Scale](world-scale.md) | Conversion between logical world lengths and Unity world units. |
 | [Path Tracing](path-tracing.md) | Reference and Realtime modes, Unity material evaluation, IllusionRP scattering models and RTXPT integration. |
 | [Precomputed Radiance Transfer](precomputed-radiance-transfer.md) | Transport baking, sector scheduling, world lighting, cached visibility and per-camera publication. |
+| [Ray Traced Global Illumination](ray-traced-global-illumination.md) | Indirect diffuse and specular for raster cameras: the shared scene, ReSTIR GI resampling, NRD denoising and composition. |
 | [ASE Shader Workflow](ase-shader-workflow.md) | Ownership of templates, graphs, functions and generated shaders, and export convergence. |
 | [Upstream Source Migration](upstream-source-migration.md) | Source revisions, import history, host adaptation and difference markers. |

@@ -1,0 +1,10 @@
+#pragma max_recursion_depth 1
+#pragma only_renderers d3d11
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/FullSample/LightingPasses/GI/TemporalResampling.hlsl"
+
+[shader("miss")]
+void Miss_TemporalResampling(inout IllusionPathPayload payload : SV_RayPayload)
+{
+    payload.hitT = PT_MISS_T;
+}

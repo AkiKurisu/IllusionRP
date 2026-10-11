@@ -2,11 +2,11 @@
   "name": "Illusion.RenderPipelines.DLSSNeuralRendering.UnityRHI",
   "rootNamespace": "Illusion.Rendering.UnityRHI",
   "references": [
-    "Illusion.RenderPipelines",
-    "Ceres",
-    "UnityRhi.Runtime",
-    "Unity.RenderPipelines.Core.Runtime",
-    "Unity.RenderPipelines.Universal.Runtime"
+    "GUID:bfc869a05342f004ba5c103275ee3e63",
+    "GUID:e61a2a07ba2680848ad23eef5b7c024b",
+    "GUID:f024b5ee6a3a27e4fb89eb802254c52d",
+    "GUID:df380645f10b7bc4b97d4f5eb6303d95",
+    "GUID:15fc0a57446b3144c949da3e2b9737a9"
   ],
   "includePlatforms": [
     "Editor",

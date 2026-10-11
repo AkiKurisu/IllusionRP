@@ -49,6 +49,7 @@ namespace Illusion.Rendering.Editor
         // Global Illumination Settings
         private SerializedProperty _screenSpaceReflection;
         private SerializedProperty _screenSpaceGlobalIllumination;
+        private SerializedProperty _rayTracedGlobalIllumination;
         private SerializedProperty _precomputedRadianceTransferGI;
         private SerializedProperty _enableIndirectDiffuseRenderingLayers;
 
@@ -101,6 +102,7 @@ namespace Illusion.Rendering.Editor
             // Global Illumination Settings
             _screenSpaceReflection = Properties.Find(feature => feature.screenSpaceReflection);
             _screenSpaceGlobalIllumination = Properties.Find(feature => feature.screenSpaceGlobalIllumination);
+            _rayTracedGlobalIllumination = Properties.Find(feature => feature.rayTracedGlobalIllumination);
             _precomputedRadianceTransferGI = Properties.Find(feature => feature.precomputedRadianceTransferGI);
             _enableIndirectDiffuseRenderingLayers = Properties.Find(feature => feature.enableIndirectDiffuseRenderingLayers);
 
@@ -224,6 +226,7 @@ namespace Illusion.Rendering.Editor
             {
                 EditorGUILayout.PropertyField(_screenSpaceReflection, Styles.ScreenSpaceReflectionLabel);
                 EditorGUILayout.PropertyField(_screenSpaceGlobalIllumination, Styles.ScreenSpaceGlobalIlluminationLabel);
+                EditorGUILayout.PropertyField(_rayTracedGlobalIllumination, Styles.RayTracedGlobalIlluminationLabel);
                 EditorGUILayout.PropertyField(_precomputedRadianceTransferGI, Styles.PrecomputedRadianceTransferGILabel);
                 EditorGUILayout.PropertyField(_enableIndirectDiffuseRenderingLayers, Styles.EnableIndirectDiffuseRenderingLayersLabel);
             }
@@ -312,6 +315,8 @@ namespace Illusion.Rendering.Editor
                 "Enable screen space reflection.");
             public static readonly GUIContent ScreenSpaceGlobalIlluminationLabel = new("Screen Space GI",
                 "Enable screen space global illumination.");
+            public static readonly GUIContent RayTracedGlobalIlluminationLabel = new("Ray Traced GI",
+                "Enable ray traced global illumination for raster cameras on devices that support ray tracing.");
             public static readonly GUIContent PrecomputedRadianceTransferGILabel = new("Precomputed Radiance Transfer GI",
                 "Enable precomputed radiance transfer global illumination.");
             public static readonly GUIContent EnableIndirectDiffuseRenderingLayersLabel = new("Enable Indirect Diffuse Rendering Layers",

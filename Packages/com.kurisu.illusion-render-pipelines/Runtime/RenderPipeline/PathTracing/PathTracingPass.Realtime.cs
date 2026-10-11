@@ -202,7 +202,7 @@ namespace Illusion.Rendering.PathTracing
             passData.DenoiseKernel = _denoiseSpecHitTKernel;
             passData.ImageKernel = rayReconstruction ? _prepareKernel : _mergeKernel;
             passData.RayReconstruction = rayReconstruction;
-            passData.Constants = _resources.Constants;
+            passData.Constants = _scene.Resources.Constants;
             passData.StablePlanes = targets.StablePlanes;
             passData.StablePlanesHeader = stablePlanesHeader;
             passData.StableRadiance = stableRadiance;

@@ -40,6 +40,12 @@ namespace Illusion.Rendering
         public bool EnableScreenSpaceGlobalIllumination { get; set; } = true;
 
         /// <summary>
+        /// Whether enable Ray Traced Global Illumination.
+        /// </summary>
+        [ConfigVariable("r.rtgi")]
+        public bool EnableRayTracedGlobalIllumination { get; set; } = true;
+
+        /// <summary>
         /// Whether enable Contact Shadows.
         /// </summary>
         [ConfigVariable("r.contactshadows")]
@@ -138,6 +144,12 @@ namespace Illusion.Rendering
         // =================================== Debug ========================================= //
         [ConfigVariable("r.debug.velocity", IsEditor = true)]
         public bool EnableMotionVectorsDebug { get; set; }
+
+        /// <summary>
+        /// Average ray traced global illumination over frames while the view and scene stay unchanged.
+        /// </summary>
+        [ConfigVariable("r.debug.rtgi.accumulate", IsEditor = true)]
+        public bool EnableRayTracedGlobalIlluminationAccumulation { get; set; }
         
         [ConfigVariable("r.debug.ssr", IsEditor = true)]
         public bool EnableScreenSpaceReflectionDebug { get; set; }

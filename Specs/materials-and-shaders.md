@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.3.3 |
 | Status | Living |
-| Date | 2026-10-06 |
+| Date | 2026-10-11 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -55,7 +55,7 @@ Sampling eligibility and keyword reachability are different: global SSR/AO keywo
 
 ## Stencil
 
-Material stencil expresses ambient-occlusion opt-out and reflection reception without disturbing unrelated bits. Skin and Hair do not write those flags and use their default AO/SSR behavior. The material inspector owns flag synchronization; generated materials without it retain authored defaults.
+Material stencil expresses ambient-occlusion opt-out and reflection reception without disturbing unrelated bits. Reflection reception gates SSR and [ray traced global illumination](ray-traced-global-illumination.md#output-and-composition) specular alike. Skin and Hair do not write those flags and use their default AO/SSR behavior. The material inspector owns flag synchronization; generated materials without it retain authored defaults.
 
 Wet coverage uses a separate resource rather than claiming an existing stencil bit. VRS classification and XR motion overlap existing stencil meanings; they cannot be treated as independent material classifications. New consumers must reconcile existing writers before assigning meaning.
 

@@ -33,23 +33,7 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly IllusionRendererData _rendererData;
 
-        private readonly PathTracingResources _resources;
-
-        private readonly PathTracingEnvironment _environment;
-
-        private readonly PathTracingLightCollector _lights = new();
-
-        private readonly PathTracingLightTables _lightTables = new();
-
-        private readonly PathTracingRectangleLights _rectangleLights;
-
-        private readonly PathTracingLightBakerKernels _lightBakerKernels;
-
-        private readonly ComputeShader _emissiveShader;
-
-        private readonly ComputeShader _motionShader;
-
-        private readonly Dictionary<int, PathTracingWorld> _worlds = new();
+        private readonly PathTracingSharedScene _scene;
 
         private readonly Dictionary<int, PathTracingCameraContext> _contexts = new();
 
@@ -61,31 +45,21 @@ namespace Illusion.Rendering.PathTracing
 
         private static class Samplers
         {
-            public static readonly ProfilingSampler Environment = new("Path Tracing Environment");
-            public static readonly ProfilingSampler Lights = new("Path Tracing Lights");
-            public static readonly ProfilingSampler Scene = new("Path Tracing Acceleration Structure");
             public static readonly ProfilingSampler LightFeedback = new("Path Tracing Light Feedback");
             public static readonly ProfilingSampler StablePlanes = new("Path Tracing Stable Planes");
             public static readonly ProfilingSampler Paths = new("Path Tracing Paths");
         }
 
-        public PathTracingPass(IllusionRenderPipelineResources resources, IllusionRendererData rendererData)
+        public PathTracingPass(IllusionRenderPipelineResources resources, IllusionRendererData rendererData, PathTracingSharedScene scene)
         {
-            _resources = new PathTracingResources(resources.pathTracingFGDShader);
+            _scene = scene;
             profilingSampler = new ProfilingSampler("Path Tracing");
             renderPassEvent = IllusionRenderPassEvent.PathTracingPass;
             _outputMaterial = CoreUtils.CreateEngineMaterial(resources.pathTracingOutputShader);
             _rendererData = rendererData;
-            _rectangleLights = new PathTracingRectangleLights(resources.pathTracingRectangleLightShader);
-            _environment = new PathTracingEnvironment(resources.pathTracingEnvironmentCS, resources.pathTracingEnvironmentLightingShader);
-            _lightBakerKernels = new PathTracingLightBakerKernels(resources.pathTracingLightsBakerCS);
-            _emissiveShader = resources.pathTracingEmissiveCS;
-            _motionShader = resources.pathTracingMotionCS;
             InitializeReference(resources);
             InitializeRealtime(resources);
         }
-
-        public static bool IsSupported => SystemInfo.supportsRayTracing && SystemInfo.supportsRayTracingShaders;
 
         internal PathTracingLens Lens { get; set; }
 
@@ -113,12 +87,10 @@ namespace Illusion.Rendering.PathTracing
 
             var context = GetContext(camera);
             context.EnsureTargets(width, height);
-            var world = GetWorld(settings.layerMask.value);
             var perObjectSelector = _rendererData.AdditionalDirectionalPerObjectShadows
                 && camera.TryGetComponent(out PerObjectShadowLightSource selector) && selector.isActiveAndEnabled ? selector.Source : null;
-            _lights.Collect(settings.directionalAngularDiameter.value, perObjectSelector, _rendererData.PerObjectShadowRenderingLayer);
-            _rectangleLights.Update(_lights);
-            world.Update(camera, settings.layerMask.value, realtime);
+            var world = _scene.Update(camera, settings.layerMask.value, settings.directionalAngularDiameter.value, perObjectSelector,
+                _rendererData.PerObjectShadowRenderingLayer, realtime);
 
             TextureHandle image = realtime
                 ? RecordRealtime(renderGraph, cameraData, settings, context, world)
@@ -187,16 +159,6 @@ namespace Illusion.Rendering.PathTracing
             return context;
         }
 
-        private PathTracingWorld GetWorld(int layerMask)
-        {
-            if (!_worlds.TryGetValue(layerMask, out var world))
-            {
-                world = new PathTracingWorld(_emissiveShader, _motionShader);
-                _worlds.Add(layerMask, world);
-            }
-            return world;
-        }
-
         internal void ReleaseUnused()
         {
             _expired.Clear();
@@ -211,20 +173,6 @@ namespace Illusion.Rendering.PathTracing
                 _contexts.Remove(id);
                 _rayReconstruction?.Release(id);
             }
-
-            _expired.Clear();
-            foreach (var pair in _worlds)
-            {
-                if (PathTracingFrame.Index - pair.Value.LastUsedFrame > ContextReleaseFrames)
-                    _expired.Add(pair.Key);
-            }
-            foreach (int layerMask in _expired)
-            {
-                _worlds[layerMask].Dispose();
-                _worlds.Remove(layerMask);
-            }
-            if (_contexts.Count == 0)
-                _environment.Release();
         }
 
         public void Dispose()
@@ -232,14 +180,7 @@ namespace Illusion.Rendering.PathTracing
             foreach (var context in _contexts.Values)
                 context.Dispose();
             _contexts.Clear();
-            foreach (var world in _worlds.Values)
-                world.Dispose();
-            _worlds.Clear();
-            _rectangleLights.Dispose();
-            _lightTables.Dispose();
             DisposeRealtime();
-            _resources.Dispose();
-            _environment.Dispose();
             CoreUtils.Destroy(_outputMaterial);
         }
     }

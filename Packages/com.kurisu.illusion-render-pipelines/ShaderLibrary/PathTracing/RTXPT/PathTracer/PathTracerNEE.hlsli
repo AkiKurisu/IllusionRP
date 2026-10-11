@@ -227,7 +227,7 @@ namespace PathTracer
 #endif
 
             // Outer, light sampling vs path scatter (BSDF) multiple importance sampling is also important but can be approximated which is an user setting
-            float scatterPdfForDir = bsdf.evalPdf(shadingData, lightSample.Direction, kUseBSDFSampling);
+            float scatterPdfForDir = bsdf.lightSampledLobesOnly() ? 0.0 : bsdf.evalPdf(shadingData, lightSample.Direction, kUseBSDFSampling);  // @IllusionRP
 
 #if RTXPT_USE_APPROXIMATE_MIS
             float pathMIS = lightSampler.ComputeLightVsBSDF_MIS_ForLight_Approx(lightSample, candidateSampleCount, fullSamples, scatterPdfForDir);

@@ -7,6 +7,7 @@
 #define PT_RAY_VISIBILITY               1u
 #define PT_RAY_KIND_MASK                0x3u
 #define PT_RAY_CAMERA_CHAIN             (1u << 2)
+#define PT_RAY_SKIP_TRANSMISSION        (1u << 3)
 #define PT_RAY_SEED_SHIFT               4u
 
 #define PT_FAMILY_LIT                   0u
@@ -25,6 +26,7 @@
 #define PT_SURFACE_THIN                 (1u << 5)
 #define PT_SURFACE_BITANGENT_FLIP       (1u << 6)
 #define PT_SURFACE_SPECULAR_WORKFLOW    (1u << 7)
+#define PT_SURFACE_LIGHT_EMITTER        (1u << 8)
 
 
 #define PT_NO_POSITION_HISTORY          0xFFFFFFFFu
@@ -152,6 +154,17 @@ void PathTracingMarkCameraChain(inout IllusionPathPayload payload)
 bool PathTracingIsCameraChain(IllusionPathPayload payload)
 {
     return (payload.rayKindAndSeed & PT_RAY_CAMERA_CHAIN) != 0;
+}
+
+// A scatter ray that passes through every surface that transmits shadows.
+void PathTracingMarkSkipTransmission(inout IllusionPathPayload payload)
+{
+    payload.rayKindAndSeed |= PT_RAY_SKIP_TRANSMISSION;
+}
+
+bool PathTracingSkipsTransmission(IllusionPathPayload payload)
+{
+    return (payload.rayKindAndSeed & PT_RAY_SKIP_TRANSMISSION) != 0;
 }
 
 uint PathTracingGetFamily(IllusionPathPayload payload)

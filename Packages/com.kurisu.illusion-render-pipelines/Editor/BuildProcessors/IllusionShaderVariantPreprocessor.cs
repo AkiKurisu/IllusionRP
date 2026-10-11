@@ -61,7 +61,7 @@ namespace Illusion.Rendering.Editor
             new(
                 PathTracingPass.MaterialPassName,
                 PathTracingPass.MaterialPassName,
-                ShaderFeatures.PathTracing),
+                ShaderFeatures.PathTracing | ShaderFeatures.RayTracedGlobalIllumination),
         };
 
         public int callbackOrder => 100;
@@ -78,7 +78,7 @@ namespace Illusion.Rendering.Editor
             if (buildData == null || !buildData.IsValid || !buildData.StripUnusedVariants)
                 return;
 
-            if (IsUnusedPathTracingShader(buildData, shader))
+            if (buildData.IsUnreachableResourceShader(shader))
             {
                 compilerDataList.Clear();
                 return;
@@ -122,13 +122,8 @@ namespace Illusion.Rendering.Editor
             if (buildData == null || !buildData.IsValid || !buildData.StripUnusedVariants)
                 return;
 
-            if (IsUnusedPathTracingShader(buildData, shader))
+            if (buildData.IsUnreachableResourceShader(shader))
                 compilerDataList.Clear();
-        }
-
-        private static bool IsUnusedPathTracingShader(IllusionShaderBuildData buildData, UnityEngine.Object shader)
-        {
-            return buildData.IsPathTracingShader(shader) && !buildData.AnyRendererSupports(ShaderFeatures.PathTracing);
         }
 
         private static bool TryGetPassContract(string passName, out PassContract contract)
