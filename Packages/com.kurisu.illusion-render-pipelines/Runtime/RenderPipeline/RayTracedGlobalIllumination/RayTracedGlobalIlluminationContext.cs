@@ -270,6 +270,7 @@ namespace Illusion.Rendering
             DiffuseLighting = null;
             SpecularLighting = null;
             Accumulation = null;
+            SpecularAccumulation = null;
             PreviousDepth = null;
             PreviousNormalRoughness = null;
         }
