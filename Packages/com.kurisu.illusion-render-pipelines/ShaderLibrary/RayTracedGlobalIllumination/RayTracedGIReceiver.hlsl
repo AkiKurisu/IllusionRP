@@ -8,7 +8,7 @@ Texture2D<float> t_RayTracedGIDepth;
 Texture2D<float4> t_RayTracedGINormals;
 Texture2D<float4> t_RayTracedGIForwardGBuffer;
 
-// The previous frame's receivers: linear view depth, and the normal with the perceptual roughness.
+// The previous frame's receivers: device depth, and the normal with the perceptual roughness.
 Texture2D<float> t_RayTracedGIPrevDepth;
 Texture2D<float4> t_RayTracedGIPrevNormalRoughness;
 // URP motion vectors: the current minus the previous camera texture UV.
@@ -30,11 +30,11 @@ uint2 RayTracedGITexel(uint2 pixel, RayTracedGIView view)
     return min(pixel * uint(view.textureSizeAndScale.z), uint2(view.textureSizeAndScale.xy) - 1);
 }
 
-// Camera textures store the screen top first unless yFlip is -1.
-float3 RayTracedGICameraDirection(uint2 pixel, RayTracedGIView view)
+// Returns the camera-relative world position of a camera texel position at a device depth.
+float3 RayTracedGIUnproject(float2 texel, float deviceDepth, RayTracedGIView view)
 {
-    float2 ndc = (float2(RayTracedGITexel(pixel, view)) + 0.5 + view.jitter) / view.textureSizeAndScale.xy * 2.0 - 1.0;
-    return normalize(view.cameraW + view.cameraU * ndc.x + view.cameraV * (ndc.y * view.yFlip));
+    float4 position = mul(float4(texel, deviceDepth, 1.0), view.texelToWorld);
+    return position.xyz / position.w;
 }
 
 // Offsets a ray origin off the reconstructed receiver; the offset grows with distance as the depth precision drops.
@@ -43,36 +43,45 @@ float3 RayTracedGIRayOrigin(float3 positionWS, float3 normalWS, float viewDepth,
     return positionWS + normalWS * (view.rayBias + viewDepth * 1e-4);
 }
 
+// Both frames reconstruct receivers from their device depth through this function, so a receiver that did not move is the
+// same point in both.
+RayTracedGIReceiver MakeRayTracedGIReceiver(uint2 texel, float deviceDepth, float3 normalWS, float perceptualRoughness,
+    RayTracedGIView view)
+{
+    float3 position = RayTracedGIUnproject(float2(texel) + 0.5, deviceDepth, view);
+    RayTracedGIReceiver receiver;
+    receiver.valid = true;
+    receiver.positionWS = view.cameraPosition + position;
+    receiver.normalWS = normalWS;
+    // The view direction points toward the camera, or against its forward for an orthographic camera.
+    receiver.viewDirWS = view.orthographic != 0 ? -view.cameraForward : -normalize(position);
+    receiver.viewDepth = dot(position, view.cameraForward);
+    receiver.perceptualRoughness = perceptualRoughness;
+    return receiver;
+}
+
 RayTracedGIReceiver LoadPreviousRayTracedGIReceiver(int2 pixel, RayTracedGIView view)
 {
     RayTracedGIReceiver receiver = (RayTracedGIReceiver)0;
     if (any(pixel < 0) || any(pixel >= int2(view.viewportSize)))
         return receiver;
-    float viewDepth = t_RayTracedGIPrevDepth.Load(int3(pixel, 0));
-    if (!(viewDepth > 0.0))
+    float deviceDepth = t_RayTracedGIPrevDepth.Load(int3(pixel, 0));
+    if (deviceDepth == view.farDepth)
         return receiver;
     float4 normalRoughness = t_RayTracedGIPrevNormalRoughness.Load(int3(pixel, 0));
-    float3 direction = RayTracedGICameraDirection(uint2(pixel), view);
-    receiver.valid = true;
-    receiver.viewDepth = viewDepth;
-    receiver.positionWS = view.cameraPosition + direction * (viewDepth / dot(direction, view.cameraForward));
-    receiver.normalWS = normalize(normalRoughness.xyz);
-    receiver.viewDirWS = -direction;
-    receiver.perceptualRoughness = normalRoughness.w;
-    return receiver;
+    return MakeRayTracedGIReceiver(RayTracedGITexel(uint2(pixel), view), deviceDepth, normalize(normalRoughness.xyz),
+        normalRoughness.w, view);
 }
 
 // Projects a world position into a view; xy is the pixel position, z the linear view depth, or a negative depth behind it.
 float3 RayTracedGIProject(float3 positionWS, RayTracedGIView view)
 {
-    float3 d = positionWS - view.cameraPosition;
-    float z = dot(d, view.cameraW) / dot(view.cameraW, view.cameraW);
-    if (z <= 0.0)
+    float3 position = positionWS - view.cameraPosition;
+    float viewDepth = dot(position, view.cameraForward);
+    float4 texel = mul(float4(position, 1.0), view.worldToTexel);
+    if (viewDepth <= 0.0 || texel.w <= 0.0)
         return float3(0.0, 0.0, -1.0);
-    float2 ndc = float2(dot(d, view.cameraU) / dot(view.cameraU, view.cameraU),
-        dot(d, view.cameraV) / dot(view.cameraV, view.cameraV) * view.yFlip) / z;
-    float2 texel = (ndc + 1.0) * 0.5 * view.textureSizeAndScale.xy - 0.5 - view.jitter;
-    return float3(texel / view.textureSizeAndScale.z, dot(d, view.cameraForward));
+    return float3((texel.xy / texel.w - 0.5) / view.textureSizeAndScale.z, viewDepth);
 }
 
 RayTracedGIReceiver LoadRayTracedGIReceiver(uint2 pixel, RayTracedGIView view)
@@ -83,23 +92,16 @@ RayTracedGIReceiver LoadRayTracedGIReceiver(uint2 pixel, RayTracedGIView view)
 
     uint2 texel = RayTracedGITexel(pixel, view);
     float deviceDepth = t_RayTracedGIDepth.Load(int3(texel, 0));
-    float viewDepth = 1.0 / (view.zBufferParams.z * deviceDepth + view.zBufferParams.w);
-    if (!(viewDepth < view.farPlane * 0.9999))
+    if (deviceDepth == view.farDepth)
         return receiver;
 
-    float3 direction = RayTracedGICameraDirection(pixel, view);
     float3 normal = t_RayTracedGINormals.Load(int3(texel, 0)).xyz;
     float lengthSq = dot(normal, normal);
     if (lengthSq < 1e-6)
         return receiver;
 
-    receiver.valid = true;
-    receiver.viewDepth = viewDepth;
-    receiver.positionWS = view.cameraPosition + direction * (viewDepth / dot(direction, view.cameraForward));
-    receiver.normalWS = normal * rsqrt(lengthSq);
-    receiver.viewDirWS = -direction;
-    receiver.perceptualRoughness = 1.0 - t_RayTracedGIForwardGBuffer.Load(int3(texel, 0)).r;
-    return receiver;
+    return MakeRayTracedGIReceiver(texel, deviceDepth, normal * rsqrt(lengthSq),
+        1.0 - t_RayTracedGIForwardGBuffer.Load(int3(texel, 0)).r, view);
 }
 
 #endif

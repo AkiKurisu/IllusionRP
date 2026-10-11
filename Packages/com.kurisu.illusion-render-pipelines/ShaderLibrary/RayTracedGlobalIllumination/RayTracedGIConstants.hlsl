@@ -10,21 +10,21 @@
 // Keep in sync with RayTracedGIConstants.cs.
 struct RayTracedGIView
 {
+    // The projection the camera depth was rendered with, between camera-relative world positions and camera texel positions
+    // with texel centers at +0.5 and the device depth as z.
+    row_major float4x4 worldToTexel;
+    row_major float4x4 texelToWorld;
     float3 cameraPosition;
     float rayBias;
-    float3 cameraU;
-    float farPlane;
-    float3 cameraV;
-    float environmentDistance;
-    float3 cameraW;
-    float pixelConeSpreadAngle;
     float3 cameraForward;
-    float yFlip;
-    float4 zBufferParams;
+    float farDepth;
+    float environmentDistance;
+    // The width of a pixel's cone at a view depth is pixelConeWidth + viewDepth * pixelConeSpreadAngle.
+    float pixelConeWidth;
+    float pixelConeSpreadAngle;
+    uint orthographic;
     float2 viewportSize;
     float2 viewportSizeInv;
-    float2 jitter;
-    float2 pad1;
     // xy: the camera texture size, z: camera texels per traced pixel.
     float4 textureSizeAndScale;
 };

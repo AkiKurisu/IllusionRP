@@ -36,7 +36,7 @@ struct SecondarySample
 
 SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, float3 direction, float lobeRoughness)
 {
-    const float coneSpread = g_Const.ptConsts.camera.PixelConeSpreadAngle;
+    const float coneSpread = g_GIConst.view.pixelConeSpreadAngle;
     PathTracer::WorkingContext workingContext = GetWorkingContext();
     PathState path = PathTracer::EmptyPathInitialize(pixel, coneSpread);
     path.setVertexIndex(1);
@@ -44,7 +44,7 @@ SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, 
     path.setCounter(PackedCounters::DiffuseBounces, 1);
     path.SetOrigin(RayTracedGIRayOrigin(receiver.positionWS, receiver.normalWS, receiver.viewDepth, g_GIConst.view));
     path.SetDir(direction);
-    path.rayCone = RayCone::make(receiver.viewDepth * coneSpread, coneSpread);
+    path.rayCone = RayCone::make(g_GIConst.view.pixelConeWidth + receiver.viewDepth * coneSpread, coneSpread);
 
     SecondarySample secondary;
     secondary.position = path.GetOrigin() + direction * g_GIConst.view.environmentDistance;

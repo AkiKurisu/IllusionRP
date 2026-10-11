@@ -124,8 +124,7 @@ namespace Illusion.Rendering
             internal TextureHandle PostDepth;
             internal bool ComparePostDepth;
             internal TextureHandle Output;
-            internal Vector4 ZBufferParams;
-            internal float FarPlane;
+            internal RayTracedGIView View;
             internal int Width;
             internal int Height;
         }
@@ -209,8 +208,7 @@ namespace Illusion.Rendering
             internal TextureHandle ViewZ;
             internal TextureHandle NormalRoughness;
             internal TextureHandle MotionVectors;
-            internal Vector4 ZBufferParams;
-            internal float FarPlane;
+            internal RayTracedGIView View;
             internal float DenoisingRange;
             internal int Width;
             internal int Height;
@@ -227,8 +225,7 @@ namespace Illusion.Rendering
             internal TextureHandle ForwardGBuffer;
             internal TextureHandle PreviousDepth;
             internal TextureHandle PreviousNormalRoughness;
-            internal Vector4 ZBufferParams;
-            internal float FarPlane;
+            internal RayTracedGIView View;
             internal Vector4 TextureSizeAndScale;
             internal uint DenoiserMode;
             internal TextureHandle Diffuse;
@@ -376,7 +373,7 @@ namespace Illusion.Rendering
             bool historyValid = context.BeginFrame(camera.transform, HashCode.Combine(mode, settings.layerMask.value, denoiserType, halfResolution, checkerboard, volume.radianceClamp.value, specular, radianceCache),
                 _rendererData.ScaleWorldDistance(CutDistance));
             uint frameIndex = context.FrameIndex;
-            var constants = BuildConstants(camera, cameraConstants, projection, volume, context, historyValid, width, height,
+            var constants = BuildConstants(camera, worldToView, projection, volume, context, historyValid, width, height,
                 new Vector4(textureWidth, textureHeight, scale, 0.0f));
             // As in the RTXDI sample's black checkerboard mode, the active field alternates every frame.
             constants.RuntimeParams.ActiveCheckerboardField = !checkerboard ? 0u : (frameIndex & 1u) != 0 ? 1u : 2u;
@@ -533,8 +530,7 @@ namespace Illusion.Rendering
                     passData.ViewZ = renderGraph.ImportTexture(context.ViewZ);
                     passData.NormalRoughness = renderGraph.ImportTexture(context.NormalRoughness);
                     passData.MotionVectors = renderGraph.ImportTexture(context.MotionVectors);
-                    passData.ZBufferParams = constants.View.ZBufferParams;
-                    passData.FarPlane = constants.View.FarPlane;
+                    passData.View = constants.View;
                     passData.DenoisingRange = denoisingRange;
                     passData.Width = width;
                     passData.Height = height;
@@ -559,8 +555,7 @@ namespace Illusion.Rendering
                         cmd.SetComputeTextureParam(data.Shader, kernel, ShaderIDs._RayTracedGIViewZ, data.ViewZ);
                         cmd.SetComputeTextureParam(data.Shader, kernel, ShaderIDs._RayTracedGINormalRoughness, data.NormalRoughness);
                         cmd.SetComputeTextureParam(data.Shader, kernel, ShaderIDs._RayTracedGIMotionVectors, data.MotionVectors);
-                        cmd.SetComputeVectorParam(data.Shader, ShaderIDs._RayTracedGIZBufferParams, data.ZBufferParams);
-                        cmd.SetComputeFloatParam(data.Shader, ShaderIDs._RayTracedGIFarPlane, data.FarPlane);
+                        SetViewDepth(cmd, data.Shader, data.View);
                         cmd.SetComputeFloatParam(data.Shader, ShaderIDs._RayTracedGIDenoisingRange, data.DenoisingRange);
                         cmd.SetComputeIntParams(data.Shader, ShaderIDs._RayTracedGISize, data.Width, data.Height);
                         SetTextureScale(cmd, data.Shader, data.TextureSizeAndScale);
@@ -579,8 +574,8 @@ namespace Illusion.Rendering
                     Specular = specular ? context.SpecularLighting : null,
                     SpecularOutput = context.DenoisedSpecular,
                     WorldToView = camera.worldToCameraMatrix,
-                    ViewToClip = GL.GetGPUProjectionMatrix(camera.nonJitteredProjectionMatrix, constants.View.YFlip < 0.0f),
-                    Jitter = constants.View.Jitter / scale,
+                    ViewToClip = GL.GetGPUProjectionMatrix(camera.nonJitteredProjectionMatrix, SystemInfo.graphicsUVStartsAtTop),
+                    Jitter = TexelJitter(projection, camera.nonJitteredProjectionMatrix, new Vector2(textureWidth, textureHeight)) / scale,
                     Width = width,
                     Height = height,
                     DenoisingRange = denoisingRange,
@@ -623,8 +618,7 @@ namespace Illusion.Rendering
                 passData.ForwardGBuffer = forwardGBuffer;
                 passData.PreviousDepth = renderGraph.ImportTexture(context.PreviousDepth);
                 passData.PreviousNormalRoughness = renderGraph.ImportTexture(context.PreviousNormalRoughness);
-                passData.ZBufferParams = constants.View.ZBufferParams;
-                passData.FarPlane = constants.View.FarPlane;
+                passData.View = constants.View;
                 passData.TextureSizeAndScale = constants.View.TextureSizeAndScale;
                 passData.Diffuse = compositeInput;
                 passData.DenoiserMode = denoiserMode;
@@ -690,8 +684,7 @@ namespace Illusion.Rendering
                     cmd.SetComputeTextureParam(data.Shader, store, ShaderIDs._RayTracedGIForwardGBuffer, data.ForwardGBuffer);
                     cmd.SetComputeTextureParam(data.Shader, store, ShaderIDs._RayTracedGIPrevDepth, data.PreviousDepth);
                     cmd.SetComputeTextureParam(data.Shader, store, ShaderIDs._RayTracedGIPrevNormalRoughness, data.PreviousNormalRoughness);
-                    cmd.SetComputeVectorParam(data.Shader, ShaderIDs._RayTracedGIZBufferParams, data.ZBufferParams);
-                    cmd.SetComputeFloatParam(data.Shader, ShaderIDs._RayTracedGIFarPlane, data.FarPlane);
+                    SetViewDepth(cmd, data.Shader, data.View);
                     SetTextureScale(cmd, data.Shader, data.TextureSizeAndScale);
                     cmd.DispatchCompute(data.Shader, store, (data.Width + 7) / 8, (data.Height + 7) / 8, 1);
                 });
@@ -715,6 +708,26 @@ namespace Illusion.Rendering
         {
             cmd.SetComputeIntParam(shader, ShaderIDs._RayTracedGITextureScale, (int)textureSizeAndScale.z);
             cmd.SetComputeIntParams(shader, ShaderIDs._RayTracedGITextureSize, (int)textureSizeAndScale.x, (int)textureSizeAndScale.y);
+        }
+
+        // The view depth of a camera texel is its camera-relative position projected onto the camera forward.
+        private static void SetViewDepth(ComputeCommandBuffer cmd, ComputeShader shader, in RayTracedGIView view)
+        {
+            var texelToWorld = view.TexelToWorld;
+            var forward = view.CameraForward;
+            cmd.SetComputeVectorParam(shader, ShaderIDs._RayTracedGIViewDepthZ,
+                forward.x * texelToWorld.GetRow(0) + forward.y * texelToWorld.GetRow(1) + forward.z * texelToWorld.GetRow(2));
+            cmd.SetComputeVectorParam(shader, ShaderIDs._RayTracedGIViewDepthW, texelToWorld.GetRow(3));
+            cmd.SetComputeFloatParam(shader, ShaderIDs._RayTracedGIFarDepth, view.FarDepth);
+        }
+
+        // The jitter of the camera depth in camera texels, from the jittered and the unjittered perspective or orthographic projection.
+        private static Vector2 TexelJitter(Matrix4x4 projection, Matrix4x4 nonJittered, Vector2 textureSize)
+        {
+            float x = (projection.m02 - nonJittered.m02) * nonJittered.m32 + (projection.m03 - nonJittered.m03) * nonJittered.m33;
+            float y = (projection.m12 - nonJittered.m12) * nonJittered.m32 + (projection.m13 - nonJittered.m13) * nonJittered.m33;
+            float yFlip = SystemInfo.graphicsUVStartsAtTop ? -1.0f : 1.0f;
+            return new Vector2(-x * textureSize.x, yFlip * y * textureSize.y) * 0.5f;
         }
 
         // RTGI specular fills what SSR leaves to reflection probes, on the opaque receivers that SSR traces, and the result is
@@ -747,8 +760,7 @@ namespace Illusion.Rendering
                 enableRandomWrite = true,
                 name = "_SsrLightingTexture"
             });
-            passData.ZBufferParams = view.ZBufferParams;
-            passData.FarPlane = view.FarPlane;
+            passData.View = view;
             passData.Width = width;
             passData.Height = height;
             builder.UseTexture(passData.ScreenSpaceReflection);
@@ -775,8 +787,7 @@ namespace Illusion.Rendering
                 cmd.SetComputeTextureParam(data.Shader, kernel, ShaderIDs._RayTracedGIPostDepth, data.PostDepth);
                 cmd.SetComputeIntParam(data.Shader, ShaderIDs._RayTracedGIComparePostDepth, data.ComparePostDepth ? 1 : 0);
                 cmd.SetComputeTextureParam(data.Shader, kernel, ShaderIDs._RayTracedGIReflection, data.Output);
-                cmd.SetComputeVectorParam(data.Shader, ShaderIDs._RayTracedGIZBufferParams, data.ZBufferParams);
-                cmd.SetComputeFloatParam(data.Shader, ShaderIDs._RayTracedGIFarPlane, data.FarPlane);
+                SetViewDepth(cmd, data.Shader, data.View);
                 cmd.SetComputeIntParams(data.Shader, ShaderIDs._RayTracedGISize, data.Width, data.Height);
                 cmd.DispatchCompute(data.Shader, kernel, (data.Width + 7) / 8, (data.Height + 7) / 8, 1);
             });
@@ -942,38 +953,43 @@ namespace Illusion.Rendering
             return indices;
         }
 
-        private RayTracedGIConstants BuildConstants(Camera camera, in PathTracingCameraData cameraData, Matrix4x4 projection,
+        private RayTracedGIConstants BuildConstants(Camera camera, Matrix4x4 worldToView, Matrix4x4 projection,
             RayTracedGlobalIllumination volume, RayTracedGlobalIlluminationContext context, bool historyValid, int width, int height,
             Vector4 textureSizeAndScale)
         {
-            float near = camera.nearClipPlane;
-            float far = camera.farClipPlane;
-            Vector4 zBufferParams = SystemInfo.usesReversedZBuffer
-                ? new Vector4(-1.0f + far / near, 1.0f, (-1.0f + far / near) / far, 1.0f / far)
-                : new Vector4(1.0f - far / near, far / near, (1.0f - far / near) / far, far / near / far);
+            // Receivers are reconstructed through the projection the camera depth was rendered with, jitter included,
+            // so perspective, orthographic, lens shifted and oblique projections all match raster. The matrices are camera-relative
+            // to keep their precision.
+            var viewToWorld = worldToView.inverse;
+            var relativeWorldToView = worldToView;
+            relativeWorldToView.SetColumn(3, new Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+            var relativeViewToWorld = viewToWorld;
+            relativeViewToWorld.SetColumn(3, new Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+            var gpuProjection = GL.GetGPUProjectionMatrix(projection, true);
             float yFlip = SystemInfo.graphicsUVStartsAtTop ? -1.0f : 1.0f;
-            var nonJittered = camera.nonJitteredProjectionMatrix;
-            var jitter = new Vector2((projection.m02 - nonJittered.m02) * textureSizeAndScale.x * 0.5f,
-                -yFlip * (projection.m12 - nonJittered.m12) * textureSizeAndScale.y * 0.5f);
+            var texelToClip = Matrix4x4.identity;
+            texelToClip.m00 = 2.0f / textureSizeAndScale.x;
+            texelToClip.m03 = -1.0f;
+            texelToClip.m11 = 2.0f * yFlip / textureSizeAndScale.y;
+            texelToClip.m13 = -yFlip;
+            float pixelSize = 2.0f / (Mathf.Abs(projection.m11) * height);
 
             return new RayTracedGIConstants
             {
                 View = new RayTracedGIView
                 {
-                    CameraPosition = cameraData.PosW,
+                    WorldToTexel = texelToClip.inverse * gpuProjection * relativeWorldToView,
+                    TexelToWorld = relativeViewToWorld * gpuProjection.inverse * texelToClip,
+                    CameraPosition = viewToWorld.GetColumn(3),
                     RayBias = _rendererData.ScaleWorldDistance(RayBias),
-                    CameraU = cameraData.CameraU,
-                    FarPlane = far,
-                    CameraV = cameraData.CameraV,
+                    CameraForward = -((Vector3)viewToWorld.GetColumn(2)).normalized,
+                    FarDepth = SystemInfo.usesReversedZBuffer ? 0.0f : 1.0f,
                     EnvironmentDistance = _rendererData.ScaleWorldDistance(EnvironmentDistance),
-                    CameraW = cameraData.CameraW,
-                    PixelConeSpreadAngle = cameraData.PixelConeSpreadAngle,
-                    CameraForward = cameraData.DirectionW,
-                    YFlip = yFlip,
-                    ZBufferParams = zBufferParams,
+                    PixelConeWidth = camera.orthographic ? pixelSize : 0.0f,
+                    PixelConeSpreadAngle = camera.orthographic ? 0.0f : Mathf.Atan(pixelSize),
+                    Orthographic = camera.orthographic ? 1u : 0u,
                     ViewportSize = new Vector2(width, height),
                     ViewportSizeInv = new Vector2(1.0f / width, 1.0f / height),
-                    Jitter = jitter,
                     TextureSizeAndScale = textureSizeAndScale
                 },
                 PrevView = context.PreviousView,
@@ -1106,8 +1122,9 @@ namespace Illusion.Rendering
             public static readonly int _RayTracedGIForwardGBuffer = Shader.PropertyToID("_RayTracedGIForwardGBuffer");
             public static readonly int _RayTracedGIPrevDepth = Shader.PropertyToID("_RayTracedGIPrevDepth");
             public static readonly int _RayTracedGIPrevNormalRoughness = Shader.PropertyToID("_RayTracedGIPrevNormalRoughness");
-            public static readonly int _RayTracedGIZBufferParams = Shader.PropertyToID("_RayTracedGIZBufferParams");
-            public static readonly int _RayTracedGIFarPlane = Shader.PropertyToID("_RayTracedGIFarPlane");
+            public static readonly int _RayTracedGIViewDepthZ = Shader.PropertyToID("_RayTracedGIViewDepthZ");
+            public static readonly int _RayTracedGIViewDepthW = Shader.PropertyToID("_RayTracedGIViewDepthW");
+            public static readonly int _RayTracedGIFarDepth = Shader.PropertyToID("_RayTracedGIFarDepth");
             public static readonly int _RayTracedGIDenoiserMode = Shader.PropertyToID("_RayTracedGIDenoiserMode");
             public static readonly int _RayTracedGIMotion = Shader.PropertyToID("_RayTracedGIMotion");
             public static readonly int t_RayTracedGIPreIntegratedFGD = Shader.PropertyToID("t_RayTracedGIPreIntegratedFGD");

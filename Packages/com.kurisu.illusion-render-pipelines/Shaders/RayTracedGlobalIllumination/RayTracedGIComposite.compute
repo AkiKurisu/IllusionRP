@@ -70,8 +70,11 @@ Texture2D<float4> _RayTracedGINormals;
 Texture2D<float4> _RayTracedGIForwardGBuffer;
 RWTexture2D<float> _RayTracedGIPrevDepth;
 RWTexture2D<float4> _RayTracedGIPrevNormalRoughness;
-float4 _RayTracedGIZBufferParams;
-float _RayTracedGIFarPlane;
+// The linear view depth of a camera texel is dot(_RayTracedGIViewDepthZ, p) / dot(_RayTracedGIViewDepthW, p), with
+// p = (texel + 0.5, device depth, 1), through the projection the camera depth was rendered with.
+float4 _RayTracedGIViewDepthZ;
+float4 _RayTracedGIViewDepthW;
+float _RayTracedGIFarDepth;
 uint _RayTracedGITextureScale;
 uint2 _RayTracedGITextureSize;
 
@@ -80,7 +83,13 @@ uint2 TextureTexel(uint2 pixel)
     return min(pixel * _RayTracedGITextureScale, _RayTracedGITextureSize - 1);
 }
 
-// Keeps this frame's receivers for the next frame's temporal resampling; zero depth marks pixels without a receiver.
+float ViewDepth(uint2 texel, float deviceDepth)
+{
+    float4 position = float4(float2(texel) + 0.5, deviceDepth, 1.0);
+    return dot(_RayTracedGIViewDepthZ, position) / dot(_RayTracedGIViewDepthW, position);
+}
+
+// Keeps this frame's receivers for the next frame's temporal resampling; the far depth marks pixels without a receiver.
 [numthreads(8, 8, 1)]
 void StoreHistory(uint3 id : SV_DispatchThreadID)
 {
@@ -88,10 +97,10 @@ void StoreHistory(uint3 id : SV_DispatchThreadID)
         return;
 
     uint2 texel = TextureTexel(id.xy);
-    float viewDepth = 1.0 / (_RayTracedGIZBufferParams.z * _RayTracedGIDepth.Load(int3(texel, 0)) + _RayTracedGIZBufferParams.w);
+    float deviceDepth = _RayTracedGIDepth.Load(int3(texel, 0));
     float3 normal = _RayTracedGINormals.Load(int3(texel, 0)).xyz;
-    bool valid = viewDepth < _RayTracedGIFarPlane * 0.9999 && dot(normal, normal) > 1e-6;
-    _RayTracedGIPrevDepth[id.xy] = valid ? viewDepth : 0.0;
+    bool valid = deviceDepth != _RayTracedGIFarDepth && dot(normal, normal) > 1e-6;
+    _RayTracedGIPrevDepth[id.xy] = valid ? deviceDepth : _RayTracedGIFarDepth;
     _RayTracedGIPrevNormalRoughness[id.xy] = float4(valid ? normalize(normal) : 0.0, 1.0 - _RayTracedGIForwardGBuffer.Load(int3(texel, 0)).r);
 }
 
@@ -114,9 +123,8 @@ void MergeReflection(uint3 id : SV_DispatchThreadID)
 
     float4 reflection = _RayTracedGIScreenSpaceReflection.Load(int3(id.xy, 0));
     float deviceDepth = _RayTracedGIDepth.Load(int3(id.xy, 0));
-    float viewDepth = 1.0 / (_RayTracedGIZBufferParams.z * deviceDepth + _RayTracedGIZBufferParams.w);
     float3 normal = _RayTracedGINormals.Load(int3(id.xy, 0)).xyz;
-    bool receiver = viewDepth < _RayTracedGIFarPlane * 0.9999 && dot(normal, normal) > 1e-6
+    bool receiver = deviceDepth != _RayTracedGIFarDepth && dot(normal, normal) > 1e-6
         && (_RayTracedGIStencil.Load(int3(id.xy, 0)).y & STENCIL_USAGE_IS_SSR) != 0
         && (_RayTracedGIComparePostDepth == 0 || _RayTracedGIPostDepth.Load(int3(id.xy, 0)) == deviceDepth);
     float coverage = receiver ? 1.0 - reflection.a : 0.0;
@@ -139,11 +147,11 @@ void PrepareGuides(uint3 id : SV_DispatchThreadID)
         return;
 
     uint2 texel = TextureTexel(id.xy);
-    float viewDepth = 1.0 / (_RayTracedGIZBufferParams.z * _RayTracedGIDepth.Load(int3(texel, 0)) + _RayTracedGIZBufferParams.w);
+    float deviceDepth = _RayTracedGIDepth.Load(int3(texel, 0));
     float3 normal = _RayTracedGINormals.Load(int3(texel, 0)).xyz;
-    bool valid = viewDepth < _RayTracedGIFarPlane * 0.9999 && dot(normal, normal) > 1e-6;
+    bool valid = deviceDepth != _RayTracedGIFarDepth && dot(normal, normal) > 1e-6;
     float roughness = 1.0 - _RayTracedGIForwardGBuffer.Load(int3(texel, 0)).r;
-    _RayTracedGIViewZ[id.xy] = valid ? -viewDepth : -2.0 * _RayTracedGIDenoisingRange;
+    _RayTracedGIViewZ[id.xy] = valid ? -ViewDepth(texel, deviceDepth) : -2.0 * _RayTracedGIDenoisingRange;
     _RayTracedGINormalRoughness[id.xy] = NRD_FrontEnd_PackNormalAndRoughness(valid ? normalize(normal) : float3(0.0, 0.0, 1.0), roughness, 0.0);
     _RayTracedGIMotionVectors[id.xy] = float4(_RayTracedGIMotion.Load(int3(texel, 0)), 0.0, 0.0);
 }

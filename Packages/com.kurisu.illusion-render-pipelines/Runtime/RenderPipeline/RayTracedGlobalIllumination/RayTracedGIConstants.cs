@@ -8,21 +8,18 @@ namespace Illusion.Rendering
     [StructLayout(LayoutKind.Sequential)]
     internal struct RayTracedGIView
     {
+        public Matrix4x4 WorldToTexel;
+        public Matrix4x4 TexelToWorld;
         public Vector3 CameraPosition;
         public float RayBias;
-        public Vector3 CameraU;
-        public float FarPlane;
-        public Vector3 CameraV;
-        public float EnvironmentDistance;
-        public Vector3 CameraW;
-        public float PixelConeSpreadAngle;
         public Vector3 CameraForward;
-        public float YFlip;
-        public Vector4 ZBufferParams;
+        public float FarDepth;
+        public float EnvironmentDistance;
+        public float PixelConeWidth;
+        public float PixelConeSpreadAngle;
+        public uint Orthographic;
         public Vector2 ViewportSize;
         public Vector2 ViewportSizeInv;
-        public Vector2 Jitter;
-        public Vector2 Pad1;
         public Vector4 TextureSizeAndScale;
     }
 
