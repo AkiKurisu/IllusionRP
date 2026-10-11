@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Strip unused SH and reflection probe atlas variants.
+- Merge the ray traced global illumination resampling and final shading ray tracing shaders into one shader.
 
 ### Fixed
 

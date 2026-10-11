@@ -20,9 +20,11 @@ namespace Illusion.Rendering
 
         private const string InitialSamplesRayGenName = "RayGen_InitialSamples";
 
-        private const string ResamplingRayGenName = "RayGen";
+        private const string TemporalResamplingRayGenName = "RayGen_TemporalResampling";
 
-        private const string FinalShadingRayGenName = "RayGen";
+        private const string SpatialResamplingRayGenName = "RayGen_SpatialResampling";
+
+        private const string FinalShadingRayGenName = "RayGen_FinalShading";
 
         private const string CacheUpdateRayGenName = "RayGen_RadianceCacheUpdate";
 
@@ -44,11 +46,7 @@ namespace Illusion.Rendering
 
         private readonly RayTracingShader _initialSamplesShader;
 
-        private readonly RayTracingShader _temporalShader;
-
-        private readonly RayTracingShader _spatialShader;
-
-        private readonly RayTracingShader _finalShadingShader;
+        private readonly RayTracingShader _resamplingShader;
 
         private readonly RayTracingShader _initialSamplesQualityShader;
 
@@ -150,9 +148,7 @@ namespace Illusion.Rendering
             internal IllusionRenderPipelineResources PipelineResources;
             internal PathTracingDiffusionProfiles Profiles;
             internal RayTracingShader InitialSamplesShader;
-            internal RayTracingShader TemporalShader;
-            internal RayTracingShader SpatialShader;
-            internal RayTracingShader FinalShadingShader;
+            internal RayTracingShader ResamplingShader;
             internal GraphicsBuffer NeighborOffsets;
             internal bool Temporal;
             internal bool Spatial;
@@ -251,9 +247,7 @@ namespace Illusion.Rendering
             _rendererData = rendererData;
             _scene = scene;
             _initialSamplesShader = resources.rayTracedGIInitialSamplesRS;
-            _temporalShader = resources.rayTracedGITemporalResamplingRS;
-            _spatialShader = resources.rayTracedGISpatialResamplingRS;
-            _finalShadingShader = resources.rayTracedGIFinalShadingRS;
+            _resamplingShader = resources.rayTracedGIResamplingRS;
             _initialSamplesQualityShader = resources.rayTracedGIInitialSamplesQualityRS;
             _cacheUpdateShader = resources.rayTracedGIRadianceCacheUpdateRS;
             _cacheShader = resources.rayTracedGIRadianceCacheCS;
@@ -318,8 +312,7 @@ namespace Illusion.Rendering
 
         public static bool HasResources(IllusionRenderPipelineResources resources)
         {
-            return resources.rayTracedGIInitialSamplesRS && resources.rayTracedGITemporalResamplingRS && resources.rayTracedGISpatialResamplingRS
-                   && resources.rayTracedGIFinalShadingRS && resources.rayTracedGICompositeCS;
+            return resources.rayTracedGIInitialSamplesRS && resources.rayTracedGIResamplingRS && resources.rayTracedGICompositeCS;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -397,9 +390,7 @@ namespace Illusion.Rendering
                 passData.PipelineResources = _rendererData.RuntimeResources;
                 passData.Profiles = PathTracingDiffusionProfiles.Capture(_rendererData);
                 passData.InitialSamplesShader = radianceCache ? _initialSamplesQualityShader : _initialSamplesShader;
-                passData.TemporalShader = _temporalShader;
-                passData.SpatialShader = _spatialShader;
-                passData.FinalShadingShader = _finalShadingShader;
+                passData.ResamplingShader = _resamplingShader;
                 passData.NeighborOffsets = _neighborOffsets;
                 passData.Temporal = temporal;
                 passData.Spatial = spatial;
@@ -491,26 +482,24 @@ namespace Illusion.Rendering
                     using (new ProfilingScope(cmd, Samplers.InitialSamples))
                         cmd.DispatchRays(initial, InitialSamplesRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
 
+                    // The resampling passes share one shader, so every resource of the final shading pass is bound before the first.
+                    var resampling = data.ResamplingShader;
+                    BindResampling(cmd, resampling, data);
+                    cmd.SetRayTracingTextureParam(resampling, ShaderIDs.u_DiffuseLighting, data.DiffuseLighting);
+                    cmd.SetRayTracingTextureParam(resampling, ShaderIDs.u_SpecularLighting, data.SpecularLighting);
+                    cmd.SetRayTracingTextureParam(resampling, ShaderIDs.t_RayTracedGIPreIntegratedFGD, data.Scene.Resources.GetFGD(cmd));
                     if (data.Temporal)
                     {
-                        BindResampling(cmd, data.TemporalShader, data);
                         using (new ProfilingScope(cmd, Samplers.TemporalResampling))
-                            cmd.DispatchRays(data.TemporalShader, ResamplingRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
+                            cmd.DispatchRays(resampling, TemporalResamplingRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
                     }
                     if (data.Spatial)
                     {
-                        BindResampling(cmd, data.SpatialShader, data);
                         using (new ProfilingScope(cmd, Samplers.SpatialResampling))
-                            cmd.DispatchRays(data.SpatialShader, ResamplingRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
+                            cmd.DispatchRays(resampling, SpatialResamplingRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
                     }
-
-                    var finalShading = data.FinalShadingShader;
-                    BindResampling(cmd, finalShading, data);
-                    cmd.SetRayTracingTextureParam(finalShading, ShaderIDs.u_DiffuseLighting, data.DiffuseLighting);
-                    cmd.SetRayTracingTextureParam(finalShading, ShaderIDs.u_SpecularLighting, data.SpecularLighting);
-                    cmd.SetRayTracingTextureParam(finalShading, ShaderIDs.t_RayTracedGIPreIntegratedFGD, data.Scene.Resources.GetFGD(cmd));
                     using (new ProfilingScope(cmd, Samplers.FinalShading))
-                        cmd.DispatchRays(finalShading, FinalShadingRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
+                        cmd.DispatchRays(resampling, FinalShadingRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
                 });
             }
 

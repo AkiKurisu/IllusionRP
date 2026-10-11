@@ -53,11 +53,7 @@ namespace Illusion.Rendering
         [Header("Ray Traced Global Illumination")]
         public UnityEngine.Rendering.RayTracingShader rayTracedGIInitialSamplesRS;
 
-        public UnityEngine.Rendering.RayTracingShader rayTracedGITemporalResamplingRS;
-
-        public UnityEngine.Rendering.RayTracingShader rayTracedGISpatialResamplingRS;
-
-        public UnityEngine.Rendering.RayTracingShader rayTracedGIFinalShadingRS;
+        public UnityEngine.Rendering.RayTracingShader rayTracedGIResamplingRS;
 
         public ComputeShader rayTracedGICompositeCS;
 
