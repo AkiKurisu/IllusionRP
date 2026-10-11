@@ -5,11 +5,19 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [1.3.3] - 2026-10-4
+## [1.3.3] - 2026-10-11
+
+### Added
+
+- Add PRTGI sector relighting, camera cascades and a ray traced baker with configurable sample count and surfel merge distance.
 
 ### Changed
 
 - Strip unused SH and reflection probe atlas variants.
+
+### Fixed
+
+- Fix Android Vulkan variants failing to compile with PRTGI enabled, and path tracing passes failing to compile in the Editor on mobile build targets.
 
 ## [1.3.2] - 2026-10-2
 
