@@ -1,0 +1,22 @@
+#pragma max_recursion_depth 1
+#pragma only_renderers d3d11
+
+#define WITH_NRD 1
+
+#define RayGen RayGen_TemporalResampling
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/FullSample/LightingPasses/GI/TemporalResampling.hlsl"
+#undef RayGen
+
+#define RayGen RayGen_SpatialResampling
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/FullSample/LightingPasses/GI/SpatialResampling.hlsl"
+#undef RayGen
+
+#define RayGen RayGen_FinalShading
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/FullSample/LightingPasses/GI/FinalShading.hlsl"
+#undef RayGen
+
+[shader("miss")]
+void Miss_Resampling(inout IllusionPathPayload payload : SV_RayPayload)
+{
+    payload.hitT = PT_MISS_T;
+}
