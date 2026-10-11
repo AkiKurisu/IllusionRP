@@ -63,6 +63,14 @@ namespace Illusion.Rendering.PRTGI
             if (Bytes > budget) Pressure = $"{Bytes}/{budget} bytes allocated, including protected sectors and pending eviction.";
         }
 
+        public bool Exceeds(int id, PRTRelightLightingSnapshot lights, long budget)
+        {
+            if (PRTSectorResident.Estimate(_asset.Sectors[id], lights) <= budget) return false;
+            if (_reserved == id) _reserved = -1;
+            Pressure = $"Sector {id} exceeds the {budget}-byte residency budget; rebake with smaller sectors.";
+            return true;
+        }
+
         public PRTSectorResident Request(int id, PRTRelightLightingSnapshot lights, long budget)
         {
             _protected.Add(id);
