@@ -22,7 +22,7 @@ namespace Illusion.Rendering.PRTGI
         private readonly List<RTHandle> _materialTextures = new();
         private bool _recorded;
 
-        public static int ComputeHash(bool hasDirectionalLight)
+        public static int ComputeHash(bool hasDirectionalLight, Light sun)
         {
             var hash = new HashCode();
             hash.Add(RenderSettings.ambientMode);
@@ -44,7 +44,6 @@ namespace Illusion.Rendering.PRTGI
                     hash.Add(texture ? texture.updateCount : 0);
                 }
             }
-            Light sun = RenderSettings.sun;
             if (sun)
             {
                 hash.Add(sun.transform.rotation);
@@ -56,14 +55,13 @@ namespace Illusion.Rendering.PRTGI
             return hash.ToHashCode();
         }
 
-        public PRTEnvironmentSnapshot(int contentHash, bool hasDirectionalLight, float sceneTime)
+        public PRTEnvironmentSnapshot(int contentHash, bool hasDirectionalLight, Light sun, float sceneTime)
         {
             ContentHash = contentHash;
             _sceneTime = sceneTime;
             var skybox = RenderSettings.skybox;
             bool sky = RenderSettings.ambientMode == AmbientMode.Skybox && skybox;
             Intensity = sky ? RenderSettings.ambientIntensity : 1;
-            Light sun = RenderSettings.sun;
             Vector3 direction = sun ? -sun.transform.forward : Vector3.up;
             _sunDirection = new Vector4(direction.x, direction.y, direction.z, 0);
             _sunColor = sun ? sun.color.linear * sun.intensity : Color.white;

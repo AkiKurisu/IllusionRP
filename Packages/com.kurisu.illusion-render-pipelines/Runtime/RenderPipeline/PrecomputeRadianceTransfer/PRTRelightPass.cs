@@ -95,11 +95,13 @@ namespace Illusion.Rendering.PRTGI
                 world = _lightCollector.Capture(_volume.asset, _volume.enableRelightShadow, FragmentShadowBias);
             bool directional = false;
             foreach (var light in world.Lights) directional |= light.Gpu.PositionType.w == 0;
-            int environmentHash = PRTEnvironmentSnapshot.ComputeHash(directional);
+            var lightData = frameData.Get<UniversalLightData>();
+            Light sun = lightData.mainLightIndex >= 0 ? lightData.visibleLights[lightData.mainLightIndex].light : null;
+            int environmentHash = PRTEnvironmentSnapshot.ComputeHash(directional, sun);
             if (_environment == null || _environment.ContentHash != environmentHash)
             {
                 _environment?.Dispose();
-                _environment = new PRTEnvironmentSnapshot(environmentHash, directional, world.SceneTime);
+                _environment = new PRTEnvironmentSnapshot(environmentHash, directional, sun, world.SceneTime);
             }
             var scheduler = _solver.Scheduler;
             var requested = scheduler.Select(camera.camera.transform.position, Mathf.Max(1, _volume.sectorsPerFrame));
@@ -132,6 +134,7 @@ namespace Illusion.Rendering.PRTGI
             foreach (var sector in _selected)
             {
                 RecordCommit(graph, sector);
+                sector.Relit = true;
                 scheduler.Updated(sector.Index);
             }
             _solver.Pyramid.Record(graph, _probeShader, _pyramidProbeKernel, _pyramidLevelKernel, _solver, _volume.asset, _selected);

@@ -137,7 +137,10 @@ namespace Illusion.Rendering.PRTGI
                 command.SetComputeFloatParam(pass.shader, "_prtEnvironmentIntensity", pass.environmentIntensity);
                 command.SetComputeFloatParam(pass.shader, "_prtAbsoluteTolerance", PRTRelightSolver.AbsoluteTolerance);
                 command.SetComputeFloatParam(pass.shader, "_prtRelativeTolerance", PRTRelightSolver.RelativeTolerance);
-                command.DispatchCompute(pass.shader, pass.kernel, pass.count, 1, 1);
+                int groupsX = Mathf.Min(pass.count, 65535);
+                command.SetComputeIntParam(pass.shader, "_prtProbeCount", pass.count);
+                command.SetComputeIntParam(pass.shader, "_prtProbeGroupsX", groupsX);
+                command.DispatchCompute(pass.shader, pass.kernel, groupsX, (pass.count + groupsX - 1) / groupsX, 1);
             });
         }
 
