@@ -27,6 +27,7 @@ namespace Illusion.Rendering.PRTGI
         public bool ReadbackFailed { get; internal set; }
         public bool Disposed { get; private set; }
         public uint LastUsed { get; set; }
+        public bool Relit { get; set; }
         public long Bytes { get; private set; }
 
         public PRTSectorResident(int index, PRTSectorData data, PRTRelightLightingSnapshot lights,

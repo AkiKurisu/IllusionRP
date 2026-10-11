@@ -37,6 +37,7 @@ TextureCube<float4> _prtEnvironment;
 SamplerState sampler_prtEnvironment;
 float _prtEnvironmentIntensity;
 uint _prtProbeCount;
+uint _prtProbeGroupsX;
 float _prtAbsoluteTolerance;
 float _prtRelativeTolerance;
 
@@ -50,7 +51,9 @@ groupshared float3 shReduction[9][PRT_THREADS];
 [numthreads(PRT_THREADS, 1, 1)]
 void CSMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
 {
-    uint localIndex = group.x;
+    uint localIndex = group.y * _prtProbeGroupsX + group.x;
+    if (localIndex >= _prtProbeCount)
+        return;
     uint index = _prtProbeIds[localIndex];
     PRTProbeData probe = _prtProbeData[localIndex];
     float3 coefficients[9];

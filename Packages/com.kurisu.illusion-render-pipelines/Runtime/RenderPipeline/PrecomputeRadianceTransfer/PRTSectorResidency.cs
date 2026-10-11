@@ -13,6 +13,7 @@ namespace Illusion.Rendering.PRTGI
         private const uint EvictionPatience = 4;
         private readonly List<(PRTSectorResident resident, AsyncGPUReadbackRequest request, uint frame)> _evictions = new();
         private readonly HashSet<int> _protected = new();
+        private int _reserved = -1;
         public long Bytes { get; private set; }
         public long PeakBytes { get; private set; }
         public int UploadedBytes { get; set; }
@@ -42,6 +43,7 @@ namespace Illusion.Rendering.PRTGI
             _completed.Clear();
             _protected.Clear();
             _protected.Add(near); _protected.Add(background);
+            if (_reserved != near && _reserved != background) _reserved = -1;
             UploadedBytes = 0;
             Pressure = null;
             foreach (var resident in _residents.Values)
@@ -75,23 +77,47 @@ namespace Illusion.Rendering.PRTGI
                 resident.LastUsed = PRTRelightFrame.Index;
                 return resident;
             }
+            if (_reserved >= 0 && _reserved != id)
+            {
+                Pressure = $"Sector {id} waits for sector {_reserved} to use the freed budget.";
+                return null;
+            }
             long bytes = PRTSectorResident.Estimate(_asset.Sectors[id], lights);
             if (Bytes + bytes > budget)
             {
-                PRTSectorResident oldest = null;
-                foreach (var candidate in _residents.Values)
-                    if (!candidate.Evicting && !candidate.ReadbackFailed && !_protected.Contains(candidate.Index) &&
-                        (oldest == null || candidate.LastUsed < oldest.LastUsed)) oldest = candidate;
-                if (oldest != null) Evict(oldest);
+                var victim = FindEvictable(id);
+                if (victim != null)
+                {
+                    if (_protected.Contains(victim.Index)) _reserved = id;
+                    Evict(victim);
+                }
                 Pressure = $"Sector {id} needs {bytes} bytes; {Bytes}/{budget} bytes allocated, including pending eviction.";
                 return null;
             }
+            if (_reserved == id) _reserved = -1;
             _saved.TryGetValue(id, out var cache);
             resident = new PRTSectorResident(id, _asset.Sectors[id], lights, cache) { LastUsed = PRTRelightFrame.Index };
             _residents.Add(id, resident);
             Bytes += resident.Bytes;
             PeakBytes = Math.Max(PeakBytes, Bytes);
             return resident;
+        }
+
+        // When the budget cannot hold every protected sector, one that has been relit since admission yields its
+        // budget, and the requester keeps it reserved so near and background sectors alternate instead of stalling.
+        private PRTSectorResident FindEvictable(int requester)
+        {
+            PRTSectorResident oldest = null, displaced = null;
+            foreach (var candidate in _residents.Values)
+            {
+                if (candidate.Evicting || candidate.ReadbackFailed || candidate.Index == requester) continue;
+                if (!_protected.Contains(candidate.Index))
+                {
+                    if (oldest == null || candidate.LastUsed < oldest.LastUsed) oldest = candidate;
+                }
+                else if (candidate.Relit && (displaced == null || candidate.LastUsed < displaced.LastUsed)) displaced = candidate;
+            }
+            return oldest ?? displaced;
         }
 
         private void Evict(PRTSectorResident resident)
