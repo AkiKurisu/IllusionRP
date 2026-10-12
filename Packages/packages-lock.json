@@ -26,6 +26,13 @@
       "dependencies": {},
       "hash": "acc1c7bc9ea34c33b830e40316fca52553878d29"
     },
+    "com.github.messagepack-csharp": {
+      "version": "https://github.com/MessagePack-CSharp/MessagePack-CSharp.git?path=src/MessagePack.UnityClient/Assets/Scripts/MessagePack#v3.1.4",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "44aa149acce1de32881e007f53fad0f3db7dfdab"
+    },
     "com.kurisu.ceres": {
       "version": "https://github.com/AkiKurisu/Ceres.git?path=Packages/com.kurisu.ceres",
       "depth": 0,
@@ -39,7 +46,7 @@
         "com.unity.nuget.newtonsoft-json": "3.2.1",
         "com.unity.nuget.mono-cecil": "1.11.4"
       },
-      "hash": "1d09cdb84d45b5038930d37ec719e04b3cb6f576"
+      "hash": "2e609473379324dacdba78c277b9f4740fda8f6f"
     },
     "com.kurisu.illusion-render-pipelines": {
       "version": "file:com.kurisu.illusion-render-pipelines",
