@@ -20,6 +20,9 @@ namespace Illusion.Rendering.PostProcessing
         
         [InspectorName("Filmic ACES")]
         Filmic_ACES,
+
+        [InspectorName("Reinhard (Luminance)")]
+        Reinhard,
     }
     
     /// <summary>

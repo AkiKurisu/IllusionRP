@@ -512,6 +512,9 @@ namespace Illusion.Rendering
             if (TryEnqueuePathTracing(renderer, ref renderingData, config, useConvolutionBloom, isPostProcessEnabled))
                 return;
 
+            // Path-traced cameras enqueue this pass in TryEnqueuePathTracing.
+            renderer.EnqueuePass(_advancedTonemappingPass);
+
             bool usePrecomputedRadianceTransfer = config.EnablePrecomputedRadianceTransferGlobalIllumination
                                                   && precomputedRadianceTransferGI 
                                                   && !isPreviewCamera;
@@ -577,8 +580,6 @@ namespace Illusion.Rendering
             renderer.EnqueuePass(areaShadowHigh ? _enableAreaShadowHighPass : _disableAreaShadowHighPass);
 
             // BeforeRenderingPrePasses
-            renderer.EnqueuePass(_advancedTonemappingPass);
-
             if (prepareTransparentDepth)
             {
                 renderer.EnqueuePass(_transparentCopyPreDepthPass);
