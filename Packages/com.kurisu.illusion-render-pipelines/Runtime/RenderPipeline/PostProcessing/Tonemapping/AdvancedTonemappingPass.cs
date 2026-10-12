@@ -44,21 +44,12 @@ namespace Illusion.Rendering.PostProcessing
                         context.cmd.SetGlobalFloat(ShaderIds._FilmWhiteClip, volume.whiteClip.value);
                     }
 
-                    switch (volume.mode.value)
-                    {
-                        case AdvancedTonemappingMode.Filmic_ACES:
-                            CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_ACES_FILMIC, true);
-                            CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_GT, false);
-                            break;
-                        case AdvancedTonemappingMode.GranTurismo:
-                            CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_ACES_FILMIC, false);
-                            CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_GT, true);
-                            break;
-                        case AdvancedTonemappingMode.None:
-                            CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_ACES_FILMIC, false);
-                            CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_GT, false);
-                            break;
-                    }
+                    CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_ACES_FILMIC,
+                        volume.mode.value == AdvancedTonemappingMode.Filmic_ACES);
+                    CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_GT,
+                        volume.mode.value == AdvancedTonemappingMode.GranTurismo);
+                    CoreUtils.SetKeyword(context.cmd, ShaderKeywordStrings._TONEMAP_REINHARD,
+                        volume.mode.value == AdvancedTonemappingMode.Reinhard);
                 });
             }
         }
@@ -68,6 +59,8 @@ namespace Illusion.Rendering.PostProcessing
             public static readonly string _TONEMAP_ACES_FILMIC = MemberNameHelpers.String();
             
             public static readonly string _TONEMAP_GT = MemberNameHelpers.String();
+
+            public static readonly string _TONEMAP_REINHARD = MemberNameHelpers.String();
         }
 
         private static class ShaderIds

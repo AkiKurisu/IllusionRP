@@ -3,10 +3,11 @@ Shader "Hidden/LutBuilderHdr"
     HLSLINCLUDE
         #pragma multi_compile_local _ _TONEMAP_ACES _TONEMAP_NEUTRAL
         #pragma multi_compile_local_fragment _ HDR_COLORSPACE_CONVERSION
-        #pragma multi_compile_fragment _ _TONEMAP_ACES_FILMIC _TONEMAP_GT
+        #pragma multi_compile_fragment _ _TONEMAP_ACES_FILMIC _TONEMAP_GT _TONEMAP_REINHARD
         
         #define _ACTUAL_TONEMAP_ACES    (defined(_TONEMAP_ACES_FILMIC) || defined(_TONEMAP_ACES))
         #define _ACTUAL_TONEMAP_GT      (defined(_TONEMAP_GT) && !defined(_TONEMAP_NEUTRAL) && !_ACTUAL_TONEMAP_ACES)
+        #define _ACTUAL_TONEMAP_REINHARD (defined(_TONEMAP_REINHARD) && !defined(_TONEMAP_NEUTRAL) && !_ACTUAL_TONEMAP_ACES)
 
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         #include "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/Common.hlsl"
@@ -303,7 +304,13 @@ Shader "Hidden/LutBuilderHdr"
 
         float3 Tonemap(float3 colorLinear)
         {
-            #if _ACTUAL_TONEMAP_GT
+            #if _ACTUAL_TONEMAP_REINHARD
+            {
+                // Match RTXGI's luminance-preserving Reinhard operator.
+                float luminance = dot(colorLinear, float3(0.299, 0.587, 0.114));
+                colorLinear /= 1.0 + max(luminance, 0.0);
+            }
+            #elif _ACTUAL_TONEMAP_GT
             {
                 colorLinear.r = GranTurismoTonemapper(colorLinear.r);
                 colorLinear.g = GranTurismoTonemapper(colorLinear.g);

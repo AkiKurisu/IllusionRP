@@ -509,6 +509,9 @@ namespace Illusion.Rendering
                                 && sunShaftsParam.IsActive();
             // ========================================= Post Processing ============================================================ //
 
+            // Color grading also runs on path traced cameras, before the raster passes are skipped.
+            renderer.EnqueuePass(_advancedTonemappingPass);
+
             if (TryEnqueuePathTracing(renderer, ref renderingData, config, useConvolutionBloom, isPostProcessEnabled))
                 return;
 
@@ -577,8 +580,6 @@ namespace Illusion.Rendering
             renderer.EnqueuePass(areaShadowHigh ? _enableAreaShadowHighPass : _disableAreaShadowHighPass);
 
             // BeforeRenderingPrePasses
-            renderer.EnqueuePass(_advancedTonemappingPass);
-
             if (prepareTransparentDepth)
             {
                 renderer.EnqueuePass(_transparentCopyPreDepthPass);
