@@ -1,5 +1,6 @@
 #pragma kernel Resolve
 #pragma kernel Clear
+#pragma kernel Debug
 #pragma only_renderers d3d11
 #pragma require Native16Bit int64BufferAtomics
 
@@ -9,6 +10,19 @@
 
 float4 _RayTracedGICacheCameraPositionPrev;
 uint _RayTracedGICacheFrameIndex;
+
+Texture2D<float> _RayTracedGIDepth;
+Texture2D<float4> _RayTracedGINormals;
+RWTexture2D<float4> _RayTracedGIDebugOutput;
+float4x4 _RayTracedGIDebugTexelToWorld;
+float4 _RayTracedGIDebugCameraPosition;
+float _RayTracedGIFarDepth;
+uint2 _RayTracedGIDebugSize;
+uint _RayTracedGIDebugView;
+
+// Values of RayTracedGIDebugView.
+static const uint kRayTracedGIDebugHashGrid = 1;
+static const uint kRayTracedGIDebugCacheOccupancy = 2;
 
 [numthreads(256, 1, 1)]
 void Resolve(uint3 id : SV_DispatchThreadID)
@@ -34,4 +48,33 @@ void Clear(uint3 id : SV_DispatchThreadID)
     u_RayTracedGICacheHashEntries[id.x] = HASH_GRID_INVALID_HASH_KEY;
     u_RayTracedGICacheAccumulation[id.x] = SharcZeroAccumulationData();
     u_RayTracedGICacheResolved[id.x] = SharcZeroPackedData();
+}
+
+[numthreads(8, 8, 1)]
+void Debug(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= _RayTracedGIDebugSize))
+        return;
+
+    const SharcParameters parameters = RayTracedGICacheParameters();
+    float3 color = 0.0;
+    if (_RayTracedGIDebugView == kRayTracedGIDebugCacheOccupancy)
+    {
+        color = HashGridDebugOccupancy(id.xy, _RayTracedGIDebugSize, parameters.hashGridData);
+    }
+    else
+    {
+        float deviceDepth = _RayTracedGIDepth.Load(int3(id.xy, 0));
+        float3 normal = _RayTracedGINormals.Load(int3(id.xy, 0)).xyz;
+        if (deviceDepth != _RayTracedGIFarDepth && dot(normal, normal) > 1e-6)
+        {
+            float4 position = mul(_RayTracedGIDebugTexelToWorld, float4(float2(id.xy) + 0.5, deviceDepth, 1.0));
+            float3 positionWS = _RayTracedGIDebugCameraPosition.xyz + position.xyz / position.w;
+            normal = normalize(normal);
+            color = _RayTracedGIDebugView == kRayTracedGIDebugHashGrid
+                ? HashGridDebugColoredHash(positionWS, normal, parameters.hashGridParameters)
+                : HashGridDebugHashCollisions(positionWS, normal, parameters.hashGridParameters, parameters.hashGridData);
+        }
+    }
+    _RayTracedGIDebugOutput[id.xy] = float4(color, 1.0);
 }

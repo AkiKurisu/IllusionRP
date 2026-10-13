@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.1 |
 | Status | Living |
-| Date | 2026-10-13 |
+| Date | 2026-10-14 |
 | Related Specs | [Path Tracing](path-tracing.md), [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 Ray traced global illumination (RTGI) adds indirect diffuse and indirect specular lighting to raster cameras. The raster opaque prepass provides the receiving surface; rays from it are traced through the same scene, materials and lights as [path tracing](path-tracing.md); ReSTIR GI reuses the resulting samples across neighboring pixels and frames; NRD RELAX denoises them; and the Forward materials consume the result through the existing indirect lighting seams. Raster direct lighting, shadows, material response and subsurface scattering are unchanged.
@@ -130,6 +130,7 @@ Quality mode only.
 - **Volume.** `RayTracedGlobalIllumination` holds the enable flag, the mode, resolution, the checkerboard and specular switches, resampling mode, bias correction, temporal and spatial parameters, the radiance clamp and the denoiser. Performance mode, half resolution, checkerboard and specular are the defaults; full resolution costs about four times the tracing time, and checkerboard halves it. Quality mode adds the radiance cache, 160 MiB per camera. With specular off, the diffuse signal is the one the receiver's cosine sampling produces, and `_SsrLightingTexture` is SSR's alone.
 - **Unavailable backend.** An unavailable device or denoiser backend reports its reason once and leaves the camera on its non-RTGI path.
 - **Validation.** In the Editor and development builds, `r.debug.rtgi.accumulate` averages the published result over frames while the view, scene and lights stay unchanged, so it converges to the estimate it is sampling.
+- **Radiance cache views.** In the Editor and development builds, `r.debug.rtgi.view` replaces the final image of a Quality mode camera with a view of its radiance cache. Hash Grid colors each receiver by its cache voxel and level; Cache Occupancy draws the leading hash entries as blocks, colored when occupied and black when empty; Hash Collisions colors each receiver by how far the search for its entry probes from its hash slot, so a receiver without an entry shows where the search stopped. Pixels without a receiver are black, and Performance mode cameras keep their image.
 
 ## Frame order
 

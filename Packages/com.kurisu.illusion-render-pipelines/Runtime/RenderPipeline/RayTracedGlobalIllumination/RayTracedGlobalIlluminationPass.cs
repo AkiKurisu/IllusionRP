@@ -58,6 +58,8 @@ namespace Illusion.Rendering
 
         private readonly int _cacheClearKernel;
 
+        private readonly int _cacheDebugKernel;
+
         private readonly bool _cacheSupported;
 
         private bool _reportedCache;
@@ -109,6 +111,8 @@ namespace Illusion.Rendering
         private readonly ProfilingSampler _upsampleSampler = new("Ray Traced GI Upsample");
 
         private readonly ProfilingSampler _reflectionSampler = new("Ray Traced GI Reflection");
+
+        private readonly ProfilingSampler _cacheDebugSampler = new("Ray Traced GI Radiance Cache Debug");
 
         private class ReflectionPassData
         {
@@ -211,6 +215,25 @@ namespace Illusion.Rendering
             internal Vector4 TextureSizeAndScale;
         }
 
+        private class CacheDebugPassData
+        {
+            internal ComputeShader Shader;
+            internal int Kernel;
+            internal int View;
+            internal TextureHandle Depth;
+            internal TextureHandle Normals;
+            internal TextureHandle Output;
+            internal BufferHandle HashEntries;
+            internal BufferHandle Accumulation;
+            internal BufferHandle Resolved;
+            internal Vector4 CacheCameraPosition;
+            internal Matrix4x4 TexelToWorld;
+            internal Vector3 CameraPosition;
+            internal float FarDepth;
+            internal int Width;
+            internal int Height;
+        }
+
         private class CompositePassData
         {
             internal ComputeShader Shader;
@@ -255,6 +278,7 @@ namespace Illusion.Rendering
             {
                 _cacheResolveKernel = _cacheShader.FindKernel("Resolve");
                 _cacheClearKernel = _cacheShader.FindKernel("Clear");
+                _cacheDebugKernel = _cacheShader.FindKernel("Debug");
             }
             // The cache shaders require native 16-bit types and 64-bit buffer atomics.
             _cacheSupported = _initialSamplesQualityShader && _cacheUpdateShader && _cacheShader && _cacheShader.IsSupported(_cacheResolveKernel);
@@ -503,6 +527,13 @@ namespace Illusion.Rendering
                 });
             }
 
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            var debugView = IllusionRuntimeRenderingConfig.Get().RayTracedGlobalIlluminationDebugView;
+            if (radianceCache && debugView != RayTracedGIDebugView.None)
+                _rendererData.RayTracedGIDebugTexture = RecordCacheDebug(renderGraph, context, constants.View, resourceData.cameraNormalsTexture,
+                    debugView, textureWidth, textureHeight);
+#endif
+
             var compositeInput = diffuseLighting;
             var compositeSpecularInput = renderGraph.ImportTexture(context.SpecularLighting);
             if (denoise)
@@ -692,6 +723,60 @@ namespace Illusion.Rendering
 
             context.EndFrame(constants.View);
         }
+
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        private TextureHandle RecordCacheDebug(RenderGraph renderGraph, RayTracedGlobalIlluminationContext context, RayTracedGIView view,
+            TextureHandle normals, RayTracedGIDebugView debugView, int width, int height)
+        {
+            var output = renderGraph.CreateTexture(new TextureDesc(width, height)
+            {
+                colorFormat = GraphicsFormat.R8G8B8A8_UNorm,
+                enableRandomWrite = true,
+                name = "_RayTracedGIRadianceCacheDebug"
+            });
+            using var builder = renderGraph.AddComputePass<CacheDebugPassData>("Ray Traced GI Radiance Cache Debug", out var passData, _cacheDebugSampler);
+            passData.Shader = _cacheShader;
+            passData.Kernel = _cacheDebugKernel;
+            passData.View = (int)debugView;
+            passData.Depth = renderGraph.ImportTexture(_rendererData.DepthPyramidRT);
+            passData.Normals = normals;
+            passData.Output = output;
+            passData.HashEntries = renderGraph.ImportBuffer(context.CacheHashEntries);
+            passData.Accumulation = renderGraph.ImportBuffer(context.CacheAccumulation);
+            passData.Resolved = renderGraph.ImportBuffer(context.CacheResolved);
+            passData.CacheCameraPosition = context.CacheCameraPosition;
+            passData.TexelToWorld = view.TexelToWorld;
+            passData.CameraPosition = view.CameraPosition;
+            passData.FarDepth = view.FarDepth;
+            passData.Width = width;
+            passData.Height = height;
+            builder.UseTexture(passData.Depth);
+            builder.UseTexture(passData.Normals);
+            builder.UseTexture(passData.Output, AccessFlags.Write);
+            builder.UseBuffer(passData.HashEntries);
+            builder.UseBuffer(passData.Accumulation);
+            builder.UseBuffer(passData.Resolved);
+            builder.SetRenderFunc(static (CacheDebugPassData data, ComputeGraphContext graphContext) =>
+            {
+                var cmd = graphContext.cmd;
+                cmd.SetComputeBufferParam(data.Shader, data.Kernel, ShaderIDs.u_RayTracedGICacheHashEntries, data.HashEntries);
+                cmd.SetComputeBufferParam(data.Shader, data.Kernel, ShaderIDs.u_RayTracedGICacheAccumulation, data.Accumulation);
+                cmd.SetComputeBufferParam(data.Shader, data.Kernel, ShaderIDs.u_RayTracedGICacheResolved, data.Resolved);
+                cmd.SetComputeVectorParam(data.Shader, ShaderIDs._RayTracedGICacheCameraPosition, data.CacheCameraPosition);
+                cmd.SetComputeIntParam(data.Shader, ShaderIDs._RayTracedGICacheCapacity, RayTracedGlobalIlluminationContext.CacheCapacity);
+                cmd.SetComputeTextureParam(data.Shader, data.Kernel, ShaderIDs._RayTracedGIDepth, data.Depth);
+                cmd.SetComputeTextureParam(data.Shader, data.Kernel, ShaderIDs._RayTracedGINormals, data.Normals);
+                cmd.SetComputeTextureParam(data.Shader, data.Kernel, ShaderIDs._RayTracedGIDebugOutput, data.Output);
+                cmd.SetComputeMatrixParam(data.Shader, ShaderIDs._RayTracedGIDebugTexelToWorld, data.TexelToWorld);
+                cmd.SetComputeVectorParam(data.Shader, ShaderIDs._RayTracedGIDebugCameraPosition, data.CameraPosition);
+                cmd.SetComputeFloatParam(data.Shader, ShaderIDs._RayTracedGIFarDepth, data.FarDepth);
+                cmd.SetComputeIntParams(data.Shader, ShaderIDs._RayTracedGIDebugSize, data.Width, data.Height);
+                cmd.SetComputeIntParam(data.Shader, ShaderIDs._RayTracedGIDebugView, data.View);
+                cmd.DispatchCompute(data.Shader, data.Kernel, (data.Width + 7) / 8, (data.Height + 7) / 8, 1);
+            });
+            return output;
+        }
+#endif
 
         private static void SetTextureScale(ComputeCommandBuffer cmd, ComputeShader shader, Vector4 textureSizeAndScale)
         {
@@ -1145,6 +1230,11 @@ namespace Illusion.Rendering
             public static readonly int _RayTracedGICacheCameraPositionPrev = Shader.PropertyToID("_RayTracedGICacheCameraPositionPrev");
             public static readonly int _RayTracedGICacheCapacity = Shader.PropertyToID("_RayTracedGICacheCapacity");
             public static readonly int _RayTracedGICacheFrameIndex = Shader.PropertyToID("_RayTracedGICacheFrameIndex");
+            public static readonly int _RayTracedGIDebugOutput = Shader.PropertyToID("_RayTracedGIDebugOutput");
+            public static readonly int _RayTracedGIDebugTexelToWorld = Shader.PropertyToID("_RayTracedGIDebugTexelToWorld");
+            public static readonly int _RayTracedGIDebugCameraPosition = Shader.PropertyToID("_RayTracedGIDebugCameraPosition");
+            public static readonly int _RayTracedGIDebugSize = Shader.PropertyToID("_RayTracedGIDebugSize");
+            public static readonly int _RayTracedGIDebugView = Shader.PropertyToID("_RayTracedGIDebugView");
             public static readonly int u_GIReservoirs = Shader.PropertyToID("u_GIReservoirs");
             public static readonly int u_DiffuseLighting = Shader.PropertyToID("u_DiffuseLighting");
             public static readonly int u_SpecularLighting = Shader.PropertyToID("u_SpecularLighting");

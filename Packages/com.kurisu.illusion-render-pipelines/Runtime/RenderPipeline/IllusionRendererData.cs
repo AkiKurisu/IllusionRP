@@ -253,6 +253,8 @@ namespace Illusion.Rendering
 
         public TextureHandle TransparentScreenSpaceReflectionTexture;
 
+        public TextureHandle RayTracedGIDebugTexture;
+
         /// <summary>
         /// Get current camera frame count.
         /// </summary>

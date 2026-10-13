@@ -199,6 +199,9 @@ namespace Illusion.Rendering
         [ConfigVariable("r.debug.prt.cascades", IsEditor = true)]
         public bool EnablePRTCascadesDebug { get; set; }
 
+        [ConfigVariable("r.debug.rtgi.view", IsEditor = true)]
+        public RayTracedGIDebugView RayTracedGlobalIlluminationDebugView { get; set; }
+
         /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.
         /// </summary>
