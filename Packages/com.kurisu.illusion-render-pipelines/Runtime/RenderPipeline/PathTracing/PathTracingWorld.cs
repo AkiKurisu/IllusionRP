@@ -34,8 +34,12 @@ namespace Illusion.Rendering.PathTracing
             bool collected = Scene.Update(camera, layerMask);
             if (collected)
             {
-                Emissive.Update(Scene.Instances);
-                _historyAssigned = false;
+                Emissive.BeginFrame();
+                if (Scene.Instances.Changed)
+                {
+                    Emissive.Update(Scene.Instances);
+                    _historyAssigned = false;
+                }
             }
             bool assign = false;
             if (trackMotion)
@@ -55,7 +59,7 @@ namespace Illusion.Rendering.PathTracing
                 }
                 _historyAssigned = true;
             }
-            if (collected || assign)
+            if (assign)
                 Scene.Instances.Upload();
         }
 
