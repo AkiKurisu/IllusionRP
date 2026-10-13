@@ -339,7 +339,10 @@ namespace Illusion.Rendering.PathTracing
                     continue;
                 var id = material.GetEntityId();
                 record.MaterialIds.Add(id);
-                _materialReferences[id] = _materialReferences.GetValueOrDefault(id) + 1;
+                int count = _materialReferences.GetValueOrDefault(id);
+                if (count == 0)
+                    _materialCRCs[id] = material.ComputeCRC();
+                _materialReferences[id] = count + 1;
             }
             record.MeshId = record.Mesh ? record.Mesh.GetEntityId() : EntityId.None;
             if (record.Mesh)
