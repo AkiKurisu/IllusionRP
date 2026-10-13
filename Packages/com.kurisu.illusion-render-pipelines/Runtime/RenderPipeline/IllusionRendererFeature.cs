@@ -313,6 +313,8 @@ namespace Illusion.Rendering
         private AreaLights.AreaLightShadowAtlasDebugPass _areaLightShadowAtlasDebugPass;
 
         private PRTCascadeDebugPass _prtCascadeDebugPass;
+
+        private RayTracedGIDebugPass _rayTracedGIDebugPass;
 #endif
 
         public override void Create()
@@ -424,6 +426,7 @@ namespace Illusion.Rendering
             _motionVectorsDebugPass = new MotionVectorsDebugPass(_rendererData);
             _stencilVRSDebugPass = new StencilVRSDebugPass();
             _transparentSSRDebugPass = new TransparentSSRDebugPass(_rendererData);
+            _rayTracedGIDebugPass = new RayTracedGIDebugPass(_rendererData);
             _areaLightShadowAtlasDebugPass = new AreaLights.AreaLightShadowAtlasDebugPass();
             _prtCascadeDebugPass = new PRTCascadeDebugPass();
             IllusionDebugPanels.Register(this);
@@ -754,6 +757,10 @@ namespace Illusion.Rendering
             {
                 renderer.EnqueuePass(_transparentSSRDebugPass);
             }
+            if (useRayTracedGlobalIllumination && config.RayTracedGlobalIlluminationDebugView != RayTracedGIDebugView.None)
+            {
+                renderer.EnqueuePass(_rayTracedGIDebugPass);
+            }
             if (config.EnablePRTCascadesDebug && _rendererData.SampleProbeVolumes)
             {
                 renderer.EnqueuePass(_prtCascadeDebugPass);
@@ -769,6 +776,7 @@ namespace Illusion.Rendering
         {
             UpdateRenderDataSettings();
             rendererData.TransparentScreenSpaceReflectionTexture = default;
+            rendererData.RayTracedGIDebugTexture = default;
             rendererData.ScreenSpaceReflectionTexture = default;
             var cameraData = frameData.Get<UniversalCameraData>();
             var lightData = frameData.Get<UniversalLightData>();
@@ -892,6 +900,7 @@ namespace Illusion.Rendering
             IllusionDebugPanels.Unregister(this);
             SafeDispose(ref _stencilVRSDebugPass);
             SafeDispose(ref _transparentSSRDebugPass);
+            SafeDispose(ref _rayTracedGIDebugPass);
             SafeDispose(ref _areaLightShadowAtlasDebugPass);
             SafeDispose(ref _prtCascadeDebugPass);
             SafeDispose(ref _motionVectorsDebugPass);

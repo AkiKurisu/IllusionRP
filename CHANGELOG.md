@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add luminance-preserving Reinhard tonemapping to Advanced Tonemapping.
+- Add hash grid, cache occupancy and hash collision debug views for the radiance cache of ray traced global illumination's Quality mode.
 
 ### Changed
 

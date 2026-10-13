@@ -48,6 +48,14 @@ namespace Illusion.Rendering
         Reblur
     }
 
+    public enum RayTracedGIDebugView
+    {
+        None,
+        HashGrid,
+        CacheOccupancy,
+        HashCollisions
+    }
+
     [Serializable]
     public sealed class RayTracedGIModeParameter : VolumeParameter<RayTracedGIMode>
     {
