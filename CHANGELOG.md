@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Keep the ray tracing scene current from engine change notifications instead of rescanning every renderer each frame, so ray traced global illumination and path tracing no longer slow down as scenes grow.
+- Stop the NRD native plugin from logging denoiser instance creation, recreation and release by default.
 
 ### Fixed
 
