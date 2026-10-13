@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.1 |
 | Status | Living |
-| Date | 2026-10-11 |
+| Date | 2026-10-13 |
 | Related Specs | [Path Tracing](path-tracing.md), [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 Ray traced global illumination (RTGI) adds indirect diffuse and indirect specular lighting to raster cameras. The raster opaque prepass provides the receiving surface; rays from it are traced through the same scene, materials and lights as [path tracing](path-tracing.md); ReSTIR GI reuses the resulting samples across neighboring pixels and frames; NRD RELAX denoises them; and the Forward materials consume the result through the existing indirect lighting seams. Raster direct lighting, shadows, material response and subsurface scattering are unchanged.
@@ -61,8 +61,9 @@ flowchart TD
 ## Shared scene
 
 - **Owner.** One scene service per renderer feature owns the acceleration structure, the instance and material tables, emissive geometry, the collected lights with their rectangle light proxies, and the environment importance data. Path tracing and RTGI are its consumers. Accumulation, stable planes, Ray Reconstruction and the adaptive light sampling feedback that path tracing derives from its own camera outputs stay with path tracing.
-- **Participation.** The Path Tracing Volume's participation layers and directional light angular size define the scene for both consumers, so RTGI traces the scene that path tracing renders.
+- **Participation.** The Path Tracing Volume's participation layers and directional light angular size define the scene for both consumers, so RTGI traces the scene that path tracing renders. A renderer participates when it is an enabled mesh or skinned mesh renderer, active in its hierarchy, on a participation layer, with a ray tracing mode other than Off, and either saved with its scene or created by the pipeline itself, as rectangle light proxies are.
 - **Update.** Each participation configuration is built at most once per frame, whichever consumer requests it first; its LOD selection follows that first camera, as in path tracing. A camera that renders RTGI requests it before URP culls the camera, because collecting skinned renderers into the acceleration structure after the camera's shadow casters are culled invalidates that culling. Path tracing cameras cull no raster shadow casters and request it while the render graph records.
+- **Change tracking.** A configuration finds its participating renderers with one scene scan, then follows the engine's change notifications: renderer creation, destruction, enablement, activity, layer, ray tracing mode, shadow casting, rendering layers, materials, property overrides, mesh and parent, plus material content and mesh data. Only the renderers these touch are read again, so per-frame cost follows the changes rather than the scene size; the acceleration structure is still culled every frame for transforms and LOD. A configuration that goes more than 32 renderer frames without an update scans again, because the gap can outlast the engine's change history. A content change to a referenced material advances the scene state that path tracing accumulation and RTGI validation compare, even when the tables are unchanged; rewriting a material or property override with identical values does not. Mesh data written in place, such as simulated cloth, advances it only when the tables change.
 - **Lifetime.** A configuration that no consumer has used for 60 frames is released; disposing the feature releases the service.
 - **Availability.** The service exists when either path tracing or RTGI is enabled in the renderer settings and the device supports ray tracing.
 

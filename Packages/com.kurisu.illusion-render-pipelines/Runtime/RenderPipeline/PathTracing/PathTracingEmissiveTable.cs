@@ -36,9 +36,6 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly ComputeShader _shader;
         private readonly int _kernel;
-        private readonly List<Material> _materials = new();
-        private readonly MaterialPropertyBlock _rendererBlock = new();
-        private readonly MaterialPropertyBlock _materialBlock = new();
         private readonly List<GraphicsBuffer> _meshBuffers = new();
         private readonly GraphicsBuffer _emptyRaw = new(GraphicsBuffer.Target.Raw, 4, sizeof(uint));
         private List<Batch> _batches = new();
@@ -62,47 +59,29 @@ namespace Illusion.Rendering.PathTracing
             _lookupBuffer.SetData(new[] { uint.MaxValue });
         }
 
-        public void Update(PathTracingInstanceTable instances)
+        public void BeginFrame()
         {
             ReleaseMeshBuffers();
+        }
+
+        public void Update(PathTracingInstanceTable instances)
+        {
             var next = new List<Batch>();
             int recordCount = 0;
-            for (int instance = 0; instance < instances.Renderers.Count; instance++)
+            var records = instances.Records;
+            for (int instance = 0; instance < records.Count; instance++)
             {
-                var renderer = instances.Renderers[instance];
-                var mesh = renderer is SkinnedMeshRenderer skinned
-                    ? skinned.sharedMesh
-                    : renderer.TryGetComponent(out MeshFilter filter) ? filter.sharedMesh : null;
-                if (!mesh)
-                    continue;
-                renderer.GetSharedMaterials(_materials);
-                renderer.GetPropertyBlock(_rendererBlock);
-                for (int subMesh = 0; subMesh < _materials.Count; subMesh++)
+                var record = records[instance];
+                foreach (var subMesh in record.EmissiveSubMeshes)
                 {
-                    var material = _materials[subMesh];
-                    if (!material)
-                        continue;
-                    renderer.GetPropertyBlock(_materialBlock, subMesh);
-                    var block = _materialBlock.isEmpty ? _rendererBlock : _materialBlock;
-                    if (!TryReadEmission(material, block, out var emission, out var texture, out var st))
-                        continue;
-                    if (subMesh >= mesh.subMeshCount)
-                        throw new NotSupportedException($"[PathTracing] Emissive renderer '{renderer.name}' has more material slots than submeshes.");
-                    var sub = mesh.GetSubMesh(subMesh);
-                    if (sub.topology != MeshTopology.Triangles || sub.indexCount % 3 != 0 || sub.indexStart % 3 != 0)
-                        throw new NotSupportedException($"[PathTracing] Emissive submesh '{renderer.name}/{subMesh}' requires triangle topology and triangle-aligned indices.");
-                    ValidateLayout(renderer, mesh, texture != null);
-                    if (sub.indexCount == 0)
-                        continue;
                     next.Add(new Batch
                     {
-                        Renderer = renderer, Mesh = mesh, RendererID = renderer.GetInstanceID(), MeshID = mesh.GetInstanceID(),
-                        InstanceIndex = instance, SubMesh = subMesh, IndexStart = sub.indexStart, IndexCount = sub.indexCount,
-                        BaseVertex = sub.baseVertex, RecordBase = recordCount, TriangleCount = sub.indexCount / 3,
-                        Emission = emission, Texture = texture, BaseMapST = st,
-                        TargetIndex = material.HasProperty(ShaderIDs.LightTarget) ? material.GetInt(ShaderIDs.LightTarget) : 0
+                        Renderer = record.Renderer, Mesh = record.Mesh, RendererID = record.InstanceId, MeshID = record.Mesh.GetInstanceID(),
+                        InstanceIndex = instance, SubMesh = subMesh.SubMesh, IndexStart = subMesh.IndexStart, IndexCount = subMesh.IndexCount,
+                        BaseVertex = subMesh.BaseVertex, RecordBase = recordCount, TriangleCount = subMesh.IndexCount / 3,
+                        Emission = subMesh.Emission, Texture = subMesh.Texture, BaseMapST = subMesh.BaseMapST, TargetIndex = subMesh.TargetIndex
                     });
-                    recordCount = checked(recordCount + sub.indexCount / 3);
+                    recordCount = checked(recordCount + subMesh.IndexCount / 3);
                     if (recordCount > PathTracingLightingConfig.MaxLights)
                         throw new InvalidOperationException("[PathTracing] Emissive triangles exceed RTXPT's light capacity.");
                 }
@@ -116,10 +95,33 @@ namespace Illusion.Rendering.PathTracing
             }
             _batches = next;
             TriangleCount = recordCount;
-            BuildLookup(instances.Renderers.Count);
+            BuildLookup(records.Count);
         }
 
-        private bool TryReadEmission(Material material, MaterialPropertyBlock block,
+        public static bool TryReadSubMesh(Renderer renderer, Mesh mesh, Material material, MaterialPropertyBlock block, int subMesh,
+            out PathTracingEmissiveSubMesh emissive)
+        {
+            emissive = default;
+            if (!TryReadEmission(material, block, out var emission, out var texture, out var st))
+                return false;
+            if (subMesh >= mesh.subMeshCount)
+                throw new NotSupportedException($"[PathTracing] Emissive renderer '{renderer.name}' has more material slots than submeshes.");
+            var sub = mesh.GetSubMesh(subMesh);
+            if (sub.topology != MeshTopology.Triangles || sub.indexCount % 3 != 0 || sub.indexStart % 3 != 0)
+                throw new NotSupportedException($"[PathTracing] Emissive submesh '{renderer.name}/{subMesh}' requires triangle topology and triangle-aligned indices.");
+            ValidateLayout(renderer, mesh, texture != null);
+            if (sub.indexCount == 0)
+                return false;
+            emissive = new PathTracingEmissiveSubMesh
+            {
+                SubMesh = subMesh, IndexStart = sub.indexStart, IndexCount = sub.indexCount, BaseVertex = sub.baseVertex,
+                Emission = emission, Texture = texture, BaseMapST = st,
+                TargetIndex = material.HasProperty(ShaderIDs.LightTarget) ? material.GetInt(ShaderIDs.LightTarget) : 0
+            };
+            return true;
+        }
+
+        private static bool TryReadEmission(Material material, MaterialPropertyBlock block,
             out Vector4 emission, out Texture texture, out Vector4 st)
         {
             emission = Vector4.zero;

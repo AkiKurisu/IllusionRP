@@ -40,10 +40,7 @@ namespace Illusion.Rendering.PathTracing
         private readonly List<PathTracingMaterialData> _data = new();
         private readonly List<PathTracingMaterialRange> _ranges = new();
         private readonly List<PathTracingSubMeshMaterial> _subMeshes = new();
-        private readonly List<Material> _materials = new();
         private readonly Dictionary<(int Material, int Renderer, int Slot), uint> _indices = new();
-        private readonly MaterialPropertyBlock _rendererBlock = new();
-        private readonly MaterialPropertyBlock _slotBlock = new();
         private GraphicsBuffer _buffer;
         private GraphicsBuffer _rangeBuffer;
         private GraphicsBuffer _subMeshBuffer;
@@ -52,51 +49,36 @@ namespace Illusion.Rendering.PathTracing
         public GraphicsBuffer SubMeshBuffer => _subMeshBuffer;
         public int Hash { get; private set; }
 
-        public void Update(IReadOnlyList<Renderer> renderers)
+        public void Pack(IReadOnlyList<PathTracingRendererRecord> records)
         {
             _data.Clear();
             _ranges.Clear();
             _subMeshes.Clear();
             _indices.Clear();
-            int hash = renderers.Count;
-            foreach (var renderer in renderers)
+            int hash = records.Count;
+            foreach (var record in records)
             {
-                renderer.GetSharedMaterials(_materials);
-                renderer.GetPropertyBlock(_rendererBlock);
-                var mesh = renderer is SkinnedMeshRenderer skinned ? skinned.sharedMesh
-                    : renderer.TryGetComponent(out MeshFilter filter) ? filter.sharedMesh : null;
                 uint start = (uint)_subMeshes.Count;
-                if (mesh)
+                foreach (var slot in record.MaterialSlots)
                 {
-                    for (int slot = 0; slot < Mathf.Min(mesh.subMeshCount, _materials.Count); ++slot)
+                    if (!_indices.TryGetValue(slot.Key, out uint index))
                     {
-                        var material = _materials[slot];
-                        if (!material)
-                            continue;
-                        renderer.GetPropertyBlock(_slotBlock, slot);
-                        var block = _slotBlock.isEmpty ? _rendererBlock : _slotBlock;
-                        var key = (material.GetInstanceID(), block.isEmpty ? 0 : renderer.GetInstanceID(), _slotBlock.isEmpty ? -1 : slot);
-                        if (!_indices.TryGetValue(key, out uint index))
-                        {
-                            if (_data.Count == MaxMaterials)
-                                throw new InvalidOperationException("Path tracing material count exceeds the 32768-material limit.");
-                            index = (uint)_data.Count;
-                            _indices.Add(key, index);
-                            var data = ReadMaterial(material, block);
-                            _data.Add(data);
-                            hash = HashCode.Combine(hash, key, data.IoR, data.AttenuationColor, data.AttenuationDistance, data.Flags);
-                        }
-                        var subMesh = new PathTracingSubMeshMaterial { IndexStart = (uint)mesh.GetSubMesh(slot).indexStart, MaterialIndex = index };
-                        _subMeshes.Add(subMesh);
-                        hash = HashCode.Combine(hash, subMesh.IndexStart, subMesh.MaterialIndex);
+                        if (_data.Count == MaxMaterials)
+                            throw new InvalidOperationException("Path tracing material count exceeds the 32768-material limit.");
+                        index = (uint)_data.Count;
+                        _indices.Add(slot.Key, index);
+                        _data.Add(slot.Data);
+                        hash = HashCode.Combine(hash, slot.Key, slot.Data.IoR, slot.Data.AttenuationColor, slot.Data.AttenuationDistance, slot.Data.Flags);
                     }
+                    _subMeshes.Add(new PathTracingSubMeshMaterial { IndexStart = slot.IndexStart, MaterialIndex = index });
+                    hash = HashCode.Combine(hash, slot.IndexStart, index);
                 }
                 _ranges.Add(new PathTracingMaterialRange { Start = start, Count = (uint)_subMeshes.Count - start });
             }
             Hash = hash;
         }
 
-        private static PathTracingMaterialData ReadMaterial(Material material, MaterialPropertyBlock block)
+        internal static PathTracingMaterialData ReadMaterial(Material material, MaterialPropertyBlock block)
         {
             float ior = ReadFloat(material, block, "_Ior", ReadFloat(material, block, "_IOR", ReadFloat(material, block, "_RefractionIndex", 1.5f)));
             Vector3 attenuation = ReadColor(material, block, "_TransmittanceColor", ReadColor(material, block, "_RefractionColor", Vector3.one));

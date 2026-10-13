@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -16,12 +15,6 @@ namespace Illusion.Rendering.PathTracing
         private readonly RayTracingInstanceCullingTest[] _instanceTests = new RayTracingInstanceCullingTest[3];
 
         private int _updatedFrame = -1;
-
-        private readonly HashSet<int> _checkedMaterials = new();
-
-        private static readonly HashSet<Shader> ReportedShaders = new();
-
-        private readonly PathTracingPropertyBlockHash _propertyBlockHash = new();
 
         private readonly PathTracingInstanceTable _instances = new();
 
@@ -56,7 +49,7 @@ namespace Illusion.Rendering.PathTracing
 
             var config = new RayTracingInstanceCullingConfig
             {
-                flags = RayTracingInstanceCullingFlags.ComputeMaterialsCRC | RayTracingInstanceCullingFlags.EnableLODCulling,
+                flags = RayTracingInstanceCullingFlags.EnableLODCulling,
                 instanceTests = _instanceTests,
                 // @IllusionRP: ASE can enable alpha testing through defines instead of material keywords.
                 subMeshFlagsConfig = new RayTracingSubMeshFlagsConfig
@@ -95,16 +88,10 @@ namespace Illusion.Rendering.PathTracing
             };
 
             var results = _accelerationStructure.CullInstances(ref config);
-            int hash = results.materialsCRC.Length;
-            foreach (var entry in results.materialsCRC)
-            {
-                hash = HashCode.Combine(hash, entry.instanceID, entry.crc);
-                if (_checkedMaterials.Add(entry.instanceID))
-                    ReportMissingPass(entry.instanceID);
-            }
             _instances.Update(_accelerationStructure, layerMask);
-            _instances.Upload();
-            SceneHash = HashCode.Combine(hash, _instances.Hash, _propertyBlockHash.Compute(_instances.Renderers));
+            if (_instances.Changed)
+                _instances.Upload();
+            SceneHash = HashCode.Combine(_instances.Hash, _instances.Version);
             TransformsChanged = results.transformsChanged;
             return true;
         }
@@ -121,14 +108,6 @@ namespace Illusion.Rendering.PathTracing
                 shadowCastingModeMask = shadowCastingModes,
                 instanceMask = instanceMask
             };
-        }
-
-        private void ReportMissingPass(int materialId)
-        {
-            if (Resources.EntityIdToObject(materialId) is not Material material || !material.shader
-                || material.FindPass(PathTracingPass.MaterialPassName) >= 0 || !ReportedShaders.Add(material.shader))
-                return;
-            Debug.LogWarning($"[PathTracing] Shader '{material.shader.name}' has no {PathTracingPass.MaterialPassName} pass and renders as a diagnostic surface.", material);
         }
 
         public void Dispose()
