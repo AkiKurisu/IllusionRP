@@ -6,7 +6,7 @@ namespace UnityEngine.Experimental.Rendering
 {
     internal sealed class ObjectChangeTracker : IDisposable
     {
-        private readonly ObjectDispatcher _dispatcher = new();
+        private readonly ObjectDispatcher _dispatcher = new() { maxDispatchHistoryFramesCount = int.MaxValue };
 
         public void TrackSceneObjects<T>() where T : Object
         {

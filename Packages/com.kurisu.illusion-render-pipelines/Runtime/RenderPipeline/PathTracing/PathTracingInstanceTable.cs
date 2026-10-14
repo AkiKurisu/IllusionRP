@@ -32,9 +32,6 @@ namespace Illusion.Rendering.PathTracing
 
         public const uint ShadowMask = 0x02;
 
-        // A longer gap between updates may outlast the engine's change history, so the table scans the scene again.
-        private const int RescanFrameGap = 32;
-
         private static readonly List<Renderer> UnsavedRenderers = new();
 
         private static int _unsavedVersion;
@@ -78,8 +75,6 @@ namespace Illusion.Rendering.PathTracing
         private bool _membershipChanged;
 
         private int _layerMask;
-
-        private int _updatedFrame;
 
         private int _scatteringVersion;
 
@@ -130,11 +125,8 @@ namespace Illusion.Rendering.PathTracing
 
         public void Update(RayTracingAccelerationStructure accelerationStructure, int layerMask)
         {
-            bool rescan = !_scanned || layerMask != _layerMask || PathTracingFrame.Index - _updatedFrame > RescanFrameGap;
-            _scanned = true;
             _layerMask = layerMask;
-            _updatedFrame = PathTracingFrame.Index;
-            bool contentChanged = rescan ? Rescan() : ApplyChanges();
+            bool contentChanged = _scanned ? ApplyChanges() : Scan();
             if (_scatteringVersion != PathTracingScatteringGroup.Version)
             {
                 _scatteringVersion = PathTracingScatteringGroup.Version;
@@ -171,14 +163,10 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
-        private bool Rescan()
+        private bool Scan()
         {
+            _scanned = true;
             ConsumeChanges();
-            foreach (var record in _records.Values)
-                Unreference(record);
-            _records.Clear();
-            _changedMaterials.Clear();
-            _changedMeshes.Clear();
             foreach (var renderer in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                 Evaluate(renderer);
             UnsavedRenderers.RemoveAll(renderer => !renderer);
