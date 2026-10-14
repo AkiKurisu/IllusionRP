@@ -40,7 +40,9 @@ namespace Illusion.Rendering.AreaLights
             this.cookieFormat = cookieFormat;
             this.cookieAtlasLastValidMip = cookieAtlasLastValidMip;
 
+            var previousActive = RenderTexture.active;
             m_CookieAtlas = new PowerOfTwoTextureAtlas(cookieAtlasSize, cookieAtlasLastValidMip, cookieFormat, name: "Area Light Cookie Atlas", useMipMap: true);
+            RenderTexture.active = previousActive;
         }
 
         public void NewFrame()

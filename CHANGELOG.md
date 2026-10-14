@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - Apply Advanced Tonemapping settings to path traced cameras as well as raster cameras.
+- Fix the "Releasing render texture that is set to be RenderTexture.active" warning when the renderer feature is recreated in the Editor.
 
 ## [1.4.0] - 2026-10-12
 
