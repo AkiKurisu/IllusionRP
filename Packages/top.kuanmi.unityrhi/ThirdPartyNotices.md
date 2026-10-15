@@ -11,4 +11,3 @@ FetchContent / NuGet), not committed.
 | DirectX Shader Compiler | fetched (`v1.9.2602`); packed into `top.kuanmi.unityrhi.native` | LLVM + Microsoft |
 | NVAPI | fetched (NVIDIA/nvapi); linked, not redistributed as a DLL | NVIDIA |
 | NRD, NRI, DLSS/NGX runtimes | fetched; packed into `top.kuanmi.unityrhi.native` | NVIDIA RTX SDKs license |
-| D3D12 Agility SDK | fetched; packed into `top.kuanmi.unityrhi.native` | Microsoft Software License Terms |

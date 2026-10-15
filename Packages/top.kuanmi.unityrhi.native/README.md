@@ -14,19 +14,16 @@ to build it from source. Pack writes binaries into
 
 Add **both** packages. The C# package depends on this one. Download and extract
 the prebuilt package into the target project's `Packages` folder, or copy the
-packed `Build/top.kuanmi.unityrhi.native` tree there. The final path must be
-`Packages/top.kuanmi.unityrhi.native`. The native package must be an embedded
-package under the project's `Packages` folder; it contains the preload function
-that must run before Unity creates the D3D12 device. Do not reference the
-external packed `Build` directory directly with a `file:` entry.
+packed `Build/top.kuanmi.unityrhi.native` tree there, or reference it with a
+`file:` entry. The native runtime uses the D3D12 Agility SDK that Unity ships
+(1.618 in Unity 6.3), so the package needs no particular location.
 
 Point `top.kuanmi.unityrhi` at `Packages/top.kuanmi.unityrhi` as appropriate
-for the target project. Unity discovers the embedded native package directly
-from its `Packages/top.kuanmi.unityrhi.native` folder.
+for the target project.
 
-After a native rebuild, replace the contents of the target project's embedded
-`Packages/top.kuanmi.unityrhi.native` package. The C# package can stay as a
-`file:` reference to `Packages/top.kuanmi.unityrhi`.
+After a native rebuild, replace the contents of the native package the target
+project uses. The C# package can stay as a `file:` reference to
+`Packages/top.kuanmi.unityrhi`.
 
 ## Contents
 
@@ -47,11 +44,11 @@ they must stay side by side in `Plugins/x86_64`.
 
 ## 添加到 Unity 项目
 
-请同时添加这**两个**包。C# 包依赖本包。下载预编译包并解压到目标项目的 `Packages` 文件夹，或者将打包后的 `Build/top.kuanmi.unityrhi.native` 目录树复制到该文件夹。最终路径必须为 `Packages/top.kuanmi.unityrhi.native`。原生包必须作为嵌入式包放在项目的 `Packages` 文件夹下；其中包含必须在 Unity 创建 D3D12 设备之前执行的预加载函数。不要通过 `file:` 条目直接引用项目外已打包的 `Build` 目录。
+请同时添加这**两个**包。C# 包依赖本包。下载预编译包并解压到目标项目的 `Packages` 文件夹，将打包后的 `Build/top.kuanmi.unityrhi.native` 目录树复制到该文件夹，或者用 `file:` 条目引用它。原生运行时使用 Unity 自带的 D3D12 Agility SDK（Unity 6.3 为 1.618），因此原生包放在哪里都可以。
 
-根据目标项目的情况，将 `top.kuanmi.unityrhi` 指向 `Packages/top.kuanmi.unityrhi`。Unity 会直接从 `Packages/top.kuanmi.unityrhi.native` 文件夹发现嵌入式原生包。
+根据目标项目的情况，将 `top.kuanmi.unityrhi` 指向 `Packages/top.kuanmi.unityrhi`。
 
-重新构建原生部分后，请替换目标项目中嵌入式 `Packages/top.kuanmi.unityrhi.native` 包的内容。C# 包可继续使用指向 `Packages/top.kuanmi.unityrhi` 的 `file:` 引用。
+重新构建原生部分后，请替换目标项目所用的原生包的内容。C# 包可继续使用指向 `Packages/top.kuanmi.unityrhi` 的 `file:` 引用。
 
 ## 内容
 

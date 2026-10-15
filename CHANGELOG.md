@@ -5,6 +5,12 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-10-15
+
+### Fixed
+
+- Run the native ray tracing plugins on the D3D12 Agility SDK that Unity ships, so ray traced global illumination and path tracing no longer crash the Editor when the native package is referenced from outside the project.
+
 ## [1.4.1] - 2026-10-14
 
 ### Added
