@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Treat base color alpha as opacity for refractive path tracing transmission in Lit graphs, matching their raster refraction.
+- Stop the UnityRHI native plugin from logging DLSS, ray reconstruction and DLSS Neural Rendering instance creation and release by default.
 
 ### Fixed
 
