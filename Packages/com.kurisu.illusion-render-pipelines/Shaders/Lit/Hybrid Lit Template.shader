@@ -3622,11 +3622,13 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 				#endif
 				#if defined( _PATH_TRACING_TRANSMISSION_THIN ) || defined( _PATH_TRACING_TRANSMISSION_REFRACTIVE )
 					surface.emission = 0;
-					surface.specularTransmission = 1.0;
 					surface.transmissionTint = BaseColor;
 					surface.ior = RefractionIndex > 1.0 ? RefractionIndex : 1.5;
 					#if defined( _PATH_TRACING_TRANSMISSION_THIN )
+						surface.specularTransmission = 1.0;
 						surface.thin = true;
+					#else
+						surface.specularTransmission = 1.0 - Alpha;
 					#endif
 				#elif defined( _SURFACE_TYPE_TRANSPARENT ) && defined( ASE_REFRACTION )
 					surface.specularTransmission = 1.0 - Alpha;

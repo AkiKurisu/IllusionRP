@@ -20,7 +20,7 @@ IllusionRP materials target Forward and Forward+. This contract connects materia
 
 Lit and Complex Lit share the general surface contract. Skin splits diffuse lighting when screen-space subsurface scattering runs. Hair separates core and fringe coverage. Fabric supports optional transparent-depth reception. Water supplies transparent reflection data. Unlit has no Forward GBuffer.
 
-Glass and Thin Glass are Lit graphs for transmissive surfaces such as drinking glasses and windows. Path tracing transmits all light that the surface does not reflect, tinted by the base color: Glass refracts into and out of a closed volume at the material's index of refraction, and Thin Glass passes straight through a single surface. Raster draws both as transparent with screen-space refraction.
+Glass and Thin Glass are Lit graphs for transmissive surfaces such as drinking glasses and windows. Path tracing transmits light tinted by the base color: Glass refracts into and out of a closed volume at the material's index of refraction, and Thin Glass passes straight through a single surface. Base color alpha is the surface opacity for Glass in both raster and path tracing, so Glass transmits the share of unreflected light that alpha leaves; Thin Glass transmits all unreflected light and uses alpha as coverage. Raster draws both as transparent with screen-space refraction.
 
 Template options select auxiliary passes such as shadows, motion and baking. Features that require Forward-only lighting keep that choice consistent across authored options and generated output.
 

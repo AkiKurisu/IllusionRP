@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Add HD Glass and HD Thin Glass shaders for transmissive surfaces that path tracing refracts through or passes straight through.
 
+### Changed
+
+- Treat base color alpha as opacity for refractive path tracing transmission in Lit graphs, matching their raster refraction.
+
 ### Fixed
 
 - Run the native ray tracing plugins on the D3D12 Agility SDK that Unity ships, so ray traced global illumination and path tracing no longer crash the Editor when the native package is referenced from outside the project.
