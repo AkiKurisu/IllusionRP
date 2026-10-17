@@ -9,7 +9,9 @@ namespace Illusion.Rendering.PathTracing
 {
     internal sealed class PathTracingSkinnedUpdates : IDisposable
     {
-        private readonly List<SkinnedMeshRenderer> _forced = new();
+        private static readonly Dictionary<SkinnedMeshRenderer, (int Owners, bool Original)> Shared = new();
+
+        private readonly HashSet<SkinnedMeshRenderer> _owned = new();
 
         private readonly Dictionary<PathTracingInstanceTable, int> _appliedVersions = new();
 
@@ -27,22 +29,33 @@ namespace Illusion.Rendering.PathTracing
             _appliedVersions[instances] = instances.Version;
             foreach (var renderer in instances.Renderers)
             {
-                if (renderer is SkinnedMeshRenderer skinned && !skinned.updateWhenOffscreen)
+                if (renderer is not SkinnedMeshRenderer skinned || !_owned.Add(skinned))
+                    continue;
+                if (Shared.TryGetValue(skinned, out var entry))
                 {
-                    skinned.updateWhenOffscreen = true;
-                    _forced.Add(skinned);
+                    Shared[skinned] = (entry.Owners + 1, entry.Original);
+                    continue;
                 }
+                Shared[skinned] = (1, skinned.updateWhenOffscreen);
+                skinned.updateWhenOffscreen = true;
             }
         }
 
         public void Restore()
         {
-            foreach (var skinned in _forced)
+            foreach (var skinned in _owned)
             {
+                var entry = Shared[skinned];
+                if (entry.Owners > 1)
+                {
+                    Shared[skinned] = (entry.Owners - 1, entry.Original);
+                    continue;
+                }
+                Shared.Remove(skinned);
                 if (skinned)
-                    skinned.updateWhenOffscreen = false;
+                    skinned.updateWhenOffscreen = entry.Original;
             }
-            _forced.Clear();
+            _owned.Clear();
             _appliedVersions.Clear();
         }
 
