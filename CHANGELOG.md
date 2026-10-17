@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Skip light sampling feedback and motion data that no path tracing or ray traced global illumination pass reads.
 - End radiance cache updates early on cached entries in ray traced global illumination's Quality mode.
 - Share one compact material storage among path tracing material families. Together with the changes above, path tracing is 10–14% faster in the Bistro scenes.
+- Render the HD Lit, HD Fabric, HD Skin and HD Hair shaders in the AlphaTest queue, so path tracing and ray traced global illumination keep their alpha clip and shadow transmission.
 
 ### Fixed
 
