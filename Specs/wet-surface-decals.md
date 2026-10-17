@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-18 |
+| Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Materials and Shaders](materials-and-shaders.md), [World Scale](world-scale.md), [Transparency](transparency.md) |
 
 Wet surface decals alter opaque surface response inside registered box or sphere volumes. The camera-local result updates both material lighting and the surface data used by screen-space effects.
 
@@ -32,6 +33,8 @@ Transparent post-depth updates the same smoothness resource in place, preserving
 ## Projection
 
 Local projection follows the volume transform; world projection remains world-aligned. World-scale conversion happens once at the boundary defined by [World Scale](world-scale.md), without changing actual volume positions.
+
+Volume scale enters world projection and triplanar weighting through the lengths of the volume's axes, which do not depend on its rotation. A rotated volume therefore projects as stably as an unrotated one.
 
 Detail supports untextured, single-layer and triplanar projection. Channel remapping treats disabled channels as zero. Edge fading and optional sample jitter shape the mask without changing resource ownership or coverage order.
 

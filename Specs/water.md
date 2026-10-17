@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-18 |
 | Related Specs | [Transparency](transparency.md), [Materials and Shaders](materials-and-shaders.md), [Path Tracing](path-tracing.md) |
 
 Water combines refraction with reflected lighting. Raster stages and third-party participation are governed by [Transparency](transparency.md); this specification owns Water material behavior.
@@ -38,10 +38,10 @@ Refraction samples opaque color independently of SSR. Distortion falls back to u
 
 ## Shipped Water shader
 
-Raster Water uses scrolling detail normals, thickness tint and Fresnel composition. It casts no shadows and writes depth, so later transparent and OIT draws test against its surface. Alpha controls shoreline coverage, not another copy of the transparency already composited into its color; applying both would double-blend the background.
+The shipped raster Water shader casts no shadows and writes depth, so later transparent and OIT draws test against its surface. Alpha controls shoreline coverage, not another copy of the transparency already composited into its color; applying both would double-blend the background.
 
 ## Path tracing
 
 Path-traced Water is a refractive Lit interface over an absorbing, non-scattering medium, not a separate material model. Authored normal, index of refraction, interface smoothness and absorption color/distance define its physical inputs.
 
-The interface has no diffuse or emissive response. A path escaping the scene inside the absorbing medium contributes no light. The current shadow path crosses water without attenuation. Raster depth tint, refraction copies, shoreline fade and reflection-mode choices do not become path-tracing inputs; geometry defines the shoreline. See [Path Tracing](path-tracing.md).
+The interface has no diffuse or emissive response. A path escaping the scene inside the absorbing medium contributes no light. Shadow rays cross water without attenuation. Raster depth tint, refraction copies, shoreline fade and reflection-mode choices do not become path-tracing inputs; geometry defines the shoreline. See [Path Tracing](path-tracing.md).

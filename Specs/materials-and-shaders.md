@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.2 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-15 |
-| Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Rendering Pipeline](rendering-pipeline.md) |
+| Date | 2026-10-18 |
+| Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Area Lights](area-lights.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
 
@@ -65,7 +65,7 @@ Wet coverage uses a separate resource rather than claiming an existing stencil b
 
 All passes of a material share a consistent material parameter layout, including optional features. Pass-local defines cannot change that layout. Texture resources remain outside the material constant buffer.
 
-Generated and hand-written paths preserve coverage and material behavior across instancing, DOTS, SRP Batcher and GPU Resident Drawer. Runtime drawing and stripping agree on pass identity. Combined feature configurations must stay within platform resource limits; sampler sharing requires equivalent filtering and addressing, including platform-specific shadow behavior.
+Generated and hand-written shaders follow the same layout and sampler rules. Both preserve coverage, material behavior and valid resource access across shader stages, target platforms, instancing, DOTS, SRP Batcher and GPU Resident Drawer. Runtime drawing and stripping agree on pass identity. Combined feature configurations must stay within platform resource limits; sampler sharing requires equivalent filtering and addressing, including platform-specific shadow behavior, and reducing resource counts cannot silently change material sampling.
 
 ## Keywords
 
@@ -73,12 +73,8 @@ Renderer-capability keywords remain stable while runtime switches and Volumes co
 
 ## Rectangle area lights
 
-Area-light quality and shadow filtering form one coupled capability. Cameras with no active lights publish an empty light set while retaining that capability's keyword state. Cookies do not introduce a material keyword axis.
-
-Lit and Water use their surface diffuse/specular models, including optional coat; Water evaluates lighting only in its color pass. Skin evaluates diffuse/transmission in the split diffuse path when active and specular in the main path. Fabric supports diffuse and sheen but not area-light anisotropy. Hair uses its approximation and does not sample cookies.
-
-All families adapt area-light energy to URP's lighting convention exactly once. Auxiliary reflection-data passes never duplicate final lighting.
+[Area Lights](area-lights.md) owns per-family area-light shading, the coupled quality and shadow-filtering capability and the area-light energy convention.
 
 ## Fabric anisotropy
 
-Anisotropy affects punctual direct lighting and follows the material's tangent frame, normal and smoothness. It blends consistently with the cloth sheen response. Environment reflections remain isotropic; area lighting does not apply anisotropy. Energy normalization is applied once at the shading-convention boundary.
+Anisotropy affects punctual direct lighting and follows the material's tangent frame, normal and smoothness. It blends consistently with the cloth sheen response. Environment reflections remain isotropic; [area lights](area-lights.md#material-shading) do not apply anisotropy. Energy normalization is applied once at the shading-convention boundary.

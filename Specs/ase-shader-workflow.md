@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-05 |
+| Date | 2026-10-18 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
 ASE authoring separates reusable rendering contracts from material inputs. Changes must reach both their source assets and generated shader output without replacing authored graph intent.
@@ -39,6 +39,4 @@ After a topology or connection change, reload and export until another export pr
 
 ## Generated shader contract
 
-Generated output satisfies [Materials and Shaders](materials-and-shaders.md). Geometry, alpha, normals, culling and LOD coverage agree across color and auxiliary passes. Resource access remains valid across shader stages, target platforms, SRP Batcher, GPU Resident Drawer and DOTS.
-
-Sampler sharing preserves filtering, addressing and supported platform behavior. Verification covers the combined feature configurations that consume the generated shader; reducing resource counts cannot silently change material sampling.
+Generated output satisfies [Materials and Shaders](materials-and-shaders.md), which owns the pass contract, cross-pass coverage and the [shader data layout and sampler rules](materials-and-shaders.md#shader-data-layout). Verification after export covers the combined feature configurations that consume the generated shader; a successful export or compile does not prove those rules.

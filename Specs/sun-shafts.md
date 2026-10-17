@@ -2,16 +2,14 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-18 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Transparency](transparency.md) |
 
 Sun shafts are a screen-space radial glow around an anchor. Far-depth bright regions are blurred toward that anchor and composited onto camera color. They are not volumetric scattering: they do not follow real light direction or shadow maps and may run alongside volumetric fog.
 
-## Porting boundary
-
-The legacy effect is adapted to URP depth, exposure and RenderGraph ownership. It uses a depth mask rather than a sky-clear alternative and runs in linear HDR before tonemapping, so legacy intensity/threshold values require recalibration. It currently renders one view without stereo support.
+The effect works on linear HDR camera color before tonemapping, masks by depth and renders a single view; stereo rendering is not supported.
 
 ## Volume
 
@@ -27,7 +25,7 @@ The most recently enabled active scene caster supplies the shared anchor. Withou
 
 ## Passes
 
-After transparents and before volumetric fog and automatic exposure, the effect builds a thresholded far-depth mask, blurs it radially and composites it with Screen or Add blending. Thresholding accounts for the exposure already applied to camera color. The mask border is cleared so blur cannot drag screen-edge texels into streaks.
+After transparents and before volumetric fog and automatic exposure, the effect builds a thresholded far-depth mask, blurs it radially and composites it with Screen or Add blending. Thresholding accounts for the exposure already applied to camera color. Blur never drags screen-edge texels into streaks.
 
 ## Inputs and resources
 

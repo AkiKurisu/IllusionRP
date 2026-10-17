@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.2 |
+| Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-17 |
+| Date | 2026-10-18 |
+| Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 ## Rendering Modes
 
@@ -28,7 +29,7 @@ Path tracing and RR availability can be queried, so an application offers Realti
 
 ## Pipeline Architecture and Design Rationale
 
-Unity owns material compilation/binding and hit geometry access; IllusionRP owns scattering models; RTXPT owns path transport and Realtime path organization. Fixed property-name conversion cannot replace arbitrary shader-authored input logic.
+Unity owns material compilation/binding and hit geometry access; IllusionRP owns scattering models; RTXPT owns path transport and Realtime path organization.
 
 Material evaluation produces inputs, not a lit pixel. The model produces scattering; the integrator combines it with lighting and path history. Adapters reconcile conventions without duplicating the scattering model. Reference and Realtime share this boundary.
 
@@ -46,7 +47,7 @@ Realtime stable surfaces organize transport and reconstruction without introduci
 
 ## Scene and Material Inputs
 
-Use existing renderers, meshes, materials and property overrides with their original object/slot scope and precedence. Authored UVs, normal mapping and procedural inputs remain part of hit evaluation. Geometric orientation and ray placement are distinct from shading normals. The participating scene, its lights and the lighting environment are prepared once per frame by a renderer-level scene shared with [ray traced global illumination](ray-traced-global-illumination.md); accumulation, stable planes, reconstruction and adaptive light sampling feedback remain path tracing's own.
+Use existing renderers, meshes, materials and property overrides with their original object/slot scope and precedence. Authored UVs, normal mapping and procedural inputs remain part of hit evaluation. Geometric orientation and ray placement are distinct from shading normals. The participating scene, its lights and the lighting environment are prepared once per frame by the [ray tracing scene](ray-tracing-scene.md) shared with ray traced global illumination; accumulation, stable planes, reconstruction and adaptive light sampling feedback remain path tracing's own.
 
 | Model | Contract |
 |---|---|
@@ -60,9 +61,9 @@ Use existing renderers, meshes, materials and property overrides with their orig
 
 Coverage decides whether a hit exists; physical transmission decides scattering after acceptance. Main, shadow and subsurface rays preserve the material's coverage contract. Shadow rays continue straight through uncovered/transmitting portions with colored transmission.
 
-Hair cards represent a collapsed hair volume: authored base color describes its overall albedo rather than a single strand's repeated-bounce mapping. Covered card transmission returns to the incident side; only uncovered coverage passes through the card. Raster roughness/specular and authored hair direction retain their meaning. Fabric uses the authored normal/tangent and specular/sheen relationship. These material-specific semantics are intentional, not automatic copies of an upstream renderer.
+Hair cards represent a collapsed hair volume: authored base color describes its overall albedo rather than a single strand's repeated-bounce mapping. Covered card transmission returns to the incident side; only uncovered coverage passes through the card. Raster roughness/specular and authored hair direction retain their meaning. Fabric uses the authored normal/tangent and specular/sheen relationship.
 
-[Water](water.md) uses a refractive Lit interface and absorbing medium. A path escaping inside an unbounded absorbing medium contributes no light. Unsupported material entry points produce a diagnostic surface rather than silently substituting another model.
+[Water](water.md) owns the path-traced water interface and medium. Unsupported material entry points produce a diagnostic surface rather than silently substituting another model.
 
 ## Lighting and Path Integration
 

@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-18 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md) |
 
 IllusionRP preserves URP conventional transparency and adds depth, refraction, transparent reflections and weighted blended OIT around it. These are coordinated producer chains, not an exact global transparency sorter.
@@ -38,7 +38,7 @@ When only water SSR needs post-depth, its private depth is not published as the 
 
 Refraction copies current opaque color before skybox and transparents so transparent shading never reads its own output attachment. It is independent of previous-frame color used by SSR.
 
-Water consumes this copy. The legacy refraction model in Lit/Fabric continues to consume URP opaque color. Depth behind water is published separately from depth that may contain the water itself. Missing or disabled sources are neutral, never stale history.
+Water consumes this copy. Lit and Fabric refraction, the templates' Legacy refraction model, samples URP opaque color. Depth behind water is published separately from depth that may contain the water itself. Missing or disabled sources are neutral, never stale history.
 
 ## Water SSR data
 

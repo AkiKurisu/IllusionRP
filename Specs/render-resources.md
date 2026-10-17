@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-11 |
-| Related Specs | [Rendering Pipeline](rendering-pipeline.md) |
+| Date | 2026-10-18 |
+| Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Area Lights](area-lights.md), [Ray Tracing Scene](ray-tracing-scene.md) |
 
 IllusionRP resources connect producers, material consumers and temporal rendering. [Rendering Pipeline](rendering-pipeline.md) owns frame order; feature specifications own the meaning of their outputs.
 
@@ -38,17 +38,13 @@ The renderer resource asset references the shaders, lookup textures and meshes r
 | Color pyramid | Camera color after transparents → subsequent-frame reflection and indirect-light consumers. |
 | Exposure | Fixed or automatic exposure → lighting and post-processing, with isolated camera history. |
 | Material lookup tables | Persistent lighting tables → material families. |
+| Area light set, shadow atlas and cookies | Per-camera [area light](area-lights.md) producer → Forward material lighting. |
+| Ray tracing scene | Renderer-level [scene service](ray-tracing-scene.md) → path tracing and ray traced global illumination. |
 | Wet mask and coverage | Registered volumes → wet surface response and screen-space surface updates. |
 | Transparent depth, refraction and water data | [Transparency](transparency.md) → transparent material and composition stages. |
 | PRT publication | Committed relighting → material sampling; transport residency and camera publication are separate lifetimes. See [PRT](precomputed-radiance-transfer.md). |
 
 Producer and consumer must agree on resource meaning, coordinate space and encoding. Internal scratch formats and buffer layouts belong to source code, not this specification.
-
-## Area lights
-
-The area-light producer prepares visible light data, shadow requests and cookie placement per camera, then publishes a consistent set for material shading. Light data and cookie storage belong to the feature; shadow intermediates are frame-scoped and lookup tables may be shared.
-
-Disabled cameras receive no lights and neutral atlases. Missing shadow-culling context disables area shadows with a diagnostic while area lighting continues. Cookie placement is reset for each render context. Lighting parameters must respect the combined platform resource budget of the material paths that consume them.
 
 ## Depth
 
@@ -89,7 +85,7 @@ Global publication is a producer/consumer contract, not resource ownership. CPU 
 
 ## Asynchronous work
 
-Compute paths require renderer preference, runtime permission and device support. Async compute is currently disabled. Any asynchronous producer must synchronize through declared resource dependencies, never through global publication alone.
+Compute paths require renderer preference, runtime permission and device support. Any asynchronous producer must synchronize through declared resource dependencies, never through global publication alone.
 
 ## Release
 

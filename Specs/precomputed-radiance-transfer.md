@@ -2,16 +2,16 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-06 |
+| Date | 2026-10-18 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 PRT provides diffuse indirect lighting for fixed baked geometry and materials under changing lights and environment. Baking traces transport with hardware ray tracing; runtime raster/compute relighting does not require it. Probe interpolation and patch averaging are explicit approximations.
 
 ## Execution order and scheduling
 
-The sector-based design follows [The Division, GDC 2016](https://mrakobes.com/Nikolay.Stefanov.GDC.2016.pdf). The workflow is:
+Transport is partitioned into sectors that are relit independently. The workflow is:
 
 1. Snapshot geometry, authored materials and probe placement for an offline bake.
 2. Partition transport into sectors, preserving material and layer boundaries; associate surface feedback with the closest valid baked probe.
@@ -30,13 +30,13 @@ Capture traces every probe's sample directions against the snapshotted meshes an
 
 Bake direction sampling and integration use the same deterministic convention. Geometry transfer and sky visibility remain separate. Geometry validity is distinct from runtime intensity or authoring masks, so removing a mask can restore a geometrically valid probe without rebaking unchanged transport.
 
-Virtual offsets trace the captured geometry and do not depend on colliders or modify global physics. Thin transparent or double-sided surfaces do not establish occupancy, and a front face coplanar with the nearest back face counts as front, so solids resting on each other open no exit. An offset that cannot be verified invalidates its probe.
+Virtual offsets trace the captured geometry and do not depend on colliders or modify global physics. Thin transparent or double-sided surfaces do not establish occupancy, and solids resting on each other open no exit. An offset that cannot be verified invalidates its probe.
 
 Baking requires DirectX 12 with hardware ray tracing and rejects materials without a path tracing pass; runtime shaders carry no bake-only variants. Temporary capture state is restored, cancellation completes outstanding readbacks before releasing their resources, and incomplete work never replaces a valid asset.
 
 ## Lighting and visibility snapshots
 
-Relighting selects world-space lights against each sector's geometry bounds, not camera-visible light lists or screen-space clusters. Directional, point and spot lights follow raster color, intensity, attenuation and layer conventions. Cookies are diagnosed but not evaluated by this baseline.
+Relighting selects world-space lights against each sector's geometry bounds, not camera-visible light lists or screen-space clusters. Directional, point and spot lights follow raster color, intensity, attenuation and layer conventions. Light cookies are not evaluated; a light with a cookie is diagnosed.
 
 Lighting changes and visibility changes are tracked independently. Color changes retain valid visibility; light identity, geometry of the light, shadow settings and layers invalidate incompatible cached visibility. Cache entries cannot migrate accidentally between lights after reordering.
 
@@ -60,13 +60,13 @@ Every eligible camera publishes committed or neutral data even when no sector ch
 
 ## Camera cascades
 
-Each eligible camera publishes a small number of nested cascades. Cascade 0 holds committed probe lighting at the baked spacing; every further cascade doubles the spacing and, with the same probe count, covers twice the extent. Cascades are axis-aligned with the baked grid, snapped to their own spacing, centered on the camera and clamped to the baked domain. A cascade whose predecessor already covers the whole domain is not published.
+Each eligible camera publishes a small number of nested cascades. The finest holds committed probe lighting at the baked spacing; each coarser cascade covers a larger extent at a coarser spacing. Cascades are aligned with the baked grid, follow the camera and are clamped to the baked domain; a cascade adds nothing once a finer one covers the whole domain.
 
-Coarse lighting is a prefiltered pyramid of committed probe lighting, not separately baked transport. Each coarse node is a tent-weighted average of the finer level around its aligned node, accumulated in the validity-premultiplied form that shading interpolates, so invalid probes never contribute and a fully invalid neighborhood remains invalid. Pyramid levels are global, follow sector commits incrementally and, like committed probe lighting, survive transport eviction. Coarse cascades are a far-field approximation: their wider support may average lighting across thin occluders, so a coarser cascade never replaces a finer cascade that has valid coverage at a point.
+Coarse lighting is a prefilter of committed probe lighting, not separately baked transport. Invalid probes never contribute to it, and a fully invalid neighborhood remains invalid. It follows sector commits incrementally and, like committed probe lighting, survives transport eviction. Coarse cascades are a far-field approximation whose wider support may average lighting across thin occluders, so a coarser cascade never replaces a finer cascade that has valid coverage at a point.
 
-Publication uses toroidal addressing on the horizontal axes. A window step publishes only the newly covered slabs and hardware filtering wraps across the physical seam; a vertical step rebuilds that cascade. Sector commits republish only the intersecting slots of each cascade. The content of a toroidal publication equals a full rebuild at the same window position.
+A window move publishes only newly covered regions, and a sector commit republishes only the regions it intersects. The published content always equals a full rebuild at the same window position.
 
-Shading uses the finest cascade containing the point and blends into the next coarser cascade across a one-cell band along the axes where its window scrolls. The band is tightened by one cell and centered on the camera position clamped into the window, so the weight depends only on the camera and window steps do not pop. The coarsest published cascade does not fade, and the accumulated result is normalized by its total weight. A cascade with zero valid weight at a point yields to the next coarser one. All PRT consumers share this evaluation.
+Shading uses the finest cascade with valid coverage at a point and blends into the next coarser one near its window boundary. The blend weight depends only on the camera position, so window steps do not pop. All PRT consumers share this evaluation.
 
 ## Resource declarations and observation
 
@@ -74,4 +74,4 @@ RenderGraph declares transport, lighting, shadow, feedback, readback and publica
 
 Diagnostics distinguish budget pressure, update latency, residency, invalid integration and unknown shadow coverage; they never gate normal publication. Probe debug views inspect committed probe lighting independently of interpolated material sampling.
 
-Validation holds geometry, lighting, camera and sampling fixed, compares captured transport against CPU integration, checks camera/resource lifecycle, and verifies that reversing selected-sector order leaves results unchanged. Budget changes may change response latency; stabilized results define static comparisons. Measurements and captures belong outside this living contract.
+Validation holds geometry, lighting, camera and sampling fixed, compares captured transport against CPU integration, checks camera/resource lifecycle, and verifies that reversing selected-sector order leaves results unchanged. Budget changes may change response latency; stabilized results define static comparisons.

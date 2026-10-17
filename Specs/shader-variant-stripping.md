@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-11 |
-| Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md), [Path Tracing](path-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
+| Date | 2026-10-18 |
+| Related Specs | [Materials and Shaders](materials-and-shaders.md), [Rendering Pipeline](rendering-pipeline.md), [Path Tracing](path-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Area Lights](area-lights.md) |
 
 Stripping removes only states that the complete build target cannot reach. Renderer capabilities and content usage are separate inputs; neither the currently open scene nor one changed asset represents the whole build.
 
@@ -33,7 +33,7 @@ Ray traced global illumination publishes through the SSR and SSGI seams, so it m
 
 ## Keyword prefiltering
 
-Stable capability axes keep enabled, disabled or both states according to the complete renderer set. Runtime-varying contact-shadow and PCSS axes retain both when supported. Area lighting keeps the selected quality tiers and keeps its off state only for renderers without area lighting.
+Stable capability axes keep enabled, disabled or both states according to the complete renderer set. Runtime-varying contact-shadow and PCSS axes retain both when supported. [Area lighting](area-lights.md#quality-and-shadow-filtering) keeps the selected quality tiers and keeps its off state only for renderers without area lighting.
 
 IllusionRP preserves states supplied by its own producers against URP prefiltering, including screen-space shadow and depth-normal requirements. Unknown shared-producer states remain available. Runtime render-pass alternatives remain available, while unsupported debug-only shader alternatives are removed.
 
@@ -87,9 +87,9 @@ Graphics and compute shaders referenced by the pipeline resources lose every var
 
 | Resource shaders | Kept when any target renderer has |
 |---|---|
-| Path tracing scene support: FGD, light baking, environment, environment lighting, emissive, motion and rectangle light shaders | Path tracing or ray traced global illumination. |
-| Path tracing output, reference accumulation and realtime composition shaders | Path tracing. |
-| Ray traced global illumination composite and radiance cache shaders | Ray traced global illumination. |
+| Support for the [ray tracing scene](ray-tracing-scene.md): lookup data, lights, environment, emission and motion | Path tracing or ray traced global illumination. |
+| Path tracing output: accumulation and composition | Path tracing. |
+| Ray traced global illumination composition and radiance cache | Ray traced global illumination. |
 
 ## Shader authoring
 

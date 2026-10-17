@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-11 |
+| Date | 2026-10-18 |
 | Related Specs | [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 IllusionRP extends URP's Universal Renderer through a renderer feature rather than owning a separate raster pipeline. Forward and Forward+ are the supported material paths. URP retains its standard stages; IllusionRP inserts feature work and publishes the state its materials consume.
@@ -17,13 +17,13 @@ IllusionRP extends URP's Universal Renderer through a renderer feature rather th
 - Resource assets include required shaders and lookup data. Volumes blend camera parameters; runtime configuration gates enabled capabilities.
 - Scene components supply registered inputs such as decals, light anchors, shadow casters and probes without transferring scene ownership.
 
-Deferred cameras skip Forward GBuffer, wet surfaces and area lights. Existing Deferred pass topology does not imply support for IllusionRP's Forward material contract.
+Deferred cameras skip Forward GBuffer, wet surfaces and [area lights](area-lights.md). Existing Deferred pass topology does not imply support for IllusionRP's Forward material contract.
 
 ## Enablement
 
 Work requires serialized capability, runtime permission, active Volume where applicable, eligible camera and supported rendering path/device. Post effects additionally require pipeline and camera post-processing. Compute preference never overrides missing compute support.
 
-Turning off a feature skips its work while preserving neutral publication, state reset and history invalidation. Runtime and Volume controls cannot enable a capability removed from the build. Feature-specific eligibility belongs to its specification; [Transparency](transparency.md), [PRT](precomputed-radiance-transfer.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) and [Wet Surfaces](wet-surface-decals.md) define their producer chains.
+Turning off a feature skips its work while preserving neutral publication, state reset and history invalidation. Runtime and Volume controls cannot enable a capability removed from the build. Feature-specific eligibility belongs to its specification; [Transparency](transparency.md), [PRT](precomputed-radiance-transfer.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Area Lights](area-lights.md) and [Wet Surfaces](wet-surface-decals.md) define their producer chains.
 
 ## Global state
 
@@ -65,7 +65,7 @@ Pass instances may be shared between cameras; temporal contents must not be. Eve
 
 ## DLSS Neural Rendering
 
-This optional experimental full-resolution stage replaces post-processed color using matching color, depth and motion inputs. It requires its backend/runtime on supported Windows DX12 configurations. Only final-resolving Game cameras with post-processing participate; HDR output, XR and unavailable backends bypass it with diagnostics.
+This optional full-resolution stage replaces post-processed color using matching color, depth and motion inputs. It requires its backend/runtime on supported Windows DX12 configurations. Only final-resolving Game cameras with post-processing participate; HDR output, XR and unavailable backends bypass it with diagnostics.
 
 Each camera owns its context. Size, configuration, camera cuts, projection changes or skipped work invalidate history; explicit reset affects all contexts. Initialization/dispatch failure preserves the input image. Input debug displays prepared inputs without evaluation.
 
@@ -73,7 +73,7 @@ Each camera owns its context. Size, configuration, camera cuts, projection chang
 
 Runtime configuration is shared across renderers but is not serialized authoring state. Applications may drive it directly or through the optional console integration. Feature controls and debug views are distinct: one gates rendering work, the other visualizes results.
 
-Debug rendering and panels are limited to Editor/development builds. Panels exist while renderer features are alive and reset consistently. Async compute is currently disabled.
+Debug rendering and panels are limited to Editor/development builds. Panels exist while renderer features are alive and reset consistently.
 
 ## Lifecycle
 

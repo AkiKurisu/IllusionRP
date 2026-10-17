@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-04 |
+| Date | 2026-10-18 |
+| Related Specs | [Render Resources](render-resources.md), [Wet Surface Decals](wet-surface-decals.md), [Directional Per-Object Shadows](directional-per-object-shadows.md), [Sun Shafts](sun-shafts.md) |
 
 World Scale converts authored logical lengths into Unity world units at the renderer boundary. It lets content size change without rewriting Volume, renderer or diffusion-profile assets.
 
