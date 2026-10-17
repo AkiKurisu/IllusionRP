@@ -215,6 +215,8 @@ namespace Illusion.Rendering
             }
             foreach (var camera in _staleCameras)
                 _pathTracedCameras.Remove(camera);
+            if (_pathTracedCameras.Count == 0)
+                _rayTracingScene.SkinnedUpdates.Restore();
         }
 
         private void RestoreSuppressedCameras()

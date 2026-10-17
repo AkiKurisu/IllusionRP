@@ -92,6 +92,7 @@ namespace Illusion.Rendering.PathTracing
                 && camera.TryGetComponent(out PerObjectShadowLightSource selector) && selector.isActiveAndEnabled ? selector.Source : null;
             var world = _scene.Update(camera, settings.layerMask.value, settings.directionalAngularDiameter.value, perObjectSelector,
                 _rendererData.PerObjectShadowRenderingLayer, realtime);
+            _scene.SkinnedUpdates.Keep(world.Scene.Instances);
 
             TextureHandle image = realtime
                 ? RecordRealtime(renderGraph, cameraData, settings, context, world)
