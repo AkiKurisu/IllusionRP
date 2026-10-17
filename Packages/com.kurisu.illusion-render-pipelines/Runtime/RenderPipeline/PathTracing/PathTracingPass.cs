@@ -65,7 +65,8 @@ namespace Illusion.Rendering.PathTracing
 
         internal static bool UsesRealtime(Camera camera, PathTracing settings)
         {
-            return settings.mode.value == PathTracingMode.Realtime && camera.cameraType != CameraType.SceneView;
+            return settings.mode.value == PathTracingMode.Realtime && camera.cameraType != CameraType.SceneView
+                && !IllusionRuntimeRenderingConfig.Get().ForcePathTracingReference;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)

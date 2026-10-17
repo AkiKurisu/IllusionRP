@@ -150,6 +150,9 @@ namespace Illusion.Rendering
         /// </summary>
         [ConfigVariable("r.debug.rtgi.accumulate", IsEditor = true)]
         public bool EnableRayTracedGlobalIlluminationAccumulation { get; set; }
+
+        [ConfigVariable("r.debug.pathtracing.reference")]
+        public bool ForcePathTracingReference { get; set; }
         
         [ConfigVariable("r.debug.ssr", IsEditor = true)]
         public bool EnableScreenSpaceReflectionDebug { get; set; }

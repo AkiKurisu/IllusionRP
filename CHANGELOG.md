@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add HD Glass and HD Thin Glass shaders for transmissive surfaces that path tracing refracts through or passes straight through.
+- Add the `r.debug.pathtracing.reference` runtime variable, which renders Game cameras with Reference path tracing in players as well, and make path tracing Ray Reconstruction availability public on the renderer feature.
 
 ### Changed
 
