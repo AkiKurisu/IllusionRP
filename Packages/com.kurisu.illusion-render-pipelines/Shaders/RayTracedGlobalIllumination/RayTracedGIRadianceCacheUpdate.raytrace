@@ -98,18 +98,22 @@ void RayGen_RadianceCacheUpdate()
         if (firstBounce && PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
             payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
         const uint vertexIndex = path.getVertexIndex();
+        const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
+        SharcHitData sharcHitData;
+        sharcHitData.positionWorld = ray.Origin + ray.Direction * payload.hitT;
+        sharcHitData.normalWorld = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
+        const bool cacheable = PathTracingGetFamily(payload) != PT_FAMILY_OVERLAY && path.interiorList.isEmpty();
+        const float sharcRandom = cacheable ? RTXDI_GetNextRandom(rng) : 0.0;
+        if (cacheable && RayTracedGICacheEndsPath(sharcParameters, sharcState, sharcHitData, sharcRandom))
+            path.setTerminateAtNextBounce();
         g_PathSurfaceEmission = 0.0;
         PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
         // A multiply overlay passes the path on without a new vertex.
         if (path.getVertexIndex() == vertexIndex)
             continue;
 
-        const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
-        SharcHitData sharcHitData;
-        sharcHitData.positionWorld = ray.Origin + ray.Direction * payload.hitT;
-        sharcHitData.normalWorld = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
         sharcHitData.emissive = g_PathSurfaceEmission;
-        if (!SharcUpdateHit(sharcParameters, sharcState, sharcHitData, path.GetL().rgb, RTXDI_GetNextRandom(rng)))
+        if (!SharcUpdateHit(sharcParameters, sharcState, sharcHitData, path.GetL().rgb, cacheable ? sharcRandom : RTXDI_GetNextRandom(rng)))
             break;
         SharcSetThroughput(sharcState, path.GetThp());
     }

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Stop the UnityRHI native plugin from logging DLSS, ray reconstruction and DLSS Neural Rendering instance creation and release by default.
 - Skip any-hit shaders on opaque geometry in path tracing and ray traced global illumination. Shaders that alpha clip through defines instead of material keywords need an AlphaTest or later render queue to keep their alpha clip.
 - Skip light sampling feedback and motion data that no path tracing or ray traced global illumination pass reads.
+- End radiance cache updates early on cached entries in ray traced global illumination's Quality mode.
 
 ### Fixed
 
