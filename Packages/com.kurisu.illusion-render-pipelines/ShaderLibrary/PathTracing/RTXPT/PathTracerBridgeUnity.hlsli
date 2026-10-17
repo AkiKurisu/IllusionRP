@@ -410,7 +410,7 @@ float3 Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int 
     payload.hitT = 0.0;
     payload.diffuseOpacity = PathTracingPackHalf4(float4(1.0, 1.0, 1.0, 0.0));
     payload.parameters.x = _PathTracingLightTargets[targetIndex].shadowLayers;
-    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
+    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | PathTracingShadowRayFlags(payload.parameters.x), PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
     return payload.hitT < 0.0 ? PathTracingUnpackHalf4(payload.diffuseOpacity).rgb : 0.0;
 }
 

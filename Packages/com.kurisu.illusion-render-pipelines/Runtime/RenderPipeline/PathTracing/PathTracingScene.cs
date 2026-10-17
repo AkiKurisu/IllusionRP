@@ -54,7 +54,7 @@ namespace Illusion.Rendering.PathTracing
                 // @IllusionRP: ASE can enable alpha testing through defines instead of material keywords.
                 subMeshFlagsConfig = new RayTracingSubMeshFlagsConfig
                 {
-                    opaqueMaterials = RayTracingSubMeshFlags.Enabled | RayTracingSubMeshFlags.UniqueAnyHitCalls,
+                    opaqueMaterials = RayTracingSubMeshFlags.Enabled | RayTracingSubMeshFlags.ClosestHitOnly,
                     alphaTestedMaterials = RayTracingSubMeshFlags.Enabled | RayTracingSubMeshFlags.UniqueAnyHitCalls,
                     transparentMaterials = RayTracingSubMeshFlags.Enabled | RayTracingSubMeshFlags.UniqueAnyHitCalls
                 },

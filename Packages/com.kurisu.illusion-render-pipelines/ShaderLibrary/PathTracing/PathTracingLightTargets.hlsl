@@ -25,6 +25,13 @@ struct PathTracingDistantLight
 StructuredBuffer<PathTracingDistantLight> _PathTracingDistantLights;
 uint _PathTracingDistantLightCount;
 
+uint _PathTracingOpaqueShadowLayers;
+
+uint PathTracingShadowRayFlags(uint shadowLayers)
+{
+    return _PathTracingOpaqueShadowLayers == 0u || (_PathTracingOpaqueShadowLayers & ~shadowLayers) != 0u ? RAY_FLAG_FORCE_NON_OPAQUE : RAY_FLAG_NONE;
+}
+
 bool PathTracingLightAffects(uint targetIndex, uint receiverInstanceID)
 {
     if (targetIndex == 0 || receiverInstanceID == PT_NO_INSTANCE)

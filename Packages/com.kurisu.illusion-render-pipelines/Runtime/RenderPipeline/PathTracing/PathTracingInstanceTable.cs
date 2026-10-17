@@ -109,6 +109,8 @@ namespace Illusion.Rendering.PathTracing
 
         public bool Changed { get; private set; }
 
+        public uint OpaqueShadowLayers { get; private set; }
+
         internal static void RegisterUnsavedRenderer(Renderer renderer)
         {
             if (UnsavedRenderers.Contains(renderer))
@@ -363,8 +365,12 @@ namespace Illusion.Rendering.PathTracing
             _data.Clear();
             _culledSubMeshes.Clear();
             int hash = _ordered.Count;
+            uint layers = 0;
+            bool emptyLayers = false;
             foreach (var record in _ordered)
             {
+                layers |= record.RenderingLayers;
+                emptyLayers |= record.RenderingLayers == 0;
                 _renderers.Add(record.Renderer);
                 int culledStart = _culledSubMeshes.Count;
                 int culledCount = record.CulledSubMeshes.Count;
@@ -378,6 +384,7 @@ namespace Illusion.Rendering.PathTracing
                 });
                 hash = HashCode.Combine(hash, record.Hash);
             }
+            OpaqueShadowLayers = emptyLayers ? 0u : layers;
             MaterialTable.Pack(_ordered);
             Hash = HashCode.Combine(hash, MaterialTable.Hash);
         }

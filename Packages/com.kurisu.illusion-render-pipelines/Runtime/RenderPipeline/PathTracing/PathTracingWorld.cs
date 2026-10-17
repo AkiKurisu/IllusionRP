@@ -80,6 +80,7 @@ namespace Illusion.Rendering.PathTracing
         public void BindHitShaderGlobals(CommandBuffer cmd)
         {
             cmd.SetGlobalBuffer(ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
+            cmd.SetGlobalInteger(ShaderIDs._PathTracingOpaqueShadowLayers, unchecked((int)Scene.Instances.OpaqueShadowLayers));
             cmd.SetGlobalBuffer(ShaderIDs._PathTracingCulledSubMeshes, Scene.Instances.CulledSubMeshBuffer);
             cmd.SetGlobalBuffer(ShaderIDs._PathTracingPreviousPositions, Motion.PreviousPositions);
             cmd.SetGlobalBuffer(ShaderIDs._PathTracingMaterialRanges, Scene.Instances.MaterialTable.RangeBuffer);
@@ -97,6 +98,7 @@ namespace Illusion.Rendering.PathTracing
         private static class ShaderIDs
         {
             public static readonly int _PathTracingInstanceData = Shader.PropertyToID("_PathTracingInstanceData");
+            public static readonly int _PathTracingOpaqueShadowLayers = Shader.PropertyToID("_PathTracingOpaqueShadowLayers");
             public static readonly int _PathTracingCulledSubMeshes = Shader.PropertyToID("_PathTracingCulledSubMeshes");
             public static readonly int _PathTracingPreviousPositions = Shader.PropertyToID("_PathTracingPreviousPositions");
             public static readonly int _PathTracingMaterialRanges = Shader.PropertyToID("_PathTracingMaterialRanges");
