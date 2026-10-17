@@ -33,6 +33,8 @@ namespace Illusion.Rendering.PathTracing
 
         public PathTracingLightBakerKernels LightBakerKernels { get; }
 
+        public PathTracingSkinnedUpdates SkinnedUpdates { get; } = new();
+
         private readonly PathTracingRectangleLights _rectangleLights;
 
         private static class Samplers
@@ -192,6 +194,7 @@ namespace Illusion.Rendering.PathTracing
                 world.Dispose();
             _worlds.Clear();
             _rectangleLights.Dispose();
+            SkinnedUpdates.Dispose();
             LightTables.Dispose();
             Resources.Dispose();
             Environment.Dispose();
