@@ -12,9 +12,9 @@ Path tracing is a camera mode sharing scene geometry and material assets with ra
 
 ## Runtime Controls
 
-The Path Tracing Volume requests the mode for a camera. The runtime variable `r.pathtracing` gates path tracing as a whole; turning it off keeps every camera on raster rendering. The debug variable `r.debug.pathtracing.reference` makes Game cameras use Reference whatever mode the Volume requests; it exists in players as well, so a runtime console can switch it.
+The Path Tracing Volume requests path tracing and its mode for a camera. A runtime switch gates path tracing as a whole: while it is off, every camera keeps raster rendering whatever the Volume requests. A second runtime switch makes Game cameras use Reference whatever mode the Volume requests. It selects an existing mode rather than visualizing intermediate data, so unlike debug views it is also available in players.
 
-The renderer feature reports whether path tracing can run and whether RR is available, so an application can offer Realtime only where it will actually render.
+Path tracing and RR availability can be queried, so an application offers Realtime only where it actually renders.
 
 ## Responsibilities and Data Boundaries
 
