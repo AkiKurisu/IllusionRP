@@ -112,6 +112,9 @@ void nextHit(inout PathState path, inout float2 tMinMax, const PathTracer::Worki
         path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
     if (path.isDeltaOnlyPath())
         PathTracingMarkCameraChain(payload);  // @IllusionRP
+#if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES
+    payload.rayKindAndSeed |= PT_RAY_MOTION;  // @IllusionRP
+#endif
     TraceRay( SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload );  // @IllusionRP
     if (payload.hitT == PT_NO_SURFACE_T)
         PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);

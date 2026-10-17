@@ -483,7 +483,7 @@ namespace Illusion.Rendering
                 {
                     var cmd = CommandBufferHelpers.GetNativeCommandBuffer(graphContext.cmd);
                     data.Scene.Prepare(cmd, data.World, data.LightBaker, data.Exposure, data.Camera.transform.position,
-                        data.WorldToClip, data.Width, data.Height, data.Frame);
+                        data.WorldToClip, data.Width, data.Height, data.Frame, false);
                     cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
 
                     data.ConstantsUpload[0] = data.ConstantsData;

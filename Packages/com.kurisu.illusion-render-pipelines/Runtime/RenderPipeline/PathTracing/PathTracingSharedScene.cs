@@ -84,14 +84,14 @@ namespace Illusion.Rendering.PathTracing
         /// The environment may change the view and projection matrices; callers restore their own.
         /// </summary>
         public void Prepare(CommandBuffer cmd, PathTracingWorld world, PathTracingLightBaker lightBaker, RenderTargetIdentifier exposureTexture,
-            Vector3 cameraPosition, Matrix4x4 worldToClip, int width, int height, int frame)
+            Vector3 cameraPosition, Matrix4x4 worldToClip, int width, int height, int frame, bool temporalFeedback)
         {
             using (new ProfilingScope(cmd, Samplers.Environment))
                 Environment.Update(cmd, Lights, exposureTexture);
             using (new ProfilingScope(cmd, Samplers.Lights))
             {
                 world.Emissive.Prepare(cmd);
-                lightBaker.UpdateBegin(cmd, Lights, Environment, world.Emissive, cameraPosition, worldToClip, width, height);
+                lightBaker.UpdateBegin(cmd, Lights, Environment, world.Emissive, cameraPosition, worldToClip, width, height, temporalFeedback);
                 LightTables.Upload(cmd, Lights);
             }
             using (new ProfilingScope(cmd, Samplers.Scene))
