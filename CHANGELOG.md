@@ -10,11 +10,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add HD Glass and HD Thin Glass shaders for transmissive surfaces that path tracing refracts through or passes straight through.
+- Add the `r.debug.pathtracing.reference` runtime variable, which renders Game cameras with Reference path tracing in players as well, and make path tracing Ray Reconstruction availability public on the renderer feature.
 
 ### Changed
 
 - Treat base color alpha as opacity for refractive path tracing transmission in Lit graphs, matching their raster refraction.
 - Stop the UnityRHI native plugin from logging DLSS, ray reconstruction and DLSS Neural Rendering instance creation and release by default.
+- Skip any-hit shaders on opaque geometry in path tracing and ray traced global illumination. Shaders that alpha clip through defines instead of material keywords need an AlphaTest or later render queue to keep their alpha clip.
+- Skip light sampling feedback and motion data that no path tracing or ray traced global illumination pass reads.
+- End radiance cache updates early on cached entries in ray traced global illumination's Quality mode.
+- Share one compact material storage among path tracing material families. Together with the changes above, path tracing is 10–14% faster in the Bistro scenes.
+- Render the HD Lit, HD Fabric, HD Skin and HD Hair shaders in the AlphaTest queue, so path tracing and ray traced global illumination keep their alpha clip and shadow transmission.
 
 ### Fixed
 

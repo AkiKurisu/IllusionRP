@@ -162,7 +162,7 @@ namespace Illusion.Rendering.PathTracing
         private static void PrepareScene(CommandBuffer cmd, TracePassData data)
         {
             data.Scene.Prepare(cmd, data.World, data.LightBaker, data.ExposureTexture, data.Camera.transform.position,
-                data.WorldToClip, data.Width, data.Height, data.Frame);
+                data.WorldToClip, data.Width, data.Height, data.Frame, true);
             cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
         }
 

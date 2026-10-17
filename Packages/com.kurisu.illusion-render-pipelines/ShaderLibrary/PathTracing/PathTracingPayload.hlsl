@@ -8,7 +8,8 @@
 #define PT_RAY_KIND_MASK                0x3u
 #define PT_RAY_CAMERA_CHAIN             (1u << 2)
 #define PT_RAY_SKIP_TRANSMISSION        (1u << 3)
-#define PT_RAY_SEED_SHIFT               4u
+#define PT_RAY_MOTION                   (1u << 4)
+#define PT_RAY_SEED_SHIFT               5u
 
 #define PT_FAMILY_LIT                   0u
 #define PT_FAMILY_HAIR                  5u

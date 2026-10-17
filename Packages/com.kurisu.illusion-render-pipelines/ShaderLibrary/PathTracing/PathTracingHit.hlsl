@@ -246,8 +246,11 @@ void PathTracingWriteGeometry(inout IllusionPathPayload payload, PathTracingHitC
     payload.instanceID = InstanceID();
     payload.triangleIndex = PathTracingGetTriangleIndex();
     payload.familyParameters.w = PathTracingGetMaterialIndex();
-    float3 currentWS = mul(ObjectToWorld3x4(), float4(hit.vertex.positionOS, 1.0));
-    payload.motion = PathTracingPackHalf4(float4(PathTracingPreviousPositionWS(hit) - currentWS, 0.0));
+    if ((payload.rayKindAndSeed & PT_RAY_MOTION) != 0)
+    {
+        float3 currentWS = mul(ObjectToWorld3x4(), float4(hit.vertex.positionOS, 1.0));
+        payload.motion = PathTracingPackHalf4(float4(PathTracingPreviousPositionWS(hit) - currentWS, 0.0));
+    }
 }
 
 #define PT_CULL_BACK    1u

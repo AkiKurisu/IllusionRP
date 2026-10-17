@@ -46,7 +46,7 @@ namespace Illusion.Rendering
         /// </summary>
         public bool IsRayTracedGlobalIlluminationAvailable => rayTracedGlobalIllumination && _rayTracedGlobalIlluminationPass is { IsDenoiserLoaded: true };
 
-        internal bool IsPathTracingRayReconstructionAvailable => _pathTracingPass is { IsRayReconstructionAvailable: true };
+        public bool IsPathTracingRayReconstructionAvailable => _pathTracingPass is { IsRayReconstructionAvailable: true };
 
         private void CreateRayTracingPasses()
         {

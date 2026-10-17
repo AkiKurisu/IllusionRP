@@ -80,7 +80,7 @@ namespace Illusion.Rendering.PathTracing
         }
 
         public void UpdateBegin(CommandBuffer cmd, PathTracingLightCollector lights, PathTracingEnvironment environment,
-            PathTracingEmissiveTable emissive, Vector3 cameraPosition, Matrix4x4 worldToClip, int width, int height)
+            PathTracingEmissiveTable emissive, Vector3 cameraPosition, Matrix4x4 worldToClip, int width, int height, bool temporalFeedback)
         {
             bool resetFeedback = _lastFrame < 0 || PathTracingFrame.Index - _lastFrame > 1;
             resetFeedback |= EnsureTargets(width, height);
@@ -113,7 +113,7 @@ namespace Illusion.Rendering.PathTracing
             control.LastFrameTemporalFeedbackAvailable = feedbackAvailable ? 1u : 0u;
             control.LastFrameLocalSamplesAvailable = _previousFeedbackAvailable && feedbackAvailable ? 1u : 0u;
             control.ImportanceSamplingType = Config.ImportanceSamplingNEEAT;
-            control.TemporalFeedbackRequired = 1;
+            control.TemporalFeedbackRequired = temporalFeedback ? 1u : 0u;
             control.TotalMaxFeedbackCount = feedbackAvailable ? (uint)(DivCeil(width, Config.ComputeThreads2D) * DivCeil(height, Config.ComputeThreads2D) * Config.ComputeThreads2D * Config.ComputeThreads2D) : 0u;
             control.GlobalFeedbackUseWeight = feedbackAvailable ? GlobalTemporalFeedbackWeight : 0.0f;
             control.LocalToGlobalSampleRatio = feedbackAvailable ? LocalToGlobalSampleRatio : 0.0f;

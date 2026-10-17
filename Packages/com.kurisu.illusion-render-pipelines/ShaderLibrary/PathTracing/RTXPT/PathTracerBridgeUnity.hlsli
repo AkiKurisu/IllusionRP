@@ -268,8 +268,10 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         hairSurface.ambientOcclusion = 1.0;
         Illusion::Hair::BSDFData hairData = Illusion::Hair::ConvertSurfaceDataToBSDFData(pixelPos, hairSurface);
         hairData.fresnel0 = bsdfDataSpecular;  // @IllusionRP
-        bsdf.valid = Illusion::Hair::CreateMaterialData(hdrpPayload, builtin, hairData, ptShadingData.posW, materialSample, bsdf.hair);
-        bsdf.hair.Nv = hairData.normalWS;
+        Illusion::Hair::MaterialData hairMaterial;
+        bsdf.valid = Illusion::Hair::CreateMaterialData(hdrpPayload, builtin, hairData, ptShadingData.posW, materialSample, hairMaterial);
+        hairMaterial.Nv = hairData.normalWS;
+        bsdf.setHair(hairMaterial);
     }
     else
     if (bsdf.family == PT_FAMILY_FABRIC)
@@ -297,24 +299,28 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
         fabricData.velvet = (payload.parameters.x & PT_FABRIC_VELVET) != 0u;
         Illusion::ConvertAnisotropyToRoughness(fabricData.perceptualRoughness, fabricData.anisotropy, fabricData.roughnessT, fabricData.roughnessB);
         if (!silk) fabricData.roughnessT = fabricData.roughnessB = Illusion::PerceptualRoughnessToRoughness(fabricData.perceptualRoughness);
-        bsdf.valid = Illusion::Fabric::CreateMaterialData(hdrpPayload, builtin, fabricData, ptShadingData.posW, materialSample, bsdf.fabric);
-        ptShadingData.N = Illusion::Fabric::GetSpecularNormal(bsdf.fabric);
+        Illusion::Fabric::MaterialData fabricMaterial;
+        bsdf.valid = Illusion::Fabric::CreateMaterialData(hdrpPayload, builtin, fabricData, ptShadingData.posW, materialSample, fabricMaterial);
+        bsdf.setFabric(fabricMaterial);
+        ptShadingData.N = Illusion::Fabric::GetSpecularNormal(fabricMaterial);
     }
     else
     {
-        bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, bsdf.material);
+        Illusion::Lit::MaterialData litMaterial;
+        bsdf.valid = Illusion::Lit::CreateMaterialData(hdrpPayload, builtin, bsdfData, ptShadingData.posW, materialSample, litMaterial);
+        bsdf.setLit(litMaterial);
         if (bsdf.family == PT_FAMILY_SKIN)
             bsdf.skinSample = float3(materialSamples.xy, materialSample);
-        if (bsdf.material.isSubsurface)
+        if (litMaterial.isSubsurface)
         {
             // @IllusionRP: HDRP random walk moved the interaction to its exit surface.
             ptShadingData.instanceID = g_HDRPExitInstance;
-            ptShadingData.N = bsdf.material.bsdfData.normalWS;
-            ptShadingData.faceNCorrected = bsdf.material.bsdfData.geomNormalWS;
+            ptShadingData.N = litMaterial.bsdfData.normalWS;
+            ptShadingData.faceNCorrected = litMaterial.bsdfData.geomNormalWS;
             ptShadingData.vertexN = ptShadingData.N;
         }
         else
-            ptShadingData.N = Illusion::Lit::GetSpecularNormal(bsdf.material);
+            ptShadingData.N = Illusion::Lit::GetSpecularNormal(litMaterial);
     }
 
     return PathTracer::SurfaceData::make(ptShadingData, bsdf,
@@ -327,8 +333,12 @@ PathTracer::SurfaceData Bridge::loadSurface( const IllusionPathPayload payload, 
 // @IllusionRP: HDRP random-walk exits use its world-scaled bias rather than RTXPT's barycentric-position offset.
 float3 Bridge::computeSurfaceRayOrigin(const ShadingData shadingData, const ActiveBSDF bsdf, bool outward)
 {
-    if (bsdf.family == PT_FAMILY_SKIN && bsdf.material.isSubsurface)
-        return shadingData.posW + bsdf.material.bsdfData.geomNormalWS * (outward ? _RayTracingRayBias : -_RayTracingRayBias);
+    if (bsdf.family == PT_FAMILY_SKIN)
+    {
+        const Illusion::Lit::MaterialData material = bsdf.getLit(shadingData.V);
+        if (material.isSubsurface)
+            return shadingData.posW + material.bsdfData.geomNormalWS * (outward ? _RayTracingRayBias : -_RayTracingRayBias);
+    }
     return shadingData.computeNewRayOrigin(outward);
 }
 
@@ -410,7 +420,7 @@ float3 Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int 
     payload.hitT = 0.0;
     payload.diffuseOpacity = PathTracingPackHalf4(float4(1.0, 1.0, 1.0, 0.0));
     payload.parameters.x = _PathTracingLightTargets[targetIndex].shadowLayers;
-    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
+    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | PathTracingShadowRayFlags(payload.parameters.x), PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
     return payload.hitT < 0.0 ? PathTracingUnpackHalf4(payload.diffuseOpacity).rgb : 0.0;
 }
 

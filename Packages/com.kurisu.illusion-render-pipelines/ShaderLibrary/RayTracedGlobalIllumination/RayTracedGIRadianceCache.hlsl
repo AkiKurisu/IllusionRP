@@ -33,6 +33,19 @@ SharcParameters RayTracedGICacheParameters()
     return parameters;
 }
 
+#if SHARC_UPDATE
+bool RayTracedGICacheEndsPath(SharcParameters parameters, SharcState state, SharcHitData hitData, float random)
+{
+    if (uint(round(lerp(SHARC_RESAMPLING_DEPTH_MIN, SHARC_PROPAGATION_DEPTH, random))) > state.pathLength)
+        return false;
+    HashGridKey key;
+    HashGridIndex index;
+    if (!HashGridInsertEntry(parameters.hashGridData, hitData.positionWorld, hitData.normalWorld, parameters.hashGridParameters, key, index))
+        return true;
+    return SharcGetVoxelData(parameters.resolvedBuffer, index).accumulatedSampleNum > SHARC_SAMPLE_NUM_THRESHOLD;
+}
+#endif
+
 #if SHARC_QUERY
 // As SHaRC's render pass does, a hit uses the cache when the segment that reached it is longer than a voxel's diagonal and the
 // cone of the lobes that launched it, by SHaRC's accumulated roughness, is wider than a voxel.
