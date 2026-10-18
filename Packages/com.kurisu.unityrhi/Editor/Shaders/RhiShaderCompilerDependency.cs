@@ -15,7 +15,7 @@ namespace UnityRhi.EditorTools
     {
         internal const string Name = "UnityRHI/ShaderCompiler";
         private const string SessionKey = "UnityRHI.ShaderCompilerDependency";
-        private const string PluginRoot = "Packages/top.kuanmi.unityrhi.native/Plugins/x86_64";
+        private const string PluginRoot = "Packages/com.kurisu.unityrhi/Plugins/x86_64";
         private static readonly string[] Binaries =
             { "UnityRHI.dll", "dxcompiler.dll", "dxil.dll" };
 

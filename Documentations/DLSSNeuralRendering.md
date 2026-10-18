@@ -4,7 +4,7 @@ Experimental DLSS Neural Rendering is an extension based on [Kuan-Mi/UnityDLSSNR
 
 ## Setup
 
-1. Place `nvngx_dlssnr.dll` in `Packages/top.kuanmi.unityrhi.native/Plugins/x86_64`.
+1. Place `nvngx_dlssnr.dll` in `Packages/com.kurisu.unityrhi/Plugins/x86_64`.
 2. Configure the plugin for Windows x64 Editor and Player.
 3. Restart Unity.
 4. Add `Illusion > DLSS Neural Rendering` to a Volume.

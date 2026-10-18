@@ -7,7 +7,7 @@ namespace Illusion.Rendering.Editor
     internal static class PathTracingInlinePluginInstaller
     {
         private const string PluginName = "GfxPluginUnityRhiBindless.dll";
-        private const string SourcePath = "Packages/top.kuanmi.unityrhi.native/Plugins/x86_64/" + PluginName;
+        private const string SourcePath = "Packages/com.kurisu.unityrhi/Plugins/x86_64/" + PluginName;
         internal const string InstalledPath = PathTracingInlineGenerator.OutputFolder + "/Plugins/x86_64/" + PluginName;
 
         [InitializeOnLoadMethod]

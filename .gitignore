@@ -82,5 +82,5 @@ References~
 /.idea/
 
 # The local DLSS Neural Rendering runtime is intentionally not tracked.
-/Packages/top.kuanmi.unityrhi.native/Plugins/x86_64/nvngx_dlssnr.dll
-/Packages/top.kuanmi.unityrhi.native/Plugins/x86_64/nvngx_dlssnr.dll.meta
+/Packages/com.kurisu.unityrhi/Plugins/x86_64/nvngx_dlssnr.dll
+/Packages/com.kurisu.unityrhi/Plugins/x86_64/nvngx_dlssnr.dll.meta

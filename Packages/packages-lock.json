@@ -282,20 +282,13 @@
       "source": "embedded",
       "dependencies": {}
     },
-    "top.kuanmi.unityrhi": {
-      "version": "file:top.kuanmi.unityrhi",
+    "com.kurisu.unityrhi": {
+      "version": "file:com.kurisu.unityrhi",
       "depth": 0,
       "source": "embedded",
       "dependencies": {
-        "com.unity.mathematics": "1.2.6",
-        "top.kuanmi.unityrhi.native": "1.0.1"
+        "com.unity.mathematics": "1.2.6"
       }
-    },
-    "top.kuanmi.unityrhi.native": {
-      "version": "file:top.kuanmi.unityrhi.native",
-      "depth": 0,
-      "source": "embedded",
-      "dependencies": {}
     },
     "com.unity.modules.ai": {
       "version": "1.0.0",

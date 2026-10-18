@@ -28,7 +28,7 @@ namespace UnityRhi.EditorTools
             }
             catch (System.DllNotFoundException)
             {
-                Debug.LogError("UnityRHI: UnityRHI.dll not found in Packages/top.kuanmi.unityrhi.native/Plugins/x86_64. Run build_dll.bat.");
+                Debug.LogError("UnityRHI: UnityRHI.dll not found in Packages/com.kurisu.unityrhi/Plugins/x86_64. Run build_dll.bat.");
             }
         }
     }
