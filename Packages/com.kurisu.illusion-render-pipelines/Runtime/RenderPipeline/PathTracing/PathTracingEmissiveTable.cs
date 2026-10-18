@@ -109,6 +109,12 @@ namespace Illusion.Rendering.PathTracing
             var sub = mesh.GetSubMesh(subMesh);
             if (sub.topology != MeshTopology.Triangles || sub.indexCount % 3 != 0 || sub.indexStart % 3 != 0)
                 throw new NotSupportedException($"[PathTracing] Emissive submesh '{renderer.name}/{subMesh}' requires triangle topology and triangle-aligned indices.");
+            if (!CanReadGpuGeometry(mesh))
+            {
+                if (UnreadableMeshes.Add(mesh.GetInstanceID()))
+                    Debug.LogWarning($"[PathTracing] Emissive mesh '{mesh.name}' is not readable and its GPU buffers lack raw access; it is excluded from emissive light sampling. Enable Read/Write to sample it.");
+                return false;
+            }
             ValidateLayout(renderer, mesh, texture != null);
             if (sub.indexCount == 0)
                 return false;
@@ -159,6 +165,15 @@ namespace Illusion.Rendering.PathTracing
             if (!float.IsFinite(st.x) || !float.IsFinite(st.y) || !float.IsFinite(st.z) || !float.IsFinite(st.w))
                 throw new InvalidOperationException($"[PathTracing] Non-finite emission UV transform on '{material.name}'.");
             return true;
+        }
+
+        private static readonly HashSet<int> UnreadableMeshes = new();
+
+        // Changing a buffer target re-uploads the mesh, which needs its CPU copy.
+        private static bool CanReadGpuGeometry(Mesh mesh)
+        {
+            return mesh.isReadable || ((mesh.indexBufferTarget & GraphicsBuffer.Target.Raw) != 0
+                                       && (mesh.vertexBufferTarget & GraphicsBuffer.Target.Raw) != 0);
         }
 
         private static void ValidateLayout(Renderer renderer, Mesh mesh, bool textured)
