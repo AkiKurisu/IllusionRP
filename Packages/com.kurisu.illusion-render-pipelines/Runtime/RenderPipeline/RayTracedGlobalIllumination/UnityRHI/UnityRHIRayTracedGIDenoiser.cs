@@ -148,6 +148,8 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
             private struct WrappedTexture
             {
                 public ResourceType Type;
+                public RenderTexture Source;
+                public Vector2Int Size;
                 public IntPtr Native;
                 public IntPtr Nri;
                 public NriResourceState State;
@@ -201,12 +203,24 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
             private bool Wrap(int slot, ResourceType type, RTHandle handle, NriResourceState state)
             {
                 var texture = handle.rt;
+                var size = new Vector2Int(texture.width, texture.height);
+                // GetNativeTexturePtr waits for the render thread, so it only runs when the target changes.
+                if (slot < _textures.Count && _textures[slot].Source == texture && _textures[slot].Size == size)
+                    return false;
                 IntPtr native = texture.GetNativeTexturePtr();
                 if (slot < _textures.Count && _textures[slot].Native == native)
+                {
+                    var current = _textures[slot];
+                    current.Source = texture;
+                    current.Size = size;
+                    _textures[slot] = current;
                     return false;
+                }
                 var wrapped = new WrappedTexture
                 {
                     Type = type,
+                    Source = texture,
+                    Size = size,
                     Native = native,
                     Nri = WrapD3D12Texture(native, ToDxgiFormat(texture.graphicsFormat)),
                     State = state

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Keep skinned meshes animating in path tracing; they no longer freeze in their last pose, such as eyes that stop following their look target.
 - Skip emissive meshes without Read/Write in emissive light sampling instead of failing the path tracing pass in players.
+- Stop the ray traced global illumination denoiser from waiting for the render thread every frame.
 
 ## [1.4.2] - 2026-10-17
 
