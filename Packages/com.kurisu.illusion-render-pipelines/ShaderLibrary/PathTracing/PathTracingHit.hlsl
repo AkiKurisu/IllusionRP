@@ -22,11 +22,6 @@ void PathTracingClip(float4 value) { g_PathTracingClipped = g_PathTracingClipped
 #include "UnityRaytracingMeshUtils.cginc"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"
 
-struct AttributeData
-{
-    float2 barycentrics;
-};
-
 struct PathTracingHitVertex
 {
     float3 positionOS;
@@ -320,5 +315,9 @@ void PathTracingRecordRandomWalk(inout IllusionPathPayload payload, AttributeDat
         payload.instanceID = InstanceID();
     }
 }
+
+#if defined(PATH_TRACING_INLINE)
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInlineMaterial.hlsl"
+#endif
 
 #endif

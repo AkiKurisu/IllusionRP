@@ -20,6 +20,8 @@ namespace Illusion.Rendering.PathTracing
 
         public PathTracingMotionHistory Motion { get; }
 
+        public PathTracingInlineScene Inline { get; } = new();
+
         public int LastUsedFrame { get; private set; }
 
         public PathTracingWorld(ComputeShader emissiveShader, ComputeShader motionShader)
@@ -77,6 +79,23 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
+        public void UpdateInline()
+        {
+            Inline.Update(Scene.Instances, PathTracingFrame.Index);
+        }
+
+        public void BindInline(CommandBuffer cmd, ComputeShader shader, int kernel)
+        {
+            Inline.Bind(cmd, shader, kernel);
+            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
+            cmd.SetComputeIntParam(shader, ShaderIDs._PathTracingOpaqueShadowLayers, unchecked((int)Scene.Instances.OpaqueShadowLayers));
+            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingCulledSubMeshes, Scene.Instances.CulledSubMeshBuffer);
+            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingPreviousPositions, Motion.PreviousPositions);
+            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingMaterialRanges, Scene.Instances.MaterialTable.RangeBuffer);
+            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingSubMeshMaterials, Scene.Instances.MaterialTable.SubMeshBuffer);
+            Scene.Instances.MaterialTable.Bind(cmd, shader, kernel);
+        }
+
         public void BindHitShaderGlobals(CommandBuffer cmd)
         {
             cmd.SetGlobalBuffer(ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
@@ -91,6 +110,7 @@ namespace Illusion.Rendering.PathTracing
         public void Dispose()
         {
             Scene.Dispose();
+            Inline.Dispose();
             Emissive.Dispose();
             Motion.Dispose();
         }

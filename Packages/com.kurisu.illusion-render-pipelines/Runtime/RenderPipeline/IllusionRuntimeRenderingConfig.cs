@@ -206,6 +206,12 @@ namespace Illusion.Rendering
         public RayTracedGIDebugView RayTracedGlobalIlluminationDebugView { get; set; }
 
         /// <summary>
+        /// Compare the surfaces that inline ray tracing evaluates with the PathTracing hit shaders for camera rays.
+        /// </summary>
+        [ConfigVariable("r.debug.pt.inline", IsEditor = true)]
+        public PathTracingInlineValidationView PathTracingInlineValidationView { get; set; }
+
+        /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.
         /// </summary>
         [ConfigVariable("r.CenterHistogramAroundMiddleGrey", IsEditor = true)]

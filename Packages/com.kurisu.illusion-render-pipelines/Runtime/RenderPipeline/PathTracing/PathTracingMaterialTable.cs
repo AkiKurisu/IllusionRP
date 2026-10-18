@@ -137,6 +137,12 @@ namespace Illusion.Rendering.PathTracing
             cmd.SetRayTracingIntParam(shader, MaterialCountId, _data.Count);
         }
 
+        public void Bind(CommandBuffer cmd, ComputeShader shader, int kernel)
+        {
+            cmd.SetComputeBufferParam(shader, kernel, MaterialBufferId, _buffer);
+            cmd.SetComputeIntParam(shader, MaterialCountId, _data.Count);
+        }
+
         public void BindHitShaderGlobals(CommandBuffer cmd)
         {
             cmd.SetGlobalBuffer(MaterialBufferId, _buffer);

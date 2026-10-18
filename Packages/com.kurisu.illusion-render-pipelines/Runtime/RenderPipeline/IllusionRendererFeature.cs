@@ -757,7 +757,8 @@ namespace Illusion.Rendering
             {
                 renderer.EnqueuePass(_transparentSSRDebugPass);
             }
-            if (useRayTracedGlobalIllumination && config.RayTracedGlobalIlluminationDebugView != RayTracedGIDebugView.None)
+            if (useRayTracedGlobalIllumination && (config.RayTracedGlobalIlluminationDebugView != RayTracedGIDebugView.None
+                || config.PathTracingInlineValidationView != PathTracingInlineValidationView.None))
             {
                 renderer.EnqueuePass(_rayTracedGIDebugPass);
             }

@@ -61,6 +61,11 @@ struct IllusionPathPayload
     uint2   motion;
 };
 
+struct AttributeData
+{
+    float2 barycentrics;
+};
+
 struct PathTracingInstance
 {
     uint previousPositionBase;

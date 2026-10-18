@@ -47,5 +47,6 @@ Keep an interface or resource name only when it identifies a necessary integrati
 | [Path Tracing](path-tracing.md) | Reference and Realtime modes, Unity material evaluation, IllusionRP scattering models and RTXPT integration. |
 | [Precomputed Radiance Transfer](precomputed-radiance-transfer.md) | Transport baking, sector scheduling, world lighting, cached visibility and per-camera publication. |
 | [Ray Traced Global Illumination](ray-traced-global-illumination.md) | Indirect diffuse and specular for raster cameras: receivers, secondary surfaces, radiance cache, ReSTIR GI resampling, NRD denoising and composition. |
+| [Inline Ray Tracing](inline-ray-tracing.md) | RTGI Performance mode in compute with ray queries: traversal, exceptions, the scene resource table and inline material evaluation from each material's own `PathTracing` source. |
 | [ASE Shader Workflow](ase-shader-workflow.md) | Ownership of templates, graphs, functions and generated shaders, and export convergence. |
 | [Third-Party Source Imports](third-party-source-imports.md) | Source pinning, import commits, license notices, host adaptation and difference markers. |
