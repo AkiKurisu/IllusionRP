@@ -61,13 +61,13 @@ The ray tracing scene service owns a shader-visible resource table that compute 
 - **Fallback.** Without the backend, or on a device without ray queries, RTGI Performance mode uses hit-shader evaluation for every instance, as it did before inline ray tracing. The reason is reported once.
 - **Imports.** The native hooking library and the descriptor-table technique are imported sources tracked by [Third-Party Source Imports](third-party-source-imports.md).
 - **Registration.** A resource gets an entry when a record first references it. Its entry is released once no record references it and no GPU work in flight still reads it.
-- **Replacement.** A texture reimport, a mesh upload, a recreated render texture or a deforming renderer's buffer swap changes the native resource behind an entry. The entry is updated before the frame's inline work reads it, so inline work never reads a released or stale resource.
+- **Replacement.** A texture reimport, a mesh upload or a recreated render texture changes the native resource behind a record's reference. The record moves to an entry for the new resource before the frame's inline work reads it, and the old entry is released like any other. An entry is never rewritten while GPU work in flight can still read it, so inline work never reads a released or stale resource.
 
 ## Geometry records
 
 - **Geometry order.** A traversal reports a geometry index in the order the acceleration structure assigns to an instance's submeshes. That order leaves out disabled submeshes. Each instance's records map those indices back to their submeshes and materials.
 - **Attributes.** Records describe the mesh's vertex layout and formats. Inline evaluation reconstructs the hit's interpolated attributes from them: positions, normals, tangents, texture coordinates and vertex color, with the precision the hit shaders receive. Read/Write import is not required.
-- **Deforming geometry.** Skinned, blend-shaped and in-place meshes reference the deformed data the acceleration structure was built from in the same frame. A renderer that alternates between deformed buffers from frame to frame updates its entry every frame. RTGI does not need previous-frame geometry at secondary surfaces.
+- **Deforming geometry.** Skinned, blend-shaped and in-place meshes reference the deformed data the acceleration structure was built from in the same frame. Each deformed buffer has its own entry. A renderer that alternates between deformed buffers from frame to frame switches its records between those entries every frame. RTGI does not need previous-frame geometry at secondary surfaces.
 
 ## Inline material evaluation
 

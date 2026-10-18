@@ -40,7 +40,8 @@ namespace Illusion.Rendering.PathTracing
         private readonly List<VertexAttributeDescriptor> _attributes = new();
         private readonly MaterialPropertyBlock _rendererBlock = new();
         private readonly MaterialPropertyBlock _slotBlock = new();
-        private readonly Vector4[] _values = new Vector4[1];
+        private readonly List<DeformingRenderer> _deforming = new();
+        private readonly Dictionary<int, DeformingRenderer> _previousDeforming = new();
 
         private GraphicsBuffer _geometryBuffer;
         private GraphicsBuffer _instanceBuffer;
@@ -49,6 +50,8 @@ namespace Illusion.Rendering.PathTracing
         private GraphicsBuffer _placeholderStructured;
         private int _version = -1;
         private int _generation = -1;
+        private int _deformFrame = -1;
+        private int _firstDeformingGeometry;
         private PathTracingInlineRegistry _registry;
 
         public int UncoveredInstances { get; private set; }
@@ -65,13 +68,25 @@ namespace Illusion.Rendering.PathTracing
             if (!registry || !PathTracingInlineResources.IsAvailable)
                 return;
             PathTracingInlineResources.BeginFrame(frame);
-            if (_version == instances.Version && _generation == PathTracingInlineResources.Generation && _registry == registry)
-                return;
-            _version = instances.Version;
-            _registry = registry;
-            Rebuild(instances, registry, frame);
-            _generation = PathTracingInlineResources.Generation;
-            Upload();
+            if (_deformFrame != frame)
+            {
+                _deformFrame = frame;
+                foreach (DeformingRenderer deforming in _deforming)
+                    PathTracingInlineResources.RefreshMesh(deforming.Mesh, frame);
+            }
+            if (_version != instances.Version || _generation != PathTracingInlineResources.Generation || _registry != registry)
+            {
+                _version = instances.Version;
+                _registry = registry;
+                Rebuild(instances, registry, frame);
+                _generation = PathTracingInlineResources.Generation;
+                RefreshDeforming(frame);
+                Upload();
+            }
+            else if (RefreshDeforming(frame))
+            {
+                _geometryBuffer.SetData(_geometries, _firstDeformingGeometry, _firstDeformingGeometry, _geometries.Count - _firstDeformingGeometry);
+            }
         }
 
         private void Rebuild(PathTracingInstanceTable instances, PathTracingInlineRegistry registry, int frame)
@@ -86,77 +101,188 @@ namespace Illusion.Rendering.PathTracing
             _previousMeshes.UnionWith(_meshes);
             _textures.Clear();
             _meshes.Clear();
+            _previousDeforming.Clear();
+            foreach (DeformingRenderer deforming in _deforming)
+                _previousDeforming[deforming.InstanceId] = deforming;
+            _deforming.Clear();
             UncoveredInstances = 0;
             EvaluatedGeometries = 0;
             ExceptionGeometries = 0;
 
-            foreach (PathTracingRendererRecord record in instances.Records)
+            // Deforming geometry follows the static geometry so that its per-frame updates upload one range.
+            IReadOnlyList<PathTracingRendererRecord> records = instances.Records;
+            for (int i = 0; i < records.Count; i++)
+                _instanceGeometries.Add(records[i].Renderer is SkinnedMeshRenderer ? NoGeometry : AddRenderer(records[i], registry, frame));
+            _firstDeformingGeometry = _geometries.Count;
+            for (int i = 0; i < records.Count; i++)
             {
-                Renderer renderer = record.Renderer;
-                Mesh mesh = record.Mesh;
-                if (!renderer || !mesh || renderer is SkinnedMeshRenderer)
-                {
-                    _instanceGeometries.Add(NoGeometry);
-                    UncoveredInstances++;
+                if (records[i].Renderer is not SkinnedMeshRenderer skinned)
                     continue;
-                }
-                int meshId = mesh.GetInstanceID();
-                bool readable = PathTracingInlineResources.AcquireMesh(mesh, frame, out int[] vertexSlots, out int indexSlot);
-                if (!_meshes.Add(meshId))
-                    PathTracingInlineResources.ReleaseMesh(meshId, frame);
-                if (!readable)
-                {
-                    _instanceGeometries.Add(NoGeometry);
-                    UncoveredInstances++;
+                int first = _geometries.Count;
+                _instanceGeometries[i] = AddRenderer(records[i], registry, frame);
+                if (_geometries.Count == first)
                     continue;
-                }
-
-                _instanceGeometries.Add((uint)_geometries.Count);
-                var template = Template(mesh, vertexSlots, indexSlot);
-                bool hasBlock = renderer.HasPropertyBlock();
-                if (hasBlock)
-                    renderer.GetPropertyBlock(_rendererBlock);
-                int subMeshes = Mathf.Min(mesh.subMeshCount, record.Materials.Count);
-                for (int slot = 0; slot < subMeshes; slot++)
-                {
-                    Material material = record.Materials[slot];
-                    if (!material)
-                        continue;
-                    SubMeshDescriptor subMesh = mesh.GetSubMesh(slot);
-                    var geometry = template;
-                    geometry.IndexStart = (uint)subMesh.indexStart;
-                    geometry.BaseVertex = (uint)subMesh.baseVertex;
-                    geometry.VertexStart = (uint)subMesh.firstVertex;
-
-                    int evaluator = registry.FindEvaluator(material);
-                    if (evaluator == PathTracingInlineRegistry.NoEvaluator)
-                    {
-                        geometry.Evaluator = NoGeometry;
-                        ExceptionGeometries++;
-                        ReportException(material);
-                    }
-                    else
-                    {
-                        MaterialPropertyBlock block = null;
-                        int blockKey = 0;
-                        if (hasBlock)
-                        {
-                            renderer.GetPropertyBlock(_slotBlock, slot);
-                            block = _slotBlock.isEmpty ? _rendererBlock : _slotBlock;
-                            blockKey = _slotBlock.isEmpty ? record.InstanceId : record.InstanceId * 31 + slot + 1;
-                        }
-                        geometry.Evaluator = (uint)evaluator;
-                        geometry.MaterialData = MaterialRecord(registry.Evaluators[evaluator], evaluator, material, block, blockKey, frame);
-                        EvaluatedGeometries++;
-                    }
-                    _geometries.Add(geometry);
-                }
+                int id = skinned.GetInstanceID();
+                if (!_previousDeforming.Remove(id, out DeformingRenderer deforming))
+                    deforming = new DeformingRenderer { InstanceId = id };
+                deforming.Renderer = skinned;
+                deforming.Mesh = records[i].Mesh;
+                deforming.FirstGeometry = first;
+                deforming.GeometryCount = _geometries.Count - first;
+                deforming.MeshSlot = Stream0(_geometries[first]);
+                _deforming.Add(deforming);
             }
 
+            foreach (DeformingRenderer deforming in _previousDeforming.Values)
+                deforming.ReleaseBuffers(frame);
+            _previousDeforming.Clear();
             foreach (int texture in _previousTextures)
                 PathTracingInlineResources.ReleaseTexture(texture, frame);
             foreach (int mesh in _previousMeshes)
                 PathTracingInlineResources.ReleaseMesh(mesh, frame);
+        }
+
+        private uint AddRenderer(PathTracingRendererRecord record, PathTracingInlineRegistry registry, int frame)
+        {
+            Renderer renderer = record.Renderer;
+            Mesh mesh = record.Mesh;
+            if (!renderer || !mesh)
+            {
+                UncoveredInstances++;
+                return NoGeometry;
+            }
+            int meshId = mesh.GetInstanceID();
+            bool readable = PathTracingInlineResources.AcquireMesh(mesh, frame, out int[] vertexSlots, out int indexSlot);
+            if (!_meshes.Add(meshId))
+                PathTracingInlineResources.ReleaseMesh(meshId, frame);
+            if (!readable)
+            {
+                UncoveredInstances++;
+                return NoGeometry;
+            }
+
+            uint first = (uint)_geometries.Count;
+            var template = Template(mesh, vertexSlots, indexSlot);
+            bool hasBlock = renderer.HasPropertyBlock();
+            if (hasBlock)
+                renderer.GetPropertyBlock(_rendererBlock);
+            int subMeshes = Mathf.Min(mesh.subMeshCount, record.Materials.Count);
+            for (int slot = 0; slot < subMeshes; slot++)
+            {
+                Material material = record.Materials[slot];
+                if (!material)
+                    continue;
+                SubMeshDescriptor subMesh = mesh.GetSubMesh(slot);
+                var geometry = template;
+                geometry.IndexStart = (uint)subMesh.indexStart;
+                geometry.BaseVertex = (uint)subMesh.baseVertex;
+                geometry.VertexStart = (uint)subMesh.firstVertex;
+
+                int evaluator = registry.FindEvaluator(material);
+                if (evaluator == PathTracingInlineRegistry.NoEvaluator)
+                {
+                    geometry.Evaluator = NoGeometry;
+                    ExceptionGeometries++;
+                    ReportException(material);
+                }
+                else
+                {
+                    MaterialPropertyBlock block = null;
+                    int blockKey = 0;
+                    if (hasBlock)
+                    {
+                        renderer.GetPropertyBlock(_slotBlock, slot);
+                        block = _slotBlock.isEmpty ? _rendererBlock : _slotBlock;
+                        blockKey = _slotBlock.isEmpty ? record.InstanceId : record.InstanceId * 31 + slot + 1;
+                    }
+                    geometry.Evaluator = (uint)evaluator;
+                    geometry.MaterialData = MaterialRecord(registry.Evaluators[evaluator], evaluator, material, block, blockKey, frame);
+                    EvaluatedGeometries++;
+                }
+                _geometries.Add(geometry);
+            }
+            return first;
+        }
+
+        // Each deformed buffer keeps its own entry: in-flight work can still read the previous frame's buffer.
+        private unsafe bool RefreshDeforming(int frame)
+        {
+            bool changed = false;
+            foreach (DeformingRenderer deforming in _deforming)
+            {
+                uint slot = deforming.MeshSlot;
+                if (deforming.Renderer)
+                {
+                    GraphicsBuffer vertices = deforming.Renderer.GetVertexBuffer();
+                    if (vertices != null)
+                    {
+                        if (vertices.stride == deforming.Mesh.GetVertexBufferStride(0))
+                            slot = deforming.BufferSlot(vertices.GetNativeBufferPtr(), (uint)(vertices.count * vertices.stride), frame);
+                        vertices.Dispose();
+                    }
+                }
+                deforming.ExpireBuffers(frame);
+                if (Stream0(_geometries[deforming.FirstGeometry]) == slot)
+                    continue;
+                for (int i = deforming.FirstGeometry; i < deforming.FirstGeometry + deforming.GeometryCount; i++)
+                {
+                    PathTracingInlineGeometry geometry = _geometries[i];
+                    geometry.VertexBuffers[0] = slot;
+                    _geometries[i] = geometry;
+                }
+                changed = true;
+            }
+            return changed;
+        }
+
+        private static unsafe uint Stream0(PathTracingInlineGeometry geometry) => geometry.VertexBuffers[0];
+
+        private sealed class DeformingRenderer
+        {
+            private const int StaleFrames = 8;
+
+            private readonly List<(IntPtr Buffer, int Slot, int Frame)> _buffers = new();
+
+            public int InstanceId;
+            public SkinnedMeshRenderer Renderer;
+            public Mesh Mesh;
+            public int FirstGeometry;
+            public int GeometryCount;
+            public uint MeshSlot;
+
+            public uint BufferSlot(IntPtr buffer, uint size, int frame)
+            {
+                for (int i = 0; i < _buffers.Count; i++)
+                {
+                    if (_buffers[i].Buffer != buffer)
+                        continue;
+                    _buffers[i] = (buffer, _buffers[i].Slot, frame);
+                    return (uint)_buffers[i].Slot;
+                }
+                int slot = PathTracingInlineResources.AcquireBuffer(buffer, size, frame);
+                if (slot < 0)
+                    return MeshSlot;
+                _buffers.Add((buffer, slot, frame));
+                return (uint)slot;
+            }
+
+            public void ExpireBuffers(int frame)
+            {
+                for (int i = _buffers.Count - 1; i >= 0; i--)
+                {
+                    if (frame - _buffers[i].Frame <= StaleFrames)
+                        continue;
+                    PathTracingInlineResources.ReleaseBuffer(_buffers[i].Slot, frame);
+                    _buffers.RemoveAt(i);
+                }
+            }
+
+            public void ReleaseBuffers(int frame)
+            {
+                foreach ((IntPtr _, int slot, int _) in _buffers)
+                    PathTracingInlineResources.ReleaseBuffer(slot, frame);
+                _buffers.Clear();
+            }
         }
 
         private static readonly HashSet<(int, string)> s_ReportedExceptions = new();
@@ -374,8 +500,11 @@ namespace Illusion.Rendering.PathTracing
                 PathTracingInlineResources.ReleaseTexture(texture, frame);
             foreach (int mesh in _meshes)
                 PathTracingInlineResources.ReleaseMesh(mesh, frame);
+            foreach (DeformingRenderer deforming in _deforming)
+                deforming.ReleaseBuffers(frame);
             _textures.Clear();
             _meshes.Clear();
+            _deforming.Clear();
             _geometryBuffer?.Release();
             _instanceBuffer?.Release();
             _materialBuffer?.Release();
