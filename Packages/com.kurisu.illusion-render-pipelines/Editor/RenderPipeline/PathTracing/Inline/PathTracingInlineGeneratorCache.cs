@@ -264,5 +264,47 @@ namespace Illusion.Rendering.Editor
             Directory.CreateDirectory(Path.GetDirectoryName(CachePath));
             File.WriteAllText(CachePath, JsonUtility.ToJson(this));
         }
+
+        public IEnumerable<(string Path, string Shader, string Keywords)> Materials()
+        {
+            for (int i = 0; i < Paths.Count; i++)
+                yield return (Paths[i], Shaders[i], Keywords[i]);
+        }
+    }
+
+    [Serializable]
+    internal sealed class GeneratorReport
+    {
+        private static readonly string ReportPath = Path.Combine("Library", "IllusionRP", "PathTracingInlineReport.json");
+
+        [Serializable]
+        public struct Failure
+        {
+            public string Shader;
+            public string Keywords;
+            public string Error;
+        }
+
+        public List<Failure> Failures = new();
+
+        public static GeneratorReport Load()
+        {
+            try
+            {
+                if (File.Exists(ReportPath))
+                    return JsonUtility.FromJson<GeneratorReport>(File.ReadAllText(ReportPath)) ?? new GeneratorReport();
+            }
+            catch (Exception)
+            {
+                return new GeneratorReport();
+            }
+            return new GeneratorReport();
+        }
+
+        public void Save()
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ReportPath));
+            File.WriteAllText(ReportPath, JsonUtility.ToJson(this));
+        }
     }
 }

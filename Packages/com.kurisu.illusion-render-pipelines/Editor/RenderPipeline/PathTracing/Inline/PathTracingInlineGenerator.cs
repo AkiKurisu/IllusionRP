@@ -161,6 +161,15 @@ namespace Illusion.Rendering.Editor
                 cache.Save();
 
                 int failed = units.Count(u => u.Error != null);
+                new GeneratorReport
+                {
+                    Failures = units.Where(u => u.Error != null).Select(u => new GeneratorReport.Failure
+                    {
+                        Shader = u.Pass.Path,
+                        Keywords = string.Join(" ", u.Keywords),
+                        Error = u.Error
+                    }).ToList()
+                }.Save();
                 foreach (GeneratedUnit unit in units.Where(u => u.Error != null))
                     Debug.LogWarning($"[IllusionRP] Path tracing inline evaluator for '{unit.Pass.Path}' ({string.Join(" ", unit.Keywords)}) is unavailable; its materials render as the diagnostic surface.\n{unit.Error}");
                 Debug.Log($"[IllusionRP] Generated {units.Count - failed} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms.");
