@@ -60,6 +60,9 @@ namespace Illusion.Rendering.PathTracing
         [Tooltip("Samples traced per frame in Realtime mode.")]
         public ClampedIntParameter realtimeSamplesPerPixel = new(1, 1, 8);
 
+        [Tooltip("Reorder Realtime paths on supported NVIDIA GPUs. Unsupported devices use the original tracing path.")]
+        public BoolParameter shaderExecutionReordering = new(true);
+
         [Tooltip("Reconstruct Realtime frames with DLSS Ray Reconstruction; off shows the raw path traced frame.")]
         public BoolParameter rayReconstruction = new(true);
 

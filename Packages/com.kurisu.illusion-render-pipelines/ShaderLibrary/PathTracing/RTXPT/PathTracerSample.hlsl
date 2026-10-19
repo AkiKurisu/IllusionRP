@@ -10,11 +10,18 @@
 
 #include "PathTracer/Config.h" // must always be included first
 
+#if defined(ILLUSION_PT_SER)
+#undef NV_SHADER_EXTN_SLOT
+#define NV_SHADER_EXTN_SLOT u7
+#define NV_HITOBJECT_USE_MACRO_API 1
+#include "Packages/com.kurisu.unityrhi/ShaderLibrary/NVAPI/nvHLSLExtns.h"
+#endif
+
 // This software contains source code provided by NVIDIA Corporation.
 
 #include "PathTracer/PathTracerTypes.hlsli"
 
-// @IllusionRP: the Unity bridge replaces the Donut bridge and shader execution reordering, which Unity does not compile.
+// @IllusionRP: Unity material and scene bridge.
 #include "PathTracerBridgeUnity.hlsli"
 #include "PathTracer/PathTracer.hlsli"
 
@@ -115,7 +122,15 @@ void nextHit(inout PathState path, inout float2 tMinMax, const PathTracer::Worki
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES
     payload.rayKindAndSeed |= PT_RAY_MOTION;  // @IllusionRP
 #endif
-    TraceRay( SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload );  // @IllusionRP
+#if defined(ILLUSION_PT_SER)
+    NvHitObject hit;
+    NvTraceRayHitObject(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload, hit);
+    if (path.hasFlag(PathFlags::enableThreadReorder))
+        NvReorderThread(hit, path.isTerminatingAtNextBounce() ? 1u : 0u, 1);
+    NvInvokeHitObject(SceneBVH, hit, payload);
+#else
+    TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
+#endif
     if (payload.hitT == PT_NO_SURFACE_T)
         PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
     else if (payload.hitT < 0.0)

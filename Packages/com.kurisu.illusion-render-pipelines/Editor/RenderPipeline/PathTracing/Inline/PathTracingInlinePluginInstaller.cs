@@ -6,7 +6,7 @@ namespace Illusion.Rendering.Editor
 {
     internal static class PathTracingInlinePluginInstaller
     {
-        private const string PluginName = "GfxPluginUnityRhiBindless.dll";
+        private const string PluginName = "GfxPluginIllusionRHI.dll";
         private const string SourcePath = "Packages/com.kurisu.unityrhi/Plugins/x86_64/" + PluginName;
         internal const string InstalledPath = PathTracingInlineGenerator.OutputFolder + "/Plugins/x86_64/" + PluginName;
 
@@ -18,11 +18,20 @@ namespace Illusion.Rendering.Editor
 
         private static void Install()
         {
-            if (!PathTracingInlineGenerator.IsEnabled)
-                return;
             string source = FileUtil.GetPhysicalPath(SourcePath);
             if (!File.Exists(source))
                 return;
+            string previousPath = Path.GetDirectoryName(InstalledPath) + "/GfxPluginUnityRhiBindless.dll";
+            if (AssetImporter.GetAtPath(previousPath) is PluginImporter previous)
+            {
+                if (previous.GetCompatibleWithEditor() || previous.GetCompatibleWithPlatform(BuildTarget.StandaloneWindows64))
+                {
+                    previous.SetCompatibleWithAnyPlatform(false);
+                    previous.SetCompatibleWithEditor(false);
+                    previous.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows64, false);
+                    previous.SaveAndReimport();
+                }
+            }
             byte[] bytes = File.ReadAllBytes(source);
             if (File.Exists(InstalledPath) && Equal(File.ReadAllBytes(InstalledPath), bytes))
                 return;

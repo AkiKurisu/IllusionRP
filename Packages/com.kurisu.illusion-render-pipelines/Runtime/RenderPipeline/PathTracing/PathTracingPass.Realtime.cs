@@ -15,6 +15,7 @@ namespace Illusion.Rendering.PathTracing
         private class RealtimeTracePassData : TracePassData
         {
             internal RayTracingShader FillShader;
+            internal IPathTracingReordering Reordering;
             internal PathTracingRealtimeTargets Targets;
             internal int SamplesPerPixel;
             internal TextureHandle StablePlanesHeader;
@@ -48,6 +49,10 @@ namespace Illusion.Rendering.PathTracing
 
         private RayTracingShader _fillShader;
 
+        private RayTracingShader _fillSerShader;
+
+        private IPathTracingReordering _reordering;
+
         private ComputeShader _realtimeShader;
 
         private int _denoiseSpecHitTKernel;
@@ -70,6 +75,8 @@ namespace Illusion.Rendering.PathTracing
         {
             _buildShader = resources.pathTracingBuildRS;
             _fillShader = resources.pathTracingFillRS;
+            _fillSerShader = resources.pathTracingFillSerRS;
+            _reordering = PathTracingReorderingLoader.Create();
             _realtimeShader = resources.pathTracingRealtimeCS;
             _denoiseSpecHitTKernel = _realtimeShader.FindKernel("DenoiseSpecHitT");
             _prepareKernel = _realtimeShader.FindKernel("PrepareRayReconstructionInputs");
@@ -79,6 +86,8 @@ namespace Illusion.Rendering.PathTracing
 
         private void DisposeRealtime()
         {
+            _reordering?.Dispose();
+            _reordering = null;
             _rayReconstruction?.Dispose();
             _rayReconstruction = null;
         }
@@ -93,11 +102,12 @@ namespace Illusion.Rendering.PathTracing
             int outputHeight = cameraData.cameraTargetDescriptor.height;
             var targets = context.GetRealtimeTargets(width, height, outputWidth, outputHeight);
             bool rayReconstruction = UsesRayReconstruction(settings);
+            bool reordering = settings.shaderExecutionReordering.value && _fillSerShader && _reordering is { IsAvailable: true };
             var quality = settings.rayReconstructionQuality.value;
 
             int settingsHash = HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
                 settings.realtimeFireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value,
-                settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight));
+                settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight, reordering));
             context.BeginRealtimeFrame(settingsHash, camera.transform);
 
             var worldToView = camera.worldToCameraMatrix;
@@ -115,7 +125,7 @@ namespace Illusion.Rendering.PathTracing
             var stablePlanesHeader = renderGraph.ImportTexture(targets.StablePlanesHeader);
             var stableRadiance = renderGraph.ImportTexture(targets.StableRadiance);
             RecordRealtimeTrace(renderGraph, context, world, targets, stablePlanesHeader, stableRadiance, constants, cameraData,
-                viewToClip * worldToView, settings.realtimeSamplesPerPixel.value);
+                viewToClip * worldToView, settings.realtimeSamplesPerPixel.value, reordering);
             var color = RecordGuides(renderGraph, context, targets, stablePlanesHeader, stableRadiance, rayReconstruction);
 
             var image = color;
@@ -153,12 +163,17 @@ namespace Illusion.Rendering.PathTracing
 
         private void RecordRealtimeTrace(RenderGraph renderGraph, PathTracingCameraContext context, PathTracingWorld world,
             PathTracingRealtimeTargets targets, TextureHandle stablePlanesHeader, TextureHandle stableRadiance,
-            in PathTracingSampleConstants constants, UniversalCameraData cameraData, Matrix4x4 worldToClip, int samplesPerPixel)
+            in PathTracingSampleConstants constants, UniversalCameraData cameraData, Matrix4x4 worldToClip, int samplesPerPixel, bool reordering)
         {
             using var builder = renderGraph.AddUnsafePass<RealtimeTracePassData>("Path Tracing Realtime Trace", out var passData, _realtimeTraceSampler);
             FillTracePassData(renderGraph, passData, context, world, renderGraph.ImportTexture(context.Radiance), constants, cameraData, worldToClip);
             passData.Shader = _buildShader;
             passData.FillShader = _fillShader;
+            if (reordering)
+            {
+                passData.FillShader = _fillSerShader;
+                passData.Reordering = _reordering;
+            }
             passData.Targets = targets;
             passData.SamplesPerPixel = samplesPerPixel;
             passData.StablePlanesHeader = stablePlanesHeader;
@@ -181,6 +196,7 @@ namespace Illusion.Rendering.PathTracing
                     data.LightBaker.UpdateEnd(cmd, data.Depth, data.MotionVectors, data.Width, data.Height);
 
                 BindTraceResources(cmd, data.FillShader, data);
+                data.Reordering?.Bind(cmd, data.FillShader);
                 BindStablePlanes(cmd, data.FillShader, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.Paths))
                 {

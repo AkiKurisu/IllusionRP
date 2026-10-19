@@ -7,7 +7,7 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
 {
     internal sealed class UnityRHIPathTracingInlineResourceTable : IPathTracingInlineResourceTable
     {
-        private const string PluginName = "GfxPluginUnityRhiBindless";
+        private const string PluginName = "GfxPluginIllusionRHI";
 
         [StructLayout(LayoutKind.Sequential)]
         private struct Entry
