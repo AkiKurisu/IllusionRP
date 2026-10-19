@@ -1,10 +1,13 @@
 #ifndef UNIVERSAL_SPEEDTREE7COMMON_PASSES_INCLUDED
 #define UNIVERSAL_SPEEDTREE7COMMON_PASSES_INCLUDED
 
-#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+// @IllusionRP: Specular workflow preserves the authored zero specular reflectance.
+#define _SPECULAR_SETUP
+#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Lit/Lighting.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutput.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
-#include "SpeedTreeUtility.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTreeUtility.hlsl"
+#include "SpeedTree7Surface.hlsl"
 #if defined(LOD_FADE_CROSSFADE)
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
 #endif
@@ -52,6 +55,9 @@ struct SpeedTreeVertexOutput
 
     float3 positionWS               : TEXCOORD7;
     DECLARE_LIGHTMAP_OR_SH(lightmapUV, vertexSH, 8);
+#ifdef USE_APV_PROBE_OCCLUSION
+    float4 probeOcclusion           : TEXCOORD9;
+#endif
     float4 clipPos                  : SV_POSITION;
     UNITY_VERTEX_INPUT_INSTANCE_ID
     UNITY_VERTEX_OUTPUT_STEREO
@@ -116,8 +122,10 @@ void InitializeInputData(SpeedTreeVertexOutput input, half3 normalTS, out InputD
 
     inputData.fogCoord = InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactorAndVertexLight.x);
     inputData.vertexLighting = input.fogFactorAndVertexLight.yzw;
-    // Billboards cannot use lightmaps.
-#if !defined(LIGHTMAP_ON) && (defined(PROBE_VOLUMES_L1) || defined(PROBE_VOLUMES_L2))
+    inputData.shadowMask = half4(1, 1, 1, 1);
+#if defined(_SCREEN_SPACE_IRRADIANCE)
+    inputData.bakedGI = SAMPLE_GI(_ScreenSpaceIrradiance, input.clipPos.xy);
+#elif !defined(LIGHTMAP_ON) && (defined(PROBE_VOLUMES_L1) || defined(PROBE_VOLUMES_L2))
     inputData.bakedGI = SAMPLE_GI(input.vertexSH,
         GetAbsolutePositionWS(inputData.positionWS),
         inputData.normalWS,
@@ -130,7 +138,6 @@ void InitializeInputData(SpeedTreeVertexOutput input, half3 normalTS, out InputD
 #endif
 
     inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.clipPos);
-    inputData.shadowMask = half4(1, 1, 1, 1); // No GI currently.
 
     #if defined(DEBUG_DISPLAY) && !defined(LIGHTMAP_ON)
     inputData.vertexSH = input.vertexSH;
@@ -150,75 +157,33 @@ half4 SpeedTree7Frag(SpeedTreeVertexOutput input) : SV_Target
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
-    half2 uv = input.uvHueVariation.xy;
-    half4 diffuse = SampleAlbedoAlpha(uv, TEXTURE2D_ARGS(_MainTex, sampler_MainTex));
-    diffuse.a *= _Color.a;
-
-    #ifdef SPEEDTREE_ALPHATEST
-        diffuse.a = AlphaDiscard(diffuse.a, _Cutoff);
-    #endif
+    half4 diffuse = SampleSpeedTree7AlbedoAlpha(input.uvHueVariation.xy);
 
     #ifdef LOD_FADE_CROSSFADE
         LODFadeCrossFade(input.clipPos);
     #endif
 
-    half3 diffuseColor = diffuse.rgb;
-
+    half3 detail = 0;
     #ifdef GEOM_TYPE_BRANCH_DETAIL
-        half4 detailColor = tex2D(_DetailTex, input.detail.xy);
-        diffuseColor.rgb = lerp(diffuseColor.rgb, detailColor.rgb, input.detail.z < 2.0f ? saturate(input.detail.z) : detailColor.a);
+        detail = input.detail;
     #endif
-
-    #ifdef EFFECT_HUE_VARIATION
-        half3 shiftedColor = lerp(diffuseColor.rgb, _HueVariation.rgb, input.uvHueVariation.z);
-        half maxBase = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
-        half newMaxBase = max(shiftedColor.r, max(shiftedColor.g, shiftedColor.b));
-        maxBase /= newMaxBase;
-        maxBase = maxBase * 0.5f + 0.5f;
-        // preserve vibrance
-        shiftedColor.rgb *= maxBase;
-        diffuseColor.rgb = saturate(shiftedColor);
+    half4 vertexColor = _Color;
+    #ifdef VERTEX_COLOR
+        vertexColor = input.color;
     #endif
-
-    #ifdef EFFECT_BUMP
-        half3 normalTs = SampleNormal(uv, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
-        #ifdef GEOM_TYPE_BRANCH_DETAIL
-            half3 detailNormal = SampleNormal(input.detail.xy, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
-            normalTs = lerp(normalTs, detailNormal, input.detail.z < 2.0f ? saturate(input.detail.z) : detailColor.a);
-        #endif
-    #else
-        half3 normalTs = half3(0, 0, 1);
-    #endif
+    SurfaceData surfaceData;
+    InitializeSpeedTree7Surface(input.uvHueVariation, detail, vertexColor, diffuse, surfaceData);
 
     InputData inputData;
-    InitializeInputData(input, normalTs, inputData);
+    InitializeInputData(input, surfaceData.normalTS, inputData);
     SETUP_DEBUG_TEXTURE_DATA(inputData, input.uvHueVariation.xy);
 
-    #ifdef VERTEX_COLOR
-        diffuseColor.rgb *= input.color.rgb;
-    #else
-        diffuseColor.rgb *= _Color.rgb;
-    #endif
-
-    SurfaceData surfaceData;
-
-    surfaceData.albedo = diffuseColor.rgb;
-    surfaceData.alpha = diffuse.a;
-    surfaceData.emission = half3(0, 0, 0);
-    surfaceData.metallic = 0;
-    surfaceData.occlusion = 1;
-    surfaceData.smoothness = 0;
-    surfaceData.specular = half3(0, 0, 0);
-    surfaceData.clearCoatMask = 0;
-    surfaceData.clearCoatSmoothness = 1;
-    surfaceData.normalTS = normalTs;
-
     #ifdef GBUFFER
-        half4 color = half4(inputData.bakedGI * diffuseColor.rgb, diffuse.a);
+        half4 color = half4(inputData.bakedGI * surfaceData.albedo, diffuse.a);
         surfaceData.occlusion = 1.0;
         return PackGBuffersSurfaceData(surfaceData, inputData, color.rgb);
     #else
-        half4 color = UniversalFragmentBlinnPhong(inputData, surfaceData);
+        half4 color = UniversalFragmentPBR(inputData, surfaceData);
         color.rgb = MixFog(color.rgb, inputData.fogCoord);
         color.a = OutputAlpha(color.a, _Surface);
         return color;
@@ -270,7 +235,7 @@ half4 SpeedTree7FragDepthNormal(SpeedTreeVertexDepthNormalOutput input) : SV_Tar
     #if defined(EFFECT_BUMP)
         half3 normalTS = SampleNormal(uv, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
         #ifdef GEOM_TYPE_BRANCH_DETAIL
-            half4 detailColor = tex2D(_DetailTex, input.detail.xy);
+            half4 detailColor = SAMPLE_TEXTURE2D(_DetailTex, sampler_DetailTex, input.detail.xy);
             half3 detailNormal = SampleNormal(input.detail.xy, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
             normalTS = lerp(normalTS, detailNormal, input.detail.z < 2.0f ? saturate(input.detail.z) : detailColor.a);
         #endif

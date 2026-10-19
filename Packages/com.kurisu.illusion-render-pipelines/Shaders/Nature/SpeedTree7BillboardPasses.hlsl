@@ -1,7 +1,6 @@
 #ifndef UNIVERSAL_SPEEDTREE7BILLBOARD_PASSES_INCLUDED
 #define UNIVERSAL_SPEEDTREE7BILLBOARD_PASSES_INCLUDED
 
-#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 #include "SpeedTree7CommonPasses.hlsl"
 
 void InitializeData(inout SpeedTreeVertexInput input, out half2 outUV, out half outHueVariation)
@@ -104,6 +103,7 @@ SpeedTreeVertexOutput SpeedTree7Vert(SpeedTreeVertexInput input)
     output.positionWS = vertexInput.positionWS;
 
     output.clipPos = vertexInput.positionCS;
+    OUTPUT_SH4(vertexInput.positionWS, output.normalWS.xyz, viewDirWS, output.vertexSH, output.probeOcclusion);
 
     #if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
         output.shadowCoord = GetShadowCoord(vertexInput);

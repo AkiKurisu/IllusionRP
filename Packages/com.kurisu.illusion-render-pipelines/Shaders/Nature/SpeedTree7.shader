@@ -1,4 +1,4 @@
-Shader "Universal Render Pipeline/Nature/SpeedTree7"
+Shader "Universal Render Pipeline/Hybrid SpeedTree7"
 {
     Properties
     {
@@ -21,7 +21,7 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             "RenderType" = "Opaque"
             "DisableBatching" = "LODFading"
             "RenderPipeline" = "UniversalPipeline"
-            "UniversalMaterialType" = "SimpleLit"
+            "UniversalMaterialType" = "Lit"
         }
         LOD 400
         Cull [_Cull]
@@ -34,6 +34,16 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             AlphaToMask On
 
             HLSLPROGRAM
+
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_REFLECTION
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_GLOBAL_ILLUMINATION
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_IRRADIANCE
+            #pragma multi_compile_fragment _ _SHADOW_BIAS_FRAGMENT
+            #pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
+            #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
+            #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
+            #pragma multi_compile_fragment _ _REFLECTION_PROBE_ATLAS
+            #pragma multi_compile_fragment _ REFLECTION_PROBE_ROTATION
 
             #pragma vertex SpeedTree7Vert
             #pragma fragment SpeedTree7Frag
@@ -69,7 +79,8 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             #endif
 
             #include "SpeedTree7Input.hlsl"
-            #include "SpeedTree7Passes.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
 
             ENDHLSL
         }
@@ -94,7 +105,8 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             #define SCENESELECTIONPASS
 
             #include "SpeedTree7Input.hlsl"
-            #include "SpeedTree7Passes.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
             ENDHLSL
         }
 
@@ -129,7 +141,8 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
 
             #include "SpeedTree7Input.hlsl"
-            #include "SpeedTree7Passes.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
             ENDHLSL
         }
 
@@ -172,7 +185,8 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             #define GBUFFER
 
             #include "SpeedTree7Input.hlsl"
-            #include "SpeedTree7Passes.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
 
             ENDHLSL
         }
@@ -201,7 +215,8 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             #define DEPTH_ONLY
 
             #include "SpeedTree7Input.hlsl"
-            #include "SpeedTree7Passes.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
 
             ENDHLSL
         }
@@ -228,13 +243,91 @@ Shader "Universal Render Pipeline/Nature/SpeedTree7"
             #define ENABLE_WIND
 
             #include "SpeedTree7Input.hlsl"
-            #include "SpeedTree7Passes.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
 
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "ForwardGBuffer"
+            Tags { "LightMode" = "ForwardGBuffer" }
+            ZWrite On
+            ZTest LEqual
+            Stencil
+            {
+                WriteMask 5
+                Ref 4
+                Comp Always
+                Pass Replace
+            }
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex SpeedTree7VertDepthNormal
+            #pragma fragment SpeedTree7ForwardGBufferFrag
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            #pragma multi_compile_instancing
+            #pragma instancing_options renderinglayer assumeuniformscaling maxcount:50
+            #pragma shader_feature_local GEOM_TYPE_BRANCH GEOM_TYPE_BRANCH_DETAIL GEOM_TYPE_FROND GEOM_TYPE_LEAF GEOM_TYPE_MESH
+            #pragma multi_compile_vertex LOD_FADE_PERCENTAGE
+            #pragma shader_feature_local EFFECT_BUMP
+            #define ENABLE_WIND
+            #define VERTEX_COLOR
+            #include "SpeedTree7Input.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
+            #include "SpeedTree7ForwardGBufferPass.hlsl"
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "MotionVectors"
+            Tags { "LightMode" = "MotionVectors" }
+            ColorMask RG
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex SpeedTree7MotionVectorVert
+            #pragma fragment SpeedTree7MotionVectorFrag
+            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            #pragma multi_compile_instancing
+            #pragma instancing_options assumeuniformscaling maxcount:50
+            #pragma shader_feature_local GEOM_TYPE_BRANCH GEOM_TYPE_BRANCH_DETAIL GEOM_TYPE_FROND GEOM_TYPE_LEAF GEOM_TYPE_MESH
+            #pragma multi_compile_vertex LOD_FADE_PERCENTAGE
+            #define ENABLE_WIND
+            #define VERTEX_COLOR
+            #include "SpeedTree7Input.hlsl"
+            #include "SpeedTree7CommonPasses.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Passes.hlsl"
+            #include "SpeedTree7MotionVectorsPass.hlsl"
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "PathTracing"
+            Tags { "LightMode" = "PathTracing" }
+            HLSLPROGRAM
+            #pragma raytracing PathTracing
+            #pragma shader_feature_local_raytracing GEOM_TYPE_BRANCH GEOM_TYPE_BRANCH_DETAIL GEOM_TYPE_FROND GEOM_TYPE_LEAF GEOM_TYPE_MESH
+            #pragma shader_feature_local_raytracing EFFECT_BUMP
+            #pragma shader_feature_local_raytracing EFFECT_HUE_VARIATION
+            #define _SPECULAR_SETUP
+            #define VERTEX_COLOR
+            // @IllusionRP: The hit include compiles AlphaDiscard before material inputs are loaded.
+            #if defined(GEOM_TYPE_FROND) || defined(GEOM_TYPE_LEAF) || defined(GEOM_TYPE_FACING_LEAF)
+                #define _ALPHATEST_ON
+            #endif
+            #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHit.hlsl"
+            #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Nature/SpeedTree7Input.hlsl"
+            #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Nature/SpeedTree7Surface.hlsl"
+            #include "Packages/com.kurisu.illusion-render-pipelines/Shaders/Nature/SpeedTree7PathTracingPass.hlsl"
             ENDHLSL
         }
     }
 
-    Dependency "BillboardShader" = "Universal Render Pipeline/Nature/SpeedTree7 Billboard"
+    Dependency "BillboardShader" = "Universal Render Pipeline/Hybrid SpeedTree7 Billboard"
     FallBack "Hidden/Universal Render Pipeline/FallbackError"
     CustomEditor "SpeedTreeMaterialInspector"
 }

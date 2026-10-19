@@ -21,8 +21,6 @@
     #define WIND_QUALITY_BEST       4
     #define WIND_QUALITY_PALM       5
 
-    uniform half _WindQuality;
-
     #define SPEEDTREE_8_WIND 1 // v7 & v8 use the same shader wind code
     #include "SpeedTreeWind.cginc"
 #endif
@@ -31,11 +29,13 @@ TEXTURE2D(_MainTex);
 SAMPLER(sampler_MainTex);
 float4 _MainTex_TexelSize;
 
-#ifdef EFFECT_HUE_VARIATION
-    half4 _HueVariation;
-#endif
-
+// @IllusionRP: Inline hit evaluation loads these values from each material record.
+CBUFFER_START(UnityPerMaterial)
 half4 _Color;
+half4 _HueVariation;
+half _Cutoff;
+half _WindQuality;
+CBUFFER_END
 
 // Shadow Casting Light geometric parameters. These variables are used when applying the shadow Normal Bias and are set by UnityEngine.Rendering.Universal.ShadowUtils.SetupShadowCasterConstantBuffer in com.unity.render-pipelines.universal/Runtime/ShadowUtils.cs
 // For Directional lights, _LightDirection is used when applying shadow Normal Bias.

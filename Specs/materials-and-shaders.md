@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-10-20 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Area Lights](area-lights.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -23,6 +23,14 @@ Lit and Complex Lit share the general surface contract. Skin splits diffuse ligh
 Glass and Thin Glass are Lit graphs for transmissive surfaces such as drinking glasses and windows. Path tracing transmits light tinted by the base color: Glass refracts into and out of a closed volume at the material's index of refraction, and Thin Glass passes straight through a single surface. Base color alpha is the surface opacity for Glass in both raster and path tracing, so Glass transmits the share of unreflected light that alpha leaves; Thin Glass transmits all unreflected light and uses alpha as coverage. Raster draws both as transparent with screen-space refraction.
 
 Template options select auxiliary passes such as shadows, motion and baking. Features that require Forward-only lighting keep that choice consistent across authored options and generated output.
+
+### SpeedTree7
+
+Hybrid SpeedTree7 and Hybrid SpeedTree7 Billboard preserve tree geometry, wind and LOD behavior while using shared Lit lighting and matching Forward GBuffer coverage. Their authored surface remains matte and nonmetallic.
+
+Motion vectors cover rigid object and camera motion; previous wind and camera-facing deformation are unavailable.
+
+The mesh family shares its surface evaluation and alpha clipping between raster and `PathTracing`, including RTGI secondary hits and inline evaluation. Ray tracing uses the submitted mesh without raster wind, LOD morphing or camera-facing deformation. The billboard family has no path-tracing material entry.
 
 ## Pass contract
 
