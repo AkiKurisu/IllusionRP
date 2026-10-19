@@ -62,6 +62,12 @@ void PathTracingInlineIgnoreHit() { g_PathTracingInlineIgnored = true; }
 #define RayTCurrent() (g_PathTracingInline.t)
 #define IgnoreHit() PathTracingInlineIgnoreHit()
 
+void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
+    RayDesc ray, inout IllusionPathPayload payload);
+
+#define TraceRay(accelerationStructure, rayFlags, instanceMask, hitGroupOffset, hitGroupStride, missIndex, ray, payload) \
+    PathTracingInlineTraceRay(accelerationStructure, rayFlags, instanceMask, ray, payload)
+
 #define UNITY_RAY_TRACING_MESH_UTILS_INCLUDED
 
 struct MeshInfo

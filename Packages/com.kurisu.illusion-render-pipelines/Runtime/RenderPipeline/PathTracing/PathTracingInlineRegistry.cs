@@ -63,6 +63,10 @@ namespace Illusion.Rendering
 
         public ComputeShader Validation;
 
+        public ComputeShader RayTracedGIInitialSamples;
+
+        public ComputeShader RayTracedGIResampling;
+
         public string Hash;
 
         [NonSerialized] private Dictionary<(int, string), int> _lookup;

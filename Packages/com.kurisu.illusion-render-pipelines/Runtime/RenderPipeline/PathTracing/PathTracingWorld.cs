@@ -84,16 +84,16 @@ namespace Illusion.Rendering.PathTracing
             Inline.Update(Scene.Instances, PathTracingFrame.Index);
         }
 
-        public void BindInline(CommandBuffer cmd, ComputeShader shader, int kernel)
+        public void BindInline(CommandBuffer cmd, PathTracingShaderTarget shader)
         {
-            Inline.Bind(cmd, shader, kernel);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
-            cmd.SetComputeIntParam(shader, ShaderIDs._PathTracingOpaqueShadowLayers, unchecked((int)Scene.Instances.OpaqueShadowLayers));
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingCulledSubMeshes, Scene.Instances.CulledSubMeshBuffer);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingPreviousPositions, Motion.PreviousPositions);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingMaterialRanges, Scene.Instances.MaterialTable.RangeBuffer);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingSubMeshMaterials, Scene.Instances.MaterialTable.SubMeshBuffer);
-            Scene.Instances.MaterialTable.Bind(cmd, shader, kernel);
+            Inline.Bind(cmd, shader);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
+            shader.SetInt(cmd, ShaderIDs._PathTracingOpaqueShadowLayers, unchecked((int)Scene.Instances.OpaqueShadowLayers));
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingCulledSubMeshes, Scene.Instances.CulledSubMeshBuffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingPreviousPositions, Motion.PreviousPositions);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingMaterialRanges, Scene.Instances.MaterialTable.RangeBuffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingSubMeshMaterials, Scene.Instances.MaterialTable.SubMeshBuffer);
+            Scene.Instances.MaterialTable.Bind(cmd, shader);
         }
 
         public void BindHitShaderGlobals(CommandBuffer cmd)

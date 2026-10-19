@@ -27,7 +27,7 @@ namespace Illusion.Rendering.Editor
         private static readonly Regex s_HlslInclude = new(@"HLSLINCLUDE(.*?)ENDHLSL", RegexOptions.Compiled | RegexOptions.Singleline);
         private static readonly Regex s_HlslProgram = new(@"HLSLPROGRAM(.*?)ENDHLSL", RegexOptions.Compiled | RegexOptions.Singleline);
         private static readonly Regex s_KeywordPragma = new(@"^\s*#pragma\s+(shader_feature|multi_compile)(_local)?(_[a-z]+)?\s+(.*)$", RegexOptions.Compiled | RegexOptions.Multiline);
-        private static readonly Regex s_LineDirective = new(@"^[ \t]*#line[^\n]*\n?", RegexOptions.Compiled | RegexOptions.Multiline);
+        private static readonly Regex s_LineDirectiveOrBlank = new(@"^[ \t]*(?:#line[^\n]*)?\n", RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly Regex s_MaterialShader = new(@"m_Shader:\s*\{[^}]*guid:\s*([0-9a-f]{32})", RegexOptions.Compiled);
 
         private sealed class PassSource
@@ -152,18 +152,21 @@ namespace Illusion.Rendering.Editor
                     compileArgs.Add(define);
                 }
 
+                string CheckSource(List<GeneratedUnit> checkedUnits) =>
+                    "#include \"" + PreludeInclude + "\"\n" + ComposeHoisted(checkedUnits, hoisted, hoistedOrder) +
+                    ComposeEvaluators(checkedUnits) + CheckKernel(checkedUnits.Count) + PathTracingInlineKernels.TableInclude;
+
                 List<GeneratedUnit> accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
-                string evaluators = ComposeEvaluators(accepted, hoisted, hoistedOrder);
-                string evaluatorsHash = Hash(evaluators);
+                string evaluators = ComposeEvaluators(accepted);
+                string evaluatorsHash = Hash(CheckSource(accepted));
                 if (evaluatorsHash != cache.CompiledHash)
                 {
-                    DxcCompiler.Result check = dxc.Compile(evaluators + CheckKernel(accepted.Count) + PathTracingInlineKernels.TableInclude, EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
+                    DxcCompiler.Result check = dxc.Compile(CheckSource(accepted), EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
                     if (!check.Succeeded)
                     {
                         foreach (GeneratedUnit unit in accepted)
                         {
-                            string single = ComposeEvaluators(new List<GeneratedUnit> { unit }, hoisted, hoistedOrder);
-                            DxcCompiler.Result one = dxc.Compile(single + CheckKernel(1) + PathTracingInlineKernels.TableInclude, EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
+                            DxcCompiler.Result one = dxc.Compile(CheckSource(new List<GeneratedUnit> { unit }), EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
                             if (!one.Succeeded)
                             {
                                 unit.Error = FirstErrors(one.Errors);
@@ -171,13 +174,24 @@ namespace Illusion.Rendering.Editor
                             }
                         }
                         accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
-                        evaluators = ComposeEvaluators(accepted, hoisted, hoistedOrder);
-                        evaluatorsHash = Hash(evaluators);
+                        evaluators = ComposeEvaluators(accepted);
+                        evaluatorsHash = Hash(CheckSource(accepted));
                     }
                     cache.CompiledHash = evaluatorsHash;
                 }
 
-                Write(evaluators, accepted, passes, force);
+                PathTracingInlineRegistry registry = Write(evaluators, accepted, passes, force);
+                string shared = ComposeHoisted(accepted, hoisted, hoistedOrder);
+                DxcCompiler.Result prelude = dxc.Preprocess("#include \"" + PreludeInclude + "\"\n", PreludeInclude, compileArgs);
+                string declaredBefore = (prelude.Succeeded ? prelude.Output : string.Empty) + shared;
+                PathTracingInlineKernels.Write(registry, shared, consumer =>
+                {
+                    DxcCompiler.Result source = dxc.Preprocess("#include \"" + consumer + "\"\n", consumer, compileArgs);
+                    if (source.Succeeded)
+                        return PathTracingInlineUnitTransform.RemoveDeclared(source.Output, declaredBefore);
+                    Debug.LogError($"[IllusionRP] Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
+                    return null;
+                });
             }
             cache.Retain(units.Select(u => u.Key));
             cache.Save();
@@ -197,21 +211,30 @@ namespace Illusion.Rendering.Editor
             return string.Join("\n", lines.Where(l => l.Contains("error")).Take(5));
         }
 
-        private static string ComposeEvaluators(List<GeneratedUnit> units, Dictionary<string, string> hoisted, List<string> hoistedOrder)
+        private static string ComposeHoisted(List<GeneratedUnit> units, Dictionary<string, string> hoisted, List<string> hoistedOrder)
+        {
+            var keys = new HashSet<string>();
+            foreach (GeneratedUnit unit in units)
+                foreach (var entry in unit.Unit.Hoisted)
+                    keys.Add(entry.Key);
+            var sb = new StringBuilder();
+            foreach (string key in hoistedOrder)
+            {
+                if (!keys.Contains(key))
+                    continue;
+                sb.Append(s_LineDirectiveOrBlank.Replace(hoisted[key], string.Empty));
+            }
+            return sb.ToString();
+        }
+
+        private static string ComposeEvaluators(List<GeneratedUnit> units)
         {
             var sb = new StringBuilder();
             sb.Append("// Generated by IllusionRP from the PathTracing passes of the project's shaders. Do not edit.\n");
             sb.Append("#ifndef ILLUSION_PATH_TRACING_INLINE_EVALUATORS_INCLUDED\n#define ILLUSION_PATH_TRACING_INLINE_EVALUATORS_INCLUDED\n");
             sb.Append("#include \"").Append(PreludeInclude).Append("\"\n");
-            var keys = new HashSet<string>();
             foreach (GeneratedUnit unit in units)
-                foreach (var entry in unit.Unit.Hoisted)
-                    keys.Add(entry.Key);
-            foreach (string key in hoistedOrder)
-                if (keys.Contains(key))
-                    sb.Append(s_LineDirective.Replace(hoisted[key], string.Empty));
-            foreach (GeneratedUnit unit in units)
-                sb.Append(s_LineDirective.Replace(unit.Unit.Body, string.Empty));
+                sb.Append(s_LineDirectiveOrBlank.Replace(unit.Unit.Body, string.Empty));
 
             sb.Append("#define PT_INLINE_EVALUATOR_COUNT ").Append(units.Count).Append("u\n");
             sb.Append("void PathTracingInlineEvaluateClosestHit(uint evaluator, inout IllusionPathPayload payload, AttributeData attributes)\n{\n    switch (evaluator)\n    {\n");
@@ -233,7 +256,7 @@ namespace Illusion.Rendering.Editor
             $"    bool accepted = PathTracingInlineEvaluateAnyHit(id % {Math.Max(1, count)}u, payload, attributes);\n" +
             "    _PathTracingInlineCheck[id] = payload.familyAndFlags + (accepted ? 1u : 0u);\n}\n";
 
-        private static void Write(string evaluators, List<GeneratedUnit> units, List<PassSource> passes, bool force)
+        private static PathTracingInlineRegistry Write(string evaluators, List<GeneratedUnit> units, List<PassSource> passes, bool force)
         {
             Directory.CreateDirectory(OutputFolder + "/Resources");
             bool changed = WriteIfChanged(EvaluatorsPath, evaluators);
@@ -287,7 +310,7 @@ namespace Illusion.Rendering.Editor
             }
             if (changed)
                 AssetDatabase.ImportAsset(EvaluatorsPath);
-            PathTracingInlineKernels.Write(registry);
+            return registry;
         }
 
         private static byte ConstantKind(string type)

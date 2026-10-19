@@ -482,15 +482,15 @@ namespace Illusion.Rendering.PathTracing
             buffer = new GraphicsBuffer(target, Mathf.NextPowerOfTwo(count), stride) { name = name };
         }
 
-        public void Bind(CommandBuffer cmd, ComputeShader shader, int kernel)
+        public void Bind(CommandBuffer cmd, PathTracingShaderTarget shader)
         {
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingInlineGeometries, _geometryBuffer);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingInlineInstanceGeometries, _instanceBuffer);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingInlineMaterialData, _materialBuffer);
-            cmd.SetComputeTextureParam(shader, kernel, ShaderIDs._PathTracingInlineTextures, Texture2D.blackTexture);
-            cmd.SetComputeBufferParam(shader, kernel, ShaderIDs._PathTracingInlineBuffers, _placeholderRaw);
             for (int i = 0; i < _registry.Buffers.Length; i++)
-                cmd.SetComputeBufferParam(shader, kernel, _registry.Buffers[i], _registry.RawBuffers[i] ? _placeholderRaw : _placeholderStructured);
+                shader.SetBuffer(cmd, Shader.PropertyToID(_registry.Buffers[i]), _registry.RawBuffers[i] ? _placeholderRaw : _placeholderStructured);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInlineGeometries, _geometryBuffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInlineInstanceGeometries, _instanceBuffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInlineMaterialData, _materialBuffer);
+            shader.SetTexture(cmd, ShaderIDs._PathTracingInlineTextures, Texture2D.blackTexture);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInlineBuffers, _placeholderRaw);
         }
 
         public void Dispose()

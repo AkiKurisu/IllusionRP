@@ -543,16 +543,10 @@ namespace PathTracer
         path.terminate();
     }
 
-    // @IllusionRP: takes the closest-hit payload instead of reading the hit from system values.
-    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
+    // @IllusionRP: the part of a hit that overlays share with surfaces.
+    inline SurfaceData BeginHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext, out float volumeAbsorption)
     {
         UpdatePathTravelled(path, rayOrigin, rayDir, rayTCurrent, workingContext);
-        
-#if ENABLE_DEBUG_VIZUALISATIONS
-        const bool debugPath = workingContext.Debug.IsDebugPixel(path.GetPixelPos());
-#else
-        const bool debugPath = false;
-#endif
 
         // @IllusionRP: a reference vertex that ends the path only collects emission, so it skips the material evaluation.
         const bool emissionOnly = PATH_TRACER_MODE==PATH_TRACER_MODE_REFERENCE && path.isTerminatingAtNextBounce();
@@ -581,7 +575,7 @@ namespace PathTracer
 
         
         // Account for volume absorption. Shouldn't this be in the miss shader too? I don't know - I guess depends on whether we want to support open, infinite volumes?
-        float volumeAbsorption = 0;   // used for stats
+        volumeAbsorption = 0;   // used for stats
 
 #if RTXPT_NESTED_DIELECTRICS_QUALITY > 0 || defined(__INTELLISENSE__)
         if (!path.interiorList.isEmpty())
@@ -593,15 +587,36 @@ namespace PathTracer
             UpdatePathThroughput(path, transmittance);
         }
 #endif
+        return surfaceData;
+    }
 
-        // @IllusionRP: a multiply overlay filters the camera chain, which continues behind it without a new vertex.
+    // @IllusionRP: a multiply overlay filters the camera chain, which continues behind it without a new vertex.
+    inline void HandleOverlayHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
+    {
+        float volumeAbsorption;
+        SurfaceData surfaceData = BeginHit(path, rayOrigin, rayDir, rayTCurrent, payload, workingContext, volumeAbsorption);
+        UpdatePathThroughput(path, PathTracingUnpackHalf4(payload.diffuseOpacity).rgb);
+        path.SetOrigin( ComputeRayOrigin( surfaceData.shadingData.posW, -surfaceData.shadingData.faceNCorrected ) );
+        path.decrementVertexIndex();
+    }
+
+    // @IllusionRP: takes the closest-hit payload instead of reading the hit from system values.
+    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
+    {
         if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
         {
-            UpdatePathThroughput(path, PathTracingUnpackHalf4(payload.diffuseOpacity).rgb);
-            path.SetOrigin( ComputeRayOrigin( surfaceData.shadingData.posW, -surfaceData.shadingData.faceNCorrected ) );
-            path.decrementVertexIndex();
+            HandleOverlayHit(path, rayOrigin, rayDir, rayTCurrent, payload, workingContext);
             return;
         }
+
+#if ENABLE_DEBUG_VIZUALISATIONS
+        const bool debugPath = workingContext.Debug.IsDebugPixel(path.GetPixelPos());
+#else
+        const bool debugPath = false;
+#endif
+
+        float volumeAbsorption;
+        SurfaceData surfaceData = BeginHit(path, rayOrigin, rayDir, rayTCurrent, payload, workingContext, volumeAbsorption);
 
         // Reject false hits in nested dielectrics but also updates 'outside index of refraction' and dependent data
         bool rejectedFalseHit = !HandleNestedDielectrics(surfaceData, path, workingContext);

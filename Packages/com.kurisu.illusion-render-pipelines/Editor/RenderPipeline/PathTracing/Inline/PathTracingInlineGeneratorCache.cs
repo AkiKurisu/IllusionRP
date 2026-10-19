@@ -78,9 +78,24 @@ namespace Illusion.Rendering.Editor
 
         [NonSerialized] private Dictionary<string, Entry> _byKey;
 
+        private static string GeneratorVersion([System.Runtime.CompilerServices.CallerFilePath] string sourcePath = null)
+        {
+            string folder = Path.GetDirectoryName(sourcePath ?? string.Empty);
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+                return typeof(GeneratorCache).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            foreach (string file in Directory.GetFiles(folder, "*.cs").OrderBy(f => f, StringComparer.Ordinal))
+            {
+                byte[] bytes = File.ReadAllBytes(file);
+                sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+            }
+            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            return BitConverter.ToString(sha.Hash).Replace("-", string.Empty);
+        }
+
         public static GeneratorCache Load()
         {
-            string version = typeof(GeneratorCache).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+            string version = GeneratorVersion();
             GeneratorCache cache = null;
             try
             {

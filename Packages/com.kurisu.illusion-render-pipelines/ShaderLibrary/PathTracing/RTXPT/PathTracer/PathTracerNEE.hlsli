@@ -183,31 +183,11 @@ namespace PathTracer
         return ret;
     }
 
-    // This will ray cast and, if light visible, accumulate radiance properly, including doing weighted sum for 
-    void ProcessLightSample(inout NEEResult accum, LightSample lightSample, uint candidateSampleCount, uint fullSamples,
+    // @IllusionRP: split from its visibility trace.
+    void FinishLightSample(inout NEEResult accum, LightSample lightSample, float3 transmission, uint candidateSampleCount, uint fullSamples,
                                 const ShadingData shadingData, const ActiveBSDF bsdf, const PathState preScatterPath, LightSampler lightSampler,
                                 inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
     {
-        float3 transmission = 0.0;  // @IllusionRP
-
-        /*[branch]*/ if (lightSample.Valid())   // if sample's bad, skip; we tried casting the ray anyway but ignoring the results - didn't yield better perf
-        {
-            RayDesc ray = ComputeVisibilityRay(lightSample, shadingData, bsdf);  // @IllusionRP
-            // @IllusionRP: shadow rays follow the light's caster rules and return RGB transmission.
-            uint targetIndex = lightSample.LightIndex != RTXPT_INVALID_LIGHT_INDEX ? lightSampler.LoadLight(lightSample.LightIndex).Extended.TargetIndex : 0;
-            transmission = Bridge::traceVisibilityRay(ray, preScatterPath.rayCone, preScatterPath.getVertexIndex(), workingContext.Debug, preScatterPath.GetPixelPos(), targetIndex);
-        }
-
-        // if( workingContext.Debug.IsDebugPixel() )
-        //     DebugLine( shadingData.posW, shadingData.posW+lightSample.Direction*lightSample.Distance, float4(!visible,visible,0,1.0) );
-
-#if 0 && SER_USE_SORTING
-#if USE_NVAPI_REORDER_THREADS
-        NvReorderThread(visible?(1):(0), 16);
-#elif USE_DX_MAYBE_REORDER_THREADS
-        dx::MaybeReorderThread(visible?(1):(0), 16);
-#endif
-#endif
         /*[branch]*/ if (any(transmission > 0.0))  // @IllusionRP
         {
             // add compute grazing angle fadeout
@@ -297,14 +277,41 @@ namespace PathTracer
         
         for (uint sampleIndex = 0; sampleIndex < fullSamples; sampleIndex++)
         {
-            // @IllusionRP: directional lights are sampled apart from the light list, which may then be empty.
-            SampleDirectionalNEE(result, preScatterPath, shadingData, bsdf, fullSamples, sampleGenerator, workingContext);
-            if (lightSampler.IsEmpty())
-                continue;
-            LightSample lightSample = GenerateLightSample(workingContext, shadingData, bsdf, candidateSampleCount, sampleGenerator, lightSampler);
-
-            // this computes the BSDF throughput and (if throughput>0) then casts shadow ray and handles radiance summing up & weighted averaging for 'sample distance' used by denoiser
-            ProcessLightSample(result, lightSample, candidateSampleCount, fullSamples, shadingData, bsdf, preScatterPath, lightSampler, sampleGenerator, workingContext);
+            // @IllusionRP: directional lights are sampled apart from the light list, which may then be empty. Both samples
+            // share one visibility trace, and shadow rays follow the light's caster rules and return RGB transmission.
+            DirectionalNEESample directional = PrepareDirectionalNEE(shadingData, bsdf, fullSamples, sampleGenerator);
+            LightSample lightSample = (LightSample)0;
+            [loop]
+            for (uint visibility = 0; visibility < 2; visibility++)
+            {
+                bool trace;
+                RayDesc ray;
+                uint targetIndex;
+                if (visibility == 0)
+                {
+                    trace = directional.valid;
+                    ray = DirectionalNEERay(directional, shadingData, bsdf);
+                    targetIndex = directional.targetIndex;
+                }
+                else
+                {
+                    if (lightSampler.IsEmpty())
+                        break;
+                    lightSample = GenerateLightSample(workingContext, shadingData, bsdf, candidateSampleCount, sampleGenerator, lightSampler);
+                    trace = lightSample.Valid();
+                    ray = ComputeVisibilityRay(lightSample, shadingData, bsdf);
+                    targetIndex = 0;
+                    if (trace && lightSample.LightIndex != RTXPT_INVALID_LIGHT_INDEX)
+                        targetIndex = lightSampler.LoadLight(lightSample.LightIndex).Extended.TargetIndex;
+                }
+                float3 transmission = 0.0;
+                if (trace)
+                    transmission = Bridge::traceVisibilityRay(ray, preScatterPath.rayCone, preScatterPath.getVertexIndex(), workingContext.Debug, preScatterPath.GetPixelPos(), targetIndex);
+                if (visibility == 0)
+                    FinishDirectionalNEE(result, directional, transmission, preScatterPath, shadingData, bsdf, fullSamples, workingContext);
+                else
+                    FinishLightSample(result, lightSample, transmission, candidateSampleCount, fullSamples, shadingData, bsdf, preScatterPath, lightSampler, sampleGenerator, workingContext);
+            }
         }
         
         return result;

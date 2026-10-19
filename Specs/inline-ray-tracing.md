@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-18 |
+| Date | 2026-10-19 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Path Tracing](path-tracing.md), [Materials and Shaders](materials-and-shaders.md), [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Third-Party Source Imports](third-party-source-imports.md) |
 
 Inline ray tracing runs ray traced global illumination (RTGI) Performance mode entirely as compute work with ray queries. It replaces ray generation dispatches whose hits run material hit shaders. Unity prepares hit groups for every instance of every acceleration structure bound to a ray generation dispatch, on every dispatch, so that path's CPU cost grows with the size of the scene. Inline ray tracing binds no acceleration structure to a ray generation dispatch, so no hit groups are prepared. Each material is still evaluated from its own `PathTracing` pass source, and the result is the image the hit shaders would produce.

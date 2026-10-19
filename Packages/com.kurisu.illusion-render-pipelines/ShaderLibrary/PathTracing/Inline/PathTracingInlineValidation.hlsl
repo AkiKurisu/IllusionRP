@@ -1,7 +1,7 @@
 #ifndef ILLUSION_PATH_TRACING_INLINE_VALIDATION_INCLUDED
 #define ILLUSION_PATH_TRACING_INLINE_VALIDATION_INCLUDED
 
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInlineTraversal.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInline.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInlineValidationCommon.hlsl"
 
 RaytracingAccelerationStructure SceneBVH;

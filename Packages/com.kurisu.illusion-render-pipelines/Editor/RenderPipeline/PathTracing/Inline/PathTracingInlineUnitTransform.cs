@@ -451,6 +451,78 @@ namespace Illusion.Rendering.Editor
             return paren < 0 || IsRegisterParen(code, paren);
         }
 
+        public static string RemoveDeclared(string preprocessed, string declaredBefore)
+        {
+            var items = new HashSet<string>(StringComparer.Ordinal);
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string item in SplitTopLevel(declaredBefore))
+            {
+                string code = StripLineDirectives(item, out _);
+                items.Add(NormalizeItem(code));
+                AddItemKeys(code, keys);
+            }
+            var result = new StringBuilder(preprocessed.Length);
+            RemoveDeclared(preprocessed, items, keys, result, false);
+            return result.ToString();
+        }
+
+        // Inside namespaces only constant buffers are removed, since their members are global wherever they are declared.
+        private static void RemoveDeclared(string text, HashSet<string> items, HashSet<string> keys, StringBuilder result, bool nested)
+        {
+            var itemKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string item in SplitTopLevel(text))
+            {
+                string code = StripLineDirectives(item, out string directives);
+                List<string> words = LeadingWords(code);
+                int open = item.IndexOf('{');
+                int close = item.LastIndexOf('}');
+                if (words.Count > 0 && words[0] == "namespace" && open >= 0 && close > open)
+                {
+                    result.Append(item, 0, open + 1);
+                    RemoveDeclared(item.Substring(open + 1, close - open - 1), items, keys, result, true);
+                    result.Append(item, close, item.Length - close).Append('\n');
+                    continue;
+                }
+                itemKeys.Clear();
+                AddItemKeys(code, itemKeys);
+                bool declared = nested
+                    ? words.Count > 0 && words[0] == "cbuffer" && itemKeys.Overlaps(keys)
+                    : items.Contains(NormalizeItem(code)) || !IsFunction(code) && itemKeys.Overlaps(keys);
+                result.Append(declared ? directives : item);
+                if (!declared && !item.EndsWith("\n", StringComparison.Ordinal))
+                    result.Append('\n');
+            }
+        }
+
+        private static string NormalizeItem(string code) => Regex.Replace(code, @"\s+", " ").Trim();
+
+        private static void AddItemKeys(string code, HashSet<string> keys)
+        {
+            List<string> words = LeadingWords(code);
+            while (words.Count > 0 && s_Qualifiers.Contains(words[0]))
+                words.RemoveAt(0);
+            if (words.Count < 2)
+                return;
+            if (words[0] == "cbuffer")
+            {
+                keys.Add("cbuffer " + words[1]);
+                int open = code.IndexOf('{');
+                int close = code.LastIndexOf('}');
+                if (open >= 0 && close > open)
+                    foreach (string statement in code.Substring(open + 1, close - open - 1).Split(';'))
+                        if (s_Member.Match(statement.Replace('\n', ' ').Replace('\r', ' ')) is { Success: true } m)
+                            keys.Add(m.Groups[2].Value);
+            }
+            else if (words[0] == "struct")
+            {
+                keys.Add("struct " + words[1]);
+            }
+            else if (!IsFunction(code) && !s_KeepKeywords.Contains(words[0]))
+            {
+                keys.Add(words[1]);
+            }
+        }
+
         private static bool IsFunction(string code)
         {
             int paren = code.IndexOf('(');

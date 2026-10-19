@@ -367,11 +367,11 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
-        public void Bind(CommandBuffer cmd, RayTracingShader shader)
+        public void Bind(CommandBuffer cmd, PathTracingShaderTarget shader)
         {
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.Instances, _instanceBuffer);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.TriangleToRecord, _lookupBuffer);
-            cmd.SetRayTracingIntParam(shader, ShaderIDs.InstanceCount, _ranges.Length);
+            shader.SetBuffer(cmd, ShaderIDs.Instances, _instanceBuffer);
+            shader.SetBuffer(cmd, ShaderIDs.TriangleToRecord, _lookupBuffer);
+            shader.SetInt(cmd, ShaderIDs.InstanceCount, _ranges.Length);
         }
 
         private void ReleaseMeshBuffers()

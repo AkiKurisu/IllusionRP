@@ -63,7 +63,8 @@ struct AOVData
 #define LIT_USE_GGX_ENERGY_COMPENSATION
 #define _SURFACE_TYPE_TRANSPARENT
 #define HAS_REFRACTION 1
-#if defined(ILLUSION_HDRP_ENABLE_SSS)
+// Standard Lit surfaces carry no subsurface data, so they never scatter below the surface.
+#if defined(ILLUSION_HDRP_ENABLE_SSS) && !defined(PT_STANDARD_LIT)
 #define ILLUSION_PATH_TRACING_SSS
 #define _MATERIAL_FEATURE_SUBSURFACE_SCATTERING
 #endif

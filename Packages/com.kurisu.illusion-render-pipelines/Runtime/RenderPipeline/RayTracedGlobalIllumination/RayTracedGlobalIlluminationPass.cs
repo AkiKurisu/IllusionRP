@@ -28,6 +28,8 @@ namespace Illusion.Rendering
 
         private const string CacheUpdateRayGenName = "RayGen_RadianceCacheUpdate";
 
+        private const int InlineThreadGroupSize = 8;
+
         private const int CacheUpdateBlockSize = 5;
 
         private const int CacheThreadGroupSize = 256;
@@ -87,6 +89,24 @@ namespace Illusion.Rendering
         private ShaderVariablesBilateralUpsample _upsampleVariables;
 
         private bool _reportedDenoiser;
+
+        private ComputeShader _inlineInitialSamples;
+
+        private ComputeShader _inlineResampling;
+
+        private int _inlineInitialTraceKernel;
+
+        private int _inlineInitialShadeKernel;
+
+        private GraphicsBuffer _inlineHits;
+
+        private int _inlineTemporalKernel;
+
+        private int _inlineSpatialKernel;
+
+        private int _inlineFinalShadingKernel;
+
+        private bool _reportedInline;
 
         private readonly GraphicsBuffer _constants;
 
@@ -157,6 +177,15 @@ namespace Illusion.Rendering
             internal PathTracingDiffusionProfiles Profiles;
             internal RayTracingShader InitialSamplesShader;
             internal RayTracingShader ResamplingShader;
+            internal bool Inline;
+            internal ComputeShader InlineInitialSamples;
+            internal ComputeShader InlineResampling;
+            internal int InlineInitialTraceKernel;
+            internal int InlineInitialShadeKernel;
+            internal GraphicsBuffer InlineHits;
+            internal int InlineTemporalKernel;
+            internal int InlineSpatialKernel;
+            internal int InlineFinalShadingKernel;
             internal GraphicsBuffer NeighborOffsets;
             internal bool Temporal;
             internal bool Spatial;
@@ -341,6 +370,59 @@ namespace Illusion.Rendering
                 _rendererData.PerObjectShadowRenderingLayer, false);
         }
 
+        private bool UseInlineRayTracing(bool radianceCache, PathTracingWorld world)
+        {
+            if (radianceCache)
+                return false;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (IllusionRuntimeRenderingConfig.Get().RayTracedGlobalIlluminationHitShaders)
+                return false;
+#endif
+            string reason = null;
+            var registry = PathTracingInlineRegistry.Instance;
+            if (!SystemInfo.supportsInlineRayTracing)
+                reason = "the device does not support ray queries";
+            else if (!PathTracingInlineResources.IsAvailable)
+                reason = "the UnityRHI scene resource table is unavailable";
+            else if (!registry || !registry.RayTracedGIInitialSamples || !registry.RayTracedGIResampling)
+                reason = "the inline kernels have not been generated";
+            else if (!FindInlineKernels(registry))
+                reason = "the inline kernels are not supported";
+            else
+            {
+                world.UpdateInline();
+                if (!world.Inline.IsReady)
+                    reason = "the inline scene records are unavailable";
+            }
+            if (reason == null)
+                return true;
+            if (!_reportedInline)
+            {
+                _reportedInline = true;
+                Debug.LogWarning($"[RayTracedGI] Performance mode evaluates hits with hit shaders because {reason}.");
+            }
+            return false;
+        }
+
+        private bool FindInlineKernels(PathTracingInlineRegistry registry)
+        {
+            if (_inlineInitialSamples != registry.RayTracedGIInitialSamples)
+            {
+                _inlineInitialSamples = registry.RayTracedGIInitialSamples;
+                _inlineInitialTraceKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialTrace");
+                _inlineInitialShadeKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialShade");
+            }
+            if (_inlineResampling != registry.RayTracedGIResampling)
+            {
+                _inlineResampling = registry.RayTracedGIResampling;
+                _inlineTemporalKernel = _inlineResampling.FindKernel("RayTracedGITemporalResampling");
+                _inlineSpatialKernel = _inlineResampling.FindKernel("RayTracedGISpatialResampling");
+                _inlineFinalShadingKernel = _inlineResampling.FindKernel("RayTracedGIFinalShading");
+            }
+            return _inlineInitialSamples.IsSupported(_inlineInitialTraceKernel) && _inlineInitialSamples.IsSupported(_inlineInitialShadeKernel)
+                && _inlineResampling.IsSupported(_inlineTemporalKernel);
+        }
+
         public static bool HasResources(IllusionRenderPipelineResources resources)
         {
             return resources.rayTracedGIInitialSamplesRS && resources.rayTracedGIResamplingRS && resources.rayTracedGICompositeCS;
@@ -384,6 +466,7 @@ namespace Illusion.Rendering
             context.EnsureRadianceCache(radianceCache);
 
             var world = UpdateScene(camera);
+            bool inlineTracing = UseInlineRayTracing(radianceCache, world);
 
             var worldToView = cameraData.GetViewMatrix();
             var projection = cameraData.GetProjectionMatrix();
@@ -422,6 +505,15 @@ namespace Illusion.Rendering
                 passData.Profiles = PathTracingDiffusionProfiles.Capture(_rendererData);
                 passData.InitialSamplesShader = radianceCache ? _initialSamplesQualityShader : _initialSamplesShader;
                 passData.ResamplingShader = _resamplingShader;
+                passData.Inline = inlineTracing;
+                passData.InlineInitialSamples = _inlineInitialSamples;
+                passData.InlineResampling = _inlineResampling;
+                passData.InlineInitialTraceKernel = _inlineInitialTraceKernel;
+                passData.InlineInitialShadeKernel = _inlineInitialShadeKernel;
+                passData.InlineHits = inlineTracing ? EnsureInlineHits(context.SecondarySurfaces.count) : null;
+                passData.InlineTemporalKernel = _inlineTemporalKernel;
+                passData.InlineSpatialKernel = _inlineSpatialKernel;
+                passData.InlineFinalShadingKernel = _inlineFinalShadingKernel;
                 passData.NeighborOffsets = _neighborOffsets;
                 passData.Temporal = temporal;
                 passData.Spatial = spatial;
@@ -499,6 +591,11 @@ namespace Illusion.Rendering
                     cmd.SetBufferData(data.SampleConstants, data.SampleConstantsUpload);
                     if (data.RadianceCache)
                         UpdateRadianceCache(cmd, data);
+                    if (data.Inline)
+                    {
+                        TraceInline(cmd, data);
+                        return;
+                    }
 
                     var initial = data.InitialSamplesShader;
                     data.Scene.BindTraceInputs(cmd, initial, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
@@ -926,15 +1023,78 @@ namespace Illusion.Rendering
             return passData.Output;
         }
 
-        private static void BindReceiver(CommandBuffer cmd, RayTracingShader shader, TracePassData data)
+        private static void TraceInline(CommandBuffer cmd, TracePassData data)
         {
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_RayTracedGIConstants, data.Constants);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_RayTracedGIDepth, data.Depth);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_RayTracedGINormals, data.Normals);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_RayTracedGIForwardGBuffer, data.ForwardGBuffer);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_RayTracedGIPrevDepth, data.PreviousDepth);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_RayTracedGIPrevNormalRoughness, data.PreviousNormalRoughness);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_RayTracedGIMotion, data.Motion);
+            int groupsX = (data.DispatchWidth + InlineThreadGroupSize - 1) / InlineThreadGroupSize;
+            int groupsY = (data.Height + InlineThreadGroupSize - 1) / InlineThreadGroupSize;
+
+            using (new ProfilingScope(cmd, Samplers.InitialSamples))
+            {
+                DispatchInlineInitialSamples(cmd, data, data.InlineInitialTraceKernel, groupsX, groupsY);
+                DispatchInlineInitialSamples(cmd, data, data.InlineInitialShadeKernel, groupsX, groupsY);
+            }
+
+            if (data.Temporal)
+            {
+                using (new ProfilingScope(cmd, Samplers.TemporalResampling))
+                    DispatchInlineResampling(cmd, data, data.InlineTemporalKernel, groupsX, groupsY);
+            }
+            if (data.Spatial)
+            {
+                using (new ProfilingScope(cmd, Samplers.SpatialResampling))
+                    DispatchInlineResampling(cmd, data, data.InlineSpatialKernel, groupsX, groupsY);
+            }
+            using (new ProfilingScope(cmd, Samplers.FinalShading))
+                DispatchInlineResampling(cmd, data, data.InlineFinalShadingKernel, groupsX, groupsY);
+        }
+
+        private static void DispatchInlineInitialSamples(CommandBuffer cmd, TracePassData data, int kernel, int groupsX, int groupsY)
+        {
+            var initial = new PathTracingShaderTarget(data.InlineInitialSamples, kernel);
+            data.World.BindInline(cmd, initial);
+            data.Scene.BindTraceInputs(cmd, initial, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
+                data.SubsurfaceRayBias, data.Exposure, PathTracingEnvironment.CameraBackground(data.Camera),
+                data.SampleConstants, data.MiniConstants);
+            data.Scene.BindOutputPlaceholders(cmd, initial);
+            BindReceiver(cmd, initial, data);
+            initial.SetBuffer(cmd, ShaderIDs.u_SecondaryGBuffer, data.SecondarySurfaces);
+            initial.SetBuffer(cmd, ShaderIDs.u_GIReservoirs, data.Reservoirs);
+            initial.SetBuffer(cmd, ShaderIDs.u_RayTracedGIHits, data.InlineHits);
+            cmd.DispatchCompute(data.InlineInitialSamples, kernel, groupsX, groupsY, 1);
+        }
+
+        // Must match RAY_TRACED_GI_HIT_STRIDE.
+        private GraphicsBuffer EnsureInlineHits(int reservoirs)
+        {
+            int words = Mathf.Max(1, reservoirs) * 64;
+            if (_inlineHits == null || _inlineHits.count < words)
+            {
+                _inlineHits?.Release();
+                _inlineHits = new GraphicsBuffer(GraphicsBuffer.Target.Raw, words, sizeof(uint)) { name = "RayTracedGIInlineHits" };
+            }
+            return _inlineHits;
+        }
+
+        private static void DispatchInlineResampling(CommandBuffer cmd, TracePassData data, int kernel, int groupsX, int groupsY)
+        {
+            var resampling = new PathTracingShaderTarget(data.InlineResampling, kernel);
+            data.World.BindInline(cmd, resampling);
+            BindResampling(cmd, resampling, data);
+            resampling.SetTexture(cmd, ShaderIDs.u_DiffuseLighting, data.DiffuseLighting);
+            resampling.SetTexture(cmd, ShaderIDs.u_SpecularLighting, data.SpecularLighting);
+            resampling.SetTexture(cmd, ShaderIDs.t_RayTracedGIPreIntegratedFGD, data.Scene.Resources.GetFGD(cmd));
+            cmd.DispatchCompute(data.InlineResampling, kernel, groupsX, groupsY, 1);
+        }
+
+        private static void BindReceiver(CommandBuffer cmd, PathTracingShaderTarget shader, TracePassData data)
+        {
+            shader.SetBuffer(cmd, ShaderIDs.t_RayTracedGIConstants, data.Constants);
+            shader.SetTexture(cmd, ShaderIDs.t_RayTracedGIDepth, data.Depth);
+            shader.SetTexture(cmd, ShaderIDs.t_RayTracedGINormals, data.Normals);
+            shader.SetTexture(cmd, ShaderIDs.t_RayTracedGIForwardGBuffer, data.ForwardGBuffer);
+            shader.SetTexture(cmd, ShaderIDs.t_RayTracedGIPrevDepth, data.PreviousDepth);
+            shader.SetTexture(cmd, ShaderIDs.t_RayTracedGIPrevNormalRoughness, data.PreviousNormalRoughness);
+            shader.SetTexture(cmd, ShaderIDs.t_RayTracedGIMotion, data.Motion);
         }
 
         private static void UpdateRadianceCache(CommandBuffer cmd, TracePassData data)
@@ -985,14 +1145,14 @@ namespace Illusion.Rendering
             cmd.SetComputeIntParam(shader, ShaderIDs._RayTracedGICacheCapacity, RayTracedGlobalIlluminationContext.CacheCapacity);
         }
 
-        private static void BindResampling(CommandBuffer cmd, RayTracingShader shader, TracePassData data)
+        private static void BindResampling(CommandBuffer cmd, PathTracingShaderTarget shader, TracePassData data)
         {
-            cmd.SetRayTracingShaderPass(shader, PathTracingPass.MaterialPassName);
-            cmd.SetRayTracingAccelerationStructure(shader, ShaderIDs.SceneBVH, data.World.Scene.AccelerationStructure);
+            shader.SetShaderPass(cmd, PathTracingPass.MaterialPassName);
+            shader.SetAccelerationStructure(cmd, ShaderIDs.SceneBVH, data.World.Scene.AccelerationStructure);
             BindReceiver(cmd, shader, data);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_NeighborOffsets, data.NeighborOffsets);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_SecondaryGBuffer, data.SecondarySurfaces);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_GIReservoirs, data.Reservoirs);
+            shader.SetBuffer(cmd, ShaderIDs.t_NeighborOffsets, data.NeighborOffsets);
+            shader.SetBuffer(cmd, ShaderIDs.u_SecondaryGBuffer, data.SecondarySurfaces);
+            shader.SetBuffer(cmd, ShaderIDs.u_GIReservoirs, data.Reservoirs);
         }
 
         // The low-discrepancy neighbor offsets of the RTXDI SDK within a unit disc, as its signed 8-bit table stores them.
@@ -1184,6 +1344,7 @@ namespace Illusion.Rendering
             _sampleConstants.Release();
             _miniConstants.Release();
             _neighborOffsets.Release();
+            _inlineHits?.Release();
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             _inlineValidation.Dispose();
 #endif
@@ -1254,6 +1415,7 @@ namespace Illusion.Rendering
             public static readonly int _RayTracedGIDebugSize = Shader.PropertyToID("_RayTracedGIDebugSize");
             public static readonly int _RayTracedGIDebugView = Shader.PropertyToID("_RayTracedGIDebugView");
             public static readonly int u_GIReservoirs = Shader.PropertyToID("u_GIReservoirs");
+            public static readonly int u_RayTracedGIHits = Shader.PropertyToID("u_RayTracedGIHits");
             public static readonly int u_DiffuseLighting = Shader.PropertyToID("u_DiffuseLighting");
             public static readonly int u_SpecularLighting = Shader.PropertyToID("u_SpecularLighting");
             public static readonly int _RayTracedGIDiffuse = Shader.PropertyToID("_RayTracedGIDiffuse");
