@@ -206,12 +206,6 @@ namespace Illusion.Rendering
         public RayTracedGIDebugView RayTracedGlobalIlluminationDebugView { get; set; }
 
         /// <summary>
-        /// Compare the surfaces that inline ray tracing evaluates with the PathTracing hit shaders for camera rays.
-        /// </summary>
-        [ConfigVariable("r.debug.pt.inline", IsEditor = true)]
-        public PathTracingInlineValidationView PathTracingInlineValidationView { get; set; }
-
-        /// <summary>
         /// Evaluate ray traced global illumination Performance mode with hit shaders instead of inline ray tracing.
         /// </summary>
         [ConfigVariable("r.debug.rtgi.hitshaders", IsEditor = true)]

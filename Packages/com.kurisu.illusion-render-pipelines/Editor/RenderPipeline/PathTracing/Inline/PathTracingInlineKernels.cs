@@ -33,14 +33,6 @@ namespace Illusion.Rendering.Editor
         {
             new()
             {
-                Name = "PathTracingInlineValidation",
-                Source = ShaderLibrary + "PathTracing/Inline/PathTracingInlineValidation.hlsl",
-                Entries = new[] { "PathTracingInlineValidate", "PathTracingInlineValidationCompare" },
-                Get = r => r.Validation,
-                Set = (r, s) => r.Validation = s
-            },
-            new()
-            {
                 Name = "RayTracedGIInitialSamples",
                 Source = ShaderLibrary + "RayTracedGlobalIllumination/RayTracedGIInlineInitialSamples.hlsl",
                 Entries = new[] { "RayTracedGIInitialSamples" },

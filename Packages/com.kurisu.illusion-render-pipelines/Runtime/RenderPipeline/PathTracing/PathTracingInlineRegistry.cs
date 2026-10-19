@@ -61,7 +61,6 @@ namespace Illusion.Rendering
 
         public bool[] RawBuffers = Array.Empty<bool>();
 
-        public ComputeShader Validation;
 
         public ComputeShader RayTracedGIInitialSamples;
 

@@ -64,8 +64,6 @@ namespace Illusion.Rendering
 
         public ComputeShader rayTracedGIRadianceCacheCS;
 
-        public UnityEngine.Rendering.RayTracingShader pathTracingInlineValidationRS;
-
         [Header("Area Lights")]
         public Shader areaLightShadowClearShader;
 

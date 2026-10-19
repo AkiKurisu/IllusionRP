@@ -120,10 +120,6 @@ namespace Illusion.Rendering
 
         private readonly List<int> _expired = new();
 
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-        private readonly PathTracingInlineValidation _inlineValidation;
-#endif
-
         private readonly ProfilingSampler _traceSampler = new("Ray Traced GI Trace");
 
         private readonly ProfilingSampler _compositeSampler = new("Ray Traced GI Composite");
@@ -327,9 +323,6 @@ namespace Illusion.Rendering
             _sampleConstants = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, PathTracingSampleConstants.Stride) { name = "RayTracedGISampleConstants" };
             _miniConstants = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, PathTracingSampleMiniConstants.Stride) { name = "RayTracedGIMiniConstants" };
             _miniConstants.SetData(new PathTracingSampleMiniConstants[1]);
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-            _inlineValidation = new PathTracingInlineValidation(resources.pathTracingInlineValidationRS);
-#endif
         }
 
         public bool IsDenoiserLoaded =>
@@ -630,14 +623,6 @@ namespace Illusion.Rendering
             }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            var inlineView = IllusionRuntimeRenderingConfig.Get().PathTracingInlineValidationView;
-            if (inlineView != PathTracingInlineValidationView.None)
-            {
-                var inlineOutput = _inlineValidation.Record(renderGraph, camera, world, textureWidth, textureHeight, inlineView);
-                if (inlineOutput.IsValid())
-                    _rendererData.RayTracedGIDebugTexture = inlineOutput;
-            }
-
             var debugView = IllusionRuntimeRenderingConfig.Get().RayTracedGlobalIlluminationDebugView;
             if (radianceCache && debugView != RayTracedGIDebugView.None)
                 _rendererData.RayTracedGIDebugTexture = RecordCacheDebug(renderGraph, context, constants.View, resourceData.cameraNormalsTexture,
@@ -1329,9 +1314,6 @@ namespace Illusion.Rendering
             _sampleConstants.Release();
             _miniConstants.Release();
             _neighborOffsets.Release();
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-            _inlineValidation.Dispose();
-#endif
         }
 
         private static class Samplers
