@@ -5,13 +5,23 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [1.4.3] - 2026-10-17
+## [1.4.3] - 2026-10-19
+
+### Added
+
+- Add inline ray queries and bindless material evaluation to accelerate ray traced global illumination's Performance mode.
+- Add optional Shader Execution Reordering (SER) to Realtime path tracing on supported NVIDIA hardware.
+
+### Changed
+
+- Consolidate UnityRHI and its native plugins into `com.kurisu.unityrhi`.
+- Replace reflection-based backend loading with typed registration.
+- Remove per-frame render-thread waits from RTGI denoising.
 
 ### Fixed
 
-- Keep skinned meshes animating in path tracing; they no longer freeze in their last pose, such as eyes that stop following their look target.
-- Skip emissive meshes without Read/Write in emissive light sampling instead of failing the path tracing pass in players.
-- Stop the ray traced global illumination denoiser from waiting for the render thread every frame.
+- Fix skinned meshes freezing during path tracing.
+- Fix Player path tracing failures when emissive meshes have Read/Write disabled.
 
 ## [1.4.2] - 2026-10-17
 
