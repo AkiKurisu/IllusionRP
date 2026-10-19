@@ -52,6 +52,7 @@ namespace Illusion.Rendering.PathTracing
         private int _generation = -1;
         private int _deformFrame = -1;
         private int _firstDeformingGeometry;
+        private readonly List<GraphicsBuffer> _deformedSources = new();
         private PathTracingInlineRegistry _registry;
 
         public int UncoveredInstances { get; private set; }
@@ -68,25 +69,65 @@ namespace Illusion.Rendering.PathTracing
             if (!registry || !PathTracingInlineResources.IsAvailable)
                 return;
             PathTracingInlineResources.BeginFrame(frame);
-            if (_deformFrame != frame)
-            {
-                _deformFrame = frame;
-                foreach (DeformingRenderer deforming in _deforming)
-                    PathTracingInlineResources.RefreshMesh(deforming.Mesh, frame);
-            }
             if (_version != instances.Version || _generation != PathTracingInlineResources.Generation || _registry != registry)
             {
                 _version = instances.Version;
                 _registry = registry;
                 Rebuild(instances, registry, frame);
                 _generation = PathTracingInlineResources.Generation;
-                RefreshDeforming(frame);
                 Upload();
             }
-            else if (RefreshDeforming(frame))
+        }
+
+        public unsafe void CopyDeformedVertices(CommandBuffer cmd, int frame, ComputeShader copyShader)
+        {
+            if (_deformFrame == frame || _geometryBuffer == null)
+                return;
+            _deformFrame = frame;
+            foreach (GraphicsBuffer source in _deformedSources)
+                source.Dispose();
+            _deformedSources.Clear();
+
+            bool changed = false;
+            foreach (DeformingRenderer deforming in _deforming)
             {
-                _geometryBuffer.SetData(_geometries, _firstDeformingGeometry, _firstDeformingGeometry, _geometries.Count - _firstDeformingGeometry);
+                GraphicsBuffer source = null;
+                if (deforming.Renderer && deforming.Vertices != null)
+                {
+                    if ((deforming.Renderer.vertexBufferTarget & GraphicsBuffer.Target.Raw) == 0)
+                        deforming.Renderer.vertexBufferTarget |= GraphicsBuffer.Target.Raw;
+                    else
+                        source = deforming.Renderer.GetVertexBuffer();
+                }
+                bool deformed = source != null && source.count * source.stride == deforming.Vertices.count * deforming.Vertices.stride;
+                if (deformed)
+                {
+                    int words = deforming.Vertices.count;
+                    int kernel = copyShader.FindKernel("CopyVertices");
+                    cmd.SetComputeBufferParam(copyShader, kernel, ShaderIDs.t_Vertices, source);
+                    cmd.SetComputeBufferParam(copyShader, kernel, ShaderIDs.u_Positions, deforming.Vertices);
+                    cmd.SetComputeIntParam(copyShader, ShaderIDs._WordCount, words);
+                    cmd.DispatchCompute(copyShader, kernel, (words + 255) / 256, 1, 1);
+                    _deformedSources.Add(source);
+                }
+                else
+                {
+                    source?.Dispose();
+                }
+                if (deformed == deforming.Deformed)
+                    continue;
+                deforming.Deformed = deformed;
+                uint slot = deformed ? (uint)deforming.Slot : deforming.MeshSlot;
+                for (int i = deforming.FirstGeometry; i < deforming.FirstGeometry + deforming.GeometryCount; i++)
+                {
+                    PathTracingInlineGeometry geometry = _geometries[i];
+                    geometry.VertexBuffers[0] = slot;
+                    _geometries[i] = geometry;
+                }
+                changed = true;
             }
+            if (changed)
+                _geometryBuffer.SetData(_geometries, _firstDeformingGeometry, _firstDeformingGeometry, _geometries.Count - _firstDeformingGeometry);
         }
 
         private void Rebuild(PathTracingInstanceTable instances, PathTracingInlineRegistry registry, int frame)
@@ -130,11 +171,13 @@ namespace Illusion.Rendering.PathTracing
                 deforming.FirstGeometry = first;
                 deforming.GeometryCount = _geometries.Count - first;
                 deforming.MeshSlot = Stream0(_geometries[first]);
-                _deforming.Add(deforming);
+                deforming.Deformed = false;
+                if (deforming.Ensure(records[i].Mesh, frame))
+                    _deforming.Add(deforming);
             }
 
             foreach (DeformingRenderer deforming in _previousDeforming.Values)
-                deforming.ReleaseBuffers(frame);
+                deforming.Release(frame);
             _previousDeforming.Clear();
             foreach (int texture in _previousTextures)
                 PathTracingInlineResources.ReleaseTexture(texture, frame);
@@ -204,84 +247,43 @@ namespace Illusion.Rendering.PathTracing
             return first;
         }
 
-        // Each deformed buffer keeps its own entry: in-flight work can still read the previous frame's buffer.
-        private unsafe bool RefreshDeforming(int frame)
-        {
-            bool changed = false;
-            foreach (DeformingRenderer deforming in _deforming)
-            {
-                uint slot = deforming.MeshSlot;
-                if (deforming.Renderer)
-                {
-                    GraphicsBuffer vertices = deforming.Renderer.GetVertexBuffer();
-                    if (vertices != null)
-                    {
-                        if (vertices.stride == deforming.Mesh.GetVertexBufferStride(0))
-                            slot = deforming.BufferSlot(vertices.GetNativeBufferPtr(), (uint)(vertices.count * vertices.stride), frame);
-                        vertices.Dispose();
-                    }
-                }
-                deforming.ExpireBuffers(frame);
-                if (Stream0(_geometries[deforming.FirstGeometry]) == slot)
-                    continue;
-                for (int i = deforming.FirstGeometry; i < deforming.FirstGeometry + deforming.GeometryCount; i++)
-                {
-                    PathTracingInlineGeometry geometry = _geometries[i];
-                    geometry.VertexBuffers[0] = slot;
-                    _geometries[i] = geometry;
-                }
-                changed = true;
-            }
-            return changed;
-        }
-
         private static unsafe uint Stream0(PathTracingInlineGeometry geometry) => geometry.VertexBuffers[0];
 
         private sealed class DeformingRenderer
         {
-            private const int StaleFrames = 8;
-
-            private readonly List<(IntPtr Buffer, int Slot, int Frame)> _buffers = new();
-
             public int InstanceId;
             public SkinnedMeshRenderer Renderer;
             public Mesh Mesh;
             public int FirstGeometry;
             public int GeometryCount;
             public uint MeshSlot;
+            public bool Deformed;
+            public GraphicsBuffer Vertices;
+            public int Slot = -1;
 
-            public uint BufferSlot(IntPtr buffer, uint size, int frame)
+            public bool Ensure(Mesh mesh, int frame)
             {
-                for (int i = 0; i < _buffers.Count; i++)
+                int size = mesh.vertexCount * mesh.GetVertexBufferStride(0);
+                if (Vertices != null && Vertices.count * Vertices.stride == size)
+                    return Slot >= 0;
+                Release(frame);
+                if (size <= 0 || size % sizeof(uint) != 0)
+                    return false;
+                Vertices = new GraphicsBuffer(GraphicsBuffer.Target.Raw, size / sizeof(uint), sizeof(uint))
                 {
-                    if (_buffers[i].Buffer != buffer)
-                        continue;
-                    _buffers[i] = (buffer, _buffers[i].Slot, frame);
-                    return (uint)_buffers[i].Slot;
-                }
-                int slot = PathTracingInlineResources.AcquireBuffer(buffer, size, frame);
-                if (slot < 0)
-                    return MeshSlot;
-                _buffers.Add((buffer, slot, frame));
-                return (uint)slot;
+                    name = "PathTracingInlineDeformedVertices"
+                };
+                Slot = PathTracingInlineResources.AcquireBuffer(Vertices.GetNativeBufferPtr(), (uint)size, frame);
+                return Slot >= 0;
             }
 
-            public void ExpireBuffers(int frame)
+            public void Release(int frame)
             {
-                for (int i = _buffers.Count - 1; i >= 0; i--)
-                {
-                    if (frame - _buffers[i].Frame <= StaleFrames)
-                        continue;
-                    PathTracingInlineResources.ReleaseBuffer(_buffers[i].Slot, frame);
-                    _buffers.RemoveAt(i);
-                }
-            }
-
-            public void ReleaseBuffers(int frame)
-            {
-                foreach ((IntPtr _, int slot, int _) in _buffers)
-                    PathTracingInlineResources.ReleaseBuffer(slot, frame);
-                _buffers.Clear();
+                if (Slot >= 0)
+                    PathTracingInlineResources.ReleaseBuffer(Slot, frame);
+                Slot = -1;
+                Vertices?.Release();
+                Vertices = null;
             }
         }
 
@@ -501,7 +503,10 @@ namespace Illusion.Rendering.PathTracing
             foreach (int mesh in _meshes)
                 PathTracingInlineResources.ReleaseMesh(mesh, frame);
             foreach (DeformingRenderer deforming in _deforming)
-                deforming.ReleaseBuffers(frame);
+                deforming.Release(frame);
+            foreach (GraphicsBuffer source in _deformedSources)
+                source.Dispose();
+            _deformedSources.Clear();
             _textures.Clear();
             _meshes.Clear();
             _deforming.Clear();
@@ -520,6 +525,9 @@ namespace Illusion.Rendering.PathTracing
             public static readonly int _PathTracingInlineMaterialData = Shader.PropertyToID("_PathTracingInlineMaterialData");
             public static readonly int _PathTracingInlineTextures = Shader.PropertyToID("_PathTracingInlineTextures");
             public static readonly int _PathTracingInlineBuffers = Shader.PropertyToID("_PathTracingInlineBuffers");
+            public static readonly int t_Vertices = Shader.PropertyToID("t_Vertices");
+            public static readonly int u_Positions = Shader.PropertyToID("u_Positions");
+            public static readonly int _WordCount = Shader.PropertyToID("_WordCount");
         }
     }
 }

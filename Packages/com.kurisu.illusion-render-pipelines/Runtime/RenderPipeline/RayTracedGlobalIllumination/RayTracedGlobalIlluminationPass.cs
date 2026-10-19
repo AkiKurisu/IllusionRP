@@ -1060,6 +1060,7 @@ namespace Illusion.Rendering
         {
             int groupsX = (data.DispatchWidth + InlineThreadGroupSize - 1) / InlineThreadGroupSize;
             int groupsY = (data.Height + InlineThreadGroupSize - 1) / InlineThreadGroupSize;
+            data.World.CopyDeformedVertices(cmd);
 
             using (new ProfilingScope(cmd, Samplers.InitialSamples))
             {

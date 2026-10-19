@@ -128,6 +128,7 @@ namespace Illusion.Rendering.PathTracing
 
                 ComputeShader validation = data.Validation;
                 int trace = validation.FindKernel("PathTracingInlineValidate");
+                data.World.CopyDeformedVertices(cmd);
                 data.World.BindInline(cmd, new PathTracingShaderTarget(validation, trace));
                 cmd.SetRayTracingAccelerationStructure(validation, trace, ShaderIDs.SceneBVH, scene);
                 cmd.SetComputeBufferParam(validation, trace, ShaderIDs._PathTracingInlineValidationSamples, data.InlineSamples);

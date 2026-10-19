@@ -25,7 +25,6 @@ namespace Illusion.Rendering.PathTracing
         {
             public Mesh Mesh;
             public readonly int[] VertexSlots = { -1, -1, -1, -1 };
-            public readonly IntPtr[] Buffers = new IntPtr[5];
             public int IndexSlot = -1;
             public int References;
             public bool Valid;
@@ -177,20 +176,6 @@ namespace Illusion.Rendering.PathTracing
             s_Meshes.Remove(meshId);
         }
 
-        public static void RefreshMesh(Mesh mesh, int frame)
-        {
-            if (!mesh || !s_Meshes.TryGetValue(mesh.GetInstanceID(), out MeshEntry entry) || !entry.Valid)
-                return;
-            bool replaced = mesh.vertexBufferCount > entry.VertexSlots.Length || mesh.GetNativeIndexBufferPtr() != entry.Buffers[4];
-            for (int stream = 0; !replaced && stream < mesh.vertexBufferCount; stream++)
-                replaced = mesh.GetNativeVertexBufferPtr(stream) != entry.Buffers[stream];
-            if (!replaced)
-                return;
-            ReleaseEntries(entry, frame);
-            entry.Valid = Register(entry, frame);
-            Generation++;
-        }
-
         public static int AcquireBuffer(IntPtr buffer, uint size, int frame)
         {
             if (buffer == IntPtr.Zero || !IsAvailable)
@@ -218,7 +203,6 @@ namespace Illusion.Rendering.PathTracing
                 if (slot < 0)
                     return false;
                 entry.VertexSlots[stream] = slot;
-                entry.Buffers[stream] = buffer;
                 s_Table.SetBuffer(slot, buffer, (uint)(mesh.vertexCount * mesh.GetVertexBufferStride(stream)));
             }
             IntPtr indices = mesh.GetNativeIndexBufferPtr();
@@ -228,7 +212,6 @@ namespace Illusion.Rendering.PathTracing
             if (indexSlot < 0)
                 return false;
             entry.IndexSlot = indexSlot;
-            entry.Buffers[4] = indices;
             s_Table.SetBuffer(indexSlot, indices, 0u);
             return true;
         }

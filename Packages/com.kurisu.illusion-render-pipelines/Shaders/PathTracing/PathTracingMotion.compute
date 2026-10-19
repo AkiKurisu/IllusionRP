@@ -2,6 +2,7 @@
 #pragma only_renderers d3d11
 
 #pragma kernel GatherPositions
+#pragma kernel CopyVertices
 
 ByteAddressBuffer   t_Vertices;
 RWByteAddressBuffer u_Positions;
@@ -10,6 +11,7 @@ uint _VertexStride;
 uint _PositionOffset;
 uint _VertexCount;
 uint _DestinationBase;
+uint _WordCount;
 
 [numthreads(64, 1, 1)]
 void GatherPositions(uint3 id : SV_DispatchThreadID)
@@ -18,4 +20,17 @@ void GatherPositions(uint3 id : SV_DispatchThreadID)
         return;
     uint3 position = t_Vertices.Load3(id.x * _VertexStride + _PositionOffset);
     u_Positions.Store3((_DestinationBase + id.x) * 12, position);
+}
+
+[numthreads(64, 1, 1)]
+void CopyVertices(uint3 id : SV_DispatchThreadID)
+{
+    uint word = id.x * 4;
+    if (word + 4 <= _WordCount)
+    {
+        u_Positions.Store4(word * 4, t_Vertices.Load4(word * 4));
+        return;
+    }
+    for (uint i = word; i < _WordCount; i++)
+        u_Positions.Store(i * 4, t_Vertices.Load(i * 4));
 }

@@ -20,6 +20,8 @@ namespace Illusion.Rendering.PathTracing
 
         public PathTracingMotionHistory Motion { get; }
 
+        private readonly ComputeShader _motionShader;
+
         public PathTracingInlineScene Inline { get; } = new();
 
         public int LastUsedFrame { get; private set; }
@@ -28,6 +30,7 @@ namespace Illusion.Rendering.PathTracing
         {
             Emissive = new PathTracingEmissiveTable(emissiveShader);
             Motion = new PathTracingMotionHistory(motionShader);
+            _motionShader = motionShader;
         }
 
         public void Update(Camera camera, int layerMask, bool trackMotion)
@@ -82,6 +85,11 @@ namespace Illusion.Rendering.PathTracing
         public void UpdateInline()
         {
             Inline.Update(Scene.Instances, PathTracingFrame.Index);
+        }
+
+        public void CopyDeformedVertices(CommandBuffer cmd)
+        {
+            Inline.CopyDeformedVertices(cmd, PathTracingFrame.Index, _motionShader);
         }
 
         public void BindInline(CommandBuffer cmd, PathTracingShaderTarget shader)
