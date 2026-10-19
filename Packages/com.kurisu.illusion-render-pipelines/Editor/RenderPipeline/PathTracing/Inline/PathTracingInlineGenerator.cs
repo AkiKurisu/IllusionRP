@@ -6,6 +6,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -42,6 +44,8 @@ namespace Illusion.Rendering.Editor
         private sealed class GeneratedUnit
         {
             public string Key;
+            public string[] Files;
+            public PathTracingInlineUnitTransform.Unit Transformed;
             public PassSource Pass;
             public string[] Keywords;
             public PathTracingInlineUnitTransform.Unit Unit;
@@ -59,72 +63,52 @@ namespace Illusion.Rendering.Editor
             if (!IsEnabled)
                 return;
             var stopwatch = Stopwatch.StartNew();
-            List<PassSource> passes = CollectPasses();
-            Dictionary<string, HashSet<string>> usedVariants = CollectMaterialVariants();
-
-            string vfs = EnsureVirtualFileSystem();
-            var includeArgs = new List<string> { "-HV", "2018", "-I", vfs, "-I", Path.Combine(EditorApplication.applicationContentsPath, "Resources", "CGIncludes") };
-            var stageDefines = new[] { "SHADER_API_D3D11=1", "SHADER_API_DESKTOP=1", "UNITY_COMPILER_DXC=1", "SHADER_TARGET=50", "UNITY_VERSION=600030" };
-
-            GeneratorCache cache = GeneratorCache.Load();
-            var units = new List<GeneratedUnit>();
-            int reused = 0;
-            using (DxcCompiler dxc = DxcCompiler.Create())
+            try
             {
+                Progress("Collecting PathTracing passes", 0f);
+                List<PassSource> passes = CollectPasses();
+                Dictionary<string, HashSet<string>> usedVariants = CollectMaterialVariants();
+
+                string vfs = EnsureVirtualFileSystem();
+                var includeArgs = new List<string> { "-HV", "2018", "-I", vfs, "-I", Path.Combine(EditorApplication.applicationContentsPath, "Resources", "CGIncludes") };
+                var stageDefines = new[] { "SHADER_API_D3D11=1", "SHADER_API_DESKTOP=1", "UNITY_COMPILER_DXC=1", "SHADER_TARGET=50", "UNITY_VERSION=600030" };
+                var preprocessArgs = new List<string>(includeArgs);
+                foreach (string define in stageDefines)
+                {
+                    preprocessArgs.Add("-D");
+                    preprocessArgs.Add(define);
+                }
+                var compileArgs = new List<string>(preprocessArgs) { "-D", "SHADER_STAGE_COMPUTE=1" };
+
+                GeneratorCache cache = GeneratorCache.Load();
+                var units = new List<GeneratedUnit>();
+                var pending = new List<GeneratedUnit>();
                 foreach (PassSource pass in passes)
                 {
                     foreach (string[] keywords in Variants(pass, usedVariants))
                     {
                         var unit = new GeneratedUnit { Pass = pass, Keywords = keywords, Namespace = $"PathTracingInlineUnit{units.Count}" };
                         units.Add(unit);
-                        string key = Hash(cache.Version + "\n" + pass.Path + "\n" + string.Join(" ", keywords) + "\n" + pass.Source);
-                        if (cache.TryGet(key, out GeneratorCache.Entry cached))
+                        unit.Key = Hash(cache.Version + "\n" + pass.Path + "\n" + string.Join(" ", keywords) + "\n" + pass.Source);
+                        if (cache.TryGet(unit.Key, out GeneratorCache.Entry cached))
                         {
-                            unit.Key = key;
                             unit.Unit = cached.ToUnit(unit.Namespace);
                             unit.Error = string.IsNullOrEmpty(cached.Error) ? null : cached.Error;
-                            reused++;
-                            continue;
                         }
-                        var source = new StringBuilder();
-                        source.Append("#include \"").Append(PreludeInclude).Append("\"\n").Append(UnitMarker).Append('\n');
-                        foreach (string keyword in keywords)
-                            source.Append("#define ").Append(keyword).Append(" 1\n");
-                        source.Append(pass.Source);
-
-                        var args = new List<string>(includeArgs);
-                        foreach (string define in stageDefines)
+                        else
                         {
-                            args.Add("-D");
-                            args.Add(define);
-                        }
-                        DxcCompiler.Result result = dxc.Preprocess(source.ToString(), pass.Path, args);
-                        unit.Key = key;
-                        if (!result.Succeeded || string.IsNullOrEmpty(result.Output))
-                        {
-                            unit.Error = result.Errors;
-                            cache.Put(key, null, unit.Error, GeneratorCache.Dependencies(result.Output, pass.Path));
-                            continue;
-                        }
-                        int marker = result.Output.IndexOf(UnitMarker, StringComparison.Ordinal);
-                        if (marker < 0)
-                        {
-                            unit.Error = "unit marker missing from preprocessed output";
-                            continue;
-                        }
-                        try
-                        {
-                            PathTracingInlineUnitTransform.Unit transformed = PathTracingInlineUnitTransform.Transform(
-                                result.Output.Substring(marker + UnitMarker.Length), GeneratorCache.NamespacePlaceholder);
-                            cache.Put(key, transformed, null, GeneratorCache.Dependencies(result.Output, pass.Path));
-                            cache.TryGet(key, out GeneratorCache.Entry entry);
-                            unit.Unit = entry.ToUnit(unit.Namespace);
-                        }
-                        catch (Exception e)
-                        {
-                            unit.Error = e.Message;
+                            pending.Add(unit);
                         }
                     }
+                }
+                int reused = units.Count - pending.Count;
+
+                RunParallel("Preprocessing PathTracing passes", pending, (dxc, unit) => Preprocess(dxc, unit, preprocessArgs));
+                foreach (GeneratedUnit unit in pending)
+                {
+                    cache.Put(unit.Key, unit.Transformed, unit.Error, unit.Files ?? Array.Empty<string>());
+                    if (unit.Transformed != null && cache.TryGet(unit.Key, out GeneratorCache.Entry entry))
+                        unit.Unit = entry.ToUnit(unit.Namespace);
                 }
 
                 var hoisted = new Dictionary<string, string>();
@@ -145,61 +129,97 @@ namespace Illusion.Rendering.Editor
                     }
                 }
 
-                var compileArgs = new List<string>(includeArgs);
-                foreach (string define in stageDefines.Append("SHADER_STAGE_COMPUTE=1"))
+                List<GeneratedUnit> toCheck = units.Where(u => u.Unit != null && u.Error == null && !cache.IsChecked(u.Key)).ToList();
+                RunParallel("Compiling inline evaluators", toCheck, (dxc, unit) =>
                 {
-                    compileArgs.Add("-D");
-                    compileArgs.Add(define);
-                }
-
-                string CheckSource(List<GeneratedUnit> checkedUnits) =>
-                    "#include \"" + PreludeInclude + "\"\n" + ComposeHoisted(checkedUnits, hoisted, hoistedOrder) +
-                    ComposeEvaluators(checkedUnits) + CheckKernel(checkedUnits.Count) + PathTracingInlineKernels.TableInclude;
-
-                List<GeneratedUnit> accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
-                string evaluators = ComposeEvaluators(accepted);
-                string evaluatorsHash = Hash(CheckSource(accepted));
-                if (evaluatorsHash != cache.CompiledHash)
-                {
-                    DxcCompiler.Result check = dxc.Compile(CheckSource(accepted), EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
-                    if (!check.Succeeded)
-                    {
-                        foreach (GeneratedUnit unit in accepted)
-                        {
-                            DxcCompiler.Result one = dxc.Compile(CheckSource(new List<GeneratedUnit> { unit }), EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
-                            if (!one.Succeeded)
-                            {
-                                unit.Error = FirstErrors(one.Errors);
-                                cache.SetError(unit.Key, unit.Error);
-                            }
-                        }
-                        accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
-                        evaluators = ComposeEvaluators(accepted);
-                        evaluatorsHash = Hash(CheckSource(accepted));
-                    }
-                    cache.CompiledHash = evaluatorsHash;
-                }
-
-                PathTracingInlineRegistry registry = Write(evaluators, accepted, passes, force);
-                string shared = ComposeHoisted(accepted, hoisted, hoistedOrder);
-                DxcCompiler.Result prelude = dxc.Preprocess("#include \"" + PreludeInclude + "\"\n", PreludeInclude, compileArgs);
-                string declaredBefore = (prelude.Succeeded ? prelude.Output : string.Empty) + shared;
-                PathTracingInlineKernels.Write(registry, shared, consumer =>
-                {
-                    DxcCompiler.Result source = dxc.Preprocess("#include \"" + consumer + "\"\n", consumer, compileArgs);
-                    if (source.Succeeded)
-                        return PathTracingInlineUnitTransform.RemoveDeclared(source.Output, declaredBefore);
-                    Debug.LogError($"[IllusionRP] Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
-                    return null;
+                    string source = "#include \"" + PreludeInclude + "\"\n" + ComposeHoisted(new List<GeneratedUnit> { unit }, hoisted, hoistedOrder) +
+                        ComposeEvaluators(new List<GeneratedUnit> { unit }) + CheckKernel(1) + PathTracingInlineKernels.TableInclude;
+                    DxcCompiler.Result check = dxc.Compile(source, EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
+                    unit.Error = check.Succeeded ? null : FirstErrors(check.Errors);
                 });
-            }
-            cache.Retain(units.Select(u => u.Key));
-            cache.Save();
+                foreach (GeneratedUnit unit in toCheck)
+                    cache.SetChecked(unit.Key, unit.Error);
 
-            int failed = units.Count(u => u.Error != null);
-            foreach (GeneratedUnit unit in units.Where(u => u.Error != null))
-                Debug.LogWarning($"[IllusionRP] Path tracing inline evaluator for '{unit.Pass.Path}' ({string.Join(" ", unit.Keywords)}) is unavailable; its materials render as the diagnostic surface.\n{unit.Error}");
-            Debug.Log($"[IllusionRP] Generated {units.Count - failed} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms.");
+                Progress("Writing inline evaluators and kernels", 1f);
+                List<GeneratedUnit> accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
+                PathTracingInlineRegistry registry = Write(ComposeEvaluators(accepted), accepted, passes, force);
+                string shared = ComposeHoisted(accepted, hoisted, hoistedOrder);
+                using (DxcCompiler dxc = DxcCompiler.Create())
+                {
+                    DxcCompiler.Result prelude = dxc.Preprocess("#include \"" + PreludeInclude + "\"\n", PreludeInclude, compileArgs);
+                    string declaredBefore = (prelude.Succeeded ? prelude.Output : string.Empty) + shared;
+                    PathTracingInlineKernels.Write(registry, shared, consumer =>
+                    {
+                        DxcCompiler.Result source = dxc.Preprocess("#include \"" + consumer + "\"\n", consumer, compileArgs);
+                        if (source.Succeeded)
+                            return PathTracingInlineUnitTransform.RemoveDeclared(source.Output, declaredBefore);
+                        Debug.LogError($"[IllusionRP] Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
+                        return null;
+                    });
+                }
+                cache.Retain(units.Select(u => u.Key));
+                cache.Save();
+
+                int failed = units.Count(u => u.Error != null);
+                foreach (GeneratedUnit unit in units.Where(u => u.Error != null))
+                    Debug.LogWarning($"[IllusionRP] Path tracing inline evaluator for '{unit.Pass.Path}' ({string.Join(" ", unit.Keywords)}) is unavailable; its materials render as the diagnostic surface.\n{unit.Error}");
+                Debug.Log($"[IllusionRP] Generated {units.Count - failed} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms.");
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+        }
+
+        private const string ProgressTitle = "Path Tracing Inline Evaluators";
+
+        private static void Progress(string info, float progress) => EditorUtility.DisplayProgressBar(ProgressTitle, info, progress);
+
+        private static void RunParallel(string info, List<GeneratedUnit> units, Action<DxcCompiler, GeneratedUnit> work)
+        {
+            if (units.Count == 0)
+                return;
+            int done = 0;
+            Task task = Task.Run(() => Parallel.ForEach(units, DxcCompiler.Create, (unit, _, dxc) =>
+            {
+                try
+                {
+                    work(dxc, unit);
+                }
+                catch (Exception e)
+                {
+                    unit.Error = e.Message;
+                }
+                Interlocked.Increment(ref done);
+                return dxc;
+            }, dxc => dxc.Dispose()));
+            while (!task.Wait(100))
+                Progress($"{info} ({Volatile.Read(ref done)}/{units.Count})", Volatile.Read(ref done) / (float)units.Count);
+            task.GetAwaiter().GetResult();
+        }
+
+        private static void Preprocess(DxcCompiler dxc, GeneratedUnit unit, List<string> args)
+        {
+            var source = new StringBuilder();
+            source.Append("#include \"").Append(PreludeInclude).Append("\"\n").Append(UnitMarker).Append('\n');
+            foreach (string keyword in unit.Keywords)
+                source.Append("#define ").Append(keyword).Append(" 1\n");
+            source.Append(unit.Pass.Source);
+
+            DxcCompiler.Result result = dxc.Preprocess(source.ToString(), unit.Pass.Path, args);
+            unit.Files = GeneratorCache.Dependencies(result.Output, unit.Pass.Path);
+            if (!result.Succeeded || string.IsNullOrEmpty(result.Output))
+            {
+                unit.Error = result.Errors;
+                return;
+            }
+            int marker = result.Output.IndexOf(UnitMarker, StringComparison.Ordinal);
+            if (marker < 0)
+            {
+                unit.Error = "unit marker missing from preprocessed output";
+                return;
+            }
+            unit.Transformed = PathTracingInlineUnitTransform.Transform(result.Output.Substring(marker + UnitMarker.Length), GeneratorCache.NamespacePlaceholder);
         }
 
         private static string Normalize(string text) =>

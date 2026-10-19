@@ -20,6 +20,7 @@ namespace Illusion.Rendering.Editor
         {
             public string Key;
             public string Error;
+            public bool Checked;
             public string Body;
             public string[] Files = Array.Empty<string>();
             public long[] Stamps = Array.Empty<long>();
@@ -73,7 +74,6 @@ namespace Illusion.Rendering.Editor
         }
 
         public string Version;
-        public string CompiledHash;
         public List<Entry> Entries = new();
 
         [NonSerialized] private Dictionary<string, Entry> _byKey;
@@ -162,13 +162,16 @@ namespace Illusion.Rendering.Editor
                 entry.RecordSize = unit.RecordSize;
             }
             _byKey[key] = entry;
-            CompiledHash = null;
         }
 
-        public void SetError(string key, string error)
+        public bool IsChecked(string key) => key != null && _byKey.TryGetValue(key, out Entry entry) && entry.Checked;
+
+        public void SetChecked(string key, string error)
         {
-            if (key != null && _byKey.TryGetValue(key, out Entry entry))
-                entry.Error = error;
+            if (key == null || !_byKey.TryGetValue(key, out Entry entry))
+                return;
+            entry.Checked = true;
+            entry.Error = error;
         }
 
         public void Retain(IEnumerable<string> keys)
