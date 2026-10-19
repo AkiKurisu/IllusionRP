@@ -13,15 +13,12 @@ namespace Illusion.Rendering
 
     internal static class PathTracingInlineBackend
     {
-        private const string BackendTypeName =
-            "Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI.UnityRHIPathTracingInlineResourceTable, Illusion.RenderPipelines.RayTracedGlobalIllumination.UnityRHI";
+        private static Func<IPathTracingInlineResourceTable> _factory;
 
-        public static bool IsCompiled => Type.GetType(BackendTypeName, false) != null;
+        internal static void Register(Func<IPathTracingInlineResourceTable> factory) => _factory = factory;
 
-        public static IPathTracingInlineResourceTable Create()
-        {
-            Type type = Type.GetType(BackendTypeName, false);
-            return type == null ? null : Activator.CreateInstance(type) as IPathTracingInlineResourceTable;
-        }
+        public static bool IsCompiled => _factory != null;
+
+        public static IPathTracingInlineResourceTable Create() => _factory?.Invoke();
     }
 }

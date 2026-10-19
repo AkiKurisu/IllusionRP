@@ -8,7 +8,6 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
-using UnityEngine.Scripting;
 using UnityRhi.Nrd;
 using UnityRhi.Nri;
 
@@ -17,7 +16,6 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
     /// <summary>
     /// Denoises the ray traced indirect lighting with NRD through NRIPlugin, on Unity's own Direct3D 12 command list.
     /// </summary>
-    [Preserve]
     internal sealed class UnityRHIRayTracedGIDenoiser : IRayTracedGIDenoiser
     {
         private const int NrdRenderEvent = 1;

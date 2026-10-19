@@ -3,14 +3,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
-using UnityEngine.Scripting;
 using global::UnityRhi;
 using RhiTexture = global::UnityRhi.Texture;
 using RhiTextureDesc = global::UnityRhi.TextureDesc;
 
 namespace Illusion.Rendering.PathTracing.UnityRHI
 {
-    [Preserve]
     internal sealed class UnityRHIPathTracingRayReconstruction : IPathTracingRayReconstruction
     {
         private class DispatchPassData

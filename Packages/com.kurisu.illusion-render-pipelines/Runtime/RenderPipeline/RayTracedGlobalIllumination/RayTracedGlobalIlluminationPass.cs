@@ -80,7 +80,7 @@ namespace Illusion.Rendering
 
         private readonly int _prepareGuidesKernel;
 
-        private readonly IRayTracedGIDenoiser _denoiser;
+        private IRayTracedGIDenoiser _denoiser;
 
         private readonly ComputeShader _upsampleShader;
 
@@ -360,7 +360,8 @@ namespace Illusion.Rendering
 #endif
         }
 
-        public bool IsDenoiserLoaded => _denoiser is { IsAvailable: true };
+        public bool IsDenoiserLoaded =>
+            (_denoiser ??= RayTracedGIDenoiserLoader.Create()) is { IsAvailable: true };
 
         public bool IsDenoiserAvailable(RayTracedGIDenoiser denoiser)
         {

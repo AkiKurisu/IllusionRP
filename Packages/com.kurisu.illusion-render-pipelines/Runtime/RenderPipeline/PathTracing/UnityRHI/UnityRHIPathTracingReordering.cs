@@ -1,10 +1,8 @@
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityEngine.Scripting;
 
 namespace Illusion.Rendering.PathTracing.UnityRHI
 {
-    [Preserve]
     internal sealed class UnityRHIPathTracingReordering : IPathTracingReordering
     {
         private static readonly int ExtensionId = Shader.PropertyToID("g_NvidiaExt");

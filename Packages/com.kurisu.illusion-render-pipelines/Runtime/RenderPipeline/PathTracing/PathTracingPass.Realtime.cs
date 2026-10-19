@@ -67,7 +67,8 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly ProfilingSampler _guidesSampler = new("Path Tracing Realtime Guides");
 
-        internal bool IsRayReconstructionAvailable => _rayReconstruction is { IsAvailable: true };
+        internal bool IsRayReconstructionAvailable =>
+            (_rayReconstruction ??= PathTracingRayReconstructionLoader.Create()) is { IsAvailable: true };
 
         private bool UsesRayReconstruction(PathTracing settings) => settings.rayReconstruction.value && IsRayReconstructionAvailable;
 
@@ -102,7 +103,8 @@ namespace Illusion.Rendering.PathTracing
             int outputHeight = cameraData.cameraTargetDescriptor.height;
             var targets = context.GetRealtimeTargets(width, height, outputWidth, outputHeight);
             bool rayReconstruction = UsesRayReconstruction(settings);
-            bool reordering = settings.shaderExecutionReordering.value && _fillSerShader && _reordering is { IsAvailable: true };
+            bool reordering = settings.shaderExecutionReordering.value && _fillSerShader
+                && (_reordering ??= PathTracingReorderingLoader.Create()) is { IsAvailable: true };
             var quality = settings.rayReconstructionQuality.value;
 
             int settingsHash = HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,

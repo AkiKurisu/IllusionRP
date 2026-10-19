@@ -37,13 +37,10 @@ namespace Illusion.Rendering
 
     internal static class RayTracedGIDenoiserLoader
     {
-        private const string BackendTypeName =
-            "Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI.UnityRHIRayTracedGIDenoiser, Illusion.RenderPipelines.RayTracedGlobalIllumination.UnityRHI";
+        private static Func<IRayTracedGIDenoiser> _factory;
 
-        public static IRayTracedGIDenoiser Create()
-        {
-            Type type = Type.GetType(BackendTypeName, false);
-            return type == null ? null : Activator.CreateInstance(type) as IRayTracedGIDenoiser;
-        }
+        internal static void Register(Func<IRayTracedGIDenoiser> factory) => _factory = factory;
+
+        public static IRayTracedGIDenoiser Create() => _factory?.Invoke();
     }
 }

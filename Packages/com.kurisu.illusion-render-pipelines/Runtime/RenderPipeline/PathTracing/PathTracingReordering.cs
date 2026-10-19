@@ -11,10 +11,10 @@ namespace Illusion.Rendering.PathTracing
 
     internal static class PathTracingReorderingLoader
     {
-        public static IPathTracingReordering Create()
-        {
-            Type type = Type.GetType("Illusion.Rendering.PathTracing.UnityRHI.UnityRHIPathTracingReordering, Illusion.RenderPipelines.PathTracing.UnityRHI", false);
-            return type == null ? null : Activator.CreateInstance(type) as IPathTracingReordering;
-        }
+        private static Func<IPathTracingReordering> _factory;
+
+        internal static void Register(Func<IPathTracingReordering> factory) => _factory = factory;
+
+        public static IPathTracingReordering Create() => _factory?.Invoke();
     }
 }

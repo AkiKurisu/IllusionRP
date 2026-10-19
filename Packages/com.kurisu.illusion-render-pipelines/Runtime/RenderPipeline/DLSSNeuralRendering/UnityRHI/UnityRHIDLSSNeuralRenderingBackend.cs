@@ -4,7 +4,6 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
-using UnityEngine.Scripting;
 using global::UnityRhi;
 
 namespace Illusion.Rendering.UnityRHI
@@ -12,7 +11,6 @@ namespace Illusion.Rendering.UnityRHI
     /// <summary>
     /// Full-resolution DLSS Neural Rendering post-process for Unity 6.3 URP.
     /// </summary>
-    [Preserve]
     internal sealed class UnityRHIDLSSNeuralRenderingBackend : IDLSSNeuralRenderingBackend
     {
         private Material _prepareMaterial;
@@ -28,8 +26,6 @@ namespace Illusion.Rendering.UnityRHI
         private bool _warnedFailure;
 
         public bool IsAvailable => RhiCore.IsD3D12Active && RhiCore.IsDlssNrAvailable;
-
-        [Preserve]
         public UnityRHIDLSSNeuralRenderingBackend(UnityEngine.Shader prepareInputsShader)
         {
             _prepareMaterial = prepareInputsShader != null
@@ -51,8 +47,6 @@ namespace Illusion.Rendering.UnityRHI
             RhiDomainReload.RegisterOwner(this);
 #endif
         }
-
-        [Preserve]
         public static DLSSNeuralRenderingRuntimeStatus GetStatus() => new(true,
             RhiCore.IsD3D12Active,
             RhiCore.IsDlssNrAvailable,

@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 
@@ -37,25 +36,19 @@ namespace Illusion.Rendering
 
     public static class DLSSNeuralRenderingBackendLoader
     {
-        private const string BackendTypeName =
-            "Illusion.Rendering.UnityRHI.UnityRHIDLSSNeuralRenderingBackend, Illusion.RenderPipelines.DLSSNeuralRendering.UnityRHI";
+        private static Func<Shader, IDLSSNeuralRenderingBackend> _factory;
+        private static Func<DLSSNeuralRenderingRuntimeStatus> _getStatus;
 
-        internal static IDLSSNeuralRenderingBackend Create(Shader prepareInputsShader)
+        internal static void Register(Func<Shader, IDLSSNeuralRenderingBackend> factory,
+            Func<DLSSNeuralRenderingRuntimeStatus> getStatus)
         {
-            Type type = Type.GetType(BackendTypeName, false);
-            return type == null
-                ? null
-                : Activator.CreateInstance(type, new object[] { prepareInputsShader }) as IDLSSNeuralRenderingBackend;
+            _factory = factory;
+            _getStatus = getStatus;
         }
 
-        public static DLSSNeuralRenderingRuntimeStatus GetStatus()
-        {
-            Type type = Type.GetType(BackendTypeName, false);
-            MethodInfo method = type?.GetMethod(nameof(GetStatus),
-                BindingFlags.Public | BindingFlags.Static);
-            return method?.Invoke(null, null) is DLSSNeuralRenderingRuntimeStatus status
-                ? status
-                : DLSSNeuralRenderingRuntimeStatus.BackendMissing;
-        }
+        internal static IDLSSNeuralRenderingBackend Create(Shader prepareInputsShader) => _factory?.Invoke(prepareInputsShader);
+
+        public static DLSSNeuralRenderingRuntimeStatus GetStatus() =>
+            _getStatus?.Invoke() ?? DLSSNeuralRenderingRuntimeStatus.BackendMissing;
     }
 }

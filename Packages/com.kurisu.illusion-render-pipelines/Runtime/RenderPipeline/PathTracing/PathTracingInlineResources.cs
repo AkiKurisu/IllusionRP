@@ -56,8 +56,10 @@ namespace Illusion.Rendering.PathTracing
         {
             if (s_Created)
                 return;
-            s_Created = true;
             s_Table = PathTracingInlineBackend.Create();
+            if (s_Table == null)
+                return;
+            s_Created = true;
             s_Capacity = s_Table?.Capacity ?? 0;
             if (s_Capacity <= DefaultTextureCount)
             {
