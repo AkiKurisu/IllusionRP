@@ -226,27 +226,71 @@ void RayTracedGIInitialSamples(uint2 reservoirPosition : SV_DispatchThreadID)
     PathState path;
     SecondarySample secondary;
     BeginSecondarySample(pixel, receiver, direction, path, secondary);
+    PathTracer::WorkingContext workingContext = GetWorkingContext();
     RayDesc ray = SecondaryRay(path);
     IllusionPathPayload payload = CreateSecondaryPayload(path);
-    PathTracingInlineHit hit;
-    PathTracer::WorkingContext workingContext = GetWorkingContext();
-    if (!PathTracingInlineTraceHit(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, hit))
-        HandleFirstBounceMiss(path, ray.Direction);
-    else
+    uint rayFlags = RAY_FLAG_NONE;
+    uint instanceMask = PT_INSTANCE_SCENE;
+    bool visibility = false;
+    PathTracer::SurfaceHit surface = (PathTracer::SurfaceHit)0;
+    PathTracer::NEEVisibility nee = (PathTracer::NEEVisibility)0;
+
+    // The GI ray and the NEE visibility rays of its hit share one traversal, which inlines the any-hit evaluators once.
+    [loop]
+    while (true)
     {
-        uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
-        if (evaluator == PT_INLINE_NO_EVALUATOR)
-            PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
+        PathTracingInlineHit hit;
+        const bool hitFound = PathTracingInlineTraceHit(SceneBVH, rayFlags, instanceMask, ray, payload, hit);
+        if (visibility)
+        {
+            PathTracer::ConsumeNEEVisibility(nee, Bridge::visibilityTransmission(payload), surface.preScatterPath, surface.shadingData,
+                surface.bsdf, surface.uniformSG, workingContext);
+        }
         else
         {
+            if (!hitFound)
+            {
+                HandleFirstBounceMiss(path, ray.Direction);
+                break;
+            }
+            uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
+            if (evaluator == PT_INLINE_NO_EVALUATOR)
+            {
+                PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
+                break;
+            }
             payload = CreateSecondaryPayload(path);
             AttributeData attributes;
             PathTracingInlineSetHit(hit, ray, attributes);
             PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
             secondary = (SecondarySample)0;
             PrepareSecondaryHit(payload, ray, true, secondary);
-            PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
+            if (!PathTracer::BeginSurfaceHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext, surface))
+                break;
+            if (!PathTracer::BeginSurfaceNEE(surface, workingContext, nee))
+            {
+                PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+                break;
+            }
+            visibility = true;
         }
+
+        bool trace = false;
+        [loop]
+        while (PathTracer::NextNEEVisibility(nee, surface.preScatterPath, surface.shadingData, surface.bsdf, surface.uniformSG, workingContext, ray, trace) && !trace)
+        {
+            PathTracer::ConsumeNEEVisibility(nee, 0.0, surface.preScatterPath, surface.shadingData, surface.bsdf, surface.uniformSG,
+                workingContext);
+        }
+        if (!trace)
+        {
+            PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            break;
+        }
+        payload = Bridge::createVisibilityPayload(surface.preScatterPath.rayCone, surface.preScatterPath.getVertexIndex(),
+            surface.preScatterPath.GetPixelPos(), nee.targetIndex);
+        rayFlags = Bridge::visibilityRayFlags(payload);
+        instanceMask = PT_INSTANCE_SHADOW;
     }
     secondary.radiance = SecondaryRadiance(path, workingContext);
     StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_TRACED, secondary, pdf);

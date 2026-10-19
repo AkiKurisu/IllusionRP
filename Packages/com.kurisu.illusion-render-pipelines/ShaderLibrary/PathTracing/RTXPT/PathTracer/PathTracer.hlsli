@@ -600,13 +600,24 @@ namespace PathTracer
         path.decrementVertexIndex();
     }
 
-    // @IllusionRP: takes the closest-hit payload instead of reading the hit from system values.
-    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
+    // @IllusionRP: split around NEE, so that inline tracing traces NEE visibility rays from its one traversal site.
+    struct SurfaceHit
     {
+        PathState preScatterPath;
+        ShadingData shadingData;
+        ActiveBSDF bsdf;
+        UniformSampleSequenceGenerator uniformSG;
+        bool scatterValid;
+    };
+
+    // @IllusionRP: takes the closest-hit payload instead of reading the hit from system values.
+    inline bool BeginSurfaceHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext, out SurfaceHit hit)
+    {
+        hit = (SurfaceHit)0;
         if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
         {
             HandleOverlayHit(path, rayOrigin, rayDir, rayTCurrent, payload, workingContext);
-            return;
+            return false;
         }
 
 #if ENABLE_DEBUG_VIZUALISATIONS
@@ -625,7 +636,7 @@ namespace PathTracer
         if (path.hasFlag(PathFlags::deltaTreeExplorer))
         {
             DeltaTreeVizHandleHit(path, rayOrigin, rayDir, rayTCurrent, surfaceData, rejectedFalseHit, HasFinishedSurfaceBounces(path.getVertexIndex(), path.getCounter(PackedCounters::DiffuseBounces)), volumeAbsorption, workingContext);
-            return;
+            return false;
         }
 #endif
         if (rejectedFalseHit)
@@ -634,7 +645,7 @@ namespace PathTracer
             if (path.isTerminated()) // HandleNestedDielectrics can terminate the ray if it ends up in a crazy loop - this needs proper handling to avoid holes in data
                 StablePlanesHandleMiss(path, 0, rayOrigin, rayDir, rayTCurrent, workingContext);
 #endif
-            return;
+            return false;
         }
 
         // These will not change anymore, so make const shortcuts
@@ -765,7 +776,7 @@ namespace PathTracer
         if (pathStopping)
         {
             path.terminate();
-            return;
+            return false;
         }
 
         // this is the correct place to apply Russian Roulette correction
@@ -773,7 +784,7 @@ namespace PathTracer
 
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES
         // in build mode we've consumed emission and either updated or terminated path ourselves, so we must skip the rest of the function
-        return;
+        return false;
 #endif 
         
         const SampleGeneratorVertexBase sampleGeneratorVertexBase = SampleGeneratorVertexBase::make(path.GetId(), path.getVertexIndex(), Bridge::getSampleIndex() );
@@ -789,12 +800,30 @@ namespace PathTracer
         bool scatterValid = false;
 #endif
        
-        // Compute NextEventEstimation a.k.a. direct light sampling!
+        hit.preScatterPath = preScatterPath;
+        hit.shadingData = shadingData;
+        hit.bsdf = bsdf;
+        hit.uniformSG = uniformSG;
+        hit.scatterValid = scatterValid;
+        return true;
+    }
+
+    inline bool BeginSurfaceNEE(const SurfaceHit hit, const WorkingContext workingContext, out NEEVisibility nee)
+    {
 #if NON_PATH_TRACING_PASS || PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES || !PT_NEE_ENABLED
-        NEEResult neeResult = NEEResult::empty();
+        nee = (NEEVisibility)0;
+        nee.result = NEEResult::empty();
+        return false;
 #else
-        NEEResult neeResult = HandleNEE(preScatterPath, shadingData, bsdf, uniformSG, workingContext);
+        return BeginNEE(hit.preScatterPath, hit.shadingData, hit.bsdf, workingContext, nee);
 #endif
+    }
+
+    inline void FinishSurfaceHit(inout PathState path, inout SurfaceHit hit, const NEEResult neeResult, const WorkingContext workingContext)
+    {
+        const PathState preScatterPath = hit.preScatterPath;
+        const bool scatterValid = hit.scatterValid;
+
 
 #if PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES        
         path.SetPackedMISInfo_ThpRuRuCorrection( neeResult.BSDFMISInfo.Pack16bit(), path.GetThpRuRuCorrection() );
@@ -832,10 +861,32 @@ namespace PathTracer
         bool shouldTerminate = HasFinishedSurfaceBounces(path.getVertexIndex()+1, path.getCounter(PackedCounters::DiffuseBounces));
 
 #if PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES // in build mode we've consumed emission and either updated or terminated path ourselves
-        shouldTerminate |= HandleRussianRoulette(path, uniformSG, workingContext);    // note: this will update path.thp!
+        shouldTerminate |= HandleRussianRoulette(path, hit.uniformSG, workingContext);    // note: this will update path.thp!
 #endif
         if (shouldTerminate)
             path.setTerminateAtNextBounce();
+    }
+
+    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
+    {
+        SurfaceHit hit;
+        if (!BeginSurfaceHit(path, rayOrigin, rayDir, rayTCurrent, payload, workingContext, hit))
+            return;
+        NEEVisibility nee;
+        if (BeginSurfaceNEE(hit, workingContext, nee))
+        {
+            RayDesc ray;
+            bool trace;
+            [loop]
+            while (NextNEEVisibility(nee, hit.preScatterPath, hit.shadingData, hit.bsdf, hit.uniformSG, workingContext, ray, trace))
+            {
+                float3 transmission = 0.0;
+                if (trace)
+                    transmission = Bridge::traceVisibilityRay(ray, hit.preScatterPath.rayCone, hit.preScatterPath.getVertexIndex(), workingContext.Debug, hit.preScatterPath.GetPixelPos(), nee.targetIndex);
+                ConsumeNEEVisibility(nee, transmission, hit.preScatterPath, hit.shadingData, hit.bsdf, hit.uniformSG, workingContext);
+            }
+        }
+        FinishSurfaceHit(path, hit, nee.result, workingContext);
     }
 };
 
