@@ -207,6 +207,8 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
                     _commandList.EndMarker();
                     _commandList.Close();
                     _commandList.SubmitAndForget(commandBuffer);
+                    // Separate NGX work from subsequent Unity raster draws.
+                    RhiCore.SignalSyncPoint(commandBuffer);
                 }
                 catch
                 {
