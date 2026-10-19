@@ -22,6 +22,7 @@ namespace Illusion.Rendering.Editor
             public string Error;
             public bool Checked;
             public string Body;
+            public string AnyHitBody;
             public string[] Files = Array.Empty<string>();
             public long[] Stamps = Array.Empty<long>();
             public string[] ConstantNames = Array.Empty<string>();
@@ -47,6 +48,7 @@ namespace Illusion.Rendering.Editor
                 var unit = new PathTracingInlineUnitTransform.Unit
                 {
                     Body = Body.Replace(NamespacePlaceholder, unitNamespace),
+                    AnyHitBody = AnyHitBody?.Replace(NamespacePlaceholder, unitNamespace),
                     HasClosestHit = HasClosestHit,
                     HasAnyHit = HasAnyHit,
                     HasObjectConstants = HasObjectConstants,
@@ -84,9 +86,13 @@ namespace Illusion.Rendering.Editor
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
                 return typeof(GeneratorCache).Assembly.ManifestModule.ModuleVersionId.ToString("N");
             using var sha = System.Security.Cryptography.SHA256.Create();
-            foreach (string file in Directory.GetFiles(folder, "*.cs").OrderBy(f => f, StringComparer.Ordinal))
+            foreach (string name in new[]
             {
-                byte[] bytes = File.ReadAllBytes(file);
+                "DxcCompiler.cs", "PathTracingInlineGenerator.cs", "PathTracingInlineGeneratorCache.cs",
+                "PathTracingInlineKernels.cs", "PathTracingInlineUnitTransform.cs"
+            })
+            {
+                byte[] bytes = File.ReadAllBytes(Path.Combine(folder, name));
                 sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
             }
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
@@ -145,6 +151,7 @@ namespace Illusion.Rendering.Editor
             if (unit != null)
             {
                 entry.Body = unit.Body;
+                entry.AnyHitBody = unit.AnyHitBody;
                 entry.ConstantNames = unit.Constants.Select(c => c.Name).ToArray();
                 entry.ConstantTypes = unit.Constants.Select(c => c.Type).ToArray();
                 entry.ConstantComponents = unit.Constants.Select(c => c.Components).ToArray();

@@ -22,6 +22,7 @@ namespace Illusion.Rendering.Editor
         internal sealed class Unit
         {
             public string Body;
+            public string AnyHitBody;
             public readonly List<Constant> Constants = new();
             public readonly List<string> Textures = new();
             public readonly List<KeyValuePair<string, string>> Hoisted = new();
@@ -80,6 +81,13 @@ namespace Illusion.Rendering.Editor
         }
 
         public static Unit Transform(string preprocessed, string unitNamespace)
+        {
+            Unit unit = Transform(preprocessed, unitNamespace, false);
+            unit.AnyHitBody = Transform(preprocessed, unitNamespace, true).Body;
+            return unit;
+        }
+
+        private static Unit Transform(string preprocessed, string unitNamespace, bool anyHitOnly)
         {
             var unit = new Unit();
             var segments = new List<string>();
@@ -193,7 +201,8 @@ namespace Illusion.Rendering.Editor
             }
             var reachable = new HashSet<int>();
             var pending = new Stack<string>();
-            pending.Push("PathTracingClosestHit");
+            if (!anyHitOnly)
+                pending.Push("PathTracingClosestHit");
             pending.Push("PathTracingAnyHit");
             for (int i = 0; i < segments.Count; i++)
                 if (!namedSegments.Contains(i))
@@ -274,7 +283,7 @@ namespace Illusion.Rendering.Editor
             result.Append("namespace ").Append(unitNamespace).Append("\n{\n");
             result.Append(code2);
             result.Append("\nvoid PathTracingInlineClosestHit(inout IllusionPathPayload payload, AttributeData attributes)\n{\n");
-            if (unit.HasClosestHit)
+            if (unit.HasClosestHit && !anyHitOnly)
                 result.Append(loadObject).Append("    PathTracingInlineLoadMaterial(g_PathTracingInlineMaterialBase);\n    PathTracingClosestHit(payload, attributes);\n");
             result.Append("}\n");
             result.Append("bool PathTracingInlineAnyHit(inout IllusionPathPayload payload, AttributeData attributes)\n{\n");

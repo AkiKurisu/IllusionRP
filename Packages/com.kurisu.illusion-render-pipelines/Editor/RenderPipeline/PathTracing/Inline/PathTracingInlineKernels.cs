@@ -25,6 +25,7 @@ namespace Illusion.Rendering.Editor
             public string Name;
             public string Source;
             public string[] Entries;
+            public bool AnyHitOnly;
             public Func<PathTracingInlineRegistry, ComputeShader> Get;
             public Action<PathTracingInlineRegistry, ComputeShader> Set;
         }
@@ -42,6 +43,7 @@ namespace Illusion.Rendering.Editor
             new()
             {
                 Name = "RayTracedGIResampling",
+                AnyHitOnly = true,
                 Source = ShaderLibrary + "RayTracedGlobalIllumination/RayTracedGIInlineResampling.hlsl",
                 Entries = new[] { "RayTracedGITemporalResampling", "RayTracedGISpatialResampling", "RayTracedGIFinalShading" },
                 Get = r => r.RayTracedGIResampling,
@@ -63,7 +65,7 @@ namespace Illusion.Rendering.Editor
                     string.Concat(kernel.Entries.Select(e => "#pragma kernel " + e + "\n")) +
                     "#include \"" + PathTracingInlineGenerator.PreludeInclude + "\"\n" +
                     sharedDeclarations +
-                    "#include \"" + PathTracingInlineGenerator.EvaluatorsPath + "\"\n" +
+                    "#include \"" + (kernel.AnyHitOnly ? PathTracingInlineGenerator.AnyHitEvaluatorsPath : PathTracingInlineGenerator.EvaluatorsPath) + "\"\n" +
                     TraversalInclude +
                     kernelSource +
                     TableInclude;
