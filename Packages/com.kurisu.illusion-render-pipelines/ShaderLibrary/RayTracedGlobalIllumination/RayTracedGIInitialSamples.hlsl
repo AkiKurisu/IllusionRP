@@ -51,6 +51,49 @@ void BeginSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, float3 dire
     secondary.environment = true;
 }
 
+IllusionPathPayload CreateSecondaryPayload(PathState path)
+{
+    IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER,
+        Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
+        path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
+#if defined(RAY_TRACED_GI_SKIP_TRANSMISSION)
+    PathTracingMarkSkipTransmission(payload);
+#endif
+    return payload;
+}
+
+RayDesc SecondaryRay(PathState path)
+{
+    RayDesc ray = path.getScatterRay().toRayDesc();
+    ray.TMin = 0.0;
+    ray.TMax = kMaxRayTravel;
+    return ray;
+}
+
+// Raster lighting gives the receiver no environment term, so the lighting environment counts in full, without the
+// directional discs that raster lights directly.
+void HandleFirstBounceMiss(inout PathState path, float3 direction)
+{
+    EnvMap envMap = Bridge::CreateEnvMap();
+    path.SetL(path.GetL() + float4(envMap.EvalLocal(envMap.ToLocal(direction), 0), 0));
+    path.terminate();
+}
+
+// Raster lights the receiver directly from the emitters of its lights.
+void PrepareSecondaryHit(inout IllusionPathPayload payload, RayDesc ray, bool firstBounce, inout SecondarySample secondary)
+{
+    if (!firstBounce)
+        return;
+    if (PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
+        payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
+    if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
+        return;
+    const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
+    secondary.position = ray.Origin + ray.Direction * payload.hitT;
+    secondary.normal = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
+    secondary.environment = false;
+}
+
 bool TraceToSecondaryHit(inout PathState path, inout SecondarySample secondary, out RayDesc ray, out IllusionPathPayload payload,
     PathTracer::WorkingContext workingContext)
 {
@@ -58,16 +101,9 @@ bool TraceToSecondaryHit(inout PathState path, inout SecondarySample secondary, 
     payload = (IllusionPathPayload)0;
     while (path.isActive())
     {
-        ray = path.getScatterRay().toRayDesc();
-        ray.TMin = 0.0;
-        ray.TMax = kMaxRayTravel;
+        ray = SecondaryRay(path);
         const bool firstBounce = path.getVertexIndex() == 1;
-        payload = PathTracingCreatePayload(PT_RAY_SCATTER,
-            Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
-            path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
-#if defined(RAY_TRACED_GI_SKIP_TRANSMISSION)
-        PathTracingMarkSkipTransmission(payload);
-#endif
+        payload = CreateSecondaryPayload(path);
         TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
 
         if (payload.hitT == PT_NO_SURFACE_T)
@@ -77,34 +113,17 @@ bool TraceToSecondaryHit(inout PathState path, inout SecondarySample secondary, 
         else if (payload.hitT < 0.0)
         {
             if (firstBounce)
-            {
-                // Raster lighting gives the receiver no environment term, so the lighting environment counts in full,
-                // without the directional discs that raster lights directly.
-                EnvMap envMap = Bridge::CreateEnvMap();
-                path.SetL(path.GetL() + float4(envMap.EvalLocal(envMap.ToLocal(ray.Direction), 0), 0));
-                path.terminate();
-            }
+                HandleFirstBounceMiss(path, ray.Direction);
             else
-            {
                 PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
-            }
         }
         else
         {
-            // Raster lights the receiver directly from the emitters of its lights.
-            if (firstBounce && PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
-                payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
+            PrepareSecondaryHit(payload, ray, firstBounce, secondary);
             if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
             {
                 PathTracer::HandleOverlayHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
                 continue;
-            }
-            if (firstBounce)
-            {
-                const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
-                secondary.position = ray.Origin + ray.Direction * payload.hitT;
-                secondary.normal = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
-                secondary.environment = false;
             }
             return true;
         }
@@ -177,9 +196,25 @@ SecondarySample BelowSurfaceSample(RayTracedGIReceiver receiver, float3 directio
 
 #if USE_RAY_QUERY
 
+// Per reservoir: the packed path, a header, the ray, then the hit until it is evaluated, its payload after, or the sample
+// of a path that ended. Must match the stride in RayTracedGlobalIlluminationPass.cs.
 #define RAY_TRACED_GI_HIT_STRIDE 256
+#define RAY_TRACED_GI_HIT_HEADER 80
+#define RAY_TRACED_GI_HIT_RAY 96
+#define RAY_TRACED_GI_HIT_DATA 120
+#define RAY_TRACED_GI_EVALUATION_GROUP 64
+
+#define RAY_TRACED_GI_HIT_NONE 0u
+#define RAY_TRACED_GI_HIT_BELOW_SURFACE 1u
+#define RAY_TRACED_GI_HIT_ENDED 2u
+#define RAY_TRACED_GI_HIT_SURFACE 3u
 
 RWByteAddressBuffer u_RayTracedGIHits;
+RWStructuredBuffer<uint> u_RayTracedGIEvaluatorCounts;
+RWStructuredBuffer<uint> u_RayTracedGIEvaluatorOffsets;
+RWStructuredBuffer<uint> u_RayTracedGIEvaluationSlots;
+RWStructuredBuffer<uint> u_RayTracedGIEvaluationArgs;
+uint _RayTracedGIEvaluatorCount;
 
 bool RayTracedGIInDispatch(uint2 reservoirPosition)
 {
@@ -188,10 +223,52 @@ bool RayTracedGIInDispatch(uint2 reservoirPosition)
     return reservoirPosition.x < dispatchWidth && reservoirPosition.y < viewport.y;
 }
 
-#define RAY_TRACED_GI_HIT_NONE 0u
-#define RAY_TRACED_GI_HIT_BELOW_SURFACE 1u
-#define RAY_TRACED_GI_HIT_ENDED 2u
-#define RAY_TRACED_GI_HIT_SURFACE 3u
+uint RayTracedGIHitAddress(uint2 reservoirPosition)
+{
+    return RTXDI_ReservoirPositionToPointer(g_GIConst.restirGI.reservoirBufferParams, reservoirPosition, 0) * RAY_TRACED_GI_HIT_STRIDE;
+}
+
+void StorePath(uint address, PathState path)
+{
+    PathPayload packed = PathPayload::pack(path);
+    [unroll]
+    for (uint i = 0; i < 5; i++)
+        u_RayTracedGIHits.Store4(address + i * 16, packed.packed[i]);
+}
+
+PathState LoadPath(uint address, uint receiverInstanceID)
+{
+    PathPayload packed;
+    [unroll]
+    for (uint i = 0; i < 5; i++)
+        packed.packed[i] = u_RayTracedGIHits.Load4(address + i * 16);
+    PathState path = PathPayload::unpack(packed);
+    path.receiverInstanceID = receiverInstanceID;
+    return path;
+}
+
+void Store3x4(uint address, float3x4 m)
+{
+    u_RayTracedGIHits.Store4(address, asuint(m[0]));
+    u_RayTracedGIHits.Store4(address + 16, asuint(m[1]));
+    u_RayTracedGIHits.Store4(address + 32, asuint(m[2]));
+}
+
+float3x4 Load3x4(uint address)
+{
+    return float3x4(asfloat(u_RayTracedGIHits.Load4(address)), asfloat(u_RayTracedGIHits.Load4(address + 16)),
+        asfloat(u_RayTracedGIHits.Load4(address + 32)));
+}
+
+RayDesc LoadRay(uint address)
+{
+    RayDesc ray;
+    ray.Origin = asfloat(u_RayTracedGIHits.Load3(address + RAY_TRACED_GI_HIT_RAY));
+    ray.Direction = asfloat(u_RayTracedGIHits.Load3(address + RAY_TRACED_GI_HIT_RAY + 12));
+    ray.TMin = 0.0;
+    ray.TMax = kMaxRayTravel;
+    return ray;
+}
 
 [numthreads(8, 8, 1)]
 void RayTracedGIInitialTrace(uint2 reservoirPosition : SV_DispatchThreadID)
@@ -199,23 +276,45 @@ void RayTracedGIInitialTrace(uint2 reservoirPosition : SV_DispatchThreadID)
     if (!RayTracedGIInDispatch(reservoirPosition))
         return;
     const uint2 pixel = RTXDI_ReservoirPosToPixelPos(reservoirPosition, g_GIConst.runtimeParams.activeCheckerboardField);
-    const uint address = RTXDI_ReservoirPositionToPointer(g_GIConst.restirGI.reservoirBufferParams, reservoirPosition, 0) * RAY_TRACED_GI_HIT_STRIDE;
+    const uint address = RayTracedGIHitAddress(reservoirPosition);
 
     RayTracedGIReceiver receiver;
     float3 direction;
     float pdf;
     float lobeRoughness;
     uint state = RAY_TRACED_GI_HIT_NONE;
+    uint evaluator = 0;
+    uint rank = 0;
     PathState path = (PathState)0;
     SecondarySample secondary = (SecondarySample)0;
     RayDesc ray = (RayDesc)0;
-    IllusionPathPayload payload = (IllusionPathPayload)0;
+    PathTracingInlineHit hit = (PathTracingInlineHit)0;
     if (SampleInitialRay(pixel, receiver, direction, pdf, lobeRoughness))
     {
         if (pdf > 0.0)
         {
             BeginSecondarySample(pixel, receiver, direction, path, secondary);
-            state = TraceToSecondaryHit(path, secondary, ray, payload, GetWorkingContext()) ? RAY_TRACED_GI_HIT_SURFACE : RAY_TRACED_GI_HIT_ENDED;
+            ray = SecondaryRay(path);
+            IllusionPathPayload payload = CreateSecondaryPayload(path);
+            state = RAY_TRACED_GI_HIT_ENDED;
+            if (!PathTracingInlineTraceHit(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, hit))
+            {
+                HandleFirstBounceMiss(path, ray.Direction);
+            }
+            else
+            {
+                evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
+                if (evaluator == PT_INLINE_NO_EVALUATOR)
+                {
+                    PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, GetWorkingContext());
+                    evaluator = 0;
+                }
+                else
+                {
+                    InterlockedAdd(u_RayTracedGIEvaluatorCounts[evaluator], 1u, rank);
+                    state = RAY_TRACED_GI_HIT_SURFACE;
+                }
+            }
         }
         else
         {
@@ -224,16 +323,90 @@ void RayTracedGIInitialTrace(uint2 reservoirPosition : SV_DispatchThreadID)
         }
     }
 
-    PathPayload packed = PathPayload::pack(path);
-    [unroll]
-    for (uint i = 0; i < 5; i++)
-        u_RayTracedGIHits.Store4(address + i * 16, packed.packed[i]);
-    u_RayTracedGIHits.Store4(address + 80, uint4(path.receiverInstanceID, state | (secondary.environment ? 0x100u : 0u), asuint(pdf), 0));
-    u_RayTracedGIHits.Store3(address + 96, asuint(secondary.position));
-    u_RayTracedGIHits.Store3(address + 108, asuint(secondary.normal));
-    u_RayTracedGIHits.Store3(address + 120, asuint(ray.Origin));
-    u_RayTracedGIHits.Store3(address + 132, asuint(ray.Direction));
-    u_RayTracedGIHits.Store<IllusionPathPayload>(address + 144, payload);
+    StorePath(address, path);
+    u_RayTracedGIHits.Store4(address + RAY_TRACED_GI_HIT_HEADER,
+        uint4(path.receiverInstanceID, state | (secondary.environment ? 0x100u : 0u) | (evaluator << 16), asuint(pdf), rank));
+    u_RayTracedGIHits.Store3(address + RAY_TRACED_GI_HIT_RAY, asuint(ray.Origin));
+    u_RayTracedGIHits.Store3(address + RAY_TRACED_GI_HIT_RAY + 12, asuint(ray.Direction));
+    const uint data = address + RAY_TRACED_GI_HIT_DATA;
+    if (state == RAY_TRACED_GI_HIT_SURFACE)
+    {
+        u_RayTracedGIHits.Store4(data, uint4(hit.instanceID, hit.instanceIndex, hit.primitiveIndex, hit.geometryIndex));
+        u_RayTracedGIHits.Store3(data + 16, uint3(asuint(hit.t), asuint(hit.barycentrics)));
+        Store3x4(data + 28, hit.objectToWorld);
+        Store3x4(data + 76, hit.worldToObject);
+    }
+    else
+    {
+        u_RayTracedGIHits.Store3(data, asuint(secondary.position));
+        u_RayTracedGIHits.Store3(data + 12, asuint(secondary.normal));
+    }
+}
+
+[numthreads(1, 1, 1)]
+void RayTracedGIInitialClassify()
+{
+    uint offset = 0;
+    for (uint e = 0; e < _RayTracedGIEvaluatorCount; e++)
+    {
+        u_RayTracedGIEvaluatorOffsets[e] = offset;
+        offset += (u_RayTracedGIEvaluatorCounts[e] + RAY_TRACED_GI_EVALUATION_GROUP - 1) & ~(RAY_TRACED_GI_EVALUATION_GROUP - 1);
+    }
+    u_RayTracedGIEvaluatorOffsets[_RayTracedGIEvaluatorCount] = offset;
+    u_RayTracedGIEvaluationArgs[0] = offset / RAY_TRACED_GI_EVALUATION_GROUP;
+    u_RayTracedGIEvaluationArgs[1] = 1;
+    u_RayTracedGIEvaluationArgs[2] = 1;
+}
+
+[numthreads(8, 8, 1)]
+void RayTracedGIInitialScatter(uint2 reservoirPosition : SV_DispatchThreadID)
+{
+    if (!RayTracedGIInDispatch(reservoirPosition))
+        return;
+    const uint address = RayTracedGIHitAddress(reservoirPosition);
+    const uint4 header = u_RayTracedGIHits.Load4(address + RAY_TRACED_GI_HIT_HEADER);
+    if ((header.y & 0xFFu) == RAY_TRACED_GI_HIT_SURFACE)
+        u_RayTracedGIEvaluationSlots[u_RayTracedGIEvaluatorOffsets[header.y >> 16] + header.w] = address;
+}
+
+[numthreads(RAY_TRACED_GI_EVALUATION_GROUP, 1, 1)]
+void RayTracedGIInitialEvaluate(uint slot : SV_DispatchThreadID)
+{
+    uint evaluator = 0;
+    uint high = _RayTracedGIEvaluatorCount;
+    while (evaluator + 1 < high)
+    {
+        uint middle = (evaluator + high) / 2;
+        if (u_RayTracedGIEvaluatorOffsets[middle] <= slot)
+            evaluator = middle;
+        else
+            high = middle;
+    }
+    if (slot - u_RayTracedGIEvaluatorOffsets[evaluator] >= u_RayTracedGIEvaluatorCounts[evaluator])
+        return;
+
+    const uint address = u_RayTracedGIEvaluationSlots[slot];
+    PathState path = LoadPath(address, u_RayTracedGIHits.Load(address + RAY_TRACED_GI_HIT_HEADER));
+    RayDesc ray = LoadRay(address);
+    const uint data = address + RAY_TRACED_GI_HIT_DATA;
+    const uint4 ids = u_RayTracedGIHits.Load4(data);
+    const uint3 tAndBarycentrics = u_RayTracedGIHits.Load3(data + 16);
+    PathTracingInlineHit hit;
+    hit.instanceID = ids.x;
+    hit.instanceIndex = ids.y;
+    hit.primitiveIndex = ids.z;
+    hit.geometryIndex = ids.w;
+    hit.t = asfloat(tAndBarycentrics.x);
+    hit.barycentrics = asfloat(tAndBarycentrics.yz);
+    hit.objectToWorld = Load3x4(data + 28);
+    hit.worldToObject = Load3x4(data + 76);
+
+    IllusionPathPayload payload = CreateSecondaryPayload(path);
+    AttributeData attributes;
+    PathTracingInlineSetHit(hit, ray, attributes);
+    PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
+    PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
+    u_RayTracedGIHits.Store<IllusionPathPayload>(data, payload);
 }
 
 [numthreads(8, 8, 1)]
@@ -241,36 +414,35 @@ void RayTracedGIInitialShade(uint2 reservoirPosition : SV_DispatchThreadID)
 {
     if (!RayTracedGIInDispatch(reservoirPosition))
         return;
-    const uint address = RTXDI_ReservoirPositionToPointer(g_GIConst.restirGI.reservoirBufferParams, reservoirPosition, 0) * RAY_TRACED_GI_HIT_STRIDE;
-    const uint4 header = u_RayTracedGIHits.Load4(address + 80);
+    const uint address = RayTracedGIHitAddress(reservoirPosition);
+    const uint4 header = u_RayTracedGIHits.Load4(address + RAY_TRACED_GI_HIT_HEADER);
     const uint state = header.y & 0xFFu;
     const float pdf = asfloat(header.z);
+    const uint data = address + RAY_TRACED_GI_HIT_DATA;
 
-    SecondarySample secondary;
-    secondary.position = asfloat(u_RayTracedGIHits.Load3(address + 96));
-    secondary.normal = asfloat(u_RayTracedGIHits.Load3(address + 108));
-    secondary.environment = (header.y & 0x100u) != 0;
-    secondary.radiance = 0.0;
+    SecondarySample secondary = (SecondarySample)0;
+    uint kind = RAY_TRACED_GI_SAMPLE_NONE;
+    if (state == RAY_TRACED_GI_HIT_BELOW_SURFACE || state == RAY_TRACED_GI_HIT_ENDED)
+    {
+        secondary.position = asfloat(u_RayTracedGIHits.Load3(data));
+        secondary.normal = asfloat(u_RayTracedGIHits.Load3(data + 12));
+        secondary.environment = (header.y & 0x100u) != 0;
+        kind = state == RAY_TRACED_GI_HIT_BELOW_SURFACE ? RAY_TRACED_GI_SAMPLE_BELOW_SURFACE : RAY_TRACED_GI_SAMPLE_TRACED;
+    }
     if (state == RAY_TRACED_GI_HIT_ENDED || state == RAY_TRACED_GI_HIT_SURFACE)
     {
-        PathPayload packed;
-        [unroll]
-        for (uint i = 0; i < 5; i++)
-            packed.packed[i] = u_RayTracedGIHits.Load4(address + i * 16);
-        PathState path = PathPayload::unpack(packed);
-        path.receiverInstanceID = header.x;
+        PathState path = LoadPath(address, header.x);
         PathTracer::WorkingContext workingContext = GetWorkingContext();
         if (state == RAY_TRACED_GI_HIT_SURFACE)
         {
-            const float3 rayOrigin = asfloat(u_RayTracedGIHits.Load3(address + 120));
-            const float3 rayDirection = asfloat(u_RayTracedGIHits.Load3(address + 132));
-            const IllusionPathPayload payload = u_RayTracedGIHits.Load<IllusionPathPayload>(address + 144);
-            PathTracer::HandleHit(path, rayOrigin, rayDirection, payload.hitT, payload, workingContext);
+            const RayDesc ray = LoadRay(address);
+            IllusionPathPayload payload = u_RayTracedGIHits.Load<IllusionPathPayload>(data);
+            PrepareSecondaryHit(payload, ray, true, secondary);
+            PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
+            kind = RAY_TRACED_GI_SAMPLE_TRACED;
         }
         secondary.radiance = SecondaryRadiance(path, workingContext);
     }
-    uint kind = state == RAY_TRACED_GI_HIT_NONE ? RAY_TRACED_GI_SAMPLE_NONE
-        : state == RAY_TRACED_GI_HIT_BELOW_SURFACE ? RAY_TRACED_GI_SAMPLE_BELOW_SURFACE : RAY_TRACED_GI_SAMPLE_TRACED;
     StoreInitialSample(reservoirPosition, kind, secondary, pdf);
 }
 

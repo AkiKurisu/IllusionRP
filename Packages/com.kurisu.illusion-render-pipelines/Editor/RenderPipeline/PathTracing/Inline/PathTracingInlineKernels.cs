@@ -43,7 +43,11 @@ namespace Illusion.Rendering.Editor
             {
                 Name = "RayTracedGIInitialSamples",
                 Source = ShaderLibrary + "RayTracedGlobalIllumination/RayTracedGIInlineInitialSamples.hlsl",
-                Entries = new[] { "RayTracedGIInitialTrace", "RayTracedGIInitialShade" },
+                Entries = new[]
+                {
+                    "RayTracedGIInitialTrace", "RayTracedGIInitialClassify", "RayTracedGIInitialScatter", "RayTracedGIInitialEvaluate",
+                    "RayTracedGIInitialShade"
+                },
                 Get = r => r.RayTracedGIInitialSamples,
                 Set = (r, s) => r.RayTracedGIInitialSamples = s
             },

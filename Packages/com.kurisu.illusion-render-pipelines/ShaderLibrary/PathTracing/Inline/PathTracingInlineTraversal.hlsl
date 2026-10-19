@@ -11,9 +11,36 @@ uint PathTracingInlineLoadGeometry(uint instanceID, uint geometryIndex)
     return g_PathTracingInlineGeometry.evaluator;
 }
 
-void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
-    RayDesc ray, inout IllusionPathPayload payload)
+struct PathTracingInlineHit
 {
+    uint instanceID;
+    uint instanceIndex;
+    uint primitiveIndex;
+    uint geometryIndex;
+    float t;
+    float2 barycentrics;
+    float3x4 objectToWorld;
+    float3x4 worldToObject;
+};
+
+void PathTracingInlineSetHit(PathTracingInlineHit hit, RayDesc ray, out AttributeData attributes)
+{
+    g_PathTracingInline.rayOrigin = ray.Origin;
+    g_PathTracingInline.rayDirection = ray.Direction;
+    g_PathTracingInline.instanceID = hit.instanceID;
+    g_PathTracingInline.instanceIndex = hit.instanceIndex;
+    g_PathTracingInline.primitiveIndex = hit.primitiveIndex;
+    g_PathTracingInline.geometryIndex = hit.geometryIndex;
+    g_PathTracingInline.objectToWorld = hit.objectToWorld;
+    g_PathTracingInline.worldToObject = hit.worldToObject;
+    g_PathTracingInline.t = hit.t;
+    attributes.barycentrics = hit.barycentrics;
+}
+
+bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
+    RayDesc ray, inout IllusionPathPayload payload, out PathTracingInlineHit hit)
+{
+    hit = (PathTracingInlineHit)0;
     RayQuery<RAY_FLAG_NONE> query;
     query.TraceRayInline(accelerationStructure, rayFlags, instanceMask, ray);
     g_PathTracingInline.rayOrigin = ray.Origin;
@@ -44,21 +71,29 @@ void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStruc
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT)
     {
         payload.hitT = PT_MISS_T;
-        return;
+        return false;
     }
-    if ((rayFlags & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER) != 0)
-        return;
+    hit.instanceID = query.CommittedInstanceID();
+    hit.instanceIndex = query.CommittedInstanceIndex();
+    hit.primitiveIndex = query.CommittedPrimitiveIndex();
+    hit.geometryIndex = query.CommittedGeometryIndex();
+    hit.t = query.CommittedRayT();
+    hit.barycentrics = query.CommittedTriangleBarycentrics();
+    hit.objectToWorld = query.CommittedObjectToWorld3x4();
+    hit.worldToObject = query.CommittedWorldToObject3x4();
+    return true;
+}
 
-    g_PathTracingInline.instanceID = query.CommittedInstanceID();
-    g_PathTracingInline.instanceIndex = query.CommittedInstanceIndex();
-    g_PathTracingInline.primitiveIndex = query.CommittedPrimitiveIndex();
-    g_PathTracingInline.geometryIndex = query.CommittedGeometryIndex();
-    g_PathTracingInline.objectToWorld = query.CommittedObjectToWorld3x4();
-    g_PathTracingInline.worldToObject = query.CommittedWorldToObject3x4();
-    g_PathTracingInline.t = query.CommittedRayT();
+void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
+    RayDesc ray, inout IllusionPathPayload payload)
+{
+    PathTracingInlineHit hit;
+    if (!PathTracingInlineTraceHit(accelerationStructure, rayFlags, instanceMask, ray, payload, hit)
+        || (rayFlags & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER) != 0)
+        return;
     AttributeData attributes;
-    attributes.barycentrics = query.CommittedTriangleBarycentrics();
-    uint evaluator = PathTracingInlineLoadGeometry(g_PathTracingInline.instanceID, g_PathTracingInline.geometryIndex);
+    PathTracingInlineSetHit(hit, ray, attributes);
+    uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
     if (evaluator != PT_INLINE_NO_EVALUATOR)
         PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
 }
