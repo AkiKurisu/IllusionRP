@@ -92,29 +92,9 @@ namespace Illusion.Rendering
 
         private ComputeShader _inlineInitialSamples;
 
+        private int _inlineInitialKernel;
+
         private ComputeShader _inlineResampling;
-
-        private int _inlineInitialTraceKernel;
-
-        private int _inlineInitialClassifyKernel;
-
-        private int _inlineInitialScatterKernel;
-
-        private int _inlineInitialEvaluateKernel;
-
-        private int _inlineInitialShadeKernel;
-
-        private GraphicsBuffer _inlineHits;
-
-        private GraphicsBuffer _inlineEvaluatorCounts;
-
-        private GraphicsBuffer _inlineEvaluatorOffsets;
-
-        private GraphicsBuffer _inlineEvaluationSlots;
-
-        private GraphicsBuffer _inlineEvaluationArgs;
-
-        private uint[] _inlineEvaluatorZeros = Array.Empty<uint>();
 
         private int _inlineTemporalKernel;
 
@@ -196,18 +176,7 @@ namespace Illusion.Rendering
             internal bool Inline;
             internal ComputeShader InlineInitialSamples;
             internal ComputeShader InlineResampling;
-            internal int InlineInitialTraceKernel;
-            internal int InlineInitialClassifyKernel;
-            internal int InlineInitialScatterKernel;
-            internal int InlineInitialEvaluateKernel;
-            internal int InlineInitialShadeKernel;
-            internal GraphicsBuffer InlineHits;
-            internal GraphicsBuffer InlineEvaluatorCounts;
-            internal GraphicsBuffer InlineEvaluatorOffsets;
-            internal GraphicsBuffer InlineEvaluationSlots;
-            internal GraphicsBuffer InlineEvaluationArgs;
-            internal uint[] InlineEvaluatorZeros;
-            internal int InlineEvaluatorCount;
+            internal int InlineInitialKernel;
             internal int InlineTemporalKernel;
             internal int InlineSpatialKernel;
             internal int InlineFinalShadingKernel;
@@ -435,11 +404,7 @@ namespace Illusion.Rendering
             if (_inlineInitialSamples != registry.RayTracedGIInitialSamples)
             {
                 _inlineInitialSamples = registry.RayTracedGIInitialSamples;
-                _inlineInitialTraceKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialTrace");
-                _inlineInitialClassifyKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialClassify");
-                _inlineInitialScatterKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialScatter");
-                _inlineInitialEvaluateKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialEvaluate");
-                _inlineInitialShadeKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialShade");
+                _inlineInitialKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialSamples");
             }
             if (_inlineResampling != registry.RayTracedGIResampling)
             {
@@ -448,8 +413,7 @@ namespace Illusion.Rendering
                 _inlineSpatialKernel = _inlineResampling.FindKernel("RayTracedGISpatialResampling");
                 _inlineFinalShadingKernel = _inlineResampling.FindKernel("RayTracedGIFinalShading");
             }
-            return _inlineInitialSamples.IsSupported(_inlineInitialTraceKernel) && _inlineInitialSamples.IsSupported(_inlineInitialEvaluateKernel)
-                && _inlineInitialSamples.IsSupported(_inlineInitialShadeKernel)
+            return _inlineInitialSamples.IsSupported(_inlineInitialKernel)
                 && _inlineResampling.IsSupported(_inlineTemporalKernel);
         }
 
@@ -537,14 +501,8 @@ namespace Illusion.Rendering
                 passData.ResamplingShader = _resamplingShader;
                 passData.Inline = inlineTracing;
                 passData.InlineInitialSamples = _inlineInitialSamples;
+                passData.InlineInitialKernel = _inlineInitialKernel;
                 passData.InlineResampling = _inlineResampling;
-                passData.InlineInitialTraceKernel = _inlineInitialTraceKernel;
-                passData.InlineInitialClassifyKernel = _inlineInitialClassifyKernel;
-                passData.InlineInitialScatterKernel = _inlineInitialScatterKernel;
-                passData.InlineInitialEvaluateKernel = _inlineInitialEvaluateKernel;
-                passData.InlineInitialShadeKernel = _inlineInitialShadeKernel;
-                if (inlineTracing)
-                    EnsureInlineBuffers(passData, context.SecondarySurfaces.count, PathTracingInlineRegistry.Instance.Evaluators.Length);
                 passData.InlineTemporalKernel = _inlineTemporalKernel;
                 passData.InlineSpatialKernel = _inlineSpatialKernel;
                 passData.InlineFinalShadingKernel = _inlineFinalShadingKernel;
@@ -1064,14 +1022,7 @@ namespace Illusion.Rendering
             data.World.CopyDeformedVertices(cmd);
 
             using (new ProfilingScope(cmd, Samplers.InitialSamples))
-            {
-                cmd.SetBufferData(data.InlineEvaluatorCounts, data.InlineEvaluatorZeros);
-                DispatchInlineInitialSamples(cmd, data, data.InlineInitialTraceKernel, groupsX, groupsY);
-                DispatchInlineInitialSamples(cmd, data, data.InlineInitialClassifyKernel, 1, 1);
-                DispatchInlineInitialSamples(cmd, data, data.InlineInitialScatterKernel, groupsX, groupsY);
-                DispatchInlineInitialSamples(cmd, data, data.InlineInitialEvaluateKernel, 0, 0);
-                DispatchInlineInitialSamples(cmd, data, data.InlineInitialShadeKernel, groupsX, groupsY);
-            }
+                DispatchInlineInitialSamples(cmd, data, groupsX, (data.Height + 3) / 4);
 
             if (data.Temporal)
             {
@@ -1087,9 +1038,9 @@ namespace Illusion.Rendering
                 DispatchInlineResampling(cmd, data, data.InlineFinalShadingKernel, groupsX, groupsY);
         }
 
-        private static void DispatchInlineInitialSamples(CommandBuffer cmd, TracePassData data, int kernel, int groupsX, int groupsY)
+        private static void DispatchInlineInitialSamples(CommandBuffer cmd, TracePassData data, int groupsX, int groupsY)
         {
-            var initial = new PathTracingShaderTarget(data.InlineInitialSamples, kernel);
+            var initial = new PathTracingShaderTarget(data.InlineInitialSamples, data.InlineInitialKernel);
             data.World.BindInline(cmd, initial);
             data.Scene.BindTraceInputs(cmd, initial, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
                 data.SubsurfaceRayBias, data.Exposure, PathTracingEnvironment.CameraBackground(data.Camera),
@@ -1098,47 +1049,7 @@ namespace Illusion.Rendering
             BindReceiver(cmd, initial, data);
             initial.SetBuffer(cmd, ShaderIDs.u_SecondaryGBuffer, data.SecondarySurfaces);
             initial.SetBuffer(cmd, ShaderIDs.u_GIReservoirs, data.Reservoirs);
-            initial.SetBuffer(cmd, ShaderIDs.u_RayTracedGIHits, data.InlineHits);
-            initial.SetBuffer(cmd, ShaderIDs.u_RayTracedGIEvaluatorCounts, data.InlineEvaluatorCounts);
-            initial.SetBuffer(cmd, ShaderIDs.u_RayTracedGIEvaluatorOffsets, data.InlineEvaluatorOffsets);
-            initial.SetBuffer(cmd, ShaderIDs.u_RayTracedGIEvaluationSlots, data.InlineEvaluationSlots);
-            initial.SetBuffer(cmd, ShaderIDs.u_RayTracedGIEvaluationArgs, data.InlineEvaluationArgs);
-            initial.SetInt(cmd, ShaderIDs._RayTracedGIEvaluatorCount, data.InlineEvaluatorCount);
-            if (groupsX == 0)
-                cmd.DispatchCompute(data.InlineInitialSamples, kernel, data.InlineEvaluationArgs, 0);
-            else
-                cmd.DispatchCompute(data.InlineInitialSamples, kernel, groupsX, groupsY, 1);
-        }
-
-        private void EnsureInlineBuffers(TracePassData data, int reservoirs, int evaluators)
-        {
-            const int hitStride = 256;
-            const int evaluationGroup = 64;
-            evaluators = Mathf.Max(1, evaluators);
-            Ensure(ref _inlineHits, GraphicsBuffer.Target.Raw, Mathf.Max(1, reservoirs) * hitStride / sizeof(uint), "RayTracedGIInlineHits");
-            Ensure(ref _inlineEvaluatorCounts, GraphicsBuffer.Target.Structured, evaluators, "RayTracedGIInlineEvaluatorCounts");
-            Ensure(ref _inlineEvaluatorOffsets, GraphicsBuffer.Target.Structured, evaluators + 1, "RayTracedGIInlineEvaluatorOffsets");
-            Ensure(ref _inlineEvaluationSlots, GraphicsBuffer.Target.Structured, Mathf.Max(1, reservoirs) + evaluationGroup * evaluators,
-                "RayTracedGIInlineEvaluationSlots");
-            Ensure(ref _inlineEvaluationArgs, GraphicsBuffer.Target.Structured | GraphicsBuffer.Target.IndirectArguments, 3,
-                "RayTracedGIInlineEvaluationArgs");
-            if (_inlineEvaluatorZeros.Length != evaluators)
-                _inlineEvaluatorZeros = new uint[evaluators];
-            data.InlineHits = _inlineHits;
-            data.InlineEvaluatorCounts = _inlineEvaluatorCounts;
-            data.InlineEvaluatorOffsets = _inlineEvaluatorOffsets;
-            data.InlineEvaluationSlots = _inlineEvaluationSlots;
-            data.InlineEvaluationArgs = _inlineEvaluationArgs;
-            data.InlineEvaluatorZeros = _inlineEvaluatorZeros;
-            data.InlineEvaluatorCount = evaluators;
-        }
-
-        private static void Ensure(ref GraphicsBuffer buffer, GraphicsBuffer.Target target, int count, string name)
-        {
-            if (buffer != null && buffer.count >= count)
-                return;
-            buffer?.Release();
-            buffer = new GraphicsBuffer(target, count, sizeof(uint)) { name = name };
+            cmd.DispatchCompute(data.InlineInitialSamples, data.InlineInitialKernel, groupsX, groupsY, 1);
         }
 
         private static void DispatchInlineResampling(CommandBuffer cmd, TracePassData data, int kernel, int groupsX, int groupsY)
@@ -1410,11 +1321,6 @@ namespace Illusion.Rendering
             _sampleConstants.Release();
             _miniConstants.Release();
             _neighborOffsets.Release();
-            _inlineHits?.Release();
-            _inlineEvaluatorCounts?.Release();
-            _inlineEvaluatorOffsets?.Release();
-            _inlineEvaluationSlots?.Release();
-            _inlineEvaluationArgs?.Release();
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             _inlineValidation.Dispose();
 #endif
@@ -1485,12 +1391,6 @@ namespace Illusion.Rendering
             public static readonly int _RayTracedGIDebugSize = Shader.PropertyToID("_RayTracedGIDebugSize");
             public static readonly int _RayTracedGIDebugView = Shader.PropertyToID("_RayTracedGIDebugView");
             public static readonly int u_GIReservoirs = Shader.PropertyToID("u_GIReservoirs");
-            public static readonly int u_RayTracedGIHits = Shader.PropertyToID("u_RayTracedGIHits");
-            public static readonly int u_RayTracedGIEvaluatorCounts = Shader.PropertyToID("u_RayTracedGIEvaluatorCounts");
-            public static readonly int u_RayTracedGIEvaluatorOffsets = Shader.PropertyToID("u_RayTracedGIEvaluatorOffsets");
-            public static readonly int u_RayTracedGIEvaluationSlots = Shader.PropertyToID("u_RayTracedGIEvaluationSlots");
-            public static readonly int u_RayTracedGIEvaluationArgs = Shader.PropertyToID("u_RayTracedGIEvaluationArgs");
-            public static readonly int _RayTracedGIEvaluatorCount = Shader.PropertyToID("_RayTracedGIEvaluatorCount");
             public static readonly int u_DiffuseLighting = Shader.PropertyToID("u_DiffuseLighting");
             public static readonly int u_SpecularLighting = Shader.PropertyToID("u_SpecularLighting");
             public static readonly int _RayTracedGIDiffuse = Shader.PropertyToID("_RayTracedGIDiffuse");
