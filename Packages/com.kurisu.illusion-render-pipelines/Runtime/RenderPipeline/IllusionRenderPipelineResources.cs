@@ -30,7 +30,6 @@ namespace Illusion.Rendering
 
         public UnityEngine.Rendering.RayTracingShader pathTracingFillRS;
 
-        public UnityEngine.Rendering.RayTracingShader pathTracingFillSerRS;
 
         public ComputeShader pathTracingRealtimeCS;
 

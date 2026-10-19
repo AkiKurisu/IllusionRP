@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Add inline ray queries and bindless material evaluation to accelerate ray traced global illumination's Performance mode.
-- Add optional Shader Execution Reordering (SER) to Realtime path tracing on supported NVIDIA hardware.
+- Add optional Shader Execution Reordering (SER) to path tracing and ray traced global illumination's Quality mode on supported NVIDIA hardware.
 
 ### Changed
 

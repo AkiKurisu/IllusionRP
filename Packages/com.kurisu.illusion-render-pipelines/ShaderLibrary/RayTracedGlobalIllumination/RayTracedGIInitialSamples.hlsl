@@ -11,6 +11,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracerTypes.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracerBridgeUnity.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracer.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingReordering.hlsl"
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIReceiver.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGISecondarySurface.hlsl"
@@ -103,7 +104,7 @@ bool TraceToSecondaryHit(inout PathState path, inout SecondarySample secondary, 
         ray = SecondaryRay(path);
         const bool firstBounce = path.getVertexIndex() == 1;
         payload = CreateSecondaryPayload(path);
-        TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
+        PathTracingTraceSceneRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, true, path.isTerminatingAtNextBounce() ? 1u : 0u);
 
         if (payload.hitT == PT_NO_SURFACE_T)
         {

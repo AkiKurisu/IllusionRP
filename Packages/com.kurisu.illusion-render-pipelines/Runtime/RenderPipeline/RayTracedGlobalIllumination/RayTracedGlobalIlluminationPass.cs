@@ -82,6 +82,8 @@ namespace Illusion.Rendering
 
         private IRayTracedGIDenoiser _denoiser;
 
+        private IPathTracingReordering _reordering;
+
         private readonly ComputeShader _upsampleShader;
 
         private readonly int _upsampleKernel;
@@ -172,6 +174,7 @@ namespace Illusion.Rendering
             internal IllusionRenderPipelineResources PipelineResources;
             internal PathTracingDiffusionProfiles Profiles;
             internal RayTracingShader InitialSamplesShader;
+            internal IPathTracingReordering Reordering;
             internal RayTracingShader ResamplingShader;
             internal bool Inline;
             internal ComputeShader InlineInitialSamples;
@@ -498,6 +501,8 @@ namespace Illusion.Rendering
                 passData.PipelineResources = _rendererData.RuntimeResources;
                 passData.Profiles = PathTracingDiffusionProfiles.Capture(_rendererData);
                 passData.InitialSamplesShader = radianceCache ? _initialSamplesQualityShader : _initialSamplesShader;
+                passData.Reordering = radianceCache && volume.shaderExecutionReordering.value
+                    && (_reordering ??= PathTracingReorderingLoader.Create()) is { IsAvailable: true } ? _reordering : null;
                 passData.ResamplingShader = _resamplingShader;
                 passData.Inline = inlineTracing;
                 passData.InlineInitialSamples = _inlineInitialSamples;
@@ -599,6 +604,7 @@ namespace Illusion.Rendering
                     cmd.SetRayTracingBufferParam(initial, ShaderIDs.u_GIReservoirs, data.Reservoirs);
                     if (data.RadianceCache)
                         BindCache(cmd, initial, data);
+                    PathTracingReorderingKeyword.Apply(cmd, initial, data.Reordering);
                     using (new ProfilingScope(cmd, Samplers.InitialSamples))
                         cmd.DispatchRays(initial, InitialSamplesRayGenName, (uint)data.DispatchWidth, (uint)data.Height, 1, data.Camera);
 
@@ -1092,6 +1098,7 @@ namespace Illusion.Rendering
                 data.Scene.BindOutputPlaceholders(cmd, update);
                 BindReceiver(cmd, update, data);
                 BindCache(cmd, update, data);
+                PathTracingReorderingKeyword.Apply(cmd, update, data.Reordering);
                 cmd.DispatchRays(update, CacheUpdateRayGenName, (uint)((data.Width + CacheUpdateBlockSize - 1) / CacheUpdateBlockSize),
                     (uint)((data.Height + CacheUpdateBlockSize - 1) / CacheUpdateBlockSize), 1, data.Camera);
             }
@@ -1314,6 +1321,7 @@ namespace Illusion.Rendering
         public void Dispose()
         {
             _denoiser?.Dispose();
+            _reordering?.Dispose();
             foreach (var context in _contexts.Values)
                 context.Dispose();
             _contexts.Clear();

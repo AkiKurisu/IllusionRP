@@ -1,5 +1,6 @@
 #pragma max_recursion_depth 1
 #pragma only_renderers d3d11
+#pragma multi_compile_local _ ILLUSION_PT_SER
 #pragma require Native16Bit int64BufferAtomics
 
 // Populates the radiance cache as SHaRC's update pass does: one receiver in every 5x5 block of GI pixels traces a path, each
@@ -23,6 +24,7 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracerTypes.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracerBridgeUnity.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracer.hlsli"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingReordering.hlsl"
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIReceiverSampling.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIRadianceCache.hlsl"
@@ -73,7 +75,7 @@ void RayGen_RadianceCacheUpdate()
         IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER,
             Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
             path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
-        TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
+        PathTracingTraceSceneRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, true, path.isTerminatingAtNextBounce() ? 1u : 0u);
 
         // Each segment starts from unit throughput and no radiance: SHaRC weights it by the throughputs it was handed.
         path.SetThp(1.0);

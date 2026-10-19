@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-18 |
+| Date | 2026-10-19 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 ## Rendering Modes
@@ -16,6 +16,8 @@ Path tracing is a camera mode sharing scene geometry and material assets with ra
 The Path Tracing Volume requests path tracing and its mode for a camera. A runtime switch gates path tracing as a whole: while it is off, every camera keeps raster rendering whatever the Volume requests. A second runtime switch makes Game cameras use Reference whatever mode the Volume requests. It selects an existing mode rather than visualizing intermediate data, so unlike debug views it is also available in players.
 
 Path tracing and RR availability can be queried, so an application offers Realtime only where it actually renders.
+
+A Volume switch, on by default, regroups rays by the surfaces they hit before those surfaces are shaded, in Reference and Realtime alike, on GPUs that support shader execution reordering. It changes performance only. Other GPUs trace in the original order.
 
 ## Responsibilities and Data Boundaries
 

@@ -1,8 +1,0 @@
-#pragma max_recursion_depth 1
-#pragma only_renderers d3d11
-
-#define PATH_TRACER_MODE PATH_TRACER_MODE_FILL_STABLE_PLANES
-#define RTXPT_PIPELINE_PERMUTATION_NAME FILL
-#define ILLUSION_PT_SER 1
-
-#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/PathTracing/PathTracingRayGen.hlsl"

@@ -39,7 +39,6 @@ MonoBehaviour:
   pathTracingRS: {fileID: 4807578003741378534, guid: e85051369338ecd41b31c2ea8e526e19, type: 3}
   pathTracingBuildRS: {fileID: 4807578003741378534, guid: 849733b963ad2024998aee576c95e08f, type: 3}
   pathTracingFillRS: {fileID: 4807578003741378534, guid: df98a328f04b35f4183708c8bd6f3674, type: 3}
-  pathTracingFillSerRS: {fileID: 4807578003741378534, guid: a8eaa9acc25644ce82517303469234c4, type: 3}
   pathTracingRealtimeCS: {fileID: 7200000, guid: ef2c19ecb7c2f3344a15560118a57be3, type: 3}
   pathTracingMotionCS: {fileID: 7200000, guid: c85e00506dd217f4b84ec5f27c264373, type: 3}
   pathTracingAccumulationCS: {fileID: 7200000, guid: 0fdf05cada7ae044b907c77b139e3f43, type: 3}
