@@ -23,6 +23,7 @@ namespace Illusion.Rendering.Editor
             public bool Checked;
             public string Body;
             public string AnyHitBody;
+            public string SharedHitContext;
             public string[] Files = Array.Empty<string>();
             public long[] Stamps = Array.Empty<long>();
             public string[] ConstantNames = Array.Empty<string>();
@@ -49,6 +50,7 @@ namespace Illusion.Rendering.Editor
                 {
                     Body = Body.Replace(NamespacePlaceholder, unitNamespace),
                     AnyHitBody = AnyHitBody?.Replace(NamespacePlaceholder, unitNamespace),
+                    SharedHitContext = SharedHitContext,
                     HasClosestHit = HasClosestHit,
                     HasAnyHit = HasAnyHit,
                     HasObjectConstants = HasObjectConstants,
@@ -95,7 +97,8 @@ namespace Illusion.Rendering.Editor
                 byte[] bytes = File.ReadAllBytes(Path.Combine(folder, name));
                 sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
             }
-            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            byte[] parserVersion = typeof(Illusion.ShaderTools.ShaderSource).Assembly.ManifestModule.ModuleVersionId.ToByteArray();
+            sha.TransformFinalBlock(parserVersion, 0, parserVersion.Length);
             return BitConverter.ToString(sha.Hash).Replace("-", string.Empty);
         }
 
@@ -152,6 +155,7 @@ namespace Illusion.Rendering.Editor
             {
                 entry.Body = unit.Body;
                 entry.AnyHitBody = unit.AnyHitBody;
+                entry.SharedHitContext = unit.SharedHitContext;
                 entry.ConstantNames = unit.Constants.Select(c => c.Name).ToArray();
                 entry.ConstantTypes = unit.Constants.Select(c => c.Type).ToArray();
                 entry.ConstantComponents = unit.Constants.Select(c => c.Components).ToArray();

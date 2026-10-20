@@ -36,6 +36,8 @@
 ExportedObj/
 .consulo/
 *.csproj
+!/Tools/ShaderTools/Illusion.ShaderTools.csproj
+!/Tools/ShaderTools/Tests/ShaderTools.Tests.csproj
 *.unityproj
 *.sln
 *.suo

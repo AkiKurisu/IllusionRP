@@ -9,6 +9,8 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
+using Illusion.ShaderTools;
+using Illusion.ShaderTools.Syntax.ShaderLab;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -25,10 +27,6 @@ namespace Illusion.Rendering.Editor
         private const int EnumerateAllVariantsUpTo = 8;
 
         private static readonly Regex s_PathTracingTag = new(@"""LightMode""\s*=\s*""PathTracing""", RegexOptions.Compiled);
-        private static readonly Regex s_Pass = new(@"\bPass\s*\{", RegexOptions.Compiled);
-        private static readonly Regex s_SubShader = new(@"\bSubShader\s*\{", RegexOptions.Compiled);
-        private static readonly Regex s_HlslInclude = new(@"HLSLINCLUDE(.*?)ENDHLSL", RegexOptions.Compiled | RegexOptions.Singleline);
-        private static readonly Regex s_HlslProgram = new(@"HLSLPROGRAM(.*?)ENDHLSL", RegexOptions.Compiled | RegexOptions.Singleline);
         private static readonly Regex s_KeywordPragma = new(@"^\s*#pragma\s+(shader_feature|multi_compile)(_local)?(_[a-z]+)?\s+(.*)$", RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly Regex s_LineDirectiveOrBlank = new(@"^[ \t]*(?:#line[^\n]*)?\n", RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly Regex s_MaterialShader = new(@"m_Shader:\s*\{[^}]*guid:\s*([0-9a-f]{32})", RegexOptions.Compiled);
@@ -104,16 +102,48 @@ namespace Illusion.Rendering.Editor
                 }
                 int reused = units.Count - pending.Count;
 
-                RunParallel("Preprocessing PathTracing passes", pending, (dxc, unit) => Preprocess(dxc, unit, preprocessArgs));
+                var phase = Stopwatch.StartNew();
+                var checks = new List<Task>();
+                RunParallel("Preparing inline evaluators", pending, (dxc, unit) =>
+                {
+                    Preprocess(dxc, unit, preprocessArgs);
+                    if (unit.Transformed == null) return;
+                    checks.Add(Task.Run(() =>
+                    {
+                        try
+                        {
+                            using var compiler = DxcCompiler.Create();
+                            unit.Error = CheckUnit(compiler, unit.Transformed, GeneratorCache.NamespacePlaceholder, compileArgs);
+                        }
+                        catch (Exception e)
+                        {
+                            unit.Error = e.Message;
+                        }
+                    }));
+                }, 1);
+                Task allChecks = Task.WhenAll(checks);
+                while (!allChecks.Wait(100))
+                    Progress("Finishing inline evaluator checks", 1f);
+                long transformMs = phase.ElapsedMilliseconds;
                 foreach (GeneratedUnit unit in pending)
                 {
                     cache.Put(unit.Key, unit.Transformed, unit.Error, unit.Files ?? Array.Empty<string>());
                     if (unit.Transformed != null && cache.TryGet(unit.Key, out GeneratorCache.Entry entry))
+                    {
                         unit.Unit = entry.ToUnit(unit.Namespace);
+                        cache.SetChecked(unit.Key, unit.Error);
+                    }
                 }
 
                 var hoisted = new Dictionary<string, string>();
                 var hoistedOrder = new List<string>();
+                var fingerprints = new Dictionary<string, string>();
+                string Fingerprint(string text)
+                {
+                    if (!fingerprints.TryGetValue(text, out string value))
+                        fingerprints.Add(text, value = Normalize(text));
+                    return value;
+                }
                 foreach (GeneratedUnit unit in units.Where(u => u.Unit != null))
                 {
                     foreach ((string key, string text) in unit.Unit.Hoisted)
@@ -123,7 +153,7 @@ namespace Illusion.Rendering.Editor
                             hoisted.Add(key, text);
                             hoistedOrder.Add(key);
                         }
-                        else if (Normalize(existing) != Normalize(text))
+                        else if (existing != text && Fingerprint(existing) != Fingerprint(text))
                         {
                             unit.Error = $"conflicting global declaration '{key}'";
                         }
@@ -131,13 +161,12 @@ namespace Illusion.Rendering.Editor
                 }
 
                 List<GeneratedUnit> toCheck = units.Where(u => u.Unit != null && u.Error == null && !cache.IsChecked(u.Key)).ToList();
+                phase.Restart();
                 RunParallel("Compiling inline evaluators", toCheck, (dxc, unit) =>
                 {
-                    string source = "#include \"" + PreludeInclude + "\"\n" + ComposeHoisted(new List<GeneratedUnit> { unit }, hoisted, hoistedOrder) +
-                        ComposeEvaluators(new List<GeneratedUnit> { unit }) + CheckKernel(1) + PathTracingInlineKernels.TableInclude;
-                    DxcCompiler.Result check = dxc.Compile(source, EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", compileArgs);
-                    unit.Error = check.Succeeded ? null : FirstErrors(check.Errors);
+                    unit.Error = CheckUnit(dxc, unit.Unit, unit.Namespace, compileArgs);
                 });
+                long validationMs = phase.ElapsedMilliseconds;
                 foreach (GeneratedUnit unit in toCheck)
                     cache.SetChecked(unit.Key, unit.Error);
 
@@ -148,7 +177,7 @@ namespace Illusion.Rendering.Editor
                 using (DxcCompiler dxc = DxcCompiler.Create())
                 {
                     DxcCompiler.Result prelude = dxc.Preprocess("#include \"" + PreludeInclude + "\"\n", PreludeInclude, compileArgs);
-                    string declaredBefore = (prelude.Succeeded ? prelude.Output : string.Empty) + shared;
+                    HlslDocument declaredBefore = ShaderSource.ParseHlsl((prelude.Succeeded ? prelude.Output : string.Empty) + shared);
                     PathTracingInlineKernels.Write(registry, shared, consumer =>
                     {
                         DxcCompiler.Result source = dxc.Preprocess("#include \"" + consumer + "\"\n", consumer, compileArgs);
@@ -173,7 +202,7 @@ namespace Illusion.Rendering.Editor
                 }.Save();
                 foreach (GeneratedUnit unit in units.Where(u => u.Error != null))
                     Debug.LogWarning($"[IllusionRP] Path tracing inline evaluator for '{unit.Pass.Path}' ({string.Join(" ", unit.Keywords)}) is unavailable; its materials render as the diagnostic surface.\n{unit.Error}");
-                Debug.Log($"[IllusionRP] Generated {units.Count - failed} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms.");
+                Debug.Log($"[IllusionRP] Generated {units.Count - failed} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms (prepare/check {transformMs} ms, cached-unit checks {validationMs} ms).");
             }
             finally
             {
@@ -185,12 +214,13 @@ namespace Illusion.Rendering.Editor
 
         private static void Progress(string info, float progress) => EditorUtility.DisplayProgressBar(ProgressTitle, info, progress);
 
-        private static void RunParallel(string info, List<GeneratedUnit> units, Action<DxcCompiler, GeneratedUnit> work)
+        private static void RunParallel(string info, List<GeneratedUnit> units, Action<DxcCompiler, GeneratedUnit> work, int concurrency = -1)
         {
             if (units.Count == 0)
                 return;
             int done = 0;
-            Task task = Task.Run(() => Parallel.ForEach(units, DxcCompiler.Create, (unit, _, dxc) =>
+            var options = new ParallelOptions { MaxDegreeOfParallelism = concurrency };
+            Task task = Task.Run(() => Parallel.ForEach(units, options, DxcCompiler.Create, (unit, _, dxc) =>
             {
                 try
                 {
@@ -229,11 +259,22 @@ namespace Illusion.Rendering.Editor
                 unit.Error = "unit marker missing from preprocessed output";
                 return;
             }
-            unit.Transformed = PathTracingInlineUnitTransform.Transform(result.Output.Substring(marker + UnitMarker.Length), GeneratorCache.NamespacePlaceholder);
+            unit.Transformed = PathTracingInlineUnitTransform.Transform(result.Output, GeneratorCache.NamespacePlaceholder, marker + UnitMarker.Length);
         }
 
         private static string Normalize(string text) =>
-            Regex.Replace(Regex.Replace(text, @"^\s*#.*$", string.Empty, RegexOptions.Multiline), @"\s+", " ").Trim();
+            ShaderSource.Fingerprint(text);
+
+        private static string CheckUnit(DxcCompiler dxc, PathTracingInlineUnitTransform.Unit unit, string unitNamespace, List<string> args)
+        {
+            var single = new List<GeneratedUnit> { new GeneratedUnit { Unit = unit, Namespace = unitNamespace } };
+            var hoisted = unit.Hoisted.GroupBy(h => h.Key).ToDictionary(g => g.Key, g => g.First().Value);
+            string source = "#include \"" + PreludeInclude + "\"\n" +
+                ComposeHoisted(single, hoisted, unit.Hoisted.Select(h => h.Key).Distinct().ToList()) +
+                ComposeEvaluators(single) + CheckKernel(1) + PathTracingInlineKernels.TableInclude;
+            DxcCompiler.Result check = dxc.Compile(source, EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", args);
+            return check.Succeeded ? null : FirstErrors(check.Errors);
+        }
 
         private static string FirstErrors(string errors)
         {
@@ -262,7 +303,7 @@ namespace Illusion.Rendering.Editor
             GeneratedUnit hitContext = null;
             if (!anyHitOnly)
             {
-                var contexts = units.Select(u => (Unit: u, Signature: PathTracingInlineUnitTransform.HitContextSignature(u.Unit.Body))).ToList();
+                var contexts = units.Select(u => (Unit: u, Signature: u.Unit.SharedHitContext)).ToList();
                 if (contexts.All(c => c.Signature != null) && contexts.Where(c => c.Signature.Length > 0).Select(c => c.Signature).Distinct().Count() == 1)
                     hitContext = contexts.First(c => c.Signature.Length > 0).Unit;
             }
@@ -451,29 +492,12 @@ namespace Illusion.Rendering.Editor
 
         private static PassSource ExtractPass(string text)
         {
-            Match tag = s_PathTracingTag.Match(text);
-            int passStart = LastMatchBefore(s_Pass, text, tag.Index);
-            if (passStart < 0)
-                return null;
-            Match program = s_HlslProgram.Match(text, tag.Index);
-            if (!program.Success)
-                return null;
-            int subShaderStart = LastMatchBefore(s_SubShader, text, passStart);
-            int firstSubShader = s_SubShader.Match(text) is { Success: true } m ? m.Index : text.Length;
-
-            var source = new StringBuilder();
-            foreach (Match include in s_HlslInclude.Matches(text))
-            {
-                if (include.Index >= passStart)
-                    break;
-                bool shaderLevel = include.Index < firstSubShader;
-                bool sameSubShader = include.Index > subShaderStart && !InsideOtherPass(text, include.Index, subShaderStart);
-                if (shaderLevel || sameSubShader)
-                    source.Append(include.Groups[1].Value).Append('\n');
-            }
-            source.Append(program.Groups[1].Value);
-
-            var pass = new PassSource { Source = source.ToString().Replace("#include_with_pragmas", "#include") };
+            var shader = ShaderSource.ParseShaderLab(text);
+            var selected = shader.SubShaders.SelectMany(s => s.Passes).OfType<ShaderCodePassNode>()
+                .FirstOrDefault(p => p.Commands.OfType<ShaderLabCommandTagsNode>()
+                    .Any(t => t.Tags.TryGetValue("LightMode", out string mode) && mode == "PathTracing"));
+            if (selected?.ProgramBlock == null) return null;
+            var pass = new PassSource { Source = selected.ProgramBlock.Value.FullCode.Replace("#include_with_pragmas", "#include") };
             foreach (Match pragma in s_KeywordPragma.Matches(pass.Source))
             {
                 string stage = pragma.Groups[3].Value;
@@ -491,39 +515,6 @@ namespace Illusion.Rendering.Editor
                         pass.Keywords.Add(option);
             }
             return pass;
-        }
-
-        private static int LastMatchBefore(Regex regex, string text, int index)
-        {
-            int last = -1;
-            foreach (Match m in regex.Matches(text))
-            {
-                if (m.Index >= index)
-                    break;
-                last = m.Index;
-            }
-            return last;
-        }
-
-        private static bool InsideOtherPass(string text, int index, int from)
-        {
-            foreach (Match pass in s_Pass.Matches(text, from))
-            {
-                if (pass.Index >= index)
-                    return false;
-                int depth = 0;
-                for (int i = text.IndexOf('{', pass.Index); i < text.Length; i++)
-                {
-                    if (text[i] == '{') depth++;
-                    else if (text[i] == '}' && --depth == 0)
-                    {
-                        if (i > index)
-                            return true;
-                        break;
-                    }
-                }
-            }
-            return false;
         }
 
         private static Dictionary<string, HashSet<string>> CollectMaterialVariants()
