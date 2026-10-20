@@ -5,6 +5,7 @@
 #define PATH_TRACING_INLINE 1
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHitContext.hlsl"
 
 #define PT_INLINE_TABLE_SIZE 65536
 #define PT_INLINE_NO_EVALUATOR 0xFFFFFFFFu

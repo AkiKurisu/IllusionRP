@@ -505,6 +505,44 @@ namespace Illusion.Rendering.Editor
 
         private static string NormalizeItem(string code) => Regex.Replace(code, @"\s+", " ").Trim();
 
+        internal static string HitContextSignature(string body)
+        {
+            var declarations = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            int open = body.IndexOf('{');
+            int close = body.LastIndexOf('}');
+            foreach (string item in SplitTopLevel(body.Substring(open + 1, close - open - 1)))
+            {
+                string code = StripLineDirectives(item, out _);
+                string name = IsFunction(code) ? FunctionName(code) : DeclaredName(code);
+                List<string> words = LeadingWords(code);
+                if (words.Count >= 2 && words[0] == "struct")
+                    name = words[1];
+                if (string.IsNullOrEmpty(name))
+                    continue;
+                if (!declarations.TryGetValue(name, out List<string> items))
+                    declarations.Add(name, items = new List<string>());
+                items.Add(code);
+            }
+            if (!declarations.ContainsKey("PathTracingGetHitContext"))
+                return string.Empty;
+            string[] shared = { "PathTracingGetHitContext", "PathTracingFetchVertex", "SafeNormalize", "g_PathTracingUVFootprint" };
+            var allowed = new HashSet<string>(shared, StringComparer.Ordinal);
+            var signature = new StringBuilder();
+            foreach (string name in shared)
+            {
+                if (!declarations.TryGetValue(name, out List<string> items))
+                    return null;
+                foreach (string code in items)
+                {
+                    foreach (Match identifier in s_Identifier.Matches(code))
+                        if (declarations.ContainsKey(identifier.Value) && !allowed.Contains(identifier.Value))
+                            return null;
+                    signature.Append(NormalizeItem(code)).Append('\n');
+                }
+            }
+            return signature.ToString();
+        }
+
         private static void AddItemKeys(string code, HashSet<string> keys)
         {
             List<string> words = LeadingWords(code);

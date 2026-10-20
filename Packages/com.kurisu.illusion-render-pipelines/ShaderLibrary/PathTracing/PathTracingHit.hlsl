@@ -22,30 +22,7 @@ void PathTracingClip(float4 value) { g_PathTracingClipped = g_PathTracingClipped
 #include "UnityRaytracingMeshUtils.cginc"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"
 
-struct PathTracingHitVertex
-{
-    float3 positionOS;
-    float3 normalOS;
-    float4 tangentOS;
-    float4 texCoord0;
-    float4 texCoord1;
-    float4 texCoord2;
-    float4 texCoord3;
-    float4 color;
-};
-
-struct PathTracingHitContext
-{
-    PathTracingHitVertex vertex;
-    float3 positionWS;
-    float3 viewDirWS;
-    float3 faceNormalWS;
-    float3 vertexNormalWS;
-    float4 tangentWS;
-    bool frontFacing;
-    uint3 indices;
-    float3 barycentrics;
-};
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHitContext.hlsl"
 
 ByteAddressBuffer _PathTracingPreviousPositions;
 StructuredBuffer<uint2> _PathTracingCulledSubMeshes;
@@ -129,6 +106,14 @@ uint PathTracingGetTriangleIndex()
 
 PathTracingHitContext PathTracingGetHitContext(AttributeData attributes, IllusionPathPayload payload)
 {
+#if defined(PATH_TRACING_INLINE)
+    if (g_PathTracingInlineHitContextReady && all(attributes.barycentrics == g_PathTracingInlineCachedHit.barycentrics.yz))
+    {
+        float coneWidth = abs(payload.coneWidth + payload.coneSpread * RayTCurrent());
+        g_PathTracingUVFootprint = g_PathTracingInlineFootprintGeometry.x * coneWidth / g_PathTracingInlineFootprintGeometry.y;
+        return g_PathTracingInlineCachedHit;
+    }
+#endif
     uint3 indices = UnityRayTracingFetchTriangleIndices(PrimitiveIndex());
     PathTracingHitVertex v0 = PathTracingFetchVertex(indices.x);
     PathTracingHitVertex v1 = PathTracingFetchVertex(indices.y);
@@ -171,7 +156,12 @@ PathTracingHitContext PathTracingGetHitContext(AttributeData attributes, Illusio
     float uvArea = abs(uvEdge1.x * uvEdge2.y - uvEdge2.x * uvEdge1.y);
     float coneWidth = abs(payload.coneWidth + payload.coneSpread * RayTCurrent());
     float projection = max(abs(dot(rayDir, faceNormalWS)), 1e-4);
-    g_PathTracingUVFootprint = sqrt(uvArea / max(worldArea, 1e-20)) * coneWidth / projection;
+    float uvScale = sqrt(uvArea / max(worldArea, 1e-20));
+    g_PathTracingUVFootprint = uvScale * coneWidth / projection;
+#if defined(PATH_TRACING_INLINE)
+    if (!g_PathTracingInlineHitContextReady)
+        g_PathTracingInlineFootprintGeometry = float2(uvScale, projection);
+#endif
 
     return hit;
 }
