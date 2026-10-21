@@ -20,16 +20,14 @@ namespace UnityRhi
 
         public InlineRayTracing(byte[] code, string entry, uint threadsX, uint threadsY, bool ser)
         {
-            if (!RhiCore.IsD3D12Active || code == null || code.Length == 0) return;
-            try
-            {
-                _eventId = UnityRhiInitializeInlineRayTracing();
-                if (_eventId == 0) return;
-                _callback = UnityRhiGetInlineRayTracingCallback();
-                _handle = UnityRhiCreateInlineRayTracing(code, code.Length, entry, threadsX, threadsY, ser ? 1 : 0);
-            }
-            catch (DllNotFoundException) { }
-            catch (EntryPointNotFoundException) { }
+            if (!RhiCore.IsD3D12Active) throw new NotSupportedException("Inline RayGen requires D3D12.");
+            if (code == null || code.Length == 0) throw new ArgumentException("Inline RayGen bytecode is missing.", nameof(code));
+            _eventId = UnityRhiInitializeInlineRayTracing();
+            if (_eventId == 0) throw new InvalidOperationException("Inline RayGen device or hook initialization failed.");
+            _callback = UnityRhiGetInlineRayTracingCallback();
+            if (_callback == IntPtr.Zero) throw new InvalidOperationException("Inline RayGen callback is missing.");
+            _handle = UnityRhiCreateInlineRayTracing(code, code.Length, entry, threadsX, threadsY, ser ? 1 : 0);
+            if (_handle == IntPtr.Zero) throw new InvalidOperationException($"Inline RayGen '{entry}' creation failed (SER={ser}).");
 #if UNITY_EDITOR
             RhiDomainReload.RegisterOwner(this);
 #endif
@@ -39,14 +37,16 @@ namespace UnityRhi
 
         public ulong GetDispatchCount(out int status)
         {
-            status = 0;
+            status = unchecked((int)0x80070006);
             return IsAvailable ? UnityRhiGetInlineRayTracingDispatches(_handle, out status) : 0;
         }
 
         public void Bind(CommandBuffer commandBuffer)
         {
-            if (IsAvailable)
-                commandBuffer.IssuePluginEventAndData(_callback, _eventId, _handle);
+            if (!IsAvailable) throw new ObjectDisposedException(nameof(InlineRayTracing));
+            GetDispatchCount(out int status);
+            if (status < 0) throw new InvalidOperationException($"Inline RayGen dispatch failed (0x{status:X8}).");
+            commandBuffer.IssuePluginEventAndData(_callback, _eventId, _handle);
         }
 
         public void Dispose()

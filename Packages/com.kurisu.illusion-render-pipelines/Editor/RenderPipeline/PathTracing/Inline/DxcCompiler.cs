@@ -7,7 +7,7 @@ using UnityEditor;
 
 namespace Illusion.Rendering.Editor
 {
-    internal sealed class DxcCompiler : IDisposable
+    internal sealed partial class DxcCompiler : IDisposable
     {
         internal readonly struct Result
         {

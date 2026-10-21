@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.IO;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Illusion.Rendering.PathTracing;
@@ -78,7 +79,6 @@ namespace Illusion.Rendering.Editor
             if (dirty)
             {
                 EditorUtility.SetDirty(registry);
-                AssetDatabase.SaveAssetIfDirty(registry);
             }
         }
 
@@ -88,17 +88,17 @@ namespace Illusion.Rendering.Editor
             var jobs = new List<Action<DxcCompiler>>();
             var imports = new List<Action>();
             const string shaders = "Packages/com.kurisu.illusion-render-pipelines/Shaders/";
-            registry.Performance = WriteProgram("InlinePerformance",
+            var performance = WriteProgram("InlinePerformance",
                 ShaderLibrary + "RayTracedGlobalIllumination/RayTracedGIInlineInitialSamples.hlsl", "RayTracedGIInitialSamples");
-            registry.Quality = WriteProgram("InlineQuality",
+            var quality = WriteProgram("InlineQuality",
                 shaders + "RayTracedGlobalIllumination/RayTracedGIInitialSamplesQuality.raytrace", "RayGen_InitialSamples", true);
-            registry.CacheUpdate = WriteProgram("InlineCacheUpdate",
+            var cacheUpdate = WriteProgram("InlineCacheUpdate",
                 shaders + "RayTracedGlobalIllumination/RayTracedGIRadianceCacheUpdate.raytrace", "RayGen_RadianceCacheUpdate", true);
-            registry.Reference = WriteProgram("InlineReference", shaders + "PathTracing/PathTracing.raytrace", "RayGen_REF");
-            registry.Build = WriteProgram("InlineBuild", shaders + "PathTracing/PathTracingBuild.raytrace", "RayGen_BUILD");
-            registry.Fill = WriteProgram("InlineFill", shaders + "PathTracing/PathTracingFill.raytrace", "RayGen_FILL");
+            var reference = WriteProgram("InlineReference", shaders + "PathTracing/PathTracing.raytrace", "RayGen_REF");
+            var build = WriteProgram("InlineBuild", shaders + "PathTracing/PathTracingBuild.raytrace", "RayGen_BUILD");
+            var fill = WriteProgram("InlineFill", shaders + "PathTracing/PathTracingFill.raytrace", "RayGen_FILL");
             int completed = 0;
-            var compilation = Task.Run(() => Parallel.ForEach(jobs, new ParallelOptions { MaxDegreeOfParallelism = 4 }, job =>
+            var compilation = Task.Run(() => Parallel.ForEach(Partitioner.Create(jobs, true), new ParallelOptions { MaxDegreeOfParallelism = 2 }, job =>
             {
                 using var compiler = DxcCompiler.Create();
                 job(compiler);
@@ -107,8 +107,13 @@ namespace Illusion.Rendering.Editor
             while (!compilation.Wait(100))
                 EditorUtility.DisplayProgressBar("Inline RayGen", $"Compiling {completed}/{jobs.Count}", (float)completed / jobs.Count);
             foreach (var import in imports) import();
+            registry.Performance = performance;
+            registry.Quality = quality;
+            registry.CacheUpdate = cacheUpdate;
+            registry.Reference = reference;
+            registry.Build = build;
+            registry.Fill = fill;
             EditorUtility.SetDirty(registry);
-            AssetDatabase.SaveAssetIfDirty(registry);
 
             PathTracingInlineProgram WriteProgram(string name, string consumer, string entry, bool native16 = false)
             {
@@ -122,18 +127,13 @@ namespace Illusion.Rendering.Editor
                     "#include \"" + PathTracingInlineGenerator.EvaluatorsPath + "\"\n" + TraversalInclude +
                     body + TableInclude +
                     "#if !defined(ILLUSION_INLINE_SER)\nRWStructuredBuffer<uint4> _PathTracingInlineExtension : register(u7);\n#endif\n" +
-                    "#if defined(ILLUSION_INLINE_RAYGEN)\n[shader(\"raygeneration\")]\nvoid InlineMain() { uint2 pixel = DispatchRaysIndex().xy;\n" +
-                    "#else\n[numthreads(8,4,1)]\nvoid InlineMain(uint2 pixel : SV_DispatchThreadID) {\n#endif\n" +
+                    "[shader(\"raygeneration\")]\nvoid InlineMain() { uint2 pixel = DispatchRaysIndex().xy;\n" +
                     "#if !defined(ILLUSION_INLINE_SER)\nif (_ScreenParams.x < 0) _PathTracingInlineExtension[0] = 0;\n" +
                     "#else\nif (_ScreenParams.x < 0) return;\n#endif\n" + entry + "(pixel);\n}\n";
                 string path = PathTracingInlineGenerator.OutputFolder + "/" + name + ".compute";
-                if (PathTracingInlineGenerator.WriteIfChanged(path, source)) AssetDatabase.ImportAsset(path);
-                var program = new PathTracingInlineProgram { Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(path) };
-                Compile(false);
-                Compile(true);
-                return program;
-
-                void Compile(bool ser)
+                var program = new PathTracingInlineProgram();
+                var variants = new List<(bool Ser, string Output, string Stamp, string Key, bool Changed, List<string> Args, string Expanded)>();
+                foreach (bool ser in new[] { false, true })
                 {
                     string output = PathTracingInlineGenerator.OutputFolder + "/" + name + (ser ? ".ser" : "") + ".bytes";
                     var args = new List<string>(arguments) { "-Zpr", "-auto-binding-space", "0", "-D", "ILLUSION_INLINE_RAYGEN=1" };
@@ -145,22 +145,65 @@ namespace Illusion.Rendering.Editor
                     string key = Hash128.Compute("lib_6_6\n" + string.Join(" ", args) + "\n" + expanded.Output).ToString();
                     string stamp = Path.Combine("Library/IllusionRP", name + (ser ? ".ser" : "") + ".hash");
                     bool changed = !File.Exists(output) || !File.Exists(stamp) || File.ReadAllText(stamp) != key;
-                    if (changed) jobs.Add(compiler =>
-                    {
-                        var timer = System.Diagnostics.Stopwatch.StartNew();
-                        var result = compiler.Compile(source, path, "InlineMain", "lib_6_6", args, true);
-                        if (!result.Succeeded) throw new InvalidOperationException($"{name} SER={ser}\n{result.Errors}");
-                        File.WriteAllBytes(output, result.Bytecode);
-                        File.WriteAllText(stamp, key);
-                        Debug.Log($"[IllusionRP] Compiled {name} SER={ser} in {timer.ElapsedMilliseconds} ms.");
-                    });
-                    imports.Add(() =>
-                    {
-                        if (changed || !AssetDatabase.LoadAssetAtPath<TextAsset>(output)) AssetDatabase.ImportAsset(output);
-                        var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(output);
-                        if (ser) program.RayGenSer = asset; else program.RayGen = asset;
-                    });
+                    variants.Add((ser, output, stamp, key, changed, args, expanded.Output));
                 }
+                byte[][] codes = new byte[2][];
+                string carrier = null;
+                string carrierStamp = Path.Combine("Library/IllusionRP", name + ".carrier.hash");
+                string carrierKey = Hash128.Compute(PathTracingInlineBindingCarrier.Version + string.Join("", variants.Select(v => v.Key))).ToString();
+                bool carrierChanged = !File.Exists(path) || !File.Exists(carrierStamp) || File.ReadAllText(carrierStamp) != carrierKey;
+                jobs.Add(compiler =>
+                {
+                    for (int i = 0; i < variants.Count; i++)
+                    {
+                        var variant = variants[i];
+                        if (!variant.Changed) { codes[i] = File.ReadAllBytes(variant.Output); continue; }
+                        var timer = System.Diagnostics.Stopwatch.StartNew();
+                        var result = compiler.Compile(source, path, "InlineMain", "lib_6_6", variant.Args, true);
+                        if (!result.Succeeded) throw new InvalidOperationException($"{name} SER={variant.Ser}\n{result.Errors}");
+                        codes[i] = result.Bytecode;
+                        Debug.Log($"[IllusionRP] Compiled {name} SER={variant.Ser} in {timer.ElapsedMilliseconds} ms.");
+                    }
+                    if (!carrierChanged) return;
+                    var carrierTimer = System.Diagnostics.Stopwatch.StartNew();
+                    var plain = compiler.Reflect(codes[0], true);
+                    carrier = PathTracingInlineBindingCarrier.Generate(variants[0].Expanded, plain);
+                    var carrierArgs = new List<string> { "-Zpr", "-HV", "2018" };
+                    if (native16)
+                    {
+                        carrier = "#pragma require Native16Bit\n" + carrier;
+                        carrierArgs.Add("-enable-16bit-types");
+                    }
+                    var compiled = compiler.Compile(carrier, path, "InlineMain", "cs_6_6", carrierArgs, true);
+                    if (!compiled.Succeeded) throw new InvalidOperationException($"{name} binding carrier\n{compiled.Errors}");
+                    var bindings = compiler.Reflect(compiled.Bytecode, false);
+                    PathTracingInlineBindingCarrier.Validate(plain, bindings, false);
+                    PathTracingInlineBindingCarrier.Validate(compiler.Reflect(codes[1], true), bindings, true);
+                    Debug.Log($"[IllusionRP] Generated and validated {name} binding carrier in {carrierTimer.ElapsedMilliseconds} ms.");
+                });
+                imports.Add(() =>
+                {
+                    for (int i = 0; i < variants.Count; i++)
+                    {
+                        var variant = variants[i];
+                        if (variant.Changed)
+                        {
+                            File.WriteAllBytes(variant.Output, codes[i]);
+                            File.WriteAllText(variant.Stamp, variant.Key);
+                        }
+                        if (variant.Changed || !AssetDatabase.LoadAssetAtPath<TextAsset>(variant.Output)) AssetDatabase.ImportAsset(variant.Output);
+                        var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(variant.Output);
+                        if (variant.Ser) program.RayGenSer = asset; else program.RayGen = asset;
+                    }
+                    if (carrierChanged)
+                    {
+                        if (PathTracingInlineGenerator.WriteIfChanged(path, carrier)) AssetDatabase.ImportAsset(path);
+                        File.WriteAllText(carrierStamp, carrierKey);
+                    }
+                    program.Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(path);
+                    if (!program.Compute) throw new InvalidOperationException($"{name} binding carrier import failed.");
+                });
+                return program;
             }
         }
     }

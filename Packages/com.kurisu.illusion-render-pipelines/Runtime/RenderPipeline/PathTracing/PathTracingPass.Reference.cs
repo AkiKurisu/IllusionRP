@@ -14,6 +14,7 @@ namespace Illusion.Rendering.PathTracing
         {
             internal RayTracingShader Shader;
             internal PathTracingInlineDispatcher InlineDispatch;
+            internal bool InlineSer;
             internal IPathTracingReordering Reordering;
             internal PathTracingWorld World;
             internal PathTracingDiffusionProfiles Profiles;
@@ -177,6 +178,7 @@ namespace Illusion.Rendering.PathTracing
             FillTracePassData(renderGraph, passData, context, world, radiance, constants, cameraData, worldToClip);
             passData.Shader = _referenceShader;
             passData.InlineDispatch = _inlineTracing ? _inlineReference : null;
+            passData.InlineSer = _inlineSer;
             passData.Reordering = reordering;
             passData.TraceTime = context.AccumulationTime;
             DeclareTraceTextures(builder, passData);
@@ -194,7 +196,7 @@ namespace Illusion.Rendering.PathTracing
                 data.TraceTime.Push(cmd);
                 using (new ProfilingScope(cmd, Samplers.Paths))
                 {
-                    if (data.InlineDispatch != null) data.InlineDispatch.Dispatch(cmd, data.Width, data.Height, data.Reordering != null);
+                    if (data.InlineDispatch != null) data.InlineDispatch.Dispatch(cmd, data.Width, data.Height, data.InlineSer);
                     else cmd.DispatchRays(data.Shader, ReferenceRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
                 }
                 data.CurrentTime.Push(cmd);

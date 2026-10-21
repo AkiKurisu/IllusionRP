@@ -90,8 +90,8 @@ namespace Illusion.Rendering.Editor
             using var sha = System.Security.Cryptography.SHA256.Create();
             foreach (string name in new[]
             {
-                "DxcCompiler.cs", "PathTracingInlineGenerator.cs", "PathTracingInlineGeneratorCache.cs",
-                "PathTracingInlineKernels.cs", "PathTracingInlineUnitTransform.cs"
+                "DxcCompiler.cs", "DxcCompiler.Reflection.cs", "PathTracingInlineGenerator.cs", "PathTracingInlineGeneratorCache.cs",
+                "PathTracingInlineKernels.cs", "PathTracingInlineBindingCarrier.cs", "PathTracingInlineUnitTransform.cs"
             })
             {
                 byte[] bytes = File.ReadAllBytes(Path.Combine(folder, name));

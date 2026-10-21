@@ -104,12 +104,14 @@ namespace Illusion.Rendering.Editor
 
                 var phase = Stopwatch.StartNew();
                 var checks = new List<Task>();
+                using var checkSlot = new SemaphoreSlim(1);
                 RunParallel("Preparing inline evaluators", pending, (dxc, unit) =>
                 {
                     Preprocess(dxc, unit, preprocessArgs);
                     if (unit.Transformed == null) return;
-                    checks.Add(Task.Run(() =>
+                    checks.Add(Task.Run(async () =>
                     {
+                        await checkSlot.WaitAsync();
                         try
                         {
                             using var compiler = DxcCompiler.Create();
@@ -119,6 +121,7 @@ namespace Illusion.Rendering.Editor
                         {
                             unit.Error = e.Message;
                         }
+                        finally { checkSlot.Release(); }
                     }));
                 }, 1);
                 Task allChecks = Task.WhenAll(checks);
@@ -174,8 +177,9 @@ namespace Illusion.Rendering.Editor
                 List<GeneratedUnit> accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
                 PathTracingInlineRegistry registry = Write(ComposeEvaluators(accepted), accepted, passes, force);
                 string shared = ComposeHoisted(accepted, hoisted, hoistedOrder);
-                using (DxcCompiler dxc = DxcCompiler.Create())
+                try
                 {
+                    using DxcCompiler dxc = DxcCompiler.Create();
                     DxcCompiler.Result prelude = dxc.Preprocess("#include \"" + PreludeInclude + "\"\n", PreludeInclude, compileArgs);
                     HlslDocument declaredBefore = ShaderSource.ParseHlsl((prelude.Succeeded ? prelude.Output : string.Empty) + shared);
                     string PreprocessConsumer(string consumer, string prefix)
@@ -188,7 +192,17 @@ namespace Illusion.Rendering.Editor
                     }
                     PathTracingInlineKernels.Write(registry, shared, consumer => PreprocessConsumer(consumer, string.Empty));
                     PathTracingInlineKernels.WritePrograms(registry, shared, PreprocessConsumer, dxc, compileArgs);
+                    var existing = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(RegistryPath);
+                    if (existing)
+                    {
+                        EditorUtility.CopySerialized(registry, existing);
+                        EditorUtility.SetDirty(existing);
+                        AssetDatabase.SaveAssetIfDirty(existing);
+                    }
+                    else AssetDatabase.CreateAsset(registry, RegistryPath);
+                    PathTracingInlineRegistry.Reload();
                 }
+                finally { if (!AssetDatabase.Contains(registry)) UnityEngine.Object.DestroyImmediate(registry); }
                 cache.Retain(units.Select(u => u.Key));
                 cache.Save();
 
@@ -216,7 +230,7 @@ namespace Illusion.Rendering.Editor
 
         private static void Progress(string info, float progress) => EditorUtility.DisplayProgressBar(ProgressTitle, info, progress);
 
-        private static void RunParallel(string info, List<GeneratedUnit> units, Action<DxcCompiler, GeneratedUnit> work, int concurrency = -1)
+        private static void RunParallel(string info, List<GeneratedUnit> units, Action<DxcCompiler, GeneratedUnit> work, int concurrency = 2)
         {
             if (units.Count == 0)
                 return;
@@ -350,10 +364,10 @@ namespace Illusion.Rendering.Editor
                 AssetDatabase.ImportAsset(AnyHitEvaluatorsPath);
 
             string hash = Hash(evaluators);
-            var registry = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(RegistryPath);
-            bool created = registry == null;
-            if (created)
-                registry = ScriptableObject.CreateInstance<PathTracingInlineRegistry>();
+            var existing = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(RegistryPath);
+            bool created = !existing;
+            var registry = existing ? UnityEngine.Object.Instantiate(existing) : ScriptableObject.CreateInstance<PathTracingInlineRegistry>();
+            registry.name = PathTracingInlineRegistry.ResourceName;
             if (created || force || registry.Hash != hash || registry.Evaluators.Length != units.Count)
             {
                 registry.Hash = hash;
@@ -388,12 +402,6 @@ namespace Illusion.Rendering.Editor
                     Shader = p.Shader,
                     Keywords = p.Keywords.OrderBy(k => k, StringComparer.Ordinal).ToArray()
                 }).ToArray();
-                if (created)
-                    AssetDatabase.CreateAsset(registry, RegistryPath);
-                else
-                    EditorUtility.SetDirty(registry);
-                AssetDatabase.SaveAssetIfDirty(registry);
-                PathTracingInlineRegistry.Reload();
                 changed = true;
             }
             if (changed)
