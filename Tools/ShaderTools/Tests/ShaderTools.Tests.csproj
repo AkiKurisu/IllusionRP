@@ -7,6 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="../Illusion.ShaderTools.csproj" />
     <Compile Include="Program.cs" />
-    <Compile Include="../../../Packages/com.kurisu.illusion-render-pipelines/Editor/RenderPipeline/PathTracing/Inline/PathTracingInlineUnitTransform.cs" />
+    <Compile Include="../../../Packages/com.kurisu.illusion-render-pipelines/Editor/RenderPipeline/PathTracing/PathTracingInlineUnitTransform.cs" />
   </ItemGroup>
 </Project>
