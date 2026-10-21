@@ -61,8 +61,12 @@ namespace Illusion.Rendering
 
         public bool[] RawBuffers = Array.Empty<bool>();
 
-
-        public ComputeShader RayTracedGIInitialSamples;
+        public PathTracing.PathTracingInlineProgram Performance;
+        public PathTracing.PathTracingInlineProgram Quality;
+        public PathTracing.PathTracingInlineProgram CacheUpdate;
+        public PathTracing.PathTracingInlineProgram Reference;
+        public PathTracing.PathTracingInlineProgram Build;
+        public PathTracing.PathTracingInlineProgram Fill;
 
         public ComputeShader RayTracedGIResampling;
 

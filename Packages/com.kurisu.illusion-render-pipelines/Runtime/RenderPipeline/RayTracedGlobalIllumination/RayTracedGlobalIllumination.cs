@@ -101,8 +101,11 @@ namespace Illusion.Rendering
         [Tooltip("Performance lights secondary surfaces with one light sample, for one bounce. Quality continues their paths into SHaRC's world-space radiance cache, for multiple bounces; it needs 160 MiB per camera, native 16-bit shader types and 64-bit buffer atomics.")]
         public RayTracedGIModeParameter mode = new(RayTracedGIMode.Performance);
 
-        [Tooltip("Reorder Quality mode rays by their hits on supported NVIDIA GPUs. Unsupported devices use the original tracing path.")]
+        [Tooltip("Reorder rays by their hits on supported NVIDIA GPUs. Unsupported devices use the original tracing path.")]
         public BoolParameter shaderExecutionReordering = new(true);
+
+        [Tooltip("Evaluate ray hits through the bindless material table.")]
+        public BoolParameter inlineRayTracing = new(true);
 
         [Tooltip("Trace, resample and denoise at half resolution, then upsample with the depth.")]
         public BoolParameter halfResolution = new(true, BoolParameter.DisplayType.EnumPopup);

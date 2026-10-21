@@ -1,6 +1,13 @@
 #ifndef ILLUSION_PATH_TRACING_INLINE_TRAVERSAL_INCLUDED
 #define ILLUSION_PATH_TRACING_INLINE_TRAVERSAL_INCLUDED
 
+void PathTracingInlineReorder(uint evaluator)
+{
+#if defined(ILLUSION_INLINE_SER)
+    NvReorderThread(evaluator, 16);
+#endif
+}
+
 uint PathTracingInlineLoadGeometry(uint instanceID, uint geometryIndex)
 {
     uint first = _PathTracingInlineInstanceGeometries[instanceID];
@@ -95,7 +102,10 @@ void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStruc
     PathTracingInlineSetHit(hit, ray, attributes);
     uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
     if (evaluator != PT_INLINE_NO_EVALUATOR)
+    {
+        PathTracingInlineReorder(evaluator);
         PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
+    }
 }
 
 #endif

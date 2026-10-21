@@ -203,8 +203,12 @@ bool RayTracedGIInDispatch(uint2 reservoirPosition)
     return reservoirPosition.x < dispatchWidth && reservoirPosition.y < viewport.y;
 }
 
+#if defined(ILLUSION_INLINE_PROGRAM)
+void RayTracedGIInitialSamples(uint2 reservoirPosition)
+#else
 [numthreads(8, 4, 1)]
 void RayTracedGIInitialSamples(uint2 reservoirPosition : SV_DispatchThreadID)
+#endif
 {
     if (!RayTracedGIInDispatch(reservoirPosition))
         return;
@@ -263,6 +267,7 @@ void RayTracedGIInitialSamples(uint2 reservoirPosition : SV_DispatchThreadID)
             payload = CreateSecondaryPayload(path);
             AttributeData attributes;
             PathTracingInlineSetHit(hit, ray, attributes);
+            PathTracingInlineReorder(evaluator);
             PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
             secondary = (SecondarySample)0;
             PrepareSecondaryHit(payload, ray, true, secondary);
@@ -339,10 +344,19 @@ SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, 
     return secondary;
 }
 
+#if defined(PATH_TRACING_INLINE)
+void RayGen_InitialSamples(uint2 reservoirPosition)
+{
+    const uint2 viewport = uint2(g_GIConst.view.viewportSize);
+    const uint dispatchWidth = g_GIConst.runtimeParams.activeCheckerboardField != 0 ? (viewport.x + 1) / 2 : viewport.x;
+    if (reservoirPosition.x >= dispatchWidth || reservoirPosition.y >= viewport.y)
+        return;
+#else
 [shader("raygeneration")]
 void RayGen_InitialSamples()
 {
     const uint2 reservoirPosition = DispatchRaysIndex().xy;
+#endif
     const uint2 pixel = RTXDI_ReservoirPosToPixelPos(reservoirPosition, g_GIConst.runtimeParams.activeCheckerboardField);
     RayTracedGIReceiver receiver;
     float3 direction;
@@ -356,11 +370,13 @@ void RayGen_InitialSamples()
         StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_BELOW_SURFACE, BelowSurfaceSample(receiver, direction), 0.0);
 }
 
+#if !defined(PATH_TRACING_INLINE)
 [shader("miss")]
 void Miss_InitialSamples(inout IllusionPathPayload payload : SV_RayPayload)
 {
     payload.hitT = PT_MISS_T;
 }
+#endif
 
 #endif
 

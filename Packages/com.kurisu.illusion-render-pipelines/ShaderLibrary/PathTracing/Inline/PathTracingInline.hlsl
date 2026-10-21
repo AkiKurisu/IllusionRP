@@ -66,6 +66,8 @@ void PathTracingInlineIgnoreHit() { g_PathTracingInlineIgnored = true; }
 void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
     RayDesc ray, inout IllusionPathPayload payload);
 
+void PathTracingInlineReorder(uint evaluator);
+
 #define TraceRay(accelerationStructure, rayFlags, instanceMask, hitGroupOffset, hitGroupStride, missIndex, ray, payload) \
     PathTracingInlineTraceRay(accelerationStructure, rayFlags, instanceMask, ray, payload)
 

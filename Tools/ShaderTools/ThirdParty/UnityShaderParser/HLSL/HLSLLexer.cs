@@ -50,6 +50,11 @@ namespace Illusion.ShaderTools.Syntax.HLSL
 
                 case char c when char.IsDigit(c) || (c == '.' && char.IsDigit(LookAhead())):
                     string num = EatNumber(out bool isFloat);
+                    if (num == "1." && Match('#') && LookAhead('I') && LookAhead('N', 2) && LookAhead('F', 3))
+                    {
+                        num += "#INF";
+                        Advance(4);
+                    }
                     TokenKind kind = isFloat ? TokenKind.FloatLiteralToken : TokenKind.IntegerLiteralToken;
                     Add(num, kind);
                     break;

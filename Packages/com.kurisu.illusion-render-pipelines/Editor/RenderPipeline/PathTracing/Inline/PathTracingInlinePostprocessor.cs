@@ -12,7 +12,8 @@ namespace Illusion.Rendering.Editor
         {
             EditorApplication.delayCall += () =>
             {
-                if (PathTracingInlineGenerator.IsEnabled && AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(PathTracingInlineGenerator.RegistryPath) == null)
+                var registry = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(PathTracingInlineGenerator.RegistryPath);
+                if (PathTracingInlineGenerator.IsEnabled && (!registry || registry.Quality?.RayGen == null || registry.Fill?.RayGen == null))
                     Schedule();
             };
         }
@@ -32,7 +33,7 @@ namespace Illusion.Rendering.Editor
                 if (path.StartsWith(PathTracingInlineGenerator.OutputFolder, StringComparison.Ordinal))
                     continue;
                 if (path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase)
-                    || path.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
+                    || path.EndsWith(".raytrace", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
                     return true;
             }
             return false;

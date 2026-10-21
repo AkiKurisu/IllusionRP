@@ -5,24 +5,25 @@ namespace Illusion.Rendering.PathTracing
 {
     internal sealed partial class PathTracingPass
     {
-        private static void BindTraceResources(CommandBuffer cmd, RayTracingShader shader, TracePassData data)
+        private static void BindTraceResources(CommandBuffer cmd, PathTracingShaderTarget shader, TracePassData data)
         {
+            if (data.InlineDispatch != null) data.World.BindInline(cmd, shader);
             data.Scene.BindTraceInputs(cmd, shader, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
                 data.SubsurfaceRayBias, data.ExposureTexture, PathTracingEnvironment.CameraBackground(data.Camera),
                 data.Resources.Constants, data.Resources.MiniConstants);
 
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_OutputColor, data.Radiance);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_Depth, data.Depth);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_MotionVectors, data.MotionVectors);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_Throughput, data.Throughput);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_SpecularHitT, data.SpecularHitT);
+            shader.SetTexture(cmd, ShaderIDs.u_OutputColor, data.Radiance);
+            shader.SetTexture(cmd, ShaderIDs.u_Depth, data.Depth);
+            shader.SetTexture(cmd, ShaderIDs.u_MotionVectors, data.MotionVectors);
+            shader.SetTexture(cmd, ShaderIDs.u_Throughput, data.Throughput);
+            shader.SetTexture(cmd, ShaderIDs.u_SpecularHitT, data.SpecularHitT);
         }
 
-        private static void BindStablePlanes(CommandBuffer cmd, RayTracingShader shader, PathTracingRealtimeTargets targets)
+        private static void BindStablePlanes(CommandBuffer cmd, PathTracingShaderTarget shader, PathTracingRealtimeTargets targets)
         {
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_StablePlanesHeader, targets.StablePlanesHeader);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_StablePlanesBuffer, targets.StablePlanes);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_StableRadiance, targets.StableRadiance);
+            shader.SetTexture(cmd, ShaderIDs.u_StablePlanesHeader, targets.StablePlanesHeader);
+            shader.SetBuffer(cmd, ShaderIDs.u_StablePlanesBuffer, targets.StablePlanes);
+            shader.SetTexture(cmd, ShaderIDs.u_StableRadiance, targets.StableRadiance);
         }
 
         private static class ShaderIDs

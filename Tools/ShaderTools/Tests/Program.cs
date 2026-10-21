@@ -47,6 +47,7 @@ float4 F(float payload) { sampler2D s; s.indices = payload; return 0.5.xxxx * s.
         Check(Expression("a=b=c+d*e") is AssignmentExpressionNode
             { Right: AssignmentExpressionNode { Right: BinaryExpressionNode { Right: BinaryExpressionNode } } },
             "Assignment association and arithmetic precedence");
+        Check(Expression("1.#INF") is LiteralExpressionNode { Span.Length: 6 }, "DXC infinity literal");
         Check(Expression("a-b-c") is BinaryExpressionNode { Left: BinaryExpressionNode } &&
               Expression("a?b:c?d:e") is TernaryExpressionNode { FalseCase: TernaryExpressionNode },
             "Left association and nested conditional");

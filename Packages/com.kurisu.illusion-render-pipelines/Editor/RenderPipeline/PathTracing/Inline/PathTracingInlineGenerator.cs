@@ -178,14 +178,16 @@ namespace Illusion.Rendering.Editor
                 {
                     DxcCompiler.Result prelude = dxc.Preprocess("#include \"" + PreludeInclude + "\"\n", PreludeInclude, compileArgs);
                     HlslDocument declaredBefore = ShaderSource.ParseHlsl((prelude.Succeeded ? prelude.Output : string.Empty) + shared);
-                    PathTracingInlineKernels.Write(registry, shared, consumer =>
+                    string PreprocessConsumer(string consumer, string prefix)
                     {
-                        DxcCompiler.Result source = dxc.Preprocess("#include \"" + consumer + "\"\n", consumer, compileArgs);
+                        DxcCompiler.Result source = dxc.Preprocess(prefix + "#include \"" + PreludeInclude + "\"\n#include \"" + consumer + "\"\n", consumer, compileArgs);
                         if (source.Succeeded)
                             return PathTracingInlineUnitTransform.RemoveDeclared(source.Output, declaredBefore);
                         Debug.LogError($"[IllusionRP] Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
                         return null;
-                    });
+                    }
+                    PathTracingInlineKernels.Write(registry, shared, consumer => PreprocessConsumer(consumer, string.Empty));
+                    PathTracingInlineKernels.WritePrograms(registry, shared, PreprocessConsumer, dxc, compileArgs);
                 }
                 cache.Retain(units.Select(u => u.Key));
                 cache.Save();

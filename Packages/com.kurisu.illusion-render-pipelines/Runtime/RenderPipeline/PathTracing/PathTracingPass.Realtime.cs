@@ -15,6 +15,7 @@ namespace Illusion.Rendering.PathTracing
         private class RealtimeTracePassData : TracePassData
         {
             internal RayTracingShader FillShader;
+            internal PathTracingInlineDispatcher InlineFill;
             internal PathTracingRealtimeTargets Targets;
             internal int SamplesPerPixel;
             internal TextureHandle StablePlanesHeader;
@@ -107,7 +108,7 @@ namespace Illusion.Rendering.PathTracing
 
             int settingsHash = HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
                 settings.realtimeFireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value,
-                settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight, reordering != null));
+                settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight, HashCode.Combine(reordering != null, _inlineTracing)));
             context.BeginRealtimeFrame(settingsHash, camera.transform);
 
             var worldToView = camera.worldToCameraMatrix;
@@ -169,6 +170,8 @@ namespace Illusion.Rendering.PathTracing
             FillTracePassData(renderGraph, passData, context, world, renderGraph.ImportTexture(context.Radiance), constants, cameraData, worldToClip);
             passData.Shader = _buildShader;
             passData.FillShader = _fillShader;
+            passData.InlineDispatch = _inlineTracing ? _inlineBuild : null;
+            passData.InlineFill = _inlineTracing ? _inlineFill : null;
             passData.Reordering = reordering;
             passData.Targets = targets;
             passData.SamplesPerPixel = samplesPerPixel;
@@ -184,24 +187,30 @@ namespace Illusion.Rendering.PathTracing
                 PrepareScene(cmd, data);
 
                 data.Resources.UploadConstants(cmd, data.Constants, default);
-                BindTraceResources(cmd, data.Shader, data);
-                PathTracingReorderingKeyword.Apply(cmd, data.Shader, data.Reordering);
-                BindStablePlanes(cmd, data.Shader, data.Targets);
+                var build = data.InlineDispatch != null ? data.InlineDispatch.Target : (PathTracingShaderTarget)data.Shader;
+                BindTraceResources(cmd, build, data);
+                if (data.InlineDispatch == null) PathTracingReorderingKeyword.Apply(cmd, data.Shader, data.Reordering);
+                BindStablePlanes(cmd, build, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.StablePlanes))
-                    cmd.DispatchRays(data.Shader, BuildRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                {
+                    if (data.InlineDispatch != null) data.InlineDispatch.Dispatch(cmd, data.Width, data.Height, data.Reordering != null);
+                    else cmd.DispatchRays(data.Shader, BuildRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                }
                 using (new ProfilingScope(cmd, Samplers.LightFeedback))
                     data.LightBaker.UpdateEnd(cmd, data.Depth, data.MotionVectors, data.Width, data.Height);
 
-                BindTraceResources(cmd, data.FillShader, data);
-                PathTracingReorderingKeyword.Apply(cmd, data.FillShader, data.Reordering);
-                BindStablePlanes(cmd, data.FillShader, data.Targets);
+                var fill = data.InlineFill != null ? data.InlineFill.Target : (PathTracingShaderTarget)data.FillShader;
+                BindTraceResources(cmd, fill, data);
+                if (data.InlineFill == null) PathTracingReorderingKeyword.Apply(cmd, data.FillShader, data.Reordering);
+                BindStablePlanes(cmd, fill, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.Paths))
                 {
                     for (int i = 0; i < data.SamplesPerPixel; i++)
                     {
                         var miniConstants = new PathTracingSampleMiniConstants { Params = new Vector4Int { X = (uint)i } };
                         data.Resources.UploadConstants(cmd, data.Constants, miniConstants);
-                        cmd.DispatchRays(data.FillShader, FillRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                        if (data.InlineFill != null) data.InlineFill.Dispatch(cmd, data.Width, data.Height, data.Reordering != null);
+                        else cmd.DispatchRays(data.FillShader, FillRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
                     }
                 }
             });

@@ -117,7 +117,7 @@ namespace Illusion.Rendering.Editor
         {
             EditorGUILayout.LabelField($"{registry.Evaluators.Length} evaluators from {_groups.Count} shaders, {registry.Buffers.Length} scene buffers",
                 EditorStyles.boldLabel);
-            EditorGUILayout.ObjectField(Styles.InitialSamples, registry.RayTracedGIInitialSamples, typeof(ComputeShader), false);
+            EditorGUILayout.ObjectField(Styles.InitialSamples, registry.Performance?.Compute, typeof(ComputeShader), false);
             EditorGUILayout.ObjectField(Styles.Resampling, registry.RayTracedGIResampling, typeof(ComputeShader), false);
             EditorGUILayout.LabelField("Hash", registry.Hash);
             using (new EditorGUI.DisabledScope(!PathTracingInlineGenerator.IsEnabled))

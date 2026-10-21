@@ -2,8 +2,8 @@
 #define ILLUSION_PATH_TRACING_INLINE_TABLE_INCLUDED
 
 // The scene resource table must be declared after every other shader resource of the compute shader.
-Texture2D<float4> _PathTracingInlineTextures[PT_INLINE_TABLE_SIZE] : register(t31);
-ByteAddressBuffer _PathTracingInlineBuffers[PT_INLINE_TABLE_SIZE] : register(t31, space1);
+Texture2D<float4> _PathTracingInlineTextures[PT_INLINE_TABLE_SIZE] : register(t63, space1);
+ByteAddressBuffer _PathTracingInlineBuffers[PT_INLINE_TABLE_SIZE] : register(t63, space2);
 
 uint3 UnityRayTracingFetchTriangleIndices(uint primitiveIndex)
 {
@@ -31,26 +31,14 @@ uint3 UnityRayTracingFetchTriangleIndices(uint primitiveIndex)
     return indices;
 }
 
-float4 PathTracingInlineFetchAttribute(uint vertexIndex, uint attributeType)
+#if defined(ILLUSION_INLINE_RAYGEN)
+[noinline]
+#endif
+float4 PathTracingInlineFetchPackedAttribute(uint bufferIndex, uint address, uint dimension, uint format)
 {
-    uint attribute = PathTracingInlineAttribute(attributeType);
-    uint dimension = attribute & 7u;
-    if (dimension == 0 || dimension > 4)
-        return unity_DefaultVertexAttributes[attributeType];
-    uint format = (attribute >> 3) & 15u;
-    uint stream = (attribute >> 7) & 3u;
-    uint address = vertexIndex * g_PathTracingInlineGeometry.vertexSize[stream] + (attribute >> 9);
-    ByteAddressBuffer vertexBuffer = _PathTracingInlineBuffers[NonUniformResourceIndex(g_PathTracingInlineGeometry.vertexBuffers[stream])];
-
+    ByteAddressBuffer vertexBuffer = _PathTracingInlineBuffers[NonUniformResourceIndex(bufferIndex)];
     float4 value = 0;
-    if (format == kVertexFormatFloat)
-    {
-        if (dimension == 1) value.x = asfloat(vertexBuffer.Load(address));
-        else if (dimension == 2) value.xy = asfloat(vertexBuffer.Load2(address));
-        else if (dimension == 3) value.xyz = asfloat(vertexBuffer.Load3(address));
-        else value = asfloat(vertexBuffer.Load4(address));
-    }
-    else if (format == kVertexFormatFloat16)
+    if (format == kVertexFormatFloat16)
     {
         uint2 halfs = dimension > 2 ? vertexBuffer.Load2(address) : uint2(vertexBuffer.Load(address), 0);
         value = float4(f16tof32(halfs.x), f16tof32(halfs.x >> 16), f16tof32(halfs.y), f16tof32(halfs.y >> 16));
@@ -70,14 +58,49 @@ float4 PathTracingInlineFetchAttribute(uint vertexIndex, uint attributeType)
         uint data = vertexBuffer.Load(address);
         value = float4(data & 0xff, (data >> 8) & 0xff, (data >> 16) & 0xff, data >> 24) / 255.0;
     }
+    return value;
+}
+
+float4 PathTracingInlineFetchAttribute(uint vertexIndex, uint attributeType)
+{
+    uint attribute = PathTracingInlineAttribute(attributeType);
+    uint dimension = attribute & 7u;
+    if (dimension == 0 || dimension > 4)
+        return unity_DefaultVertexAttributes[attributeType];
+    uint format = (attribute >> 3) & 15u;
+    uint stream = (attribute >> 7) & 3u;
+    uint address = vertexIndex * g_PathTracingInlineGeometry.vertexSize[stream] + (attribute >> 9);
+    ByteAddressBuffer vertexBuffer = _PathTracingInlineBuffers[NonUniformResourceIndex(g_PathTracingInlineGeometry.vertexBuffers[stream])];
+
+    float4 value = 0;
+    if (format == kVertexFormatFloat)
+    {
+        if (dimension == 1) value.x = asfloat(vertexBuffer.Load(address));
+        else if (dimension == 2) value.xy = asfloat(vertexBuffer.Load2(address));
+        else if (dimension == 3) value.xyz = asfloat(vertexBuffer.Load3(address));
+        else value = asfloat(vertexBuffer.Load4(address));
+    }
+    else
+        value = PathTracingInlineFetchPackedAttribute(g_PathTracingInlineGeometry.vertexBuffers[stream], address, dimension, format);
     return unity_VertexChannelMask_RT[dimension] * value;
 }
 
+float4 PathTracingInlineSampleGradResolved(uint entry, uint samplerState, float2 uv, float2 gradX, float2 gradY);
 float4 PathTracingInlineSampleGrad(uint textureSlot, uint samplerSlot, float2 uv, float2 gradX, float2 gradY)
 {
     uint entry = PathTracingInlineTextureEntry(textureSlot);
+    uint state = PathTracingInlineSamplerState(entry, samplerSlot) & 15u;
+    if (state == 3u)
+        return _PathTracingInlineTextures[NonUniformResourceIndex(entry & PT_INLINE_INDEX_MASK)].SampleGrad(sampler_PathTracingInline_Trilinear_Repeat_Aniso16, uv, gradX, gradY);
+    return PathTracingInlineSampleGradResolved(entry, state, uv, gradX, gradY);
+}
+#if defined(ILLUSION_INLINE_RAYGEN)
+[noinline]
+#endif
+float4 PathTracingInlineSampleGradResolved(uint entry, uint samplerState, float2 uv, float2 gradX, float2 gradY)
+{
     Texture2D<float4> tex = _PathTracingInlineTextures[NonUniformResourceIndex(entry & PT_INLINE_INDEX_MASK)];
-    switch (PathTracingInlineSamplerState(entry, samplerSlot) & 15u)
+    switch (samplerState)
     {
         case 0u: return tex.SampleGrad(sampler_PathTracingInline_Point_Repeat, uv, gradX, gradY);
         case 1u: return tex.SampleGrad(sampler_PathTracingInline_Linear_Repeat, uv, gradX, gradY);
@@ -94,11 +117,22 @@ float4 PathTracingInlineSampleGrad(uint textureSlot, uint samplerSlot, float2 uv
     }
 }
 
+float4 PathTracingInlineSampleLevelResolved(uint entry, uint samplerState, float2 uv, float lod);
 float4 PathTracingInlineSampleLevel(uint textureSlot, uint samplerSlot, float2 uv, float lod)
 {
     uint entry = PathTracingInlineTextureEntry(textureSlot);
+    uint state = PathTracingInlineSamplerState(entry, samplerSlot) & 15u;
+    if (state == 3u)
+        return _PathTracingInlineTextures[NonUniformResourceIndex(entry & PT_INLINE_INDEX_MASK)].SampleLevel(sampler_PathTracingInline_Trilinear_Repeat_Aniso16, uv, lod);
+    return PathTracingInlineSampleLevelResolved(entry, state, uv, lod);
+}
+#if defined(ILLUSION_INLINE_RAYGEN)
+[noinline]
+#endif
+float4 PathTracingInlineSampleLevelResolved(uint entry, uint samplerState, float2 uv, float lod)
+{
     Texture2D<float4> tex = _PathTracingInlineTextures[NonUniformResourceIndex(entry & PT_INLINE_INDEX_MASK)];
-    switch (PathTracingInlineSamplerState(entry, samplerSlot) & 15u)
+    switch (samplerState)
     {
         case 0u: return tex.SampleLevel(sampler_PathTracingInline_Point_Repeat, uv, lod);
         case 1u: return tex.SampleLevel(sampler_PathTracingInline_Linear_Repeat, uv, lod);

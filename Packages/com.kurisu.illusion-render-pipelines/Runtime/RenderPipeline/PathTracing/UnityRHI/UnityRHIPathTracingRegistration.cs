@@ -14,6 +14,7 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
         {
             PathTracingReorderingLoader.Register(() => new UnityRHIPathTracingReordering());
             PathTracingRayReconstructionLoader.Register(() => new UnityRHIPathTracingRayReconstruction());
+            PathTracingInlineDispatchBackend.Register((code, ser) => new UnityRHIPathTracingInlineDispatch(code, ser));
         }
     }
 }

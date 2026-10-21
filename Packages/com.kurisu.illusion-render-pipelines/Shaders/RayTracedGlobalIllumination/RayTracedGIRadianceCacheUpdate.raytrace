@@ -34,10 +34,17 @@
 static const uint kRayTracedGICacheUpdateBlockSize = 5;
 static const uint kRayTracedGICacheUpdateRandomSeed = 31;
 
+#if defined(PATH_TRACING_INLINE)
+void RayGen_RadianceCacheUpdate(uint2 block)
+{
+    if (any(block >= (uint2(g_GIConst.view.viewportSize) + kRayTracedGICacheUpdateBlockSize - 1) / kRayTracedGICacheUpdateBlockSize))
+        return;
+#else
 [shader("raygeneration")]
 void RayGen_RadianceCacheUpdate()
 {
     const uint2 block = DispatchRaysIndex().xy;
+#endif
     RTXDI_RandomSamplerState rng = RTXDI_InitRandomSampler(block, g_GIConst.runtimeParams.frameIndex, kRayTracedGICacheUpdateRandomSeed);
     const uint2 offset = min(uint2(float2(RTXDI_GetNextRandom(rng), RTXDI_GetNextRandom(rng)) * kRayTracedGICacheUpdateBlockSize),
         kRayTracedGICacheUpdateBlockSize - 1);
@@ -121,8 +128,10 @@ void RayGen_RadianceCacheUpdate()
     }
 }
 
+#if !defined(PATH_TRACING_INLINE)
 [shader("miss")]
 void Miss_RadianceCacheUpdate(inout IllusionPathPayload payload : SV_RayPayload)
 {
     payload.hitT = PT_MISS_T;
 }
+#endif

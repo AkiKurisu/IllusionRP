@@ -93,6 +93,17 @@ namespace Illusion.Rendering.PathTracing
             var world = _scene.Update(camera, settings.layerMask.value, settings.directionalAngularDiameter.value, perObjectSelector,
                 _rendererData.PerObjectShadowRenderingLayer, realtime);
             _scene.SkinnedUpdates.Keep(world.Scene.Instances);
+            var registry = PathTracingInlineRegistry.Instance;
+            _inlineTracing = settings.inlineRayTracing.value && SystemInfo.supportsInlineRayTracing
+                && PathTracingInlineResources.IsAvailable && registry
+                && _inlineReference.SetProgram(registry.Reference)
+                && _inlineBuild.SetProgram(registry.Build) && _inlineFill.SetProgram(registry.Fill);
+            if (_inlineTracing)
+            {
+                world.UpdateInline();
+                _inlineTracing = world.Inline.IsReady;
+            }
+
 
             TextureHandle image = realtime
                 ? RecordRealtime(renderGraph, cameraData, settings, context, world)
@@ -177,12 +188,20 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
+        private bool _inlineTracing;
+        private readonly PathTracingInlineDispatcher _inlineReference = new();
+        private readonly PathTracingInlineDispatcher _inlineBuild = new();
+        private readonly PathTracingInlineDispatcher _inlineFill = new();
+
         public void Dispose()
         {
             foreach (var context in _contexts.Values)
                 context.Dispose();
             _contexts.Clear();
             DisposeRealtime();
+            _inlineReference.Dispose();
+            _inlineBuild.Dispose();
+            _inlineFill.Dispose();
             CoreUtils.Destroy(_outputMaterial);
         }
     }

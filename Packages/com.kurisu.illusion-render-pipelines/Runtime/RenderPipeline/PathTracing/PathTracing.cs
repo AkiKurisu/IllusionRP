@@ -63,6 +63,9 @@ namespace Illusion.Rendering.PathTracing
         [Tooltip("Reorder path tracing rays by their hits on supported NVIDIA GPUs. Unsupported devices use the original tracing path.")]
         public BoolParameter shaderExecutionReordering = new(true);
 
+        [Tooltip("Evaluate ray hits through the bindless material table.")]
+        public BoolParameter inlineRayTracing = new(false);
+
         [Tooltip("Reconstruct Realtime frames with DLSS Ray Reconstruction; off shows the raw path traced frame.")]
         public BoolParameter rayReconstruction = new(true);
 

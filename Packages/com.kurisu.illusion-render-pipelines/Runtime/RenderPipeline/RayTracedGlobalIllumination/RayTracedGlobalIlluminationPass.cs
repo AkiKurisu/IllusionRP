@@ -92,9 +92,9 @@ namespace Illusion.Rendering
 
         private bool _reportedDenoiser;
 
-        private ComputeShader _inlineInitialSamples;
+        private readonly PathTracingInlineDispatcher _inlineInitialDispatch = new();
+        private readonly PathTracingInlineDispatcher _inlineCacheDispatch = new();
 
-        private int _inlineInitialKernel;
 
         private ComputeShader _inlineResampling;
 
@@ -173,9 +173,9 @@ namespace Illusion.Rendering
             internal IPathTracingReordering Reordering;
             internal RayTracingShader ResamplingShader;
             internal bool Inline;
-            internal ComputeShader InlineInitialSamples;
+            internal PathTracingInlineDispatcher InlineInitialDispatch;
+            internal PathTracingInlineDispatcher InlineCacheDispatch;
             internal ComputeShader InlineResampling;
-            internal int InlineInitialKernel;
             internal int InlineTemporalKernel;
             internal int InlineSpatialKernel;
             internal int InlineFinalShadingKernel;
@@ -363,8 +363,6 @@ namespace Illusion.Rendering
 
         private bool UseInlineRayTracing(bool radianceCache, PathTracingWorld world)
         {
-            if (radianceCache)
-                return false;
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (IllusionRuntimeRenderingConfig.Get().RayTracedGlobalIlluminationHitShaders)
                 return false;
@@ -375,9 +373,9 @@ namespace Illusion.Rendering
                 reason = "the device does not support ray queries";
             else if (!PathTracingInlineResources.IsAvailable)
                 reason = "the UnityRHI scene resource table is unavailable";
-            else if (!registry || !registry.RayTracedGIInitialSamples || !registry.RayTracedGIResampling)
+            else if (!registry || !registry.RayTracedGIResampling)
                 reason = "the inline kernels have not been generated";
-            else if (!FindInlineKernels(registry))
+            else if (!FindInlineKernels(registry, radianceCache))
                 reason = "the inline kernels are not supported";
             else
             {
@@ -390,18 +388,16 @@ namespace Illusion.Rendering
             if (!_reportedInline)
             {
                 _reportedInline = true;
-                Debug.LogWarning($"[RayTracedGI] Performance mode evaluates hits with hit shaders because {reason}.");
+                Debug.LogWarning($"[RayTracedGI] Evaluates hits with hit shaders because {reason}.");
             }
             return false;
         }
 
-        private bool FindInlineKernels(PathTracingInlineRegistry registry)
+        private bool FindInlineKernels(PathTracingInlineRegistry registry, bool radianceCache)
         {
-            if (_inlineInitialSamples != registry.RayTracedGIInitialSamples)
-            {
-                _inlineInitialSamples = registry.RayTracedGIInitialSamples;
-                _inlineInitialKernel = _inlineInitialSamples.FindKernel("RayTracedGIInitialSamples");
-            }
+            var program = radianceCache ? registry.Quality : registry.Performance;
+            if (!_inlineInitialDispatch.SetProgram(program) || (radianceCache && !_inlineCacheDispatch.SetProgram(registry.CacheUpdate)))
+                return false;
             if (_inlineResampling != registry.RayTracedGIResampling)
             {
                 _inlineResampling = registry.RayTracedGIResampling;
@@ -409,8 +405,7 @@ namespace Illusion.Rendering
                 _inlineSpatialKernel = _inlineResampling.FindKernel("RayTracedGISpatialResampling");
                 _inlineFinalShadingKernel = _inlineResampling.FindKernel("RayTracedGIFinalShading");
             }
-            return _inlineInitialSamples.IsSupported(_inlineInitialKernel)
-                && _inlineResampling.IsSupported(_inlineTemporalKernel);
+            return _inlineResampling.IsSupported(_inlineTemporalKernel);
         }
 
         public static bool HasResources(IllusionRenderPipelineResources resources)
@@ -456,7 +451,7 @@ namespace Illusion.Rendering
             context.EnsureRadianceCache(radianceCache);
 
             var world = UpdateScene(camera);
-            bool inlineTracing = UseInlineRayTracing(radianceCache, world);
+            bool inlineTracing = volume.inlineRayTracing.value && UseInlineRayTracing(radianceCache, world);
 
             var worldToView = cameraData.GetViewMatrix();
             var projection = cameraData.GetProjectionMatrix();
@@ -467,7 +462,7 @@ namespace Illusion.Rendering
             bool temporal = mode is RayTracedGIResamplingMode.Temporal or RayTracedGIResamplingMode.TemporalAndSpatial;
             bool spatial = mode is RayTracedGIResamplingMode.Spatial or RayTracedGIResamplingMode.TemporalAndSpatial;
             context.EnsureDenoiserTargets(denoise, specular);
-            bool historyValid = context.BeginFrame(camera.transform, HashCode.Combine(mode, settings.layerMask.value, denoiserType, halfResolution, checkerboard, volume.radianceClamp.value, specular, radianceCache),
+            bool historyValid = context.BeginFrame(camera.transform, HashCode.Combine(mode, settings.layerMask.value, denoiserType, halfResolution, checkerboard, volume.radianceClamp.value, specular, HashCode.Combine(radianceCache, inlineTracing)),
                 _rendererData.ScaleWorldDistance(CutDistance));
             uint frameIndex = context.FrameIndex;
             var constants = BuildConstants(camera, worldToView, projection, volume, context, historyValid, width, height,
@@ -494,12 +489,12 @@ namespace Illusion.Rendering
                 passData.PipelineResources = _rendererData.RuntimeResources;
                 passData.Profiles = PathTracingDiffusionProfiles.Capture(_rendererData);
                 passData.InitialSamplesShader = radianceCache ? _initialSamplesQualityShader : _initialSamplesShader;
-                passData.Reordering = radianceCache && volume.shaderExecutionReordering.value
+                passData.Reordering = volume.shaderExecutionReordering.value
                     && (_reordering ??= PathTracingReorderingLoader.Create()) is { IsAvailable: true } ? _reordering : null;
                 passData.ResamplingShader = _resamplingShader;
                 passData.Inline = inlineTracing;
-                passData.InlineInitialSamples = _inlineInitialSamples;
-                passData.InlineInitialKernel = _inlineInitialKernel;
+                passData.InlineInitialDispatch = _inlineInitialDispatch;
+                passData.InlineCacheDispatch = _inlineCacheDispatch;
                 passData.InlineResampling = _inlineResampling;
                 passData.InlineTemporalKernel = _inlineTemporalKernel;
                 passData.InlineSpatialKernel = _inlineSpatialKernel;
@@ -573,6 +568,8 @@ namespace Illusion.Rendering
                     var cmd = CommandBufferHelpers.GetNativeCommandBuffer(graphContext.cmd);
                     data.Scene.Prepare(cmd, data.World, data.LightBaker, data.Exposure, data.Camera.transform.position,
                         data.WorldToClip, data.Width, data.Height, data.Frame, false);
+                    if (data.Inline)
+                        data.World.CopyDeformedVertices(cmd);
                     cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
 
                     data.ConstantsUpload[0] = data.ConstantsData;
@@ -1010,10 +1007,8 @@ namespace Illusion.Rendering
         {
             int groupsX = (data.DispatchWidth + InlineThreadGroupSize - 1) / InlineThreadGroupSize;
             int groupsY = (data.Height + InlineThreadGroupSize - 1) / InlineThreadGroupSize;
-            data.World.CopyDeformedVertices(cmd);
-
             using (new ProfilingScope(cmd, Samplers.InitialSamples))
-                DispatchInlineInitialSamples(cmd, data, groupsX, (data.Height + 3) / 4);
+                DispatchInlineInitialSamples(cmd, data);
 
             if (data.Temporal)
             {
@@ -1029,9 +1024,9 @@ namespace Illusion.Rendering
                 DispatchInlineResampling(cmd, data, data.InlineFinalShadingKernel, groupsX, groupsY);
         }
 
-        private static void DispatchInlineInitialSamples(CommandBuffer cmd, TracePassData data, int groupsX, int groupsY)
+        private static void DispatchInlineInitialSamples(CommandBuffer cmd, TracePassData data)
         {
-            var initial = new PathTracingShaderTarget(data.InlineInitialSamples, data.InlineInitialKernel);
+            var initial = data.InlineInitialDispatch.Target;
             data.World.BindInline(cmd, initial);
             data.Scene.BindTraceInputs(cmd, initial, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
                 data.SubsurfaceRayBias, data.Exposure, PathTracingEnvironment.CameraBackground(data.Camera),
@@ -1040,7 +1035,8 @@ namespace Illusion.Rendering
             BindReceiver(cmd, initial, data);
             initial.SetBuffer(cmd, ShaderIDs.u_SecondaryGBuffer, data.SecondarySurfaces);
             initial.SetBuffer(cmd, ShaderIDs.u_GIReservoirs, data.Reservoirs);
-            cmd.DispatchCompute(data.InlineInitialSamples, data.InlineInitialKernel, groupsX, groupsY, 1);
+            if (data.RadianceCache) BindCache(cmd, initial, data);
+            data.InlineInitialDispatch.Dispatch(cmd, data.DispatchWidth, data.Height, data.Reordering != null);
         }
 
         private static void DispatchInlineResampling(CommandBuffer cmd, TracePassData data, int kernel, int groupsX, int groupsY)
@@ -1076,16 +1072,22 @@ namespace Illusion.Rendering
                     BindCache(cmd, cache, data.CacheClearKernel, data);
                     cmd.DispatchCompute(cache, data.CacheClearKernel, groups, 1, 1);
                 }
-                var update = data.CacheUpdateShader;
+                var update = data.Inline ? data.InlineCacheDispatch.Target : (PathTracingShaderTarget)data.CacheUpdateShader;
+                if (data.Inline) data.World.BindInline(cmd, update);
                 data.Scene.BindTraceInputs(cmd, update, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
                     data.SubsurfaceRayBias, data.Exposure, PathTracingEnvironment.CameraBackground(data.Camera),
                     data.SampleConstants, data.MiniConstants);
                 data.Scene.BindOutputPlaceholders(cmd, update);
                 BindReceiver(cmd, update, data);
                 BindCache(cmd, update, data);
-                PathTracingReorderingKeyword.Apply(cmd, update, data.Reordering);
-                cmd.DispatchRays(update, CacheUpdateRayGenName, (uint)((data.Width + CacheUpdateBlockSize - 1) / CacheUpdateBlockSize),
-                    (uint)((data.Height + CacheUpdateBlockSize - 1) / CacheUpdateBlockSize), 1, data.Camera);
+                int width = (data.Width + CacheUpdateBlockSize - 1) / CacheUpdateBlockSize;
+                int height = (data.Height + CacheUpdateBlockSize - 1) / CacheUpdateBlockSize;
+                if (data.Inline) data.InlineCacheDispatch.Dispatch(cmd, width, height, data.Reordering != null);
+                else
+                {
+                    PathTracingReorderingKeyword.Apply(cmd, data.CacheUpdateShader, data.Reordering);
+                    cmd.DispatchRays(data.CacheUpdateShader, CacheUpdateRayGenName, (uint)width, (uint)height, 1, data.Camera);
+                }
             }
             using (new ProfilingScope(cmd, Samplers.CacheResolve))
             {
@@ -1096,13 +1098,13 @@ namespace Illusion.Rendering
             }
         }
 
-        private static void BindCache(CommandBuffer cmd, RayTracingShader shader, TracePassData data)
+        private static void BindCache(CommandBuffer cmd, PathTracingShaderTarget shader, TracePassData data)
         {
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_RayTracedGICacheHashEntries, data.CacheHashEntries);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_RayTracedGICacheAccumulation, data.CacheAccumulation);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_RayTracedGICacheResolved, data.CacheResolved);
-            cmd.SetRayTracingVectorParam(shader, ShaderIDs._RayTracedGICacheCameraPosition, data.CacheCameraPosition);
-            cmd.SetRayTracingIntParam(shader, ShaderIDs._RayTracedGICacheCapacity, RayTracedGlobalIlluminationContext.CacheCapacity);
+            shader.SetBuffer(cmd, ShaderIDs.u_RayTracedGICacheHashEntries, data.CacheHashEntries);
+            shader.SetBuffer(cmd, ShaderIDs.u_RayTracedGICacheAccumulation, data.CacheAccumulation);
+            shader.SetBuffer(cmd, ShaderIDs.u_RayTracedGICacheResolved, data.CacheResolved);
+            shader.SetVector(cmd, ShaderIDs._RayTracedGICacheCameraPosition, data.CacheCameraPosition);
+            shader.SetInt(cmd, ShaderIDs._RayTracedGICacheCapacity, RayTracedGlobalIlluminationContext.CacheCapacity);
         }
 
         private static void BindCache(CommandBuffer cmd, ComputeShader shader, int kernel, TracePassData data)
@@ -1305,6 +1307,8 @@ namespace Illusion.Rendering
 
         public void Dispose()
         {
+            _inlineInitialDispatch.Dispose();
+            _inlineCacheDispatch.Dispose();
             _denoiser?.Dispose();
             _reordering?.Dispose();
             foreach (var context in _contexts.Values)

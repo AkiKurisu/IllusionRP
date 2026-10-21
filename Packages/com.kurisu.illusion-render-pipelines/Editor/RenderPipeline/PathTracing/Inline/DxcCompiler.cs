@@ -14,12 +14,14 @@ namespace Illusion.Rendering.Editor
             public readonly bool Succeeded;
             public readonly string Output;
             public readonly string Errors;
+            public readonly byte[] Bytecode;
 
-            public Result(bool succeeded, string output, string errors)
+            public Result(bool succeeded, string output, string errors, byte[] bytecode = null)
             {
                 Succeeded = succeeded;
                 Output = output;
                 Errors = errors;
+                Bytecode = bytecode;
             }
         }
 
@@ -56,11 +58,23 @@ namespace Illusion.Rendering.Editor
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate UIntPtr GetBufferSizeFn(IntPtr self);
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int CreateBlobFn(IntPtr self, IntPtr data, uint size, uint encoding, out IntPtr blob);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int ValidateFn(IntPtr self, IntPtr blob, uint flags, out IntPtr result);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetBlobFn(IntPtr self, out IntPtr blob);
+
         [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr LoadLibraryExW(string path, IntPtr file, uint flags);
 
         [DllImport("kernel32", CharSet = CharSet.Ansi, SetLastError = true)]
         private static extern IntPtr GetProcAddress(IntPtr module, string name);
+
+        [DllImport("kernel32")]
+        private static extern bool FreeLibrary(IntPtr module);
 
         private const uint LoadWithAlteredSearchPath = 0x8;
         private const int OutErrors = 2;
@@ -74,6 +88,8 @@ namespace Illusion.Rendering.Editor
         private static Guid s_IidUtils = new("4605c4cb-2019-492a-ada4-65f20bb7d67f");
         private static Guid s_IidResult = new("58346cda-dde7-4497-9461-6f87af5e0659");
         private static Guid s_IidBlob = new("8ba5fb08-5195-40e2-ac58-0d989c3a0102");
+        private static Guid s_ClsidValidator = new("8ca3e215-f728-4cf3-8cdd-88af917587a1");
+        private static Guid s_IidValidator = new("a6e82bd2-1fd7-4826-9811-2857e797f49a");
 
         private IntPtr _compiler;
         private IntPtr _utils;
@@ -104,14 +120,51 @@ namespace Illusion.Rendering.Editor
             return Run(source, args, OutHlsl);
         }
 
-        public Result Compile(string source, string sourceName, string entryPoint, string profile, IEnumerable<string> arguments)
+        public Result Compile(string source, string sourceName, string entryPoint, string profile, IEnumerable<string> arguments, bool bytecode = false)
         {
             var args = new List<string> { sourceName, "-E", entryPoint, "-T", profile, "-Vd" };
             args.AddRange(arguments);
-            return Run(source, args, OutObject);
+            var result = Run(source, args, OutObject, bytecode);
+            return bytecode && result.Succeeded
+                ? new Result(true, result.Output, result.Errors, Validate(result.Bytecode))
+                : result;
         }
 
-        private Result Run(string source, List<string> arguments, int outputKind)
+        private byte[] Validate(byte[] code)
+        {
+            string path = FileUtil.GetPhysicalPath("Packages/com.kurisu.unityrhi/Plugins/x86_64/dxil.dll");
+            IntPtr module = LoadLibraryExW(path, IntPtr.Zero, LoadWithAlteredSearchPath);
+            if (module == IntPtr.Zero)
+                throw new InvalidOperationException($"Could not load DXIL validator '{path}'.");
+            IntPtr validator = IntPtr.Zero, blob = IntPtr.Zero, result = IntPtr.Zero, output = IntPtr.Zero;
+            var pinned = GCHandle.Alloc(code, GCHandleType.Pinned);
+            try
+            {
+                var create = Marshal.GetDelegateForFunctionPointer<CreateInstanceFn>(GetProcAddress(module, "DxcCreateInstance"));
+                Check(create(ref s_ClsidValidator, ref s_IidValidator, out validator), "create validator");
+                Check(Method<CreateBlobFn>(_utils, 4)(_utils, pinned.AddrOfPinnedObject(), (uint)code.Length, 0, out blob), "create bytecode blob");
+                Check(Method<ValidateFn>(validator, 3)(validator, blob, 0, out result), "validate bytecode");
+                Check(Method<GetStatusFn>(result, 3)(result, out int status), "read validation status");
+                if (status < 0)
+                {
+                    Method<GetBlobFn>(result, 5)(result, out output);
+                    throw new InvalidOperationException("DXIL validation failed: " + Encoding.UTF8.GetString(ReadBlob(output)).TrimEnd('\0'));
+                }
+                Check(Method<GetBlobFn>(result, 4)(result, out output), "read validated bytecode");
+                return ReadBlob(output);
+            }
+            finally
+            {
+                if (output != IntPtr.Zero) Release(output);
+                if (result != IntPtr.Zero) Release(result);
+                if (blob != IntPtr.Zero) Release(blob);
+                if (validator != IntPtr.Zero) Release(validator);
+                pinned.Free();
+                FreeLibrary(module);
+            }
+        }
+
+        private Result Run(string source, List<string> arguments, int outputKind, bool bytecode = false)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(source);
             GCHandle pinned = GCHandle.Alloc(bytes, GCHandleType.Pinned);
@@ -133,7 +186,7 @@ namespace Illusion.Rendering.Editor
                 Method<GetStatusFn>(result, 3)(result, out int status);
                 string errors = ReadOutput(result, OutErrors);
                 string output = outputKind == OutHlsl ? ReadOutput(result, OutHlsl) : null;
-                return new Result(status >= 0, output, errors);
+                return new Result(status >= 0, output, errors, bytecode && status >= 0 ? ReadBytes(result, OutObject) : null);
             }
             finally
             {
@@ -148,22 +201,31 @@ namespace Illusion.Rendering.Editor
 
         private static string ReadOutput(IntPtr result, int kind)
         {
+            return Encoding.UTF8.GetString(ReadBytes(result, kind)).TrimEnd('\0');
+        }
+
+        private static byte[] ReadBytes(IntPtr result, int kind)
+        {
             if (Method<GetOutputFn>(result, 7)(result, kind, ref s_IidBlob, out IntPtr blob, IntPtr.Zero) < 0 || blob == IntPtr.Zero)
-                return string.Empty;
+                return Array.Empty<byte>();
             try
             {
-                IntPtr data = Method<GetBufferPointerFn>(blob, 3)(blob);
-                int size = (int)Method<GetBufferSizeFn>(blob, 4)(blob).ToUInt64();
-                if (data == IntPtr.Zero || size <= 0)
-                    return string.Empty;
-                var bytes = new byte[size];
-                Marshal.Copy(data, bytes, 0, size);
-                return Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+                return ReadBlob(blob);
             }
             finally
             {
                 Release(blob);
             }
+        }
+
+        private static byte[] ReadBlob(IntPtr blob)
+        {
+            if (blob == IntPtr.Zero) return Array.Empty<byte>();
+            IntPtr data = Method<GetBufferPointerFn>(blob, 3)(blob);
+            int size = (int)Method<GetBufferSizeFn>(blob, 4)(blob).ToUInt64();
+            var bytes = new byte[size];
+            if (size > 0) Marshal.Copy(data, bytes, 0, size);
+            return bytes;
         }
 
         private static T Method<T>(IntPtr instance, int slot) where T : Delegate

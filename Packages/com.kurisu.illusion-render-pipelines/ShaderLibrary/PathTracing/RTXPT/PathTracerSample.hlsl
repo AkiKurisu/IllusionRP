@@ -162,10 +162,17 @@ void ValidateNaNs(inout PathState path, PathTracer::WorkingContext workingContex
 #endif    
 }
 
+#if defined(PATH_TRACING_INLINE)
+void RAYGEN_ENTRY(uint2 pixelPos)
+{
+    if (any(pixelPos >= uint2(g_Const.view.viewportSize)))
+        return;
+#else
 [shader("raygeneration")]
 void RAYGEN_ENTRY()
 {
     uint2 pixelPos = DispatchRaysIndex().xy;
+#endif
 
     //float3 lastOrigin = float3(1e30f,1e30f,1e30f);
     PathState path;
@@ -241,8 +248,10 @@ void DeltaTreeVizExplorePixel(PathTracer::WorkingContext workingContext)
 }
 #endif
 // @IllusionRP: scatter rays are traced with TraceRay, so misses are reported through the payload.
+#if !defined(PATH_TRACING_INLINE)
 [shader("miss")]
 void MISS_ENTRY(inout IllusionPathPayload payload : SV_RayPayload)
 {
     payload.hitT = PT_MISS_T;
 }
+#endif
