@@ -179,6 +179,7 @@ namespace Illusion.Rendering.Editor
                     }
                     else AssetDatabase.CreateAsset(registry, RegistryPath);
                     PathTracingInlineRegistry.Reload();
+                    RemoveObsoleteOutputs(AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(RegistryPath));
                 }
                 finally { if (!AssetDatabase.Contains(registry)) UnityEngine.Object.DestroyImmediate(registry); }
                 cache.Retain(units.Select(u => u.Key));
@@ -380,6 +381,26 @@ namespace Illusion.Rendering.Editor
                 "linearGray" or "linearGrey" => PathTracingInlineRegistry.TextureDefault.LinearGray,
                 _ => PathTracingInlineRegistry.TextureDefault.White
             };
+        }
+
+        // Outputs that the registry no longer references would still import and compile in the background, and unloading them
+        // waits for that compile.
+        private static void RemoveObsoleteOutputs(PathTracingInlineRegistry registry)
+        {
+            if (!registry)
+                return;
+            var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { RegistryPath, EvaluatorsPath, AnyHitEvaluatorsPath };
+            SerializedProperty property = new SerializedObject(registry).GetIterator();
+            while (property.Next(true))
+                if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue)
+                    live.Add(AssetDatabase.GetAssetPath(property.objectReferenceValue));
+            string[] obsolete = Directory.GetFiles(OutputFolder).Select(path => path.Replace('\\', '/'))
+                .Where(path => !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) && !live.Contains(path)).ToArray();
+            if (obsolete.Length == 0)
+                return;
+            var failed = new List<string>();
+            AssetDatabase.MoveAssetsToTrash(obsolete, failed);
+            Debug.Log($"[IllusionRP] Moved {obsolete.Length - failed.Count} obsolete inline outputs to the trash: {string.Join(", ", obsolete.Except(failed).Select(Path.GetFileName))}");
         }
 
         internal static bool WriteIfChanged(string path, string content)
