@@ -4,42 +4,55 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-19 |
+| Date | 2026-10-22 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Path Tracing](path-tracing.md), [Materials and Shaders](materials-and-shaders.md), [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Third-Party Source Imports](third-party-source-imports.md) |
 
-Inline ray tracing runs ray traced global illumination (RTGI) Performance mode entirely as compute work with ray queries. It replaces ray generation dispatches whose hits run material hit shaders. Unity prepares hit groups for every instance of every acceleration structure bound to a ray generation dispatch, on every dispatch, so that path's CPU cost grows with the size of the scene. Inline ray tracing binds no acceleration structure to a ray generation dispatch, so no hit groups are prepared. Each material is still evaluated from its own `PathTracing` pass source, and the result is the image the hit shaders would produce.
+Inline ray tracing traces ray traced global illumination (RTGI) and path tracing without Unity ray tracing shaders. Unity prepares hit groups for every instance of every acceleration structure bound to its ray generation dispatches, on every dispatch, so that path's CPU cost grows with the size of the scene. Instead, each tracing stage is a ray generation program that the native backend dispatches. Rays traverse the scene with ray queries, and each accepted closest hit is shaded by its material's own module after the GPU regroups rays by the material they hit. The shader table holds one record per material evaluator, never one per instance. Each material is still evaluated from its own `PathTracing` pass source, so the result is the image that pass defines.
 
 ## Goal
 
-- RTGI Performance mode prepares no hit groups. Its per-frame CPU cost is independent of the number of instances beyond the ray tracing scene's own update.
-- Inline evaluation and hit-shader evaluation of the same hit give the same material inputs, coverage and lighting. RTGI's converged result does not change.
+- RTGI and path tracing prepare no hit groups. Their per-frame CPU cost is independent of the number of instances beyond the ray tracing scene's own update.
+- Closest-hit shading runs coherently: rays are regrouped by the material they hit before shading, on GPUs that support shader execution reordering, and each material's shading code runs only for its own hits.
+- Traversal stays inside the tracing program: deciding whether a candidate surface occludes a ray never leaves the ray generation program.
+- Every material is evaluated with its own material inputs, coverage and lighting rules. Converged RTGI and path tracing results do not depend on how rays are traced.
 - Materials are evaluated at the hit from their authored textures and properties. Nothing is baked, averaged or precomputed per material.
 - Inline evaluation depends only on geometry and material properties. It never depends on what an object represents in the application, its layer or its scene role.
 
 ## Scope
 
-- Every stage of RTGI Performance mode: the GI ray, secondary surface shading with its light sampling visibility, ray traced bias correction in resampling, and final shading.
+- Every tracing stage of RTGI in Performance and Quality modes: the GI ray, secondary surface shading with its light sampling visibility, the radiance cache update, ray traced bias correction in resampling, and final shading.
+- Path tracing in Reference and Realtime modes.
 - Static meshes, skinned meshes, blend-shaped meshes and meshes whose data is written in place, such as simulated cloth.
 - Every hand-written and ASE-generated shader whose `PathTracing` pass builds on the shared PathTracing hit library.
-- The scene resource table that gives compute shaders indexed access to the textures, vertex data and index data of the scene.
+- The scene resource table, the per-material shader table and the native dispatch of tracing programs.
 
 ## Non-goals
 
-- Path tracing cameras, PRT baking and RTGI Quality mode. They keep hit-shader evaluation.
-- A unified or hand-written material evaluator that replaces the materials' own `PathTracing` source.
-- Baked material atlases, averaged material colors, or any other per-material precomputation.
+- PRT baking. It keeps Unity ray tracing shaders.
+- A unified or hand-written material evaluator, coverage test included, that replaces the materials' own `PathTracing` source.
+- Baked material atlases, averaged material colors, screen-space coverage approximations, or any other per-material precomputation.
+- A hit-shader path for RTGI or path tracing.
 - Procedural and AABB geometry.
-- Changes to the RTGI estimate, resampling or denoising contracts beyond how rays are traced and hits are evaluated.
+- Changes to the RTGI estimate, resampling or denoising contracts, or to path tracing integration, beyond how rays are traced and hits are evaluated.
+
+## Tracing programs
+
+- **Stages.** Each tracing stage is one ray generation program: RTGI Performance initial samples, RTGI Quality initial samples, the radiance cache update, path tracing Reference, and the two Realtime path tracing passes. A program holds the stage's own integration and the traversal, not material shading.
+- **Dispatch.** Unity binds a stage's resources, globals and output targets to a compute binding carrier as it would for any compute pass. The native backend replaces that carrier's dispatch with the stage's ray generation dispatch over the same bindings, on the same command list and in the same pass order. A stage never sees Unity's ray tracing shader bindings.
+- **Shader table.** The native backend owns one shader table per program. It holds one record per material evaluator, plus the miss record. Adding, removing or moving instances does not change it. It changes only when the set of evaluators changes.
+- **Pipelines.** A program's pipeline links the stage with the material modules. It is created when the program or the module set changes, never per frame. Pipeline creation may take noticeable time the first time a driver sees it; it is not a per-frame cost.
+- **Compute stages.** RTGI resampling and final shading trace visibility rays only. They remain compute work with ray queries and the same traversal rules.
 
 ## Acceleration structure
 
-RTGI Performance mode traces the [ray tracing scene](ray-tracing-scene.md)'s acceleration structure from compute work only. It does not bind that structure, or any other, to a ray generation dispatch. Binding an acceleration structure to a ray generation dispatch makes Unity prepare hit groups for all of its instances, even when the dispatch uses only ray queries. Participation, change tracking, culling and the once-per-frame build stay as the ray tracing scene defines them.
+Tracing programs and compute stages trace the [ray tracing scene](ray-tracing-scene.md)'s acceleration structure. Neither binds it, or any other structure, to a Unity ray generation dispatch, because binding one makes Unity prepare hit groups for all of its instances, even when the dispatch uses only ray queries. Participation, change tracking, culling and the once-per-frame build stay as the ray tracing scene defines them.
 
 ## Ray traversal
 
-- **Coverage.** A candidate hit on non-opaque geometry runs its material's coverage function inside the traversal loop. Coverage, stochastic coverage, face culling, shadow-caster and shadow-layer rules and colored transmission are the same as the hit shaders' rules for that ray kind ([Path Tracing](path-tracing.md#scene-and-material-inputs)).
-- **Closest hits.** A GI ray's accepted closest hit is evaluated by its material's inline evaluator.
-- **Visibility.** Visibility rays accumulate colored transmission through transmitting surfaces, as the hit shaders do.
+- **Coverage.** A candidate hit on non-opaque geometry runs its material's own coverage inside the traversal loop. The coverage of every material is compiled once into a shared coverage library that each tracing program links when its pipeline is created. Coverage, stochastic coverage, face culling, shadow-caster and shadow-layer rules and colored transmission are the same as the material's `PathTracing` rules for that ray kind ([Path Tracing](path-tracing.md#scene-and-material-inputs)). A candidate never calls into a material module, so traversal state stays with the program.
+- **Opaque geometry.** Geometry whose materials have no coverage is traversed as opaque and runs no candidate code.
+- **Closest hits.** A ray's accepted closest hit is shaded by its material's module. Rays are regrouped by the material they hit before the module runs, on GPUs that support shader execution reordering. Other GPUs shade in the original order with the same result.
+- **Visibility.** Visibility rays accumulate colored transmission through transmitting surfaces during traversal and need no closest-hit shading.
 - **Misses.** A ray that reaches no accepted hit sees the lighting environment.
 
 ## Exceptions
@@ -54,46 +67,49 @@ That submesh is evaluated as the same diagnostic surface that path tracing shows
 
 ## Scene resource table
 
-The ray tracing scene service owns a shader-visible resource table that compute shaders index. It holds the textures that materials reference and the vertex and index data of participating geometry. Instance, geometry and material records refer to its entries by index.
+The ray tracing scene service owns a shader-visible resource table that tracing programs and compute stages index. It holds the textures that materials reference and the vertex and index data of participating geometry. Instance, geometry and material records refer to its entries by index.
 
-- **Provider.** The table is provided by the optional UnityRHI native backend that RTGI's denoiser already requires. Its native module enlarges Unity's shader-visible descriptor heap and gives compute root signatures an indexed resource range without moving their other resources. Ray tracing pipelines are not extended.
+- **Provider.** The table is provided by the optional UnityRHI native backend that RTGI's denoiser already requires. Its native module enlarges Unity's shader-visible descriptor heap, gives compute root signatures an indexed resource range without moving their other resources, and creates the tracing programs' pipelines over the same range. Unity's own ray tracing pipelines are not extended.
 - **Loading.** The module must load before the graphics device is created. The Editor places it in the project, which the Editor and players load at startup, and asks for an Editor restart when it changes.
-- **Fallback.** Without the backend, or on a device without ray queries, RTGI Performance mode uses hit-shader evaluation for every instance, as it did before inline ray tracing. The reason is reported once.
+- **Unavailable.** Without the backend, on a device without ray queries, or when a stage's program or records are not ready, RTGI does not render its indirect lighting and path tracing renders black. The reason is reported. There is no hit-shader fallback.
 - **Imports.** The native hooking library and the descriptor-table technique are imported sources tracked by [Third-Party Source Imports](third-party-source-imports.md).
 - **Registration.** A resource gets an entry when a record first references it. Its entry is released once no record references it and no GPU work in flight still reads it.
-- **Replacement.** A texture reimport, a mesh upload or a recreated render texture changes the native resource behind a record's reference. The record moves to an entry for the new resource before the frame's inline work reads it, and the old entry is released like any other. An entry is never rewritten while GPU work in flight can still read it, so inline work never reads a released or stale resource.
+- **Replacement.** A texture reimport, a mesh upload or a recreated render texture changes the native resource behind a record's reference. The record moves to an entry for the new resource before the frame's tracing work reads it, and the old entry is released like any other. An entry is never rewritten while GPU work in flight can still read it, so tracing never reads a released or stale resource.
 
 ## Geometry records
 
 - **Geometry order.** A traversal reports a geometry index in the order the acceleration structure assigns to an instance's submeshes. That order leaves out disabled submeshes. Each instance's records map those indices back to their submeshes and materials.
-- **Attributes.** Records describe the mesh's vertex layout and formats. Inline evaluation reconstructs the hit's interpolated attributes from them: positions, normals, tangents, texture coordinates and vertex color, with the precision the hit shaders receive. Read/Write import is not required.
-- **Deforming geometry.** Skinned, blend-shaped and in-place meshes reference the deformed data the acceleration structure was built from in the same frame. Each deformed buffer has its own entry. A renderer that alternates between deformed buffers from frame to frame switches its records between those entries every frame. RTGI does not need previous-frame geometry at secondary surfaces.
+- **Attributes.** Records describe the mesh's vertex layout and formats. Inline evaluation reconstructs the hit's interpolated attributes from them: positions, normals, tangents, texture coordinates and vertex color, with the precision a hit shader would receive. Read/Write import is not required.
+- **Deforming geometry.** Skinned, blend-shaped and in-place meshes reference the deformed data the acceleration structure was built from in the same frame. Each deformed buffer has its own entry. A renderer that alternates between deformed buffers from frame to frame switches its records between those entries every frame. Neither consumer needs previous-frame geometry at secondary surfaces.
 
 ## Inline material evaluation
 
-- **Single source.** A shader's inline evaluator is the pass's own `PathTracing` program, compiled once per variant with its keywords and libraries, with its closest-hit and any-hit entry points called as functions. No material family has separate evaluator code, and passes need no changes for it.
-- **Hit environment.** The inline environment stands in for everything the hit shaders receive from Unity: ray and instance intrinsics, the geometry's vertex and index data, per-object transforms and the material's properties and textures. Evaluators of different shaders and variants are isolated from one another, while the scene and frame globals they share are declared once.
-- **Material inputs.** Material property values, texture scale and offset, and renderer property overrides are captured into material records. Change tracking recaptures them when the material or override content changes. Each hit reads its own record, so one dispatch shades many materials of a family.
-- **Texture sampling.** Texture lookups resolve through the scene resource table. They keep each texture's filtering, including the anisotropic filtering that quality settings force, and its addressing, and use the same footprint and level selection as hit-shader evaluation.
-- **Variants.** A material's enabled `PathTracing` keywords select its evaluator variant. Inline evaluators are generated when shaders import, follow [Shader Variant Stripping](shader-variant-stripping.md), and are reachable in a build exactly when RTGI is. A variant with no evaluator in a player is an exception.
-- **Work grouping.** Secondary surfaces are shaded in groups that share one evaluator. A shading wave never runs the code of unrelated material families.
-- **Generation.** Evaluators are regenerated when shader sources, their includes or the materials that select their variants change. A variant whose evaluator does not compile is reported with its compiler errors and becomes an exception. The other evaluators are unaffected.
+- **Single source.** A shader variant's `PathTracing` program is compiled once with its keywords and libraries. Its closest-hit entry point becomes the material module that shades accepted hits. Its coverage, the any-hit entry point, is compiled from the same source into the shared coverage library. No material family has separate evaluator code, and passes need no changes for it.
+- **Code placement.** Tracing programs hold the stage's integration and the traversal; they link the materials' coverage and do not hold their shading. Each program traverses from a single site that its scattered and visibility rays share, so the linked coverage is merged into it once. Shading code lives only in the modules, so a module runs only for its own hits and has its own register budget, and a program does not grow with the materials' shading.
+- **Hit environment.** The inline environment stands in for everything a hit shader receives from Unity: ray and instance intrinsics, the geometry's vertex and index data, per-object transforms and the material's properties and textures. Evaluators of different shaders and variants are isolated from one another, while the scene and frame globals they share are declared once.
+- **Material inputs.** Material property values, texture scale and offset, and renderer property overrides are captured into material records. Change tracking recaptures them when the material or override content changes. Each hit reads its own record, so one module shades every material of its variant.
+- **Texture sampling.** Texture lookups resolve through the scene resource table. They keep each texture's filtering, including the anisotropic filtering that quality settings force, and its addressing, and use the same footprint and level selection as a hit shader would.
+- **Variants.** A material's enabled `PathTracing` keywords select its evaluator variant. Evaluators are generated when shaders import, follow [Shader Variant Stripping](shader-variant-stripping.md), and are reachable in a build exactly when RTGI or path tracing is. A variant with no evaluator in a player is an exception.
+- **Generation.** Modules, the coverage library and tracing programs are regenerated when shader sources, their includes or the materials that select their variants change. A change to a material's coverage rebuilds the coverage library, not the tracing programs. A variant whose evaluator does not compile is reported with its compiler errors and becomes an exception. The other evaluators are unaffected. Outputs that no current program references are removed.
 
 ## RTGI integration
 
-- **Initial samples.** The GI ray is traced inline. Its hit is shaded in compute with the RTGI [secondary surface contract](ray-traced-global-illumination.md#secondary-surfaces): the standard Lit reduction, next-event estimation over the shared light set with inline visibility, and the raster light rule.
-- **Resampling and final shading.** Ray traced bias correction and final shading trace their visibility rays inline.
-- **Quality mode.** Unchanged: the radiance cache update and the initial samples keep hit-shader evaluation.
-- **Validation.** In the Editor and development builds, a switch selects hit-shader evaluation for Performance mode, to compare both paths on the same frame.
+- **Initial samples.** In both modes the GI ray is traced by the mode's program. Its hit is shaded with the RTGI [secondary surface contract](ray-traced-global-illumination.md#secondary-surfaces), including next-event estimation over the shared light set with visibility traced the same way.
+- **Radiance cache.** In Quality mode the cache update is traced by its own program.
+- **Resampling and final shading.** Ray traced bias correction and final shading trace their visibility rays from compute work.
+
+## Path tracing integration
+
+Reference and Realtime path tracing trace every path segment with their programs, with the [path tracing](path-tracing.md) material and lighting contracts unchanged.
 
 ## Acceptance
 
-- In RTGI Performance mode, no hit groups are prepared, and render-thread cost does not grow with the scene's instance count.
-- Converged RTGI matches the hit-shader validation path in these cases:
+- With RTGI in either mode or path tracing on, no hit groups are prepared, and render-thread cost does not grow with the scene's instance count.
+- Converged RTGI and path tracing match the materials' `PathTracing` contracts in these cases:
   - scenes with textured, alpha-tested, dithered, emissive and property-overridden props
   - skinned characters in motion, including skin, hair cards and cloth
-- Alpha-tested and dithered geometry and hair cards occlude and transmit the same in both paths, for GI and visibility rays.
+- Alpha-tested and dithered geometry and hair cards occlude and transmit correctly for GI and visibility rays, with no call into a material module during traversal.
 - Exceptions render as the diagnostic surface and are reported.
 - Meshes without Read/Write participate in players.
-- Without the native backend, on unsupported devices, or with the validation switch on, RTGI renders as it did before inline ray tracing.
-- Reimporting textures and meshes, changing materials or overrides, and adding or removing renderers or characters at runtime leave no stale or released resource reachable from inline work.
+- Without the native backend or on unsupported devices, the reason is reported and no hit-shader path runs.
+- Reimporting textures and meshes, changing materials or overrides, and adding or removing renderers or characters at runtime leave no stale or released resource reachable from tracing work.

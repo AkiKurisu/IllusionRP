@@ -4,8 +4,8 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-19 |
-| Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
+| Date | 2026-10-22 |
+| Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Inline Ray Tracing](inline-ray-tracing.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 ## Rendering Modes
 
@@ -17,7 +17,7 @@ The Path Tracing Volume requests path tracing and its mode for a camera. A runti
 
 Path tracing and RR availability can be queried, so an application offers Realtime only where it actually renders.
 
-A Volume switch, on by default, regroups rays by the surfaces they hit before those surfaces are shaded, in Reference and Realtime alike, on GPUs that support shader execution reordering. It changes performance only. Other GPUs trace in the original order.
+Both modes trace with [inline ray tracing](inline-ray-tracing.md): rays are regrouped by the materials they hit before those surfaces are shaded, on GPUs that support shader execution reordering. Regrouping changes performance only. Other GPUs shade in the original order.
 
 ## Responsibilities and Data Boundaries
 
