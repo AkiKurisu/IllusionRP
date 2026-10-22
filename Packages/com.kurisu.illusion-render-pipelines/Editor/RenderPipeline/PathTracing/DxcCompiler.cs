@@ -58,15 +58,6 @@ namespace Illusion.Rendering.Editor
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate UIntPtr GetBufferSizeFn(IntPtr self);
 
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int CreateBlobFn(IntPtr self, IntPtr data, uint size, uint encoding, out IntPtr blob);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int ValidateFn(IntPtr self, IntPtr blob, uint flags, out IntPtr result);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int GetBlobFn(IntPtr self, out IntPtr blob);
-
         [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr LoadLibraryExW(string path, IntPtr file, uint flags);
 
@@ -79,7 +70,6 @@ namespace Illusion.Rendering.Editor
         private const uint LoadWithAlteredSearchPath = 0x8;
         private const int OutErrors = 2;
         private const int OutHlsl = 6;
-        private const int OutObject = 1;
         private const uint CodePageUtf8 = 65001;
 
         private static Guid s_ClsidCompiler = new("73e22d93-e6ce-47f3-b5bf-f0664f39c1b0");
@@ -88,16 +78,32 @@ namespace Illusion.Rendering.Editor
         private static Guid s_IidUtils = new("4605c4cb-2019-492a-ada4-65f20bb7d67f");
         private static Guid s_IidResult = new("58346cda-dde7-4497-9461-6f87af5e0659");
         private static Guid s_IidBlob = new("8ba5fb08-5195-40e2-ac58-0d989c3a0102");
-        private static Guid s_ClsidValidator = new("8ca3e215-f728-4cf3-8cdd-88af917587a1");
-        private static Guid s_IidValidator = new("a6e82bd2-1fd7-4826-9811-2857e797f49a");
 
+        private IntPtr _module;
         private IntPtr _compiler;
         private IntPtr _utils;
         private IntPtr _includeHandler;
 
+        public static string ToolchainVersion
+        {
+            get
+            {
+                var versions = new StringBuilder();
+                foreach (string name in new[] { "dxc.exe", "dxcompiler.dll", "dxil.dll" })
+                {
+                    string path = FileUtil.GetPhysicalPath("Packages/com.kurisu.unityrhi/Plugins/x86_64/" + name);
+                    using var sha = System.Security.Cryptography.SHA256.Create();
+                    using var stream = File.OpenRead(path);
+                    versions.Append(name).Append(':').Append(System.Diagnostics.FileVersionInfo.GetVersionInfo(path).FileVersion)
+                        .Append(':').Append(BitConverter.ToString(sha.ComputeHash(stream))).Append(';');
+                }
+                return versions.ToString();
+            }
+        }
+
         public static DxcCompiler Create()
         {
-            string path = Path.Combine(EditorApplication.applicationContentsPath, "Tools", "dxcompiler.dll");
+            string path = FileUtil.GetPhysicalPath("Packages/com.kurisu.unityrhi/Plugins/x86_64/dxcompiler.dll");
             IntPtr module = LoadLibraryExW(path, IntPtr.Zero, LoadWithAlteredSearchPath);
             if (module == IntPtr.Zero)
                 throw new InvalidOperationException($"Could not load '{path}'.");
@@ -106,7 +112,7 @@ namespace Illusion.Rendering.Editor
                 throw new InvalidOperationException("dxcompiler.dll has no DxcCreateInstance export.");
             var create = Marshal.GetDelegateForFunctionPointer<CreateInstanceFn>(proc);
 
-            var dxc = new DxcCompiler();
+            var dxc = new DxcCompiler { _module = module };
             Check(create(ref s_ClsidCompiler, ref s_IidCompiler3, out dxc._compiler), "create compiler");
             Check(create(ref s_ClsidUtils, ref s_IidUtils, out dxc._utils), "create utils");
             Check(Method<CreateDefaultIncludeHandlerFn>(dxc._utils, 9)(dxc._utils, out dxc._includeHandler), "create include handler");
@@ -117,54 +123,57 @@ namespace Illusion.Rendering.Editor
         {
             var args = new List<string> { sourceName, "-P" };
             args.AddRange(arguments);
-            return Run(source, args, OutHlsl);
+            return Run(source, args);
         }
 
-        public Result Compile(string source, string sourceName, string entryPoint, string profile, IEnumerable<string> arguments, bool bytecode = false)
+        public Result Compile(string source, string entryPoint, string profile, IEnumerable<string> arguments)
         {
-            var args = new List<string> { sourceName, "-E", entryPoint, "-T", profile, "-Vd" };
-            args.AddRange(arguments);
-            var result = Run(source, args, OutObject, bytecode);
-            return bytecode && result.Succeeded
-                ? new Result(true, result.Output, result.Errors, Validate(result.Bytecode))
-                : result;
-        }
-
-        private byte[] Validate(byte[] code)
-        {
-            string path = FileUtil.GetPhysicalPath("Packages/com.kurisu.unityrhi/Plugins/x86_64/dxil.dll");
-            IntPtr module = LoadLibraryExW(path, IntPtr.Zero, LoadWithAlteredSearchPath);
-            if (module == IntPtr.Zero)
-                throw new InvalidOperationException($"Could not load DXIL validator '{path}'.");
-            IntPtr validator = IntPtr.Zero, blob = IntPtr.Zero, result = IntPtr.Zero, output = IntPtr.Zero;
-            var pinned = GCHandle.Alloc(code, GCHandleType.Pinned);
+            string executable = FileUtil.GetPhysicalPath("Packages/com.kurisu.unityrhi/Plugins/x86_64/dxc.exe");
+            string directory = Path.GetFullPath("Library/IllusionRP/Compiler");
+            Directory.CreateDirectory(directory);
+            string input = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".hlsl");
+            string output = input + ".dxil";
             try
             {
-                var create = Marshal.GetDelegateForFunctionPointer<CreateInstanceFn>(GetProcAddress(module, "DxcCreateInstance"));
-                Check(create(ref s_ClsidValidator, ref s_IidValidator, out validator), "create validator");
-                Check(Method<CreateBlobFn>(_utils, 4)(_utils, pinned.AddrOfPinnedObject(), (uint)code.Length, 0, out blob), "create bytecode blob");
-                Check(Method<ValidateFn>(validator, 3)(validator, blob, 0, out result), "validate bytecode");
-                Check(Method<GetStatusFn>(result, 3)(result, out int status), "read validation status");
-                if (status < 0)
+                File.WriteAllText(input, source, new UTF8Encoding(false));
+                var args = new List<string> { input, "-T", profile, "-Fo", output };
+                if (!string.IsNullOrEmpty(entryPoint)) args.AddRange(new[] { "-E", entryPoint });
+                args.AddRange(arguments);
+                using var process = new System.Diagnostics.Process
                 {
-                    Method<GetBlobFn>(result, 5)(result, out output);
-                    throw new InvalidOperationException("DXIL validation failed: " + Encoding.UTF8.GetString(ReadBlob(output)).TrimEnd('\0'));
-                }
-                Check(Method<GetBlobFn>(result, 4)(result, out output), "read validated bytecode");
-                return ReadBlob(output);
+                    StartInfo = new System.Diagnostics.ProcessStartInfo(executable, string.Join(" ", args.ConvertAll(Quote)))
+                    {
+                        UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true
+                    }
+                };
+                process.Start();
+                var errors = process.StandardError.ReadToEndAsync();
+                var messages = process.StandardOutput.ReadToEndAsync();
+                process.WaitForExit();
+                return new Result(process.ExitCode == 0, null, errors.GetAwaiter().GetResult() + messages.GetAwaiter().GetResult(),
+                    process.ExitCode == 0 ? File.ReadAllBytes(output) : null);
             }
             finally
             {
-                if (output != IntPtr.Zero) Release(output);
-                if (result != IntPtr.Zero) Release(result);
-                if (blob != IntPtr.Zero) Release(blob);
-                if (validator != IntPtr.Zero) Release(validator);
-                pinned.Free();
-                FreeLibrary(module);
+                File.Delete(input);
+                File.Delete(output);
             }
         }
 
-        private Result Run(string source, List<string> arguments, int outputKind, bool bytecode = false)
+        private static string Quote(string argument)
+        {
+            var result = new StringBuilder("\"");
+            int slashes = 0;
+            foreach (char c in argument)
+            {
+                if (c == '\\') { slashes++; continue; }
+                result.Append('\\', c == '\"' ? slashes * 2 + 1 : slashes).Append(c);
+                slashes = 0;
+            }
+            return result.Append('\\', slashes * 2).Append('\"').ToString();
+        }
+
+        private Result Run(string source, List<string> arguments)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(source);
             GCHandle pinned = GCHandle.Alloc(bytes, GCHandleType.Pinned);
@@ -185,8 +194,8 @@ namespace Illusion.Rendering.Editor
 
                 Method<GetStatusFn>(result, 3)(result, out int status);
                 string errors = ReadOutput(result, OutErrors);
-                string output = outputKind == OutHlsl ? ReadOutput(result, OutHlsl) : null;
-                return new Result(status >= 0, output, errors, bytecode && status >= 0 ? ReadBytes(result, OutObject) : null);
+                string output = ReadOutput(result, OutHlsl);
+                return new Result(status >= 0, output, errors);
             }
             finally
             {
@@ -248,6 +257,8 @@ namespace Illusion.Rendering.Editor
             if (_utils != IntPtr.Zero) Release(_utils);
             if (_compiler != IntPtr.Zero) Release(_compiler);
             _includeHandler = _utils = _compiler = IntPtr.Zero;
+            if (_module != IntPtr.Zero) FreeLibrary(_module);
+            _module = IntPtr.Zero;
         }
     }
 }

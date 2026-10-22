@@ -8,13 +8,8 @@ namespace Illusion.Rendering.PathTracing
 {
     internal sealed partial class PathTracingPass
     {
-        private const string BuildRayGenName = "RayGen_BUILD";
-
-        private const string FillRayGenName = "RayGen_FILL";
-
         private class RealtimeTracePassData : TracePassData
         {
-            internal RayTracingShader FillShader;
             internal PathTracingInlineDispatcher InlineFill;
             internal PathTracingRealtimeTargets Targets;
             internal int SamplesPerPixel;
@@ -45,12 +40,6 @@ namespace Illusion.Rendering.PathTracing
             internal int Height;
         }
 
-        private RayTracingShader _buildShader;
-
-        private RayTracingShader _fillShader;
-
-        private IPathTracingReordering _reordering;
-
         private ComputeShader _realtimeShader;
 
         private int _denoiseSpecHitTKernel;
@@ -70,13 +59,8 @@ namespace Illusion.Rendering.PathTracing
 
         private bool UsesRayReconstruction(PathTracing settings) => settings.rayReconstruction.value && IsRayReconstructionAvailable;
 
-        private IPathTracingReordering GetReordering(PathTracing settings) =>
-            !_inlineTracing && settings.shaderExecutionReordering.value && (_reordering ??= PathTracingReorderingLoader.Create()) is { IsAvailable: true } ? _reordering : null;
-
         private void InitializeRealtime(IllusionRenderPipelineResources resources)
         {
-            _buildShader = resources.pathTracingBuildRS;
-            _fillShader = resources.pathTracingFillRS;
             _realtimeShader = resources.pathTracingRealtimeCS;
             _denoiseSpecHitTKernel = _realtimeShader.FindKernel("DenoiseSpecHitT");
             _prepareKernel = _realtimeShader.FindKernel("PrepareRayReconstructionInputs");
@@ -86,8 +70,6 @@ namespace Illusion.Rendering.PathTracing
 
         private void DisposeRealtime()
         {
-            _reordering?.Dispose();
-            _reordering = null;
             _rayReconstruction?.Dispose();
             _rayReconstruction = null;
         }
@@ -102,12 +84,11 @@ namespace Illusion.Rendering.PathTracing
             int outputHeight = cameraData.cameraTargetDescriptor.height;
             var targets = context.GetRealtimeTargets(width, height, outputWidth, outputHeight);
             bool rayReconstruction = UsesRayReconstruction(settings);
-            var reordering = GetReordering(settings);
             var quality = settings.rayReconstructionQuality.value;
 
             int settingsHash = HashCode.Combine(settings.bounceCount.value, settings.diffuseBounceCount.value, settings.lightSampling.value,
                 settings.realtimeFireflyFilterThreshold.value, settings.environmentDiffuseMipOffset.value, settings.layerMask.value,
-                settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight, HashCode.Combine(settings.shaderExecutionReordering.value, _inlineTracing)));
+                settings.realtimeSamplesPerPixel.value, HashCode.Combine(rayReconstruction, quality, width, height, outputWidth, outputHeight));
             context.BeginRealtimeFrame(settingsHash, camera.transform);
 
             var worldToView = camera.worldToCameraMatrix;
@@ -125,7 +106,7 @@ namespace Illusion.Rendering.PathTracing
             var stablePlanesHeader = renderGraph.ImportTexture(targets.StablePlanesHeader);
             var stableRadiance = renderGraph.ImportTexture(targets.StableRadiance);
             RecordRealtimeTrace(renderGraph, context, world, targets, stablePlanesHeader, stableRadiance, constants, cameraData,
-                viewToClip * worldToView, settings.realtimeSamplesPerPixel.value, reordering);
+                viewToClip * worldToView, settings.realtimeSamplesPerPixel.value);
             var color = RecordGuides(renderGraph, context, targets, stablePlanesHeader, stableRadiance, rayReconstruction);
 
             var image = color;
@@ -163,16 +144,12 @@ namespace Illusion.Rendering.PathTracing
 
         private void RecordRealtimeTrace(RenderGraph renderGraph, PathTracingCameraContext context, PathTracingWorld world,
             PathTracingRealtimeTargets targets, TextureHandle stablePlanesHeader, TextureHandle stableRadiance,
-            in PathTracingSampleConstants constants, UniversalCameraData cameraData, Matrix4x4 worldToClip, int samplesPerPixel, IPathTracingReordering reordering)
+            in PathTracingSampleConstants constants, UniversalCameraData cameraData, Matrix4x4 worldToClip, int samplesPerPixel)
         {
             using var builder = renderGraph.AddUnsafePass<RealtimeTracePassData>("Path Tracing Realtime Trace", out var passData, _realtimeTraceSampler);
             FillTracePassData(renderGraph, passData, context, world, renderGraph.ImportTexture(context.Radiance), constants, cameraData, worldToClip);
-            passData.Shader = _buildShader;
-            passData.FillShader = _fillShader;
-            passData.InlineDispatch = _inlineTracing ? _inlineBuild : null;
-            passData.InlineSer = _inlineSer;
-            passData.InlineFill = _inlineTracing ? _inlineFill : null;
-            passData.Reordering = reordering;
+            passData.InlineDispatch = _inlineBuild;
+            passData.InlineFill = _inlineFill;
             passData.Targets = targets;
             passData.SamplesPerPixel = samplesPerPixel;
             passData.StablePlanesHeader = stablePlanesHeader;
@@ -187,21 +164,18 @@ namespace Illusion.Rendering.PathTracing
                 PrepareScene(cmd, data);
 
                 data.Resources.UploadConstants(cmd, data.Constants, default);
-                var build = data.InlineDispatch != null ? data.InlineDispatch.Target : (PathTracingShaderTarget)data.Shader;
+                var build = data.InlineDispatch.Target;
                 BindTraceResources(cmd, build, data);
-                if (data.InlineDispatch == null) PathTracingReorderingKeyword.Apply(cmd, data.Shader, data.Reordering);
                 BindStablePlanes(cmd, build, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.StablePlanes))
                 {
-                    if (data.InlineDispatch != null) data.InlineDispatch.Dispatch(cmd, data.Width, data.Height, data.InlineSer);
-                    else cmd.DispatchRays(data.Shader, BuildRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                    data.InlineDispatch.Dispatch(cmd, data.Width, data.Height);
                 }
                 using (new ProfilingScope(cmd, Samplers.LightFeedback))
                     data.LightBaker.UpdateEnd(cmd, data.Depth, data.MotionVectors, data.Width, data.Height);
 
-                var fill = data.InlineFill != null ? data.InlineFill.Target : (PathTracingShaderTarget)data.FillShader;
+                var fill = data.InlineFill.Target;
                 BindTraceResources(cmd, fill, data);
-                if (data.InlineFill == null) PathTracingReorderingKeyword.Apply(cmd, data.FillShader, data.Reordering);
                 BindStablePlanes(cmd, fill, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.Paths))
                 {
@@ -209,8 +183,7 @@ namespace Illusion.Rendering.PathTracing
                     {
                         var miniConstants = new PathTracingSampleMiniConstants { Params = new Vector4Int { X = (uint)i } };
                         data.Resources.UploadConstants(cmd, data.Constants, miniConstants);
-                        if (data.InlineFill != null) data.InlineFill.Dispatch(cmd, data.Width, data.Height, data.InlineSer);
-                        else cmd.DispatchRays(data.FillShader, FillRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                        data.InlineFill.Dispatch(cmd, data.Width, data.Height);
                     }
                 }
             });

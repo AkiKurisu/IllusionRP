@@ -79,6 +79,7 @@ namespace Illusion.Rendering.Editor
                 }
                 var compileArgs = new List<string>(preprocessArgs) { "-D", "SHADER_STAGE_COMPUTE=1" };
 
+                Debug.Log("[IllusionRP] Inline toolchain: " + DxcCompiler.ToolchainVersion);
                 GeneratorCache cache = GeneratorCache.Load();
                 var units = new List<GeneratedUnit>();
                 var pending = new List<GeneratedUnit>();
@@ -103,30 +104,7 @@ namespace Illusion.Rendering.Editor
                 int reused = units.Count - pending.Count;
 
                 var phase = Stopwatch.StartNew();
-                var checks = new List<Task>();
-                using var checkSlot = new SemaphoreSlim(1);
-                RunParallel("Preparing inline evaluators", pending, (dxc, unit) =>
-                {
-                    Preprocess(dxc, unit, preprocessArgs);
-                    if (unit.Transformed == null) return;
-                    checks.Add(Task.Run(async () =>
-                    {
-                        await checkSlot.WaitAsync();
-                        try
-                        {
-                            using var compiler = DxcCompiler.Create();
-                            unit.Error = CheckUnit(compiler, unit.Transformed, GeneratorCache.NamespacePlaceholder, compileArgs);
-                        }
-                        catch (Exception e)
-                        {
-                            unit.Error = e.Message;
-                        }
-                        finally { checkSlot.Release(); }
-                    }));
-                }, 1);
-                Task allChecks = Task.WhenAll(checks);
-                while (!allChecks.Wait(100))
-                    Progress("Finishing inline evaluator checks", 1f);
+                RunParallel("Preparing inline evaluators", pending, (dxc, unit) => Preprocess(dxc, unit, preprocessArgs));
                 long transformMs = phase.ElapsedMilliseconds;
                 foreach (GeneratedUnit unit in pending)
                 {
@@ -134,7 +112,6 @@ namespace Illusion.Rendering.Editor
                     if (unit.Transformed != null && cache.TryGet(unit.Key, out GeneratorCache.Entry entry))
                     {
                         unit.Unit = entry.ToUnit(unit.Namespace);
-                        cache.SetChecked(unit.Key, unit.Error);
                     }
                 }
 
@@ -163,17 +140,18 @@ namespace Illusion.Rendering.Editor
                     }
                 }
 
-                List<GeneratedUnit> toCheck = units.Where(u => u.Unit != null && u.Error == null && !cache.IsChecked(u.Key)).ToList();
-                phase.Restart();
-                RunParallel("Compiling inline evaluators", toCheck, (dxc, unit) =>
-                {
-                    unit.Error = CheckUnit(dxc, unit.Unit, unit.Namespace, compileArgs);
-                });
-                long validationMs = phase.ElapsedMilliseconds;
-                foreach (GeneratedUnit unit in toCheck)
-                    cache.SetChecked(unit.Key, unit.Error);
-
                 Progress("Writing inline evaluators and kernels", 1f);
+                if (units.Any(u => u.Error != null))
+                {
+                    new GeneratorReport
+                    {
+                        Failures = units.Where(u => u.Error != null).Select(u => new GeneratorReport.Failure
+                        {
+                            Shader = u.Pass.Path, Keywords = string.Join(" ", u.Keywords), Error = u.Error
+                        }).ToList()
+                    }.Save();
+                    throw new InvalidOperationException(string.Join("\n", units.Where(u => u.Error != null).Select(u => u.Pass.Path + ": " + u.Error)));
+                }
                 List<GeneratedUnit> accepted = units.Where(u => u.Unit != null && u.Error == null).ToList();
                 PathTracingInlineRegistry registry = Write(ComposeEvaluators(accepted), accepted, passes, force);
                 string shared = ComposeHoisted(accepted, hoisted, hoistedOrder);
@@ -191,7 +169,7 @@ namespace Illusion.Rendering.Editor
                         return null;
                     }
                     PathTracingInlineKernels.Write(registry, shared, consumer => PreprocessConsumer(consumer, string.Empty));
-                    PathTracingInlineKernels.WritePrograms(registry, shared, PreprocessConsumer, dxc, compileArgs);
+                    PathTracingInlineModules.Write(registry, shared, accepted.Select(u => (u.Unit.Body, u.Unit.AnyHitBody, u.Namespace)).ToArray(), PreprocessConsumer, dxc, compileArgs, cache.Version);
                     var existing = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(RegistryPath);
                     if (existing)
                     {
@@ -206,19 +184,8 @@ namespace Illusion.Rendering.Editor
                 cache.Retain(units.Select(u => u.Key));
                 cache.Save();
 
-                int failed = units.Count(u => u.Error != null);
-                new GeneratorReport
-                {
-                    Failures = units.Where(u => u.Error != null).Select(u => new GeneratorReport.Failure
-                    {
-                        Shader = u.Pass.Path,
-                        Keywords = string.Join(" ", u.Keywords),
-                        Error = u.Error
-                    }).ToList()
-                }.Save();
-                foreach (GeneratedUnit unit in units.Where(u => u.Error != null))
-                    Debug.LogWarning($"[IllusionRP] Path tracing inline evaluator for '{unit.Pass.Path}' ({string.Join(" ", unit.Keywords)}) is unavailable; its materials render as the diagnostic surface.\n{unit.Error}");
-                Debug.Log($"[IllusionRP] Generated {units.Count - failed} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms (prepare/check {transformMs} ms, cached-unit checks {validationMs} ms).");
+                new GeneratorReport().Save();
+                Debug.Log($"[IllusionRP] Generated {units.Count} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms (preprocess/transform {transformMs} ms).");
             }
             finally
             {
@@ -281,22 +248,8 @@ namespace Illusion.Rendering.Editor
         private static string Normalize(string text) =>
             ShaderSource.Fingerprint(text);
 
-        private static string CheckUnit(DxcCompiler dxc, PathTracingInlineUnitTransform.Unit unit, string unitNamespace, List<string> args)
-        {
-            var single = new List<GeneratedUnit> { new GeneratedUnit { Unit = unit, Namespace = unitNamespace } };
-            var hoisted = unit.Hoisted.GroupBy(h => h.Key).ToDictionary(g => g.Key, g => g.First().Value);
-            string source = "#include \"" + PreludeInclude + "\"\n" +
-                ComposeHoisted(single, hoisted, unit.Hoisted.Select(h => h.Key).Distinct().ToList()) +
-                ComposeEvaluators(single) + CheckKernel(1) + PathTracingInlineKernels.TableInclude;
-            DxcCompiler.Result check = dxc.Compile(source, EvaluatorsPath, "PathTracingInlineCheck", "cs_6_6", args);
-            return check.Succeeded ? null : FirstErrors(check.Errors);
-        }
-
-        private static string FirstErrors(string errors)
-        {
-            string[] lines = (errors ?? string.Empty).Split('\n');
-            return string.Join("\n", lines.Where(l => l.Contains("error")).Take(5));
-        }
+        private static string FirstErrors(string errors) =>
+            string.Join("\n", (errors ?? string.Empty).Split('\n').Where(l => l.Contains("error")).Take(5));
 
         private static string ComposeHoisted(List<GeneratedUnit> units, Dictionary<string, string> hoisted, List<string> hoistedOrder)
         {
@@ -348,13 +301,6 @@ namespace Illusion.Rendering.Editor
             sb.Append("        default: return true;\n    }\n}\n#endif\n");
             return sb.ToString();
         }
-
-        private static string CheckKernel(int count) =>
-            "\nRWStructuredBuffer<uint> _PathTracingInlineCheck;\n[numthreads(64, 1, 1)]\nvoid PathTracingInlineCheck(uint id : SV_DispatchThreadID)\n{\n" +
-            "    IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER, id, 0, 0);\n    AttributeData attributes;\n    attributes.barycentrics = 0;\n" +
-            $"    PathTracingInlineEvaluateClosestHit(id % {Math.Max(1, count)}u, payload, attributes);\n" +
-            $"    bool accepted = PathTracingInlineEvaluateAnyHit(id % {Math.Max(1, count)}u, payload, attributes);\n" +
-            "    _PathTracingInlineCheck[id] = payload.familyAndFlags + (accepted ? 1u : 0u);\n}\n";
 
         private static PathTracingInlineRegistry Write(string evaluators, List<GeneratedUnit> units, List<PassSource> passes, bool force)
         {

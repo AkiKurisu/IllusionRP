@@ -14,6 +14,40 @@ static class Program
 
     static void Main()
     {
+        string sliced = PathTracingCoverageSlice.Apply(@"
+struct Surface { float alpha; float3 color; float3 transmissionTint; };
+Surface PathTracingEvaluateTemplate();
+float PathTracingTemplateCoverage(Surface surface) { return surface.alpha; }
+void PathTracingAnyHit() { Surface surface = PathTracingEvaluateTemplate(); float3 transmission = surface.transmissionTint; }
+Surface frag(float value) {
+    float unusedColor = value * 9;
+    float coverage = value * 0.5;
+    Surface surface = (Surface)0;
+    surface.color = unusedColor;
+    surface.alpha = coverage;
+    if (value > 0) { float unusedBranch = value * 7; surface.color = unusedBranch; }
+    if (coverage < 0.1) clip(coverage - 0.1);
+    surface.transmissionTint = value.xxx;
+    return surface;
+}");
+        Check(!sliced.Contains("float unusedColor") && !sliced.Contains("float unusedBranch") && !sliced.Contains("surface.color =") &&
+            sliced.Contains("surface.alpha = coverage") && sliced.Contains("clip(coverage - 0.1)") && sliced.Contains("surface.transmissionTint = value.xxx"), "Coverage dependencies and side effects");
+        string mutations = PathTracingCoverageSlice.Apply(@"
+struct Surface { float alpha; };
+Surface PathTracingEvaluateTemplate();
+float PathTracingTemplateCoverage(Surface surface) { return surface.alpha; }
+void PathTracingAnyHit() {}
+void SetAlpha(out float alpha) { alpha = 0.5; }
+Surface frag(float value) { float alpha = value; SetAlpha(alpha); alpha++; { float alpha = 0.1; } Surface surface; surface.alpha = alpha; return surface; }");
+        Check(mutations.Contains("SetAlpha(alpha)") && mutations.Contains("alpha++") && mutations.Contains("float alpha = value"), "Coverage out parameters, mutation and shadowing");
+        string indexed = PathTracingCoverageSlice.Apply(@"
+struct Surface { float alpha; };
+Surface PathTracingEvaluateTemplate();
+float PathTracingTemplateCoverage(Surface surface) { return surface.alpha; }
+void PathTracingAnyHit() {}
+Surface frag(float value) { float values[2]; int selected = 1; values[selected] = value; Surface surface; surface.alpha = values[1]; return surface; }");
+        Check(indexed.Contains("int selected = 1"), "Coverage array write index dependency");
+        ShaderSource.ParseHlsl(sliced);
         var shader = ShaderSource.ParseShaderLab(@"Shader ""Test"" {
  HLSLINCLUDE
  float shaderScope;

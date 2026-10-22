@@ -71,6 +71,7 @@ namespace Illusion.Rendering
         public ComputeShader RayTracedGIResampling;
 
         public string Hash;
+        [HideInInspector] public string ModulesHash;
 
         [NonSerialized] private Dictionary<(int, string), int> _lookup;
         [NonSerialized] private Dictionary<int, HashSet<string>> _passKeywords;

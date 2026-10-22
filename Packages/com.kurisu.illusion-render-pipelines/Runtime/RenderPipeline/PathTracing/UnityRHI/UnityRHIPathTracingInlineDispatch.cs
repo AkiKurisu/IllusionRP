@@ -6,9 +6,15 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
     {
         private readonly global::UnityRhi.InlineRayTracing _program;
 
-        public UnityRHIPathTracingInlineDispatch(byte[] code, bool ser)
+        public UnityRHIPathTracingInlineDispatch(byte[] code, PathTracingInlineProgram.MaterialModule[] materials)
         {
-            _program = new global::UnityRhi.InlineRayTracing(code, "InlineMain", 8, 4, ser);
+            _program = new global::UnityRhi.InlineRayTracing(code, "InlineMain", 8, 4);
+            try
+            {
+                foreach (var material in materials)
+                    _program.AddMaterial(material.Code.bytes, material.ClosestHit, material.Candidate);
+            }
+            catch { _program.Dispose(); throw; }
         }
 
         public bool IsAvailable => _program.IsAvailable;

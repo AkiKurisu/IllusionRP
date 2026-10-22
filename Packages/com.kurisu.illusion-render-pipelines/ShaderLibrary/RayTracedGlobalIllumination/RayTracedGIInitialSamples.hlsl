@@ -11,7 +11,6 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracerTypes.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracerBridgeUnity.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracer.hlsli"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingReordering.hlsl"
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIReceiver.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGISecondarySurface.hlsl"
@@ -104,7 +103,7 @@ bool TraceToSecondaryHit(inout PathState path, inout SecondarySample secondary, 
         ray = SecondaryRay(path);
         const bool firstBounce = path.getVertexIndex() == 1;
         payload = CreateSecondaryPayload(path);
-        PathTracingTraceSceneRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, true, path.isTerminatingAtNextBounce() ? 1u : 0u);
+        TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
 
         if (payload.hitT == PT_NO_SURFACE_T)
         {
@@ -203,12 +202,7 @@ bool RayTracedGIInDispatch(uint2 reservoirPosition)
     return reservoirPosition.x < dispatchWidth && reservoirPosition.y < viewport.y;
 }
 
-#if defined(ILLUSION_INLINE_PROGRAM)
 void RayTracedGIInitialSamples(uint2 reservoirPosition)
-#else
-[numthreads(8, 4, 1)]
-void RayTracedGIInitialSamples(uint2 reservoirPosition : SV_DispatchThreadID)
-#endif
 {
     if (!RayTracedGIInDispatch(reservoirPosition))
         return;
@@ -267,8 +261,11 @@ void RayTracedGIInitialSamples(uint2 reservoirPosition : SV_DispatchThreadID)
             payload = CreateSecondaryPayload(path);
             AttributeData attributes;
             PathTracingInlineSetHit(hit, ray, attributes);
-            PathTracingInlineReorder(evaluator);
+#if defined(ILLUSION_INLINE_MODULES)
+            PathTracingInlineInvokeMaterial(SceneBVH, evaluator, false, ray, payload, attributes);
+#else
             PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
+#endif
             secondary = (SecondarySample)0;
             PrepareSecondaryHit(payload, ray, true, secondary);
             if (!PathTracer::BeginSurfaceHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext, surface))
@@ -344,19 +341,13 @@ SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, 
     return secondary;
 }
 
-#if defined(PATH_TRACING_INLINE)
 void RayGen_InitialSamples(uint2 reservoirPosition)
 {
     const uint2 viewport = uint2(g_GIConst.view.viewportSize);
     const uint dispatchWidth = g_GIConst.runtimeParams.activeCheckerboardField != 0 ? (viewport.x + 1) / 2 : viewport.x;
     if (reservoirPosition.x >= dispatchWidth || reservoirPosition.y >= viewport.y)
         return;
-#else
-[shader("raygeneration")]
-void RayGen_InitialSamples()
-{
-    const uint2 reservoirPosition = DispatchRaysIndex().xy;
-#endif
+
     const uint2 pixel = RTXDI_ReservoirPosToPixelPos(reservoirPosition, g_GIConst.runtimeParams.activeCheckerboardField);
     RayTracedGIReceiver receiver;
     float3 direction;
@@ -370,13 +361,6 @@ void RayGen_InitialSamples()
         StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_BELOW_SURFACE, BelowSurfaceSample(receiver, direction), 0.0);
 }
 
-#if !defined(PATH_TRACING_INLINE)
-[shader("miss")]
-void Miss_InitialSamples(inout IllusionPathPayload payload : SV_RayPayload)
-{
-    payload.hitT = PT_MISS_T;
-}
-#endif
 
 #endif
 

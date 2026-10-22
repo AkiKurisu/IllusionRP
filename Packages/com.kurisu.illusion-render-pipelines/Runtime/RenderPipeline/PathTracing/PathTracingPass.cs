@@ -94,43 +94,36 @@ namespace Illusion.Rendering.PathTracing
                 _rendererData.PerObjectShadowRenderingLayer, realtime);
             _scene.SkinnedUpdates.Keep(world.Scene.Instances);
             var registry = PathTracingInlineRegistry.Instance;
-            _inlineTracing = settings.inlineRayTracing.value;
-            _inlineSer = settings.shaderExecutionReordering.value;
-            if (_inlineTracing)
+            try
             {
-                try
+                if (!SystemInfo.supportsInlineRayTracing) throw new NotSupportedException("The device does not support inline ray tracing.");
+                if (!PathTracingInlineResources.IsAvailable) throw new InvalidOperationException("The UnityRHI inline resource table is unavailable.");
+                if (!registry) throw new InvalidOperationException("Inline programs have not been generated.");
+                if (realtime)
                 {
-                    if (!SystemInfo.supportsInlineRayTracing) throw new NotSupportedException("The device does not support inline ray tracing.");
-                    if (!PathTracingInlineResources.IsAvailable) throw new InvalidOperationException("The UnityRHI inline resource table is unavailable.");
-                    if (!registry) throw new InvalidOperationException("Inline programs have not been generated.");
-                    if (realtime)
-                    {
-                        _inlineBuild.SetProgram(registry.Build);
-                        _inlineFill.SetProgram(registry.Fill);
-                        _inlineBuild.Prepare(_inlineSer);
-                        _inlineFill.Prepare(_inlineSer);
-                    }
-                    else
-                    {
-                        _inlineReference.SetProgram(registry.Reference);
-                        _inlineReference.Prepare(_inlineSer);
-                    }
-                    world.UpdateInline();
-                    if (!world.Inline.IsReady) throw new InvalidOperationException("Inline scene records are unavailable.");
-                    _inlineFailure = null;
+                    _inlineBuild.SetProgram(registry.Build);
+                    _inlineFill.SetProgram(registry.Fill);
+                    _inlineBuild.Prepare();
+                    _inlineFill.Prepare();
                 }
-                catch (Exception e)
+                else
                 {
-                    if (_inlineFailure != e.ToString()) Debug.LogError(_inlineFailure = e.ToString());
-                    using var builder = renderGraph.AddRasterRenderPass<OutputPassData>("Path Tracing Inline Failed", out _);
-                    builder.SetRenderAttachment(resourceData.activeColorTexture, 0, AccessFlags.Write);
-                    builder.SetRenderFunc(static (OutputPassData data, RasterGraphContext ctx) =>
-                        ctx.cmd.ClearRenderTarget(RTClearFlags.Color, Color.black, 1, 0));
-                    return;
+                    _inlineReference.SetProgram(registry.Reference);
+                    _inlineReference.Prepare();
                 }
+                world.UpdateInline();
+                if (!world.Inline.IsReady) throw new InvalidOperationException("Inline scene records are unavailable.");
+                _inlineFailure = null;
             }
-
-
+            catch (Exception e)
+            {
+                if (_inlineFailure != e.ToString()) Debug.LogError(_inlineFailure = e.ToString());
+                using var builder = renderGraph.AddRasterRenderPass<OutputPassData>("Path Tracing Inline Failed", out _);
+                builder.SetRenderAttachment(resourceData.activeColorTexture, 0, AccessFlags.Write);
+                builder.SetRenderFunc(static (OutputPassData data, RasterGraphContext ctx) =>
+                    ctx.cmd.ClearRenderTarget(RTClearFlags.Color, Color.black, 1, 0));
+                return;
+            }
             TextureHandle image = realtime
                 ? RecordRealtime(renderGraph, cameraData, settings, context, world)
                 : RecordReference(renderGraph, cameraData, settings, context, world);
@@ -214,8 +207,6 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
-        private bool _inlineTracing;
-        private bool _inlineSer;
         private string _inlineFailure;
         private readonly PathTracingInlineDispatcher _inlineReference = new();
         private readonly PathTracingInlineDispatcher _inlineBuild = new();

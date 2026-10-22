@@ -55,6 +55,13 @@ namespace Illusion.Rendering.Editor
         }
 
         [StructLayout(LayoutKind.Sequential)]
+        private struct LibraryDescription
+        {
+            public IntPtr Creator;
+            public uint Flags, Functions;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         private struct BufferDescription
         {
             [MarshalAs(UnmanagedType.LPStr)] public string Name;
@@ -90,37 +97,47 @@ namespace Illusion.Rendering.Editor
             {
                 var data = new DxcBuffer { Ptr = pinned.AddrOfPinnedObject(), Size = (UIntPtr)code.Length };
                 Check(Method<CreateReflectionFn>(_utils, 13)(_utils, ref data, ref iid, out reflection), "reflect bytecode");
-                IntPtr shader = library ? Method<IndexedPointerFn>(reflection, 4)(reflection, 0) : reflection;
-                if (shader == IntPtr.Zero) throw new InvalidOperationException("DXIL contains no entry point.");
-                var desc = Describe<ShaderDescriptionPrefix>(shader, library ? 0 : 3);
                 var result = new Reflection();
-                for (uint i = 0; i < desc.BoundResources; i++)
+                uint count = library ? Describe<LibraryDescription>(reflection, 3).Functions : 1;
+                for (uint function = 0; function < count; function++)
                 {
-                    IntPtr resource = Marshal.AllocHGlobal(Marshal.SizeOf<Resource>());
-                    try
+                    IntPtr shader = library ? Method<IndexedPointerFn>(reflection, 4)(reflection, function) : reflection;
+                    if (shader == IntPtr.Zero) throw new InvalidOperationException("DXIL contains no entry point.");
+                    var desc = Describe<ShaderDescriptionPrefix>(shader, library ? 0 : 3);
+                    for (uint i = 0; i < desc.BoundResources; i++)
                     {
-                        Check(Method<ResourceFn>(shader, library ? 3 : 6)(shader, i, resource), "reflect resource");
-                        result.Resources.Add(Marshal.PtrToStructure<Resource>(resource));
-                    }
-                    finally { Marshal.FreeHGlobal(resource); }
-                }
-                for (uint i = 0; i < desc.ConstantBuffers; i++)
-                {
-                    var buffer = Method<IndexedPointerFn>(shader, library ? 1 : 4)(shader, i);
-                    var description = Describe<BufferDescription>(buffer);
-                    if (description.Type != 0) continue;
-                    var item = new ConstantBuffer { Name = description.Name, Size = description.Size };
-                    for (uint j = 0; j < description.Variables; j++)
-                    {
-                        var variable = Method<IndexedPointerFn>(buffer, 1)(buffer, j);
-                        var value = Describe<VariableDescription>(variable);
-                        item.Variables.Add(new Variable
+                        IntPtr resource = Marshal.AllocHGlobal(Marshal.SizeOf<Resource>());
+                        try
                         {
-                            Name = value.Name, Offset = value.Offset, Size = value.Size,
-                            Type = ReadType(Method<PointerFn>(variable, 1)(variable))
-                        });
+                            Check(Method<ResourceFn>(shader, library ? 3 : 6)(shader, i, resource), "reflect resource");
+                            var value = Marshal.PtrToStructure<Resource>(resource);
+                            int existing = result.Resources.FindIndex(r => r.Name == value.Name);
+                            if (existing < 0) result.Resources.Add(value);
+                            else if (result.Resources[existing].BindPoint != value.BindPoint || result.Resources[existing].Space != value.Space || result.Resources[existing].Type != value.Type)
+                                throw new InvalidOperationException($"Conflicting function binding '{value.Name}'.");
+                        }
+                        finally { Marshal.FreeHGlobal(resource); }
                     }
-                    result.ConstantBuffers.Add(item);
+                    for (uint i = 0; i < desc.ConstantBuffers; i++)
+                    {
+                        var buffer = Method<IndexedPointerFn>(shader, library ? 1 : 4)(shader, i);
+                        var description = Describe<BufferDescription>(buffer);
+                        if (description.Type != 0) continue;
+                        var item = new ConstantBuffer { Name = description.Name, Size = description.Size };
+                        for (uint j = 0; j < description.Variables; j++)
+                        {
+                            var variable = Method<IndexedPointerFn>(buffer, 1)(buffer, j);
+                            var value = Describe<VariableDescription>(variable);
+                            item.Variables.Add(new Variable
+                            {
+                                Name = value.Name, Offset = value.Offset, Size = value.Size,
+                                Type = ReadType(Method<PointerFn>(variable, 1)(variable))
+                            });
+                        }
+                        var existing = result.ConstantBuffers.Find(c => c.Name == item.Name);
+                        if (existing == null) result.ConstantBuffers.Add(item);
+                        else if (existing.Size != item.Size) throw new InvalidOperationException($"Conflicting function cbuffer '{item.Name}'.");
+                    }
                 }
                 return result;
             }

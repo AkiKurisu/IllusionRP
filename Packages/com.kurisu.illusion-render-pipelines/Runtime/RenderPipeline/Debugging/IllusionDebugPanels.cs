@@ -147,8 +147,6 @@ namespace Illusion.Rendering
                     c => c.EnablePRTCascadesDebug, (c, v) => c.EnablePRTCascadesDebug = v),
                 Choice("Ray Traced GI Radiance Cache", "Visualize the radiance cache of Quality mode ray traced global illumination.",
                     c => c.RayTracedGlobalIlluminationDebugView, (c, v) => c.RayTracedGlobalIlluminationDebugView = v),
-                Toggle("Ray Traced GI Hit Shaders", "Evaluate Performance mode ray traced global illumination with hit shaders instead of inline ray tracing, to compare both paths.",
-                    c => c.RayTracedGlobalIlluminationHitShaders, (c, v) => c.RayTracedGlobalIlluminationHitShaders = v),
                 Toggle("Area Light Shadow Atlas", "Overlay the area light shadow atlas.",
                     c => c.EnableAreaLightShadowAtlasDebug, (c, v) => c.EnableAreaLightShadowAtlasDebug = v),
                 Indented("AreaLightShadowAtlasRange", () => !Config.EnableAreaLightShadowAtlasDebug,

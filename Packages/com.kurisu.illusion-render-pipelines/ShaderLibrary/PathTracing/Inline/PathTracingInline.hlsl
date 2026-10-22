@@ -39,11 +39,18 @@ struct PathTracingInlineHitState
     uint instanceIndex;
     uint primitiveIndex;
     uint geometryIndex;
+    uint hitKind;
     float3x4 objectToWorld;
     float3x4 worldToObject;
     float3 rayOrigin;
     float3 rayDirection;
     float t;
+};
+
+struct PathTracingInlineMaterialPayload
+{
+    IllusionPathPayload path;
+    uint accepted;
 };
 
 static PathTracingInlineHitState g_PathTracingInline;
@@ -65,8 +72,6 @@ void PathTracingInlineIgnoreHit() { g_PathTracingInlineIgnored = true; }
 
 void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
     RayDesc ray, inout IllusionPathPayload payload);
-
-void PathTracingInlineReorder(uint evaluator);
 
 #define TraceRay(accelerationStructure, rayFlags, instanceMask, hitGroupOffset, hitGroupStride, missIndex, ray, payload) \
     PathTracingInlineTraceRay(accelerationStructure, rayFlags, instanceMask, ray, payload)

@@ -1,7 +1,3 @@
-#pragma max_recursion_depth 1
-#pragma only_renderers d3d11
-#pragma multi_compile_local _ ILLUSION_PT_SER
-
 #define PATH_TRACER_MODE PATH_TRACER_MODE_REFERENCE
 #define RTXPT_PIPELINE_PERMUTATION_NAME REF
 

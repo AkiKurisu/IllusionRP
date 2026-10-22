@@ -137,12 +137,6 @@ namespace Illusion.Rendering.PathTracing
             shader.SetInt(cmd, MaterialCountId, _data.Count);
         }
 
-        public void BindHitShaderGlobals(CommandBuffer cmd)
-        {
-            cmd.SetGlobalBuffer(MaterialBufferId, _buffer);
-            cmd.SetGlobalInt(MaterialCountId, _data.Count);
-        }
-
         public void Dispose()
         {
             _buffer?.Release(); _buffer = null;

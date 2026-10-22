@@ -1,13 +1,6 @@
 #ifndef ILLUSION_PATH_TRACING_INLINE_TRAVERSAL_INCLUDED
 #define ILLUSION_PATH_TRACING_INLINE_TRAVERSAL_INCLUDED
 
-void PathTracingInlineReorder(uint evaluator)
-{
-#if defined(ILLUSION_INLINE_SER)
-    NvReorderThread(evaluator, 16);
-#endif
-}
-
 uint PathTracingInlineLoadGeometry(uint instanceID, uint geometryIndex)
 {
     uint first = _PathTracingInlineInstanceGeometries[instanceID];
@@ -24,6 +17,7 @@ struct PathTracingInlineHit
     uint instanceIndex;
     uint primitiveIndex;
     uint geometryIndex;
+    uint hitKind;
     float t;
     float2 barycentrics;
     float3x4 objectToWorld;
@@ -38,11 +32,34 @@ void PathTracingInlineSetHit(PathTracingInlineHit hit, RayDesc ray, out Attribut
     g_PathTracingInline.instanceIndex = hit.instanceIndex;
     g_PathTracingInline.primitiveIndex = hit.primitiveIndex;
     g_PathTracingInline.geometryIndex = hit.geometryIndex;
+    g_PathTracingInline.hitKind = hit.hitKind;
     g_PathTracingInline.objectToWorld = hit.objectToWorld;
     g_PathTracingInline.worldToObject = hit.worldToObject;
     g_PathTracingInline.t = hit.t;
     attributes.barycentrics = hit.barycentrics;
 }
+
+#if defined(ILLUSION_INLINE_MODULES)
+#undef TraceRay
+bool PathTracingInlineInvokeMaterial(RaytracingAccelerationStructure accelerationStructure, uint evaluator, bool candidate,
+    RayDesc ray, inout IllusionPathPayload payload, AttributeData attributes)
+{
+    ray.TMax = g_PathTracingInline.t;
+    NvHitObject hitObject;
+    NvMakeHitWithRecordIndex(evaluator * 2 + (candidate ? 1u : 0u), accelerationStructure,
+        g_PathTracingInline.instanceIndex, g_PathTracingInline.geometryIndex, g_PathTracingInline.primitiveIndex,
+        g_PathTracingInline.hitKind, ray, attributes, hitObject);
+    if (!candidate) NvReorderThread(hitObject);
+    PathTracingInlineMaterialPayload material;
+    material.path = payload;
+    material.accepted = 1;
+    NvInvokeHitObject(accelerationStructure, hitObject, material);
+    payload = material.path;
+    return material.accepted != 0;
+}
+#define TraceRay(accelerationStructure, rayFlags, instanceMask, hitGroupOffset, hitGroupStride, missIndex, ray, payload) \
+    PathTracingInlineTraceRay(accelerationStructure, rayFlags, instanceMask, ray, payload)
+#endif
 
 bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
     RayDesc ray, inout IllusionPathPayload payload, out PathTracingInlineHit hit)
@@ -60,13 +77,18 @@ bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStruc
         g_PathTracingInline.instanceIndex = query.CandidateInstanceIndex();
         g_PathTracingInline.primitiveIndex = query.CandidatePrimitiveIndex();
         g_PathTracingInline.geometryIndex = query.CandidateGeometryIndex();
+        g_PathTracingInline.hitKind = query.CandidateTriangleFrontFace() ? HIT_KIND_TRIANGLE_FRONT_FACE : HIT_KIND_TRIANGLE_BACK_FACE;
         g_PathTracingInline.objectToWorld = query.CandidateObjectToWorld3x4();
         g_PathTracingInline.worldToObject = query.CandidateWorldToObject3x4();
         g_PathTracingInline.t = query.CandidateTriangleRayT();
         AttributeData attributes;
         attributes.barycentrics = query.CandidateTriangleBarycentrics();
         uint evaluator = PathTracingInlineLoadGeometry(g_PathTracingInline.instanceID, g_PathTracingInline.geometryIndex);
+#if defined(ILLUSION_INLINE_MODULES)
+        bool accepted = evaluator == PT_INLINE_NO_EVALUATOR || PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, true, ray, payload, attributes);
+#else
         bool accepted = evaluator == PT_INLINE_NO_EVALUATOR || PathTracingInlineEvaluateAnyHit(evaluator, payload, attributes);
+#endif
         if (accepted)
         {
             query.CommitNonOpaqueTriangleHit();
@@ -84,6 +106,7 @@ bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStruc
     hit.instanceIndex = query.CommittedInstanceIndex();
     hit.primitiveIndex = query.CommittedPrimitiveIndex();
     hit.geometryIndex = query.CommittedGeometryIndex();
+    hit.hitKind = query.CommittedTriangleFrontFace() ? HIT_KIND_TRIANGLE_FRONT_FACE : HIT_KIND_TRIANGLE_BACK_FACE;
     hit.t = query.CommittedRayT();
     hit.barycentrics = query.CommittedTriangleBarycentrics();
     hit.objectToWorld = query.CommittedObjectToWorld3x4();
@@ -103,8 +126,11 @@ void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStruc
     uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
     if (evaluator != PT_INLINE_NO_EVALUATOR)
     {
-        PathTracingInlineReorder(evaluator);
+#if defined(ILLUSION_INLINE_MODULES)
+        PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, false, ray, payload, attributes);
+#else
         PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
+#endif
     }
 }
 

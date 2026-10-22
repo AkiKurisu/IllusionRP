@@ -13,7 +13,7 @@ namespace Illusion.Rendering.Editor
             EditorApplication.delayCall += () =>
             {
                 var registry = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(PathTracingInlineGenerator.RegistryPath);
-                if (PathTracingInlineGenerator.IsEnabled && (!registry || registry.Quality?.RayGen == null || registry.Fill?.RayGen == null))
+                if (PathTracingInlineGenerator.IsEnabled && (!registry || registry.Quality?.RayGenSer == null || registry.Fill?.RayGenSer == null))
                     Schedule();
             };
         }

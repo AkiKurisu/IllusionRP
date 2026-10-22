@@ -1,4 +1,0 @@
-#pragma max_recursion_depth 1
-#pragma only_renderers d3d11
-
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIPerformance.hlsl"

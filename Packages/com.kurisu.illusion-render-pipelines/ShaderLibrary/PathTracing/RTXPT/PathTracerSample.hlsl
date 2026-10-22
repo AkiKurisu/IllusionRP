@@ -17,7 +17,6 @@
 // @IllusionRP: Unity material and scene bridge.
 #include "PathTracerBridgeUnity.hlsli"
 #include "PathTracer/PathTracer.hlsli"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingReordering.hlsl"
 
 // TODO: move this to PathTracer once SER is unified
 // NOTE: this only works correctly (reconstructs the path fully) with primary hit (plus PSR so all mirrors are fine)
@@ -116,8 +115,7 @@ void nextHit(inout PathState path, inout float2 tMinMax, const PathTracer::Worki
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES
     payload.rayKindAndSeed |= PT_RAY_MOTION;  // @IllusionRP
 #endif
-    PathTracingTraceSceneRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, path.hasFlag(PathFlags::enableThreadReorder),
-        path.isTerminatingAtNextBounce() ? 1u : 0u);  // @IllusionRP
+    TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);  // @IllusionRP
     if (payload.hitT == PT_NO_SURFACE_T)
         PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
     else if (payload.hitT < 0.0)
@@ -162,17 +160,10 @@ void ValidateNaNs(inout PathState path, PathTracer::WorkingContext workingContex
 #endif    
 }
 
-#if defined(PATH_TRACING_INLINE)
 void RAYGEN_ENTRY(uint2 pixelPos)
 {
     if (any(pixelPos >= uint2(g_Const.view.viewportSize)))
         return;
-#else
-[shader("raygeneration")]
-void RAYGEN_ENTRY()
-{
-    uint2 pixelPos = DispatchRaysIndex().xy;
-#endif
 
     //float3 lastOrigin = float3(1e30f,1e30f,1e30f);
     PathState path;
@@ -245,13 +236,5 @@ void DeltaTreeVizExplorePixel(PathTracer::WorkingContext workingContext)
             workingContext.Debug.DeltaTreeStoreStablePlaneID( i, workingContext.StablePlanes.GetBranchIDCenter(i) );
         workingContext.Debug.DeltaTreeStoreDominantStablePlaneIndex( workingContext.StablePlanes.LoadDominantIndexCenter() );
     }
-}
-#endif
-// @IllusionRP: scatter rays are traced with TraceRay, so misses are reported through the payload.
-#if !defined(PATH_TRACING_INLINE)
-[shader("miss")]
-void MISS_ENTRY(inout IllusionPathPayload payload : SV_RayPayload)
-{
-    payload.hitT = PT_MISS_T;
 }
 #endif

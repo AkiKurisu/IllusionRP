@@ -114,13 +114,11 @@ namespace Illusion.Rendering.Editor
 
         private static bool IsUav(uint type) => type == 4 || type == 6 || type == 8 || type == 9 || type == 10 || type == 11;
 
-        public static void Validate(DxcCompiler.Reflection expected, DxcCompiler.Reflection actual, bool ser)
+        public static void Validate(DxcCompiler.Reflection expected, DxcCompiler.Reflection actual)
         {
-            if (!ser && expected.Resources.Count != actual.Resources.Count)
-                throw new InvalidOperationException("Carrier resource count differs from native DXIL.");
             foreach (var resource in expected.Resources)
             {
-                bool extension = ser && resource.Name == "g_NvidiaExt";
+                bool extension = resource.Name == "g_NvidiaExt";
                 string name = extension ? Extension : resource.Name;
                 var matches = actual.Resources.Where(r => r.Name == name).ToArray();
                 if (matches.Length != 1) throw new InvalidOperationException($"Carrier binding '{name}' is missing.");

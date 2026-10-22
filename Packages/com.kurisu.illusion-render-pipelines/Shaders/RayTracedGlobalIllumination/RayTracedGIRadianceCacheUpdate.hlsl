@@ -1,20 +1,11 @@
-#pragma max_recursion_depth 1
-#pragma only_renderers d3d11
-#pragma multi_compile_local _ ILLUSION_PT_SER
-#pragma require Native16Bit int64BufferAtomics
-
-// Populates the radiance cache as SHaRC's update pass does: one receiver in every 5x5 block of GI pixels traces a path, each
-// vertex adds its light sampling to the cache, and SHaRC passes it back to the vertices before it.
-
 #define PATH_TRACER_MODE PATH_TRACER_MODE_REFERENCE
 #define RTXPT_PIPELINE_PERMUTATION_NAME GI
-// The receiver is vertex 1; a path reaches up to eight more vertices.
 #define PT_BOUNCE_COUNT 9
 #define PT_DIFFUSE_BOUNCE_COUNT 9
 #define PT_STANDARD_LIT
-// As SHaRC's update pass does, roughness is clamped so that local specular highlights are not cached.
+// Avoid caching sharp specular highlights.
 #define PT_MIN_PERCEPTUAL_ROUGHNESS 0.4
-// Every segment hands SHaRC its own throughput, which Russian roulette's correction at the next vertex would break.
+// SHaRC needs unmodified segment throughput.
 #define PT_ENABLE_RUSSIAN_ROULETTE 0
 #define PT_SEPARATE_SURFACE_EMISSION
 #define SHARC_UPDATE 1
@@ -24,7 +15,6 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracerTypes.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracerBridgeUnity.hlsli"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/PathTracer.hlsli"
-#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingReordering.hlsl"
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIReceiverSampling.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RayTracedGlobalIllumination/RayTracedGIRadianceCache.hlsl"
@@ -34,17 +24,11 @@
 static const uint kRayTracedGICacheUpdateBlockSize = 5;
 static const uint kRayTracedGICacheUpdateRandomSeed = 31;
 
-#if defined(PATH_TRACING_INLINE)
 void RayGen_RadianceCacheUpdate(uint2 block)
 {
     if (any(block >= (uint2(g_GIConst.view.viewportSize) + kRayTracedGICacheUpdateBlockSize - 1) / kRayTracedGICacheUpdateBlockSize))
         return;
-#else
-[shader("raygeneration")]
-void RayGen_RadianceCacheUpdate()
-{
-    const uint2 block = DispatchRaysIndex().xy;
-#endif
+
     RTXDI_RandomSamplerState rng = RTXDI_InitRandomSampler(block, g_GIConst.runtimeParams.frameIndex, kRayTracedGICacheUpdateRandomSeed);
     const uint2 offset = min(uint2(float2(RTXDI_GetNextRandom(rng), RTXDI_GetNextRandom(rng)) * kRayTracedGICacheUpdateBlockSize),
         kRayTracedGICacheUpdateBlockSize - 1);
@@ -82,9 +66,8 @@ void RayGen_RadianceCacheUpdate()
         IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER,
             Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
             path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
-        PathTracingTraceSceneRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, ray, payload, true, path.isTerminatingAtNextBounce() ? 1u : 0u);
+        TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
 
-        // Each segment starts from unit throughput and no radiance: SHaRC weights it by the throughputs it was handed.
         path.SetThp(1.0);
         path.SetL(0.0);
         if (payload.hitT == PT_NO_SURFACE_T)
@@ -99,7 +82,7 @@ void RayGen_RadianceCacheUpdate()
             }
             break;
         }
-        // As in SHaRC's update pass, the last vertex adds nothing: it would only collect emission.
+        // Skip emission-only terminal vertices.
         if (path.isTerminatingAtNextBounce())
             break;
 
@@ -117,7 +100,6 @@ void RayGen_RadianceCacheUpdate()
             path.setTerminateAtNextBounce();
         g_PathSurfaceEmission = 0.0;
         PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
-        // A multiply overlay passes the path on without a new vertex.
         if (path.getVertexIndex() == vertexIndex)
             continue;
 
@@ -127,11 +109,3 @@ void RayGen_RadianceCacheUpdate()
         SharcSetThroughput(sharcState, path.GetThp());
     }
 }
-
-#if !defined(PATH_TRACING_INLINE)
-[shader("miss")]
-void Miss_RadianceCacheUpdate(inout IllusionPathPayload payload : SV_RayPayload)
-{
-    payload.hitT = PT_MISS_T;
-}
-#endif

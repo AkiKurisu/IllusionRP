@@ -158,7 +158,7 @@ namespace Illusion.Rendering.Editor
             }
             unit.RecordSize = unit.ConstantsOffset + unit.Constants.Count * 16;
             unit.Body = Emit(false);
-            unit.AnyHitBody = Emit(true);
+            unit.AnyHitBody = PathTracingCoverageSlice.Apply(Emit(true));
             unit.SharedHitContext = HitContextSignature(document, new HashSet<HlslDeclaration>(local));
             return unit;
 

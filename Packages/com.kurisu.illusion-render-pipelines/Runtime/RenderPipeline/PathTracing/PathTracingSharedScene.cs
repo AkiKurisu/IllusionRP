@@ -54,7 +54,7 @@ namespace Illusion.Rendering.PathTracing
             _motionShader = resources.pathTracingMotionCS;
         }
 
-        public static bool IsSupported => SystemInfo.supportsRayTracing && SystemInfo.supportsRayTracingShaders;
+        public static bool IsSupported => SystemInfo.supportsRayTracing && SystemInfo.supportsInlineRayTracing;
 
         public static bool HasResources(IllusionRenderPipelineResources resources)
         {
@@ -82,7 +82,6 @@ namespace Illusion.Rendering.PathTracing
         }
 
         /// <summary>
-        /// Prepares the environment, light buffers and acceleration structure, then binds the hit shader globals.
         /// The environment may change the view and projection matrices; callers restore their own.
         /// </summary>
         public void Prepare(CommandBuffer cmd, PathTracingWorld world, PathTracingLightBaker lightBaker, RenderTargetIdentifier exposureTexture,
@@ -98,7 +97,6 @@ namespace Illusion.Rendering.PathTracing
             }
             using (new ProfilingScope(cmd, Samplers.Scene))
                 world.Build(cmd, frame);
-            world.BindHitShaderGlobals(cmd);
         }
 
         /// <summary>
@@ -116,7 +114,6 @@ namespace Illusion.Rendering.PathTracing
             shader.SetFloat(cmd, ShaderIDs._PathTracingSubsurfaceRayBias, subsurfaceRayBias);
             ConstantBuffer.PushGlobal(cmd, profiles, ShaderIDs.ShaderVariablesSubsurface);
             shader.SetTexture(cmd, ShaderIDs._PreIntegratedFGD_GGXDisneyDiffuse, Resources.GetFGD(cmd));
-            shader.SetShaderPass(cmd, PathTracingPass.MaterialPassName);
             shader.SetAccelerationStructure(cmd, ShaderIDs.SceneBVH, world.Scene.AccelerationStructure);
             shader.SetBuffer(cmd, ShaderIDs.t_PathTracingConstants, constants);
             shader.SetBuffer(cmd, ShaderIDs.t_PathTracingMiniConstants, miniConstants);

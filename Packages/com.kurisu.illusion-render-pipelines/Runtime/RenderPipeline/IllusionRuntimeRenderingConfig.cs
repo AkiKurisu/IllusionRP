@@ -206,12 +206,6 @@ namespace Illusion.Rendering
         public RayTracedGIDebugView RayTracedGlobalIlluminationDebugView { get; set; }
 
         /// <summary>
-        /// Evaluate ray traced global illumination Performance mode with hit shaders instead of inline ray tracing.
-        /// </summary>
-        [ConfigVariable("r.debug.rtgi.hitshaders", IsEditor = true)]
-        public bool RayTracedGlobalIlluminationHitShaders { get; set; }
-
-        /// <summary>
         /// Whether to center the histogram debug view around the middle-grey point or not.
         /// </summary>
         [ConfigVariable("r.CenterHistogramAroundMiddleGrey", IsEditor = true)]

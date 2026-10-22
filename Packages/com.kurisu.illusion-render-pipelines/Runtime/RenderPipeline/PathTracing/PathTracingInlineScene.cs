@@ -54,6 +54,7 @@ namespace Illusion.Rendering.PathTracing
         private int _firstDeformingGeometry;
         private readonly List<GraphicsBuffer> _deformedSources = new();
         private PathTracingInlineRegistry _registry;
+        private string _modulesHash;
 
         public int UncoveredInstances { get; private set; }
 
@@ -69,10 +70,11 @@ namespace Illusion.Rendering.PathTracing
             if (!registry || !PathTracingInlineResources.IsAvailable)
                 return;
             PathTracingInlineResources.BeginFrame(frame);
-            if (_version != instances.Version || _generation != PathTracingInlineResources.Generation || _registry != registry)
+            if (_version != instances.Version || _generation != PathTracingInlineResources.Generation || _registry != registry || _modulesHash != registry.ModulesHash)
             {
                 _version = instances.Version;
                 _registry = registry;
+                _modulesHash = registry.ModulesHash;
                 Rebuild(instances, registry, frame);
                 _generation = PathTracingInlineResources.Generation;
                 Upload();

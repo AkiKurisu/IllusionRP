@@ -7,7 +7,7 @@ namespace Illusion.Rendering.PathTracing
     {
         private static void BindTraceResources(CommandBuffer cmd, PathTracingShaderTarget shader, TracePassData data)
         {
-            if (data.InlineDispatch != null) data.World.BindInline(cmd, shader);
+            data.World.BindInline(cmd, shader);
             data.Scene.BindTraceInputs(cmd, shader, data.World, data.LightBaker, data.PipelineResources, data.Profiles,
                 data.SubsurfaceRayBias, data.ExposureTexture, PathTracingEnvironment.CameraBackground(data.Camera),
                 data.Resources.Constants, data.Resources.MiniConstants);

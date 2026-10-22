@@ -20,7 +20,6 @@ namespace Illusion.Rendering.Editor
         {
             public string Key;
             public string Error;
-            public bool Checked;
             public string Body;
             public string AnyHitBody;
             public string SharedHitContext;
@@ -91,13 +90,13 @@ namespace Illusion.Rendering.Editor
             foreach (string name in new[]
             {
                 "DxcCompiler.cs", "DxcCompiler.Reflection.cs", "PathTracingInlineGenerator.cs", "PathTracingInlineGeneratorCache.cs",
-                "PathTracingInlineKernels.cs", "PathTracingInlineBindingCarrier.cs", "PathTracingInlineUnitTransform.cs"
+                "PathTracingInlineKernels.cs", "PathTracingInlineModules.cs", "PathTracingCoverageSlice.cs", "PathTracingInlineBindingCarrier.cs", "PathTracingInlineUnitTransform.cs"
             })
             {
                 byte[] bytes = File.ReadAllBytes(Path.Combine(folder, name));
                 sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
             }
-            byte[] parserVersion = typeof(Illusion.ShaderTools.ShaderSource).Assembly.ManifestModule.ModuleVersionId.ToByteArray();
+            byte[] parserVersion = System.Text.Encoding.UTF8.GetBytes(typeof(Illusion.ShaderTools.ShaderSource).Assembly.ManifestModule.ModuleVersionId + DxcCompiler.ToolchainVersion);
             sha.TransformFinalBlock(parserVersion, 0, parserVersion.Length);
             return BitConverter.ToString(sha.Hash).Replace("-", string.Empty);
         }
@@ -173,16 +172,6 @@ namespace Illusion.Rendering.Editor
                 entry.RecordSize = unit.RecordSize;
             }
             _byKey[key] = entry;
-        }
-
-        public bool IsChecked(string key) => key != null && _byKey.TryGetValue(key, out Entry entry) && entry.Checked;
-
-        public void SetChecked(string key, string error)
-        {
-            if (key == null || !_byKey.TryGetValue(key, out Entry entry))
-                return;
-            entry.Checked = true;
-            entry.Error = error;
         }
 
         public void Retain(IEnumerable<string> keys)

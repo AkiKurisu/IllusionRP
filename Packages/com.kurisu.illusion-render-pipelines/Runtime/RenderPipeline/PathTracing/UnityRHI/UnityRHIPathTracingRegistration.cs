@@ -12,9 +12,8 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Register()
         {
-            PathTracingReorderingLoader.Register(() => new UnityRHIPathTracingReordering());
             PathTracingRayReconstructionLoader.Register(() => new UnityRHIPathTracingRayReconstruction());
-            PathTracingInlineDispatchBackend.Register((code, ser) => new UnityRHIPathTracingInlineDispatch(code, ser));
+            PathTracingInlineDispatchBackend.Register((code, materials) => new UnityRHIPathTracingInlineDispatch(code, materials));
         }
     }
 }
