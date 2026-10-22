@@ -9,6 +9,7 @@ namespace Illusion.Rendering.PathTracing
     {
         public ComputeShader Compute;
         public TextAsset RayGenSer;
+        public TextAsset Coverage;
         public MaterialModule[] Materials = Array.Empty<MaterialModule>();
 
         [Serializable]
@@ -16,7 +17,6 @@ namespace Illusion.Rendering.PathTracing
         {
             public TextAsset Code;
             public string ClosestHit;
-            public string Candidate;
         }
     }
 
@@ -29,8 +29,8 @@ namespace Illusion.Rendering.PathTracing
 
     internal static class PathTracingInlineDispatchBackend
     {
-        internal static Func<byte[], PathTracingInlineProgram.MaterialModule[], IPathTracingInlineDispatch> Factory { get; private set; }
-        internal static void Register(Func<byte[], PathTracingInlineProgram.MaterialModule[], IPathTracingInlineDispatch> factory) => Factory = factory;
+        internal static Func<PathTracingInlineProgram, IPathTracingInlineDispatch> Factory { get; private set; }
+        internal static void Register(Func<PathTracingInlineProgram, IPathTracingInlineDispatch> factory) => Factory = factory;
     }
 
     internal sealed class PathTracingInlineDispatcher : IDisposable
@@ -79,10 +79,9 @@ namespace Illusion.Rendering.PathTracing
             if (_backend == null)
             {
                 if (_failure != null) throw _failure;
-                var code = _program?.RayGenSer;
-                if (!code || code.bytes.Length == 0)
+                if (!_program?.RayGenSer || _program.RayGenSer.bytes.Length == 0 || !_program.Coverage)
                     throw new InvalidOperationException($"Inline RayGen '{name}' bytecode is missing.");
-                try { _backend = factory(code.bytes, _program.Materials); }
+                try { _backend = factory(_program); }
                 catch (Exception e)
                 {
                     _failure = new InvalidOperationException($"Inline RayGen '{name}' initialization failed.", e);

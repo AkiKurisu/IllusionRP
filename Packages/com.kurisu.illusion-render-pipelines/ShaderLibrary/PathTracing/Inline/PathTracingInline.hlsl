@@ -47,12 +47,6 @@ struct PathTracingInlineHitState
     float t;
 };
 
-struct PathTracingInlineMaterialPayload
-{
-    IllusionPathPayload path;
-    uint accepted;
-};
-
 static PathTracingInlineHitState g_PathTracingInline;
 static PathTracingInlineGeometry g_PathTracingInlineGeometry;
 static bool g_PathTracingInlineIgnored;

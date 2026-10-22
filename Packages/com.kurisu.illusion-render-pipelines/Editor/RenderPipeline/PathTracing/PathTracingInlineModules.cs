@@ -19,7 +19,7 @@ namespace Illusion.Rendering.Editor
 
         private sealed class Job
         {
-            public string Name, Source, Key, Path, Closest, Candidate;
+            public string Name, Source, Key, Path, Closest;
             public bool Native16, Changed;
             public byte[] Code;
             public HlslDocument Document;
@@ -31,20 +31,14 @@ namespace Illusion.Rendering.Editor
             Func<string, string, string> preprocess, DxcCompiler compiler, List<string> arguments, string rulesVersion)
         {
             string toolchain = DxcCompiler.ToolchainVersion;
-            var inputs = new[]
-            {
-                PathTracingInlineGenerator.PreludeInclude,
-                Library + "PathTracing/Inline/PathTracingInlineTraversal.hlsl",
-                Library + "PathTracing/Inline/PathTracingInlineTable.hlsl",
-                Library + "RayTracedGlobalIllumination/RayTracedGIInlineInitialSamples.hlsl",
-                Shaders + "RayTracedGlobalIllumination/RayTracedGIInitialSamplesQuality.hlsl",
-                Shaders + "RayTracedGlobalIllumination/RayTracedGIRadianceCacheUpdate.hlsl",
-                Shaders + "PathTracing/PathTracing.hlsl", Shaders + "PathTracing/PathTracingBuild.hlsl", Shaders + "PathTracing/PathTracingFill.hlsl"
-            };
+            string sources = string.Concat(new[] { Library, Shaders }
+                .SelectMany(root => Directory.EnumerateFiles(FileUtil.GetPhysicalPath(root), "*.*", SearchOption.AllDirectories))
+                .Where(p => p.EndsWith(".hlsl", StringComparison.Ordinal) || p.EndsWith(".hlsli", StringComparison.Ordinal) || p.EndsWith(".h", StringComparison.Ordinal))
+                .OrderBy(p => p, StringComparer.Ordinal).Select(File.ReadAllText));
             string key = Hash128.Compute(Version + rulesVersion + toolchain + string.Join(" ", arguments) + shared +
-                string.Concat(materials.Select(m => m.Body + m.AnyHitBody)) + string.Concat(inputs.Select(p => AssetDatabase.GetAssetDependencyHash(p).ToString()))).ToString();
+                string.Concat(materials.Select(m => m.Body + m.AnyHitBody)) + sources).ToString();
             var cached = new[] { registry.Performance, registry.Quality, registry.CacheUpdate, registry.Reference, registry.Build, registry.Fill };
-            if (registry.ModulesHash == key && cached.All(p => p?.Compute && p.RayGenSer &&
+            if (registry.ModulesHash == key && cached.All(p => p?.Compute && p.RayGenSer && p.Coverage &&
                 p.Materials.Length == materials.Length && p.Materials.All(m => m.Code)))
             {
                 Debug.Log("[IllusionRP] Reused all inline RayGen, material modules and binding carriers.");
@@ -53,6 +47,7 @@ namespace Illusion.Rendering.Editor
             var jobs = new List<Job>();
             var programs = new List<(PathTracingInlineProgram Program, Job RayGen, string Path)>();
             var modules = new Dictionary<bool, Job[]>();
+            var coverage = new Dictionary<bool, Job>();
             string prelude = "#include \"" + PathTracingInlineGenerator.PreludeInclude + "\"\n" + shared;
             foreach (bool native16 in new[] { false, true })
             {
@@ -61,9 +56,7 @@ namespace Illusion.Rendering.Editor
                     string body = m.Body.Replace(m.Namespace, "PathTracingMaterial");
                     string id = Hash128.Compute(body).ToString();
                     string closest = "PTMaterial_" + id;
-                    string candidate = "PTCandidate_" + id;
-                    string coverage = m.AnyHitBody.Replace(m.Namespace, "PathTracingCoverage");
-                    string source = prelude + body + coverage + PathTracingInlineKernels.TableInclude +
+                    string source = prelude + body + PathTracingInlineKernels.TableInclude +
                         "#undef InstanceID\n#undef InstanceIndex\n#undef PrimitiveIndex\n#undef GeometryIndex\n" +
                         "#undef ObjectToWorld3x4\n#undef WorldToObject3x4\n#undef WorldRayOrigin\n#undef WorldRayDirection\n#undef RayTCurrent\n" +
                         "void InitializeMaterial() {\n" +
@@ -74,14 +67,20 @@ namespace Illusion.Rendering.Editor
                         "uint first = _PathTracingInlineInstanceGeometries[InstanceID()];\n" +
                         "g_PathTracingInlineGeometry = _PathTracingInlineGeometries[first + GeometryIndex()];\n" +
                         "g_PathTracingInlineMaterialBase = g_PathTracingInlineGeometry.materialData; }\n" +
-                        $"[shader(\"closesthit\")] void {closest}(inout PathTracingInlineMaterialPayload payload, AttributeData attributes) {{ InitializeMaterial(); PathTracingMaterial::PathTracingInlineClosestHit(payload.path, attributes); }}\n" +
-                        $"[shader(\"closesthit\")] void {candidate}(inout PathTracingInlineMaterialPayload payload, AttributeData attributes) {{ InitializeMaterial(); payload.accepted = PathTracingCoverage::PathTracingInlineAnyHit(payload.path, attributes); }}\n";
+                        $"[shader(\"closesthit\")] void {closest}(inout IllusionPathPayload payload, AttributeData attributes) {{ InitializeMaterial(); PathTracingMaterial::PathTracingInlineClosestHit(payload, attributes); }}\n";
                     var job = Prepare("Material_" + id + (native16 ? "_16" : ""), source, native16);
                     job.Closest = closest;
-                    job.Candidate = candidate;
-                    job.Arguments.AddRange(new[] { "-exports", closest + ";" + candidate });
+                    job.Arguments.AddRange(new[] { "-exports", closest });
                     return job;
                 }).ToArray();
+                coverage[native16] = Prepare("Coverage" + (native16 ? "_16" : ""), prelude +
+                    "#include \"" + PathTracingInlineGenerator.AnyHitEvaluatorsPath + "\"\n" + PathTracingInlineKernels.TableInclude +
+                    "export bool PathTracingInlineCoverage(uint evaluator, PathTracingInlineHitState state, inout IllusionPathPayload payload, AttributeData attributes) {\n" +
+                    "g_PathTracingInline = state;\n" +
+                    "uint first = _PathTracingInlineInstanceGeometries[state.instanceID];\n" +
+                    "g_PathTracingInlineGeometry = _PathTracingInlineGeometries[first + state.geometryIndex];\n" +
+                    "g_PathTracingInlineMaterialBase = g_PathTracingInlineGeometry.materialData;\n" +
+                    "return PathTracingInlineEvaluateAnyHit(evaluator, payload, attributes); }\n", native16);
             }
             registry.Performance = Program("InlinePerformance", Library + "RayTracedGlobalIllumination/RayTracedGIInlineInitialSamples.hlsl", "RayTracedGIInitialSamples");
             registry.Quality = Program("InlineQuality", Shaders + "RayTracedGlobalIllumination/RayTracedGIInitialSamplesQuality.hlsl", "RayGen_InitialSamples", true);
@@ -130,7 +129,7 @@ namespace Illusion.Rendering.Editor
             var carriers = new Dictionary<string, string>();
             foreach (var entry in programs)
             {
-                var all = new[] { entry.RayGen }.Concat(modules[entry.RayGen.Native16]).ToArray();
+                var all = new[] { entry.RayGen, coverage[entry.RayGen.Native16] }.Concat(modules[entry.RayGen.Native16]).ToArray();
                 var reflection = Merge(all.Select(j => j.Reflection));
                 var extension = reflection.Resources.FindIndex(r => r.Name == "g_NvidiaExt");
                 var binding = reflection.Resources[extension];
@@ -156,9 +155,10 @@ namespace Illusion.Rendering.Editor
                 if (PathTracingInlineGenerator.WriteIfChanged(entry.Path, carrier)) AssetDatabase.ImportAsset(entry.Path);
                 entry.Program.Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(entry.Path);
                 entry.Program.RayGenSer = Import(entry.RayGen);
+                entry.Program.Coverage = Import(coverage[entry.RayGen.Native16]);
                 entry.Program.Materials = modules[entry.RayGen.Native16].Select(m => new PathTracingInlineProgram.MaterialModule
                 {
-                    Code = Import(m), ClosestHit = m.Closest, Candidate = m.Candidate
+                    Code = Import(m), ClosestHit = m.Closest
                 }).ToArray();
             }
             Debug.Log($"[IllusionRP] Material modules: {compiled} compiled, {unique.Length - compiled} reused in {timer.ElapsedMilliseconds} ms.");

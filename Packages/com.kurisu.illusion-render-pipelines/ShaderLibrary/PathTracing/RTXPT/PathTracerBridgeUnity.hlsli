@@ -433,13 +433,6 @@ float3 Bridge::visibilityTransmission(const IllusionPathPayload payload)
     return payload.hitT < 0.0 ? PathTracingUnpackHalf4(payload.diffuseOpacity).rgb : 0.0;
 }
 
-float3 Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos, uint targetIndex)
-{
-    IllusionPathPayload payload = createVisibilityPayload(rayCone, pathVertexIndex, pixelPos, targetIndex);
-    TraceRay(SceneBVH, visibilityRayFlags(payload), PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
-    return visibilityTransmission(payload);
-}
-
 EnvMap Bridge::CreateEnvMap()
 {
     return EnvMap::make( t_EnvironmentMap, s_EnvironmentMapSampler, g_Const.envMapSceneParams );

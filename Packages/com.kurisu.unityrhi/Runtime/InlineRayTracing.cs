@@ -16,7 +16,8 @@ namespace UnityRhi
         [DllImport(Plugin, CharSet = CharSet.Unicode)]
         private static extern IntPtr UnityRhiCreateInlineRayTracing(byte[] code, int size, string entry, uint x, uint y);
         [DllImport(Plugin, CharSet = CharSet.Unicode)]
-        private static extern int UnityRhiAddInlineRayTracingMaterial(IntPtr handle, byte[] code, int size, string closest, string candidate);
+        private static extern int UnityRhiAddInlineRayTracingMaterial(IntPtr handle, byte[] code, int size, string closest);
+        [DllImport(Plugin)] private static extern int UnityRhiAddInlineRayTracingLibrary(IntPtr handle, byte[] code, int size);
         [DllImport(Plugin)] private static extern void UnityRhiReleaseInlineRayTracing(IntPtr handle);
         [DllImport(Plugin)] private static extern ulong UnityRhiGetInlineRayTracingDispatches(IntPtr handle, out int status);
 
@@ -35,12 +36,20 @@ namespace UnityRhi
 #endif
         }
 
-        public void AddMaterial(byte[] code, string closestHit, string candidate)
+        public void AddMaterial(byte[] code, string closestHit)
         {
             if (!IsAvailable) throw new ObjectDisposedException(nameof(InlineRayTracing));
             if (code == null || code.Length == 0) throw new ArgumentException("Material bytecode is missing.", nameof(code));
-            int status = UnityRhiAddInlineRayTracingMaterial(_handle, code, code.Length, closestHit, candidate);
+            int status = UnityRhiAddInlineRayTracingMaterial(_handle, code, code.Length, closestHit);
             if (status < 0) throw new InvalidOperationException($"Inline material '{closestHit}' registration failed (0x{status:X8}).");
+        }
+
+        public void AddLibrary(byte[] code)
+        {
+            if (!IsAvailable) throw new ObjectDisposedException(nameof(InlineRayTracing));
+            if (code == null || code.Length == 0) throw new ArgumentException("Library bytecode is missing.", nameof(code));
+            int status = UnityRhiAddInlineRayTracingLibrary(_handle, code, code.Length);
+            if (status < 0) throw new InvalidOperationException($"Inline library registration failed (0x{status:X8}).");
         }
 
         public bool IsAvailable => _handle != IntPtr.Zero;

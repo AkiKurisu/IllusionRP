@@ -57,49 +57,92 @@ void RayGen_RadianceCacheUpdate(uint2 block)
     path.SetDir(direction);
     path.rayCone = RayCone::make(g_GIConst.view.pixelConeWidth + receiver.viewDepth * coneSpread, coneSpread);
 
-    while (path.isActive())
+    RayDesc ray = (RayDesc)0;
+    IllusionPathPayload payload = (IllusionPathPayload)0;
+    uint rayFlags = RAY_FLAG_NONE;
+    uint instanceMask = PT_INSTANCE_SCENE;
+    bool visibility = false;
+    PathTracer::SurfaceHit surface = (PathTracer::SurfaceHit)0;
+    PathTracer::NEEVisibility nee = (PathTracer::NEEVisibility)0;
+    uint vertexIndex = 0;
+    SharcHitData sharcHitData = (SharcHitData)0;
+    bool cacheable = false;
+    float sharcRandom = 0.0;
+
+    [loop]
+    while (path.isActive() || visibility)
     {
-        RayDesc ray = path.getScatterRay().toRayDesc();
-        ray.TMin = 0.0;
-        ray.TMax = kMaxRayTravel;
-        const bool firstBounce = path.getVertexIndex() == 1;
-        IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER,
-            Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
-            path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
-        TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
-
-        path.SetThp(1.0);
-        path.SetL(0.0);
-        if (payload.hitT == PT_NO_SURFACE_T)
-            break;
-        if (payload.hitT < 0.0)
+        if (!visibility)
         {
-            // The receiver is not cached, so a miss from it updates nothing.
-            if (!firstBounce)
-            {
-                PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
-                SharcUpdateMiss(sharcParameters, sharcState, path.GetL().rgb);
-            }
-            break;
+            ray = path.getScatterRay().toRayDesc();
+            ray.TMin = 0.0;
+            ray.TMax = kMaxRayTravel;
+            payload = PathTracingCreatePayload(PT_RAY_SCATTER,
+                Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
+                path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
+            rayFlags = RAY_FLAG_NONE;
+            instanceMask = PT_INSTANCE_SCENE;
         }
-        // Skip emission-only terminal vertices.
-        if (path.isTerminatingAtNextBounce())
-            break;
+        PathTracingInlineHit hit;
+        const bool hitFound = PathTracingInlineTraceHit(SceneBVH, rayFlags, instanceMask, ray, payload, hit);
+        if (visibility)
+        {
+            PathTracer::ConsumeNEEVisibility(nee, Bridge::visibilityTransmission(payload), surface.preScatterPath, surface.shadingData,
+                surface.bsdf, surface.uniformSG, workingContext);
+        }
+        else
+        {
+            const bool firstBounce = path.getVertexIndex() == 1;
+            if (hitFound)
+                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload);
+            path.SetThp(1.0);
+            path.SetL(0.0);
+            if (payload.hitT == PT_NO_SURFACE_T)
+                break;
+            if (payload.hitT < 0.0)
+            {
+                // The receiver is not cached, so a miss from it updates nothing.
+                if (!firstBounce)
+                {
+                    PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
+                    SharcUpdateMiss(sharcParameters, sharcState, path.GetL().rgb);
+                }
+                break;
+            }
+            // Skip emission-only terminal vertices.
+            if (path.isTerminatingAtNextBounce())
+                break;
 
-        // Raster lights the receiver directly from the emitters of its lights.
-        if (firstBounce && PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
-            payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
-        const uint vertexIndex = path.getVertexIndex();
-        const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
-        SharcHitData sharcHitData;
-        sharcHitData.positionWorld = ray.Origin + ray.Direction * payload.hitT;
-        sharcHitData.normalWorld = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
-        const bool cacheable = PathTracingGetFamily(payload) != PT_FAMILY_OVERLAY && path.interiorList.isEmpty();
-        const float sharcRandom = cacheable ? RTXDI_GetNextRandom(rng) : 0.0;
-        if (cacheable && RayTracedGICacheEndsPath(sharcParameters, sharcState, sharcHitData, sharcRandom))
-            path.setTerminateAtNextBounce();
-        g_PathSurfaceEmission = 0.0;
-        PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
+            // Raster lights the receiver directly from the emitters of its lights.
+            if (firstBounce && PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
+                payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
+            vertexIndex = path.getVertexIndex();
+            const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
+            sharcHitData.positionWorld = ray.Origin + ray.Direction * payload.hitT;
+            sharcHitData.normalWorld = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
+            cacheable = PathTracingGetFamily(payload) != PT_FAMILY_OVERLAY && path.interiorList.isEmpty();
+            sharcRandom = cacheable ? RTXDI_GetNextRandom(rng) : 0.0;
+            if (cacheable && RayTracedGICacheEndsPath(sharcParameters, sharcState, sharcHitData, sharcRandom))
+                path.setTerminateAtNextBounce();
+            g_PathSurfaceEmission = 0.0;
+            if (PathTracer::BeginSurfaceHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext, surface))
+            {
+                visibility = PathTracer::BeginSurfaceNEE(surface, workingContext, nee);
+                if (!visibility)
+                    PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            }
+        }
+        if (visibility)
+        {
+            if (PathTracer::NextSurfaceVisibilityRay(surface, nee, workingContext, ray, payload))
+            {
+                rayFlags = Bridge::visibilityRayFlags(payload);
+                instanceMask = PT_INSTANCE_SHADOW;
+                continue;
+            }
+            PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            visibility = false;
+        }
         if (path.getVertexIndex() == vertexIndex)
             continue;
 

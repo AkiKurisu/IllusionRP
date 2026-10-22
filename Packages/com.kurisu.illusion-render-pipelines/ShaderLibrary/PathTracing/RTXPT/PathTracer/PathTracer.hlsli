@@ -867,26 +867,18 @@ namespace PathTracer
             path.setTerminateAtNextBounce();
     }
 
-    inline void HandleHit(inout PathState path, const float3 rayOrigin, const float3 rayDir, const float rayTCurrent, const IllusionPathPayload payload, const WorkingContext workingContext)
+    // @IllusionRP: advances NEE to its next visibility ray, consuming the samples that need none.
+    inline bool NextSurfaceVisibilityRay(inout SurfaceHit hit, inout NEEVisibility nee, const WorkingContext workingContext, out RayDesc ray, out IllusionPathPayload payload)
     {
-        SurfaceHit hit;
-        if (!BeginSurfaceHit(path, rayOrigin, rayDir, rayTCurrent, payload, workingContext, hit))
-            return;
-        NEEVisibility nee;
-        if (BeginSurfaceNEE(hit, workingContext, nee))
-        {
-            RayDesc ray;
-            bool trace;
-            [loop]
-            while (NextNEEVisibility(nee, hit.preScatterPath, hit.shadingData, hit.bsdf, hit.uniformSG, workingContext, ray, trace))
-            {
-                float3 transmission = 0.0;
-                if (trace)
-                    transmission = Bridge::traceVisibilityRay(ray, hit.preScatterPath.rayCone, hit.preScatterPath.getVertexIndex(), workingContext.Debug, hit.preScatterPath.GetPixelPos(), nee.targetIndex);
-                ConsumeNEEVisibility(nee, transmission, hit.preScatterPath, hit.shadingData, hit.bsdf, hit.uniformSG, workingContext);
-            }
-        }
-        FinishSurfaceHit(path, hit, nee.result, workingContext);
+        payload = (IllusionPathPayload)0;
+        bool trace = false;
+        [loop]
+        while (NextNEEVisibility(nee, hit.preScatterPath, hit.shadingData, hit.bsdf, hit.uniformSG, workingContext, ray, trace) && !trace)
+            ConsumeNEEVisibility(nee, 0.0, hit.preScatterPath, hit.shadingData, hit.bsdf, hit.uniformSG, workingContext);
+        if (!trace)
+            return false;
+        payload = Bridge::createVisibilityPayload(hit.preScatterPath.rayCone, hit.preScatterPath.getVertexIndex(), hit.preScatterPath.GetPixelPos(), nee.targetIndex);
+        return true;
     }
 };
 

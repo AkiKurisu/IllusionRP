@@ -102,27 +102,19 @@ void postProcessHit(inout PathState path, const PathTracer::WorkingContext worki
 #endif
 }
 
-void nextHit(inout PathState path, inout float2 tMinMax, const PathTracer::WorkingContext workingContext)
+// @IllusionRP: materials are evaluated by their modules while the path state stays in ray generation.
+void prepareScatterRay(const PathState path, const float2 tMinMax, out RayDesc ray, out IllusionPathPayload payload)
 {
-    // @IllusionRP: TraceRay evaluates Unity materials in hit shaders while the path state stays in ray generation.
-    RayDesc ray = path.getScatterRay().toRayDesc();
+    ray = path.getScatterRay().toRayDesc();
     ray.TMin = tMinMax.x;
     ray.TMax = tMinMax.y;
-    IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER, Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
+    payload = PathTracingCreatePayload(PT_RAY_SCATTER, Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
         path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
     if (path.isDeltaOnlyPath())
-        PathTracingMarkCameraChain(payload);  // @IllusionRP
+        PathTracingMarkCameraChain(payload);
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_BUILD_STABLE_PLANES
-    payload.rayKindAndSeed |= PT_RAY_MOTION;  // @IllusionRP
+    payload.rayKindAndSeed |= PT_RAY_MOTION;
 #endif
-    TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);  // @IllusionRP
-    if (payload.hitT == PT_NO_SURFACE_T)
-        PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
-    else if (payload.hitT < 0.0)
-        PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
-    else
-        PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
-    tMinMax = float2(0, kMaxRayTravel); // reset - it's only designed to be used the first time after reading the ray from FirstHitFromVBuffer
 }
 
 #if ENABLE_DEBUG_DELTA_TREE_VIZUALISATION
@@ -182,13 +174,60 @@ void RAYGEN_ENTRY(uint2 pixelPos)
     float2 tMinMax = float2(0, kMaxRayTravel);
 #endif
 
-    // Main path tracing loop
-    while (path.isActive()) // NOTE: might be not active in the first instance
+    // @IllusionRP: scattered rays and the NEE visibility rays of their hits share one traversal site.
+    RayDesc ray = (RayDesc)0;
+    IllusionPathPayload payload = (IllusionPathPayload)0;
+    uint rayFlags = RAY_FLAG_NONE;
+    uint instanceMask = PT_INSTANCE_SCENE;
+    bool visibility = false;
+    PathTracer::SurfaceHit surface = (PathTracer::SurfaceHit)0;
+    PathTracer::NEEVisibility nee = (PathTracer::NEEVisibility)0;
+    [loop]
+    while (path.isActive() || visibility) // NOTE: might be not active in the first instance
     {
-        nextHit(path, tMinMax, workingContext);
+        if (!visibility)
+        {
+            prepareScatterRay(path, tMinMax, ray, payload);
+            rayFlags = RAY_FLAG_NONE;
+            instanceMask = PT_INSTANCE_SCENE;
+            tMinMax = float2(0, kMaxRayTravel); // reset - it's only designed to be used the first time after reading the ray from FirstHitFromVBuffer
+        }
+        PathTracingInlineHit hit;
+        const bool hitFound = PathTracingInlineTraceHit(SceneBVH, rayFlags, instanceMask, ray, payload, hit);
+        if (visibility)
+        {
+            PathTracer::ConsumeNEEVisibility(nee, Bridge::visibilityTransmission(payload), surface.preScatterPath, surface.shadingData,
+                surface.bsdf, surface.uniformSG, workingContext);
+        }
+        else
+        {
+            if (hitFound)
+                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload);
+            if (payload.hitT == PT_NO_SURFACE_T)
+                PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
+            else if (payload.hitT < 0.0)
+                PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
+            else if (PathTracer::BeginSurfaceHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext, surface))
+            {
+                visibility = PathTracer::BeginSurfaceNEE(surface, workingContext, nee);
+                if (!visibility)
+                    PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            }
+        }
+        if (visibility)
+        {
+            if (PathTracer::NextSurfaceVisibilityRay(surface, nee, workingContext, ray, payload))
+            {
+                rayFlags = Bridge::visibilityRayFlags(payload);
+                instanceMask = PT_INSTANCE_SHADOW;
+                continue;
+            }
+            PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            visibility = false;
+        }
         postProcessHit(path, workingContext);
     }
-    
+
 #if 0
     ValidateNaNs(path, workingContext);
 #endif

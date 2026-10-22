@@ -13,7 +13,7 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
         private static void Register()
         {
             PathTracingRayReconstructionLoader.Register(() => new UnityRHIPathTracingRayReconstruction());
-            PathTracingInlineDispatchBackend.Register((code, materials) => new UnityRHIPathTracingInlineDispatch(code, materials));
+            PathTracingInlineDispatchBackend.Register(program => new UnityRHIPathTracingInlineDispatch(program));
         }
     }
 }

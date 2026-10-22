@@ -41,22 +41,19 @@ void PathTracingInlineSetHit(PathTracingInlineHit hit, RayDesc ray, out Attribut
 
 #if defined(ILLUSION_INLINE_MODULES)
 #undef TraceRay
-bool PathTracingInlineInvokeMaterial(RaytracingAccelerationStructure accelerationStructure, uint evaluator, bool candidate,
-    RayDesc ray, inout IllusionPathPayload payload, AttributeData attributes)
+void PathTracingInlineInvokeMaterial(RaytracingAccelerationStructure accelerationStructure, uint evaluator, RayDesc ray,
+    inout IllusionPathPayload payload, AttributeData attributes)
 {
     ray.TMax = g_PathTracingInline.t;
     NvHitObject hitObject;
-    NvMakeHitWithRecordIndex(evaluator * 2 + (candidate ? 1u : 0u), accelerationStructure,
+    NvMakeHitWithRecordIndex(evaluator, accelerationStructure,
         g_PathTracingInline.instanceIndex, g_PathTracingInline.geometryIndex, g_PathTracingInline.primitiveIndex,
         g_PathTracingInline.hitKind, ray, attributes, hitObject);
-    if (!candidate) NvReorderThread(hitObject);
-    PathTracingInlineMaterialPayload material;
-    material.path = payload;
-    material.accepted = 1;
-    NvInvokeHitObject(accelerationStructure, hitObject, material);
-    payload = material.path;
-    return material.accepted != 0;
+    NvReorderThread(hitObject);
+    NvInvokeHitObject(accelerationStructure, hitObject, payload);
 }
+
+bool PathTracingInlineCoverage(uint evaluator, PathTracingInlineHitState state, inout IllusionPathPayload payload, AttributeData attributes);
 #define TraceRay(accelerationStructure, rayFlags, instanceMask, hitGroupOffset, hitGroupStride, missIndex, ray, payload) \
     PathTracingInlineTraceRay(accelerationStructure, rayFlags, instanceMask, ray, payload)
 #endif
@@ -84,11 +81,15 @@ bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStruc
         AttributeData attributes;
         attributes.barycentrics = query.CandidateTriangleBarycentrics();
         uint evaluator = PathTracingInlineLoadGeometry(g_PathTracingInline.instanceID, g_PathTracingInline.geometryIndex);
+        bool accepted = true;
+        if (evaluator != PT_INLINE_NO_EVALUATOR)
+        {
 #if defined(ILLUSION_INLINE_MODULES)
-        bool accepted = evaluator == PT_INLINE_NO_EVALUATOR || PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, true, ray, payload, attributes);
+            accepted = PathTracingInlineCoverage(evaluator, g_PathTracingInline, payload, attributes);
 #else
-        bool accepted = evaluator == PT_INLINE_NO_EVALUATOR || PathTracingInlineEvaluateAnyHit(evaluator, payload, attributes);
+            accepted = PathTracingInlineEvaluateAnyHit(evaluator, payload, attributes);
 #endif
+        }
         if (accepted)
         {
             query.CommitNonOpaqueTriangleHit();
@@ -114,24 +115,28 @@ bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStruc
     return true;
 }
 
+void PathTracingInlineShadeHit(RaytracingAccelerationStructure accelerationStructure, PathTracingInlineHit hit, RayDesc ray,
+    inout IllusionPathPayload payload)
+{
+    AttributeData attributes;
+    PathTracingInlineSetHit(hit, ray, attributes);
+    uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
+    if (evaluator == PT_INLINE_NO_EVALUATOR)
+        return;
+#if defined(ILLUSION_INLINE_MODULES)
+    PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, ray, payload, attributes);
+#else
+    PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
+#endif
+}
+
 void PathTracingInlineTraceRay(RaytracingAccelerationStructure accelerationStructure, uint rayFlags, uint instanceMask,
     RayDesc ray, inout IllusionPathPayload payload)
 {
     PathTracingInlineHit hit;
-    if (!PathTracingInlineTraceHit(accelerationStructure, rayFlags, instanceMask, ray, payload, hit)
-        || (rayFlags & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER) != 0)
-        return;
-    AttributeData attributes;
-    PathTracingInlineSetHit(hit, ray, attributes);
-    uint evaluator = PathTracingInlineLoadGeometry(hit.instanceID, hit.geometryIndex);
-    if (evaluator != PT_INLINE_NO_EVALUATOR)
-    {
-#if defined(ILLUSION_INLINE_MODULES)
-        PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, false, ray, payload, attributes);
-#else
-        PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
-#endif
-    }
+    if (PathTracingInlineTraceHit(accelerationStructure, rayFlags, instanceMask, ray, payload, hit)
+        && (rayFlags & RAY_FLAG_SKIP_CLOSEST_HIT_SHADER) == 0)
+        PathTracingInlineShadeHit(accelerationStructure, hit, ray, payload);
 }
 
 #endif
