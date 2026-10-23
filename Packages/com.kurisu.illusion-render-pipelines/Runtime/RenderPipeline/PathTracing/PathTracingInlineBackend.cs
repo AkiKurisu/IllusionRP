@@ -2,13 +2,15 @@ using System;
 
 namespace Illusion.Rendering
 {
-    internal interface IPathTracingInlineResourceTable
+    internal interface IPathTracingInlineResourceTable : IDisposable
     {
         int Capacity { get; }
 
         void SetTexture(int slot, IntPtr resource, int dxgiFormat);
 
         void SetBuffer(int slot, IntPtr resource, uint byteSize);
+
+        void Clear(int slot);
     }
 
     internal static class PathTracingInlineBackend

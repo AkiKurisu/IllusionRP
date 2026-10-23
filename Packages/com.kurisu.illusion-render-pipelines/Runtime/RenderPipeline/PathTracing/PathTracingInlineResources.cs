@@ -10,8 +10,6 @@ namespace Illusion.Rendering.PathTracing
     {
         public const int DefaultTextureCount = 6;
 
-        private const int ReleaseDelayFrames = 4;
-
         private sealed class TextureEntry
         {
             public Texture Texture;
@@ -33,7 +31,9 @@ namespace Illusion.Rendering.PathTracing
         private static IPathTracingInlineResourceTable s_Table;
         private static bool s_Created;
         private static readonly Stack<int> s_Free = new();
-        private static readonly Queue<(int Slot, int Frame)> s_Pending = new();
+        private static readonly List<int> s_Released = new();
+        private static readonly Queue<(int[] Slots, GraphicsFence Fence)> s_Pending = new();
+        private static int s_PendingSlots;
         private static readonly Dictionary<int, TextureEntry> s_Textures = new();
         private static readonly Dictionary<int, MeshEntry> s_Meshes = new();
         private static readonly List<int> s_Changed = new();
@@ -42,6 +42,13 @@ namespace Illusion.Rendering.PathTracing
         private static bool s_OverflowReported;
 
         public static int Generation { get; private set; }
+
+#if UNITY_EDITOR
+        static PathTracingInlineResources()
+        {
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += () => s_Table?.Dispose();
+        }
+#endif
 
         public static bool IsAvailable
         {
@@ -81,9 +88,6 @@ namespace Illusion.Rendering.PathTracing
         {
             if (!IsAvailable)
                 return;
-            while (s_Pending.Count > 0 && frame - s_Pending.Peek().Frame >= ReleaseDelayFrames)
-                s_Free.Push(s_Pending.Dequeue().Slot);
-
             s_Changed.Clear();
             foreach ((int id, TextureEntry entry) in s_Textures)
             {
@@ -247,8 +251,32 @@ namespace Illusion.Rendering.PathTracing
 
         private static void Release(int slot, int frame)
         {
-            if (slot >= DefaultTextureCount)
-                s_Pending.Enqueue((slot, frame));
+            if (slot < DefaultTextureCount)
+                return;
+            if (s_PendingSlots++ == 0)
+                RenderPipelineManager.endFrameRendering += Reclaim;
+            s_Released.Add(slot);
+        }
+
+        private static void Reclaim(ScriptableRenderContext context, Camera[] cameras)
+        {
+            while (s_Pending.Count > 0 && s_Pending.Peek().Fence.passed)
+            {
+                foreach (int slot in s_Pending.Dequeue().Slots)
+                {
+                    s_Table.Clear(slot);
+                    s_Free.Push(slot);
+                    s_PendingSlots--;
+                }
+            }
+            if (s_Released.Count > 0)
+            {
+                var fence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.AllGPUOperations);
+                s_Pending.Enqueue((s_Released.ToArray(), fence));
+                s_Released.Clear();
+            }
+            if (s_PendingSlots == 0)
+                RenderPipelineManager.endFrameRendering -= Reclaim;
         }
 
         private static bool SetTexture(int slot, Texture texture)
@@ -304,6 +332,6 @@ namespace Illusion.Rendering.PathTracing
 
         public static int MeshCount => s_Meshes.Count;
 
-        public static int UsedSlots => s_NextSlot - s_Free.Count - s_Pending.Count;
+        public static int UsedSlots => s_NextSlot - s_Free.Count - s_PendingSlots;
     }
 }

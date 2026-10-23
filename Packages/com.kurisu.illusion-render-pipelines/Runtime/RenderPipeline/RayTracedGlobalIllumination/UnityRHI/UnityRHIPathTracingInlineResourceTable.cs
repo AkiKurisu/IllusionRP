@@ -31,6 +31,7 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
 
         private readonly Entry[] _entry = new Entry[1];
         private int _capacity = -1;
+        private int _usedSlots;
 
         public int Capacity
         {
@@ -54,13 +55,36 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
         public void SetTexture(int slot, IntPtr resource, int dxgiFormat)
         {
             _entry[0] = new Entry { Resource = resource, Type = TextureEntry, MaxMip = 255, Format = (byte)dxgiFormat };
-            MeetemBindless_SetBindlessTextures(slot, 1, _entry);
+            Set(slot);
         }
 
         public void SetBuffer(int slot, IntPtr resource, uint byteSize)
         {
             _entry[0] = new Entry { Resource = resource, Type = BufferEntry, MaxMip = 255, ByteSize = byteSize };
-            MeetemBindless_SetBindlessTextures(slot, 1, _entry);
+            Set(slot);
+        }
+
+        public void Clear(int slot)
+        {
+            _entry[0] = default;
+            Set(slot);
+        }
+
+        private void Set(int slot)
+        {
+            if (MeetemBindless_SetBindlessTextures(slot, 1, _entry) == 0)
+                throw new InvalidOperationException($"Failed to register inline resource slot {slot}; see the native resource error.");
+            _usedSlots = Math.Max(_usedSlots, slot + 1);
+        }
+
+        public void Dispose()
+        {
+            if (_usedSlots == 0) return;
+            if (!global::UnityRhi.RhiCore.WaitForGpuIdle())
+                throw new InvalidOperationException("Cannot release inline resources before GPU completion.");
+            if (MeetemBindless_SetBindlessTextures(0, _usedSlots, new Entry[_usedSlots]) == 0)
+                throw new InvalidOperationException("Failed to clear inline resources.");
+            _usedSlots = 0;
         }
     }
 }
