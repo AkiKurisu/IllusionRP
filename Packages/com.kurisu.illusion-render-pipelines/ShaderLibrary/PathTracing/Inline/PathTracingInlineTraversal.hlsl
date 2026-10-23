@@ -42,14 +42,14 @@ void PathTracingInlineSetHit(PathTracingInlineHit hit, RayDesc ray, out Attribut
 #if defined(ILLUSION_INLINE_MODULES)
 #undef TraceRay
 void PathTracingInlineInvokeMaterial(RaytracingAccelerationStructure accelerationStructure, uint evaluator, RayDesc ray,
-    inout IllusionPathPayload payload, AttributeData attributes)
+    inout IllusionPathPayload payload, AttributeData attributes, uint coherenceHint, uint coherenceHintBits)
 {
     ray.TMax = g_PathTracingInline.t;
     NvHitObject hitObject;
     NvMakeHitWithRecordIndex(evaluator, accelerationStructure,
         g_PathTracingInline.instanceIndex, g_PathTracingInline.geometryIndex, g_PathTracingInline.primitiveIndex,
         g_PathTracingInline.hitKind, ray, attributes, hitObject);
-    NvReorderThread(hitObject);
+    NvReorderThread(hitObject, coherenceHint, coherenceHintBits);
     NvInvokeHitObject(accelerationStructure, hitObject, payload);
 }
 
@@ -116,7 +116,7 @@ bool PathTracingInlineTraceHit(RaytracingAccelerationStructure accelerationStruc
 }
 
 void PathTracingInlineShadeHit(RaytracingAccelerationStructure accelerationStructure, PathTracingInlineHit hit, RayDesc ray,
-    inout IllusionPathPayload payload)
+    inout IllusionPathPayload payload, uint coherenceHint = 0, uint coherenceHintBits = 0)
 {
     AttributeData attributes;
     PathTracingInlineSetHit(hit, ray, attributes);
@@ -124,7 +124,7 @@ void PathTracingInlineShadeHit(RaytracingAccelerationStructure accelerationStruc
     if (evaluator == PT_INLINE_NO_EVALUATOR)
         return;
 #if defined(ILLUSION_INLINE_MODULES)
-    PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, ray, payload, attributes);
+    PathTracingInlineInvokeMaterial(accelerationStructure, evaluator, ray, payload, attributes, coherenceHint, coherenceHintBits);
 #else
     PathTracingInlineEvaluateClosestHit(evaluator, payload, attributes);
 #endif

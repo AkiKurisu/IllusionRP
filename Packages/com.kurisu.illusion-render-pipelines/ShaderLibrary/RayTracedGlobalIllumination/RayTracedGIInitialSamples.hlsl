@@ -289,7 +289,7 @@ SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, 
         {
             const bool firstBounce = path.getVertexIndex() == 1;
             if (hitFound)
-                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload);
+                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload, path.isTerminatingAtNextBounce(), 1);
             if (payload.hitT == PT_NO_SURFACE_T)
             {
                 PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);

@@ -202,7 +202,7 @@ void RAYGEN_ENTRY(uint2 pixelPos)
         else
         {
             if (hitFound)
-                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload);
+                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload, path.isTerminatingAtNextBounce(), 1);
             if (payload.hitT == PT_NO_SURFACE_T)
                 PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
             else if (payload.hitT < 0.0)
