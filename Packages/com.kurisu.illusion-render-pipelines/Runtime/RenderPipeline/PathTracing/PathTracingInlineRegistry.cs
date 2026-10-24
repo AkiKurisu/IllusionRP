@@ -67,8 +67,9 @@ namespace Illusion.Rendering
         public PathTracing.PathTracingInlineProgram Reference;
         public PathTracing.PathTracingInlineProgram Build;
         public PathTracing.PathTracingInlineProgram Fill;
-
-        public ComputeShader RayTracedGIResampling;
+        public PathTracing.PathTracingInlineProgram TemporalResampling;
+        public PathTracing.PathTracingInlineProgram SpatialResampling;
+        public PathTracing.PathTracingInlineProgram FinalShading;
 
         public string Hash;
         [HideInInspector] public string ModulesHash;

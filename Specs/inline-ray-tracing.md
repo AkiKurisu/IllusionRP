@@ -38,15 +38,15 @@ Inline ray tracing traces ray traced global illumination (RTGI) and path tracing
 
 ## Tracing programs
 
-- **Stages.** Each tracing stage is one ray generation program: RTGI Performance initial samples, RTGI Quality initial samples, the radiance cache update, path tracing Reference, and the two Realtime path tracing passes. A program holds the stage's own integration and the traversal, not material shading.
+- **Stages.** Each tracing stage is one ray generation program: RTGI Performance initial samples, RTGI Quality initial samples, the radiance cache update, RTGI temporal resampling, spatial resampling and final shading, path tracing Reference, and the two Realtime path tracing passes. A program holds the stage's own integration and the traversal, not material shading.
 - **Dispatch.** Unity binds a stage's resources, globals and output targets to a compute binding carrier as it would for any compute pass. The native backend replaces that carrier's dispatch with the stage's ray generation dispatch over the same bindings, on the same command list and in the same pass order. A stage never sees Unity's ray tracing shader bindings.
 - **Shader table.** The native backend owns one shader table per program. It holds one record per material evaluator, plus the miss record. Adding, removing or moving instances does not change it. It changes only when the set of evaluators changes.
 - **Pipelines.** A program's pipeline links the stage with the material modules. It is created when the program or the module set changes, never per frame. Pipeline creation may take noticeable time the first time a driver sees it; it is not a per-frame cost.
-- **Compute stages.** RTGI resampling and final shading trace visibility rays only. They remain compute work with ray queries and the same traversal rules.
+- **Visibility stages.** RTGI resampling and final shading trace visibility rays only. Their programs link the coverage library and no material modules, so their pipelines do not change with the module set.
 
 ## Acceleration structure
 
-Tracing programs and compute stages trace the [ray tracing scene](ray-tracing-scene.md)'s acceleration structure. Neither binds it, or any other structure, to a Unity ray generation dispatch, because binding one makes Unity prepare hit groups for all of its instances, even when the dispatch uses only ray queries. Participation, change tracking, culling and the once-per-frame build stay as the ray tracing scene defines them.
+Tracing programs trace the [ray tracing scene](ray-tracing-scene.md)'s acceleration structure. Neither binds it, or any other structure, to a Unity ray generation dispatch, because binding one makes Unity prepare hit groups for all of its instances, even when the dispatch uses only ray queries. Participation, change tracking, culling and the once-per-frame build stay as the ray tracing scene defines them.
 
 ## Ray traversal
 
@@ -68,7 +68,7 @@ That submesh is evaluated as the same diagnostic surface that path tracing shows
 
 ## Scene resource table
 
-The ray tracing scene service owns a shader-visible resource table that tracing programs and compute stages index. It holds the textures that materials reference and the vertex and index data of participating geometry. Instance, geometry and material records refer to its entries by index.
+The ray tracing scene service owns a shader-visible resource table that tracing programs and the scene's compute work index. It holds the textures that materials reference and the vertex and index data of participating geometry. Instance, geometry and material records refer to its entries by index.
 
 - **Provider.** The table is provided by the optional UnityRHI native backend that RTGI's denoiser already requires. Its native module enlarges Unity's shader-visible descriptor heap, gives compute root signatures an indexed resource range without moving their other resources, and creates the tracing programs' pipelines over the same range. Unity's own ray tracing pipelines are not extended.
 - **Loading.** The module must load before the graphics device is created. The Editor places it in the project, which the Editor and players load at startup, and asks for an Editor restart when it changes.
@@ -91,7 +91,7 @@ Most clipped and blended surfaces decide coverage the same way, and differ only 
 - **Declaration.** A shader's `PathTracing` pass declares that its coverage follows the model and names the properties that supply the texture, its scale and offset, the texture coordinate set, color and cutoff, and the keywords that select alpha testing, blending and full coverage. Hand-written passes declare it in source; ASE templates expose it as a template option. A pass without the declaration keeps its own coverage.
 - **Data.** Each material's coverage inputs are captured into its material record with the rest of its inputs: the texture's resource table entry, scale and offset, the color and the cutoff. Change tracking recaptures them like any other input. The behavior follows from the variant's keywords.
 - **Equivalence.** For a declared pass, the standard evaluation decides the same coverage the pass's own coverage would, including the texture's filtering at its finest level. A pass whose coverage the model cannot express, such as hair, does not declare it.
-- **Cost.** The standard evaluation is one compact routine in the tracing programs and compute stages. Adding materials or variants that declare standard coverage adds data, not code.
+- **Cost.** The standard evaluation is one compact routine in the tracing programs. Adding materials or variants that declare standard coverage adds data, not code.
 
 ## Inline material evaluation
 
@@ -107,7 +107,7 @@ Most clipped and blended surfaces decide coverage the same way, and differ only 
 
 - **Initial samples.** In both modes the GI ray is traced by the mode's program. Its hit is shaded with the RTGI [secondary surface contract](ray-traced-global-illumination.md#secondary-surfaces), including next-event estimation over the shared light set with visibility traced the same way.
 - **Radiance cache.** In Quality mode the cache update is traced by its own program.
-- **Resampling and final shading.** Ray traced bias correction and final shading trace their visibility rays from compute work.
+- **Resampling and final shading.** Ray traced bias correction and final shading trace their visibility rays from their own programs.
 
 ## Path tracing integration
 

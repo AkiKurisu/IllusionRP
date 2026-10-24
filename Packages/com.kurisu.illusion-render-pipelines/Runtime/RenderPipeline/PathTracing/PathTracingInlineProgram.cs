@@ -50,8 +50,6 @@ namespace Illusion.Rendering.PathTracing
             }
             if (program?.Compute == null || !program.Compute.IsSupported(0))
                 throw new InvalidOperationException("Inline RayGen binding carrier is missing or unsupported. Regenerate inline programs.");
-            if (program.Materials.Length == 0)
-                throw new InvalidOperationException("Inline material modules are missing. Regenerate inline programs.");
         }
 
         public PathTracingShaderTarget Target => new(_program.Compute, 0);

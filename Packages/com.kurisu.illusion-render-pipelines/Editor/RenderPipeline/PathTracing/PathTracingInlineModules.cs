@@ -17,6 +17,8 @@ namespace Illusion.Rendering.Editor
         private const string Shaders = "Packages/com.kurisu.illusion-render-pipelines/Shaders/";
         private const string Version = "material-modules-1";
 
+        internal const string TableInclude = "#include \"" + Library + "PathTracing/Inline/PathTracingInlineTable.hlsl\"\n";
+
         private sealed class Job
         {
             public string Name, Source, Key, Path, Closest;
@@ -37,15 +39,16 @@ namespace Illusion.Rendering.Editor
                 .OrderBy(p => p, StringComparer.Ordinal).Select(File.ReadAllText));
             string key = Hash128.Compute(Version + rulesVersion + toolchain + string.Join(" ", arguments) + shared +
                 string.Concat(materials.Select(m => m.Body + m.AnyHitBody)) + sources + File.ReadAllText(PathTracingInlineGenerator.AnyHitEvaluatorsPath)).ToString();
-            var cached = new[] { registry.Performance, registry.Quality, registry.CacheUpdate, registry.Reference, registry.Build, registry.Fill };
-            if (registry.ModulesHash == key && cached.All(p => p?.Compute && p.RayGenSer && p.Coverage &&
-                p.Materials.Length == materials.Length && p.Materials.All(m => m.Code)))
+            var shading = new[] { registry.Performance, registry.Quality, registry.CacheUpdate, registry.Reference, registry.Build, registry.Fill };
+            var visibility = new[] { registry.TemporalResampling, registry.SpatialResampling, registry.FinalShading };
+            if (registry.ModulesHash == key && shading.Concat(visibility).All(p => p?.Compute && p.RayGenSer && p.Coverage) &&
+                shading.All(p => p.Materials.Length == materials.Length && p.Materials.All(m => m.Code)) && visibility.All(p => p.Materials.Length == 0))
             {
                 Debug.Log("[IllusionRP] Reused all inline RayGen, material modules and binding carriers.");
                 return;
             }
             var jobs = new List<Job>();
-            var programs = new List<(PathTracingInlineProgram Program, Job RayGen, string Path)>();
+            var programs = new List<(PathTracingInlineProgram Program, Job RayGen, string Path, bool Materials)>();
             var modules = new Dictionary<bool, Job[]>();
             var coverage = new Dictionary<bool, Job>();
             string prelude = "#include \"" + PathTracingInlineGenerator.PreludeInclude + "\"\n" + shared;
@@ -56,7 +59,7 @@ namespace Illusion.Rendering.Editor
                     string body = m.Body.Replace(m.Namespace, "PathTracingMaterial");
                     string id = Hash128.Compute(body).ToString();
                     string closest = "PTMaterial_" + id;
-                    string source = prelude + body + PathTracingInlineKernels.TableInclude +
+                    string source = prelude + body + TableInclude +
                         "#undef InstanceID\n#undef InstanceIndex\n#undef PrimitiveIndex\n#undef GeometryIndex\n" +
                         "#undef ObjectToWorld3x4\n#undef WorldToObject3x4\n#undef WorldRayOrigin\n#undef WorldRayDirection\n#undef RayTCurrent\n" +
                         "void InitializeMaterial() {\n" +
@@ -74,7 +77,7 @@ namespace Illusion.Rendering.Editor
                     return job;
                 }).ToArray();
                 coverage[native16] = Prepare("Coverage" + (native16 ? "_16" : ""), prelude +
-                    "#include \"" + PathTracingInlineGenerator.AnyHitEvaluatorsPath + "\"\n" + PathTracingInlineKernels.TableInclude +
+                    "#include \"" + PathTracingInlineGenerator.AnyHitEvaluatorsPath + "\"\n" + TableInclude +
                     "export bool PathTracingInlineCoverage(uint evaluator, PathTracingInlineHitState state, inout IllusionPathPayload payload, AttributeData attributes) {\n" +
                     "g_PathTracingInline = state;\n" +
                     "uint first = _PathTracingInlineInstanceGeometries[state.instanceID];\n" +
@@ -88,6 +91,10 @@ namespace Illusion.Rendering.Editor
             registry.Reference = Program("InlineReference", Shaders + "PathTracing/PathTracing.hlsl", "RayGen_REF");
             registry.Build = Program("InlineBuild", Shaders + "PathTracing/PathTracingBuild.hlsl", "RayGen_BUILD");
             registry.Fill = Program("InlineFill", Shaders + "PathTracing/PathTracingFill.hlsl", "RayGen_FILL");
+            string resampling = Library + "RayTracedGlobalIllumination/RayTracedGIInlineResampling.hlsl";
+            registry.TemporalResampling = Program("InlineTemporalResampling", resampling, "RayTracedGITemporalResamplingPixel", materialModules: false);
+            registry.SpatialResampling = Program("InlineSpatialResampling", resampling, "RayTracedGISpatialResamplingPixel", materialModules: false);
+            registry.FinalShading = Program("InlineFinalShading", resampling, "RayTracedGIFinalShadingPixel", materialModules: false);
 
             var abi = new Bindings(jobs.Select(j => j.Document));
             foreach (var job in jobs)
@@ -129,13 +136,19 @@ namespace Illusion.Rendering.Editor
             var carriers = new Dictionary<string, string>();
             foreach (var entry in programs)
             {
-                var all = new[] { entry.RayGen, coverage[entry.RayGen.Native16] }.Concat(modules[entry.RayGen.Native16]).ToArray();
+                var linked = new[] { entry.RayGen, coverage[entry.RayGen.Native16] };
+                var all = entry.Materials ? linked.Concat(modules[entry.RayGen.Native16]).ToArray() : linked;
                 var reflection = Merge(all.Select(j => j.Reflection));
                 var extension = reflection.Resources.FindIndex(r => r.Name == "g_NvidiaExt");
-                var binding = reflection.Resources[extension];
-                binding.Name = "_PathTracingInlineExtension";
-                binding.Type = 6;
-                reflection.Resources[extension] = binding;
+                if (extension >= 0)
+                {
+                    var binding = reflection.Resources[extension];
+                    binding.Name = "_PathTracingInlineExtension";
+                    binding.Type = 6;
+                    reflection.Resources[extension] = binding;
+                }
+                else
+                    reflection.Resources.Add(new DxcCompiler.Resource { Name = "_PathTracingInlineExtension", Type = 6, BindPoint = 7, BindCount = 1, ReturnType = 6, Dimension = 1 });
                 string carrierSource = entry.RayGen.Source + "\nRWStructuredBuffer<uint4> _PathTracingInlineExtension : register(u7);\n";
                 string carrier = PathTracingInlineBindingCarrier.Generate(carrierSource, reflection);
                 var args = new List<string> { "-Zpr", "-HV", "2018" };
@@ -156,10 +169,9 @@ namespace Illusion.Rendering.Editor
                 entry.Program.Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(entry.Path);
                 entry.Program.RayGenSer = Import(entry.RayGen);
                 entry.Program.Coverage = Import(coverage[entry.RayGen.Native16]);
-                entry.Program.Materials = modules[entry.RayGen.Native16].Select(m => new PathTracingInlineProgram.MaterialModule
-                {
-                    Code = Import(m), ClosestHit = m.Closest
-                }).ToArray();
+                entry.Program.Materials = entry.Materials
+                    ? modules[entry.RayGen.Native16].Select(m => new PathTracingInlineProgram.MaterialModule { Code = Import(m), ClosestHit = m.Closest }).ToArray()
+                    : Array.Empty<PathTracingInlineProgram.MaterialModule>();
             }
             Debug.Log($"[IllusionRP] Material modules: {compiled} compiled, {unique.Length - compiled} reused in {timer.ElapsedMilliseconds} ms.");
             registry.ModulesHash = key;
@@ -193,19 +205,19 @@ namespace Illusion.Rendering.Editor
                 return job;
             }
 
-            PathTracingInlineProgram Program(string name, string consumer, string entry, bool native16 = false)
+            PathTracingInlineProgram Program(string name, string consumer, string entry, bool native16 = false, bool materialModules = true)
             {
                 string body = preprocess(consumer, "#define ILLUSION_INLINE_MODULES 1\n");
                 if (body == null) throw new InvalidOperationException($"Could not preprocess {name}.");
                 body = string.Join("\n", body.Split('\n').Where(l => !l.TrimStart().StartsWith("#pragma", StringComparison.Ordinal)));
                 string source = "#define NV_SHADER_EXTN_SLOT u7\n#define NV_HITOBJECT_USE_MACRO_API 1\n" +
                     "#include \"Packages/com.kurisu.unityrhi/ShaderLibrary/NVAPI/nvHLSLExtns.h\"\n" + prelude +
-                    "#include \"" + Library + "PathTracing/Inline/PathTracingInlineTraversal.hlsl\"\n" + body + PathTracingInlineKernels.TableInclude +
+                    "#include \"" + Library + "PathTracing/Inline/PathTracingInlineTraversal.hlsl\"\n" + body + TableInclude +
                     "[shader(\"raygeneration\")] void InlineMain() { if (_ScreenParams.x < 0) return; uint2 pixel = DispatchRaysIndex().xy; " + entry + "(pixel); }\n";
                 var raygen = Prepare(name + ".ser", source, native16);
                 raygen.Arguments.AddRange(new[] { "-exports", "InlineMain" });
                 var program = new PathTracingInlineProgram();
-                programs.Add((program, raygen, PathTracingInlineGenerator.OutputFolder + "/" + name + ".compute"));
+                programs.Add((program, raygen, PathTracingInlineGenerator.OutputFolder + "/" + name + ".compute", materialModules));
                 return program;
             }
         }

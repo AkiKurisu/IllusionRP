@@ -92,7 +92,7 @@ namespace Illusion.Rendering.Editor
             foreach (string name in new[]
             {
                 "DxcCompiler.cs", "DxcCompiler.Reflection.cs", "PathTracingInlineGenerator.cs", "PathTracingInlineGeneratorCache.cs",
-                "PathTracingInlineKernels.cs", "PathTracingInlineModules.cs", "PathTracingCoverageSlice.cs", "PathTracingInlineBindingCarrier.cs", "PathTracingInlineUnitTransform.cs"
+                "PathTracingInlineModules.cs", "PathTracingCoverageSlice.cs", "PathTracingInlineBindingCarrier.cs", "PathTracingInlineUnitTransform.cs"
             })
             {
                 byte[] bytes = File.ReadAllBytes(Path.Combine(folder, name));

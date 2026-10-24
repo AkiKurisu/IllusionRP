@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Replace reflection-based backend loading with typed registration.
 - Remove per-frame render-thread waits from RTGI denoising.
 - Evaluate the coverage of materials whose `PathTracing` pass declares standard coverage, such as Hybrid Lit and SpeedTree, with one shared routine in inline ray tracing, and sample coverage textures at their finest level.
+- Trace the visibility rays of RTGI resampling and final shading from ray generation programs.
 
 ### Fixed
 

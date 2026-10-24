@@ -172,7 +172,6 @@ namespace Illusion.Rendering.Editor
                         Debug.LogError($"[IllusionRP] Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
                         return null;
                     }
-                    PathTracingInlineKernels.Write(registry, shared, consumer => PreprocessConsumer(consumer, string.Empty));
                     PathTracingInlineModules.Write(registry, shared, accepted.Select(u => (u.Unit.Body, u.Unit.AnyHitBody, u.Namespace)).ToArray(), PreprocessConsumer, dxc, compileArgs, cache.Version);
                     var existing = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(RegistryPath);
                     if (existing)

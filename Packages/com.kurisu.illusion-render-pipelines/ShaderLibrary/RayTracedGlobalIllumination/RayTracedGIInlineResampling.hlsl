@@ -19,4 +19,8 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/RTXDI/FullSample/LightingPasses/GI/FinalShading.hlsl"
 #undef main
 
+void RayTracedGITemporalResamplingPixel(uint2 pixel) { RayTracedGITemporalResampling(pixel, pixel % RTXDI_SCREEN_SPACE_GROUP_SIZE); }
+void RayTracedGISpatialResamplingPixel(uint2 pixel) { RayTracedGISpatialResampling(pixel); }
+void RayTracedGIFinalShadingPixel(uint2 pixel) { RayTracedGIFinalShading(pixel); }
+
 #endif
