@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-22 |
+| Date | 2026-10-24 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Inline Ray Tracing](inline-ray-tracing.md), [Path Tracing](path-tracing.md), [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
 Ray traced global illumination (RTGI) adds indirect diffuse and indirect specular lighting to raster cameras. The raster opaque prepass provides the receiving surface; rays from it are traced through the same [ray tracing scene](ray-tracing-scene.md), materials and lights as [path tracing](path-tracing.md); ReSTIR GI reuses the resulting samples across neighboring pixels and frames; NRD denoises them; and the Forward materials consume the result through the existing indirect lighting seams. Raster direct lighting, shadows, material response and subsurface scattering are unchanged.
@@ -95,7 +95,7 @@ Quality mode only.
 
 ## Denoising
 
-- **Denoiser.** NRD RELAX by default, REBLUR selectable: the diffuse variant while only diffuse is produced, the diffuse and specular variant with specular. None publishes the resampled signal undenoised, for validation.
+- **Denoiser.** NRD RELAX by default, REBLUR selectable: the diffuse variant while only diffuse is produced, the diffuse and specular variant with specular. Both suppress fireflies, so rare very bright samples, such as rays that reach small bright emitters, do not flicker through the history. None publishes the resampled signal undenoised, for validation.
 - **Inputs.** View depth, motion, normal and roughness, and radiance with hit distance per signal, all at the GI resolution and in the denoiser's conventions. In checkerboard mode the denoiser receives only the traced field, and its active field matches the one resampling traced. The inputs describe the same frame, view and jitter. Motion is the camera's motion vectors; a camera without them gives NRD no surface motion, and NRD takes the camera motion from the view matrices.
 - **Backend.** The backend is optional. It exists only when the UnityRHI package is installed, only for the Editor and Windows x64, and runs only on Direct3D 12. The native library and its shader front end are pinned together as defined by [Third-Party Source Imports](third-party-source-imports.md#pinning).
 

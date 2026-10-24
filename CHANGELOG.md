@@ -5,6 +5,12 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2026-10-24
+
+### Fixed
+
+- Fix flickering bright speckles in ray traced global illumination with the RELAX denoiser by enabling its firefly suppression.
+
 ## [1.4.3] - 2026-10-24
 
 ### Added

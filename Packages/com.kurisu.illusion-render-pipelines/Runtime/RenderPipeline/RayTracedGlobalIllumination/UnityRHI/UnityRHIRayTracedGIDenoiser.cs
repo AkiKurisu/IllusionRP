@@ -289,6 +289,7 @@ namespace Illusion.Rendering.RayTracedGlobalIllumination.UnityRHI
                 {
                     var settings = RelaxSettings._default;
                     settings.checkerboardMode = checkerboardMode;
+                    settings.enableAntiFirefly = true;
                     entry.Write(settings);
                 }
 
