@@ -71,6 +71,7 @@ namespace Illusion.Rendering.PathTracing
             if (!registry || !PathTracingInlineResources.IsAvailable)
                 return;
             PathTracingInlineResources.BeginFrame(frame);
+            _micromaps.CheckCoverageTextures();
             if (_version != instances.Version || _generation != PathTracingInlineResources.Generation || _registry != registry || _modulesHash != registry.ModulesHash)
             {
                 _version = instances.Version;

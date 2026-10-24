@@ -169,7 +169,7 @@ namespace Illusion.Rendering.PathTracing
             if (!s_SlotTextures.TryGetValue(slot, out int id) || !s_Textures.TryGetValue(id, out TextureEntry entry) || !entry.Texture ||
                 entry.Texture is RenderTexture)
                 return false;
-            content = HashCode.Combine(id, entry.Texture.updateCount);
+            content = HashCode.Combine(id, entry.UpdateCount, entry.Resource);
             return true;
         }
 

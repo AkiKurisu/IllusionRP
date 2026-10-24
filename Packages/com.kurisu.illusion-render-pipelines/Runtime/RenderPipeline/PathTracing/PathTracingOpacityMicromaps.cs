@@ -52,6 +52,8 @@ namespace Illusion.Rendering.PathTracing
             public bool Lost;
             public int Geometry;
             public uint[] Coverage;
+            public int TextureSlot;
+            public int TextureContent;
             public PathTracingInlineScene Owner;
             public uint Triangles;
             public IntPtr Array;
@@ -68,6 +70,8 @@ namespace Illusion.Rendering.PathTracing
             public int SubMesh;
             public int Geometry;
             public uint[] Coverage;
+            public int TextureSlot;
+            public int TextureContent;
         }
 
         private readonly Dictionary<(int Mesh, int SubMesh), Micromap> _micromaps = new();
@@ -117,8 +121,10 @@ namespace Illusion.Rendering.PathTracing
             var key = (mesh.GetInstanceID(), subMesh);
             int signature = Ineligible;
             int words = (int)record / 4;
+            int textureSlot = coverage.Length == 4 ? (int)(materialData[words + (int)coverage[1]] & TextureSlotMask) : -1;
+            int texture = 0;
             if (coverage.Length == 4 && (coverage[0] & TestFlag) != 0 && (coverage[0] & BlendFlag) == 0 &&
-                PathTracingInlineResources.TryGetTextureContent((int)(materialData[words + (int)coverage[1]] & TextureSlotMask), out int texture))
+                PathTracingInlineResources.TryGetTextureContent(textureSlot, out texture))
             {
                 uint scaleOffset = coverage[2] >> 16;
                 signature = HashCode.Combine(texture, materialData[words + (int)coverage[1]] & ~TextureSlotMask, coverage[0],
@@ -132,7 +138,7 @@ namespace Illusion.Rendering.PathTracing
             if (_signatures.TryGetValue(key, out int seen) && seen != signature)
                 signature = Ineligible;
             _signatures[key] = signature;
-            _uses.Add(new Use { Key = key, Owner = owner, Renderer = renderer, Mesh = mesh, SubMesh = subMesh, Geometry = geometry, Coverage = coverage });
+            _uses.Add(new Use { Key = key, Owner = owner, Renderer = renderer, Mesh = mesh, SubMesh = subMesh, Geometry = geometry, Coverage = coverage, TextureSlot = textureSlot, TextureContent = texture });
         }
 
         public void EndRebuild()
@@ -160,6 +166,11 @@ namespace Illusion.Rendering.PathTracing
                             micromap.Coverage = use.Coverage;
                         }
                     }
+                    if (!micromap.Lost)
+                    {
+                        micromap.TextureSlot = use.TextureSlot;
+                        micromap.TextureContent = use.TextureContent;
+                    }
                     if (micromap.Owner == use.Owner)
                         micromap.Geometry = use.Geometry;
                     if (micromap.Renderers.Add(use.Renderer) && micromap.Lost)
@@ -180,7 +191,9 @@ namespace Illusion.Rendering.PathTracing
                     Geometry = use.Geometry,
                     Owner = use.Owner,
                     Triangles = (uint)descriptor.indexCount / 3,
-                    Coverage = use.Coverage
+                    Coverage = use.Coverage,
+                    TextureSlot = use.TextureSlot,
+                    TextureContent = use.TextureContent
                 };
                 micromap.Renderers.Add(use.Renderer);
                 _micromaps.Add(use.Key, micromap);
@@ -203,6 +216,17 @@ namespace Illusion.Rendering.PathTracing
                 _micromaps.Remove(key);
             }
             _released.Clear();
+        }
+
+        // Texture updates that keep their resource do not rebuild the scene, so attached micromaps check their coverage texture.
+        public void CheckCoverageTextures()
+        {
+            foreach (Micromap micromap in _micromaps.Values)
+            {
+                if (!micromap.Lost && micromap.Array != IntPtr.Zero &&
+                    PathTracingInlineResources.TryGetTextureContent(micromap.TextureSlot, out int content) && content != micromap.TextureContent)
+                    Lose(micromap);
+            }
         }
 
         public void Record(CommandBuffer cmd, ComputeShader bake, PathTracingInlineScene scene)
