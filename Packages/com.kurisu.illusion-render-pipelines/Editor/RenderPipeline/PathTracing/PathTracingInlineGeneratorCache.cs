@@ -23,6 +23,7 @@ namespace Illusion.Rendering.Editor
             public string Body;
             public string AnyHitBody;
             public string SharedHitContext;
+            public string StandardCoverage;
             public string[] Files = Array.Empty<string>();
             public long[] Stamps = Array.Empty<long>();
             public string[] ConstantNames = Array.Empty<string>();
@@ -50,6 +51,7 @@ namespace Illusion.Rendering.Editor
                     Body = Body.Replace(NamespacePlaceholder, unitNamespace),
                     AnyHitBody = AnyHitBody?.Replace(NamespacePlaceholder, unitNamespace),
                     SharedHitContext = SharedHitContext,
+                    StandardCoverage = StandardCoverage,
                     HasClosestHit = HasClosestHit,
                     HasAnyHit = HasAnyHit,
                     HasObjectConstants = HasObjectConstants,
@@ -155,6 +157,7 @@ namespace Illusion.Rendering.Editor
                 entry.Body = unit.Body;
                 entry.AnyHitBody = unit.AnyHitBody;
                 entry.SharedHitContext = unit.SharedHitContext;
+                entry.StandardCoverage = unit.StandardCoverage;
                 entry.ConstantNames = unit.Constants.Select(c => c.Name).ToArray();
                 entry.ConstantTypes = unit.Constants.Select(c => c.Type).ToArray();
                 entry.ConstantComponents = unit.Constants.Select(c => c.Components).ToArray();

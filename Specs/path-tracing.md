@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-22 |
+| Date | 2026-10-24 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Inline Ray Tracing](inline-ray-tracing.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 ## Rendering Modes
@@ -61,7 +61,7 @@ Use existing renderers, meshes, materials and property overrides with their orig
 
 [PRT baking](precomputed-radiance-transfer.md) shades its first hits with the same material evaluation, binding only the hit tables, not camera or frame state.
 
-Coverage decides whether a hit exists; physical transmission decides scattering after acceptance. Main, shadow and subsurface rays preserve the material's coverage contract. Shadow rays continue straight through uncovered/transmitting portions with colored transmission.
+Coverage decides whether a hit exists; physical transmission decides scattering after acceptance. Main, shadow and subsurface rays preserve the material's coverage contract. Shadow rays continue straight through uncovered/transmitting portions with colored transmission. Coverage samples its textures at their finest level, whatever the distance and angle at which a ray meets the surface, so the geometry a ray can hit does not depend on how it is traced; shading inputs follow the ray's footprint.
 
 Hair cards represent a collapsed hair volume: authored base color describes its overall albedo rather than a single strand's repeated-bounce mapping. Covered card transmission returns to the incident side; only uncovered coverage passes through the card. Raster roughness/specular and authored hair direction retain their meaning. Fabric uses the authored normal/tangent and specular/sheen relationship.
 

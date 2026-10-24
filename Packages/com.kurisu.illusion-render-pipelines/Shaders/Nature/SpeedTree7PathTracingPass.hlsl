@@ -3,6 +3,10 @@
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingLitSurface.hlsl"
 
+#ifdef SPEEDTREE_ALPHATEST
+#define PATH_TRACING_STANDARD_COVERAGE PathTracingStandardCoverage(_MainTex, 0, 0, _Color, _Cutoff, 1, 0, 0)
+#endif
+
 half2 SpeedTree7PathTracingVertexData(PathTracingHitVertex vertex)
 {
     half2 data = 0;
@@ -52,7 +56,7 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
 {
     if (!PathTracingAcceptShadowCaster(payload))
         return;
-    PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
+    PathTracingHitContext hit = PathTracingGetCoverageContext(attributes, payload);
     g_PathTracingClipped = false;
     SampleSpeedTree7AlbedoAlpha(hit.vertex.texCoord0.xy);
     if (g_PathTracingClipped)

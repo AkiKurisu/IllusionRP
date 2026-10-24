@@ -24,11 +24,15 @@ namespace Illusion.Rendering.Editor
         internal const string RegistryPath = OutputFolder + "/Resources/" + PathTracingInlineRegistry.ResourceName + ".asset";
         internal const string PreludeInclude = "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInline.hlsl";
         private const string UnitMarker = "#pragma PT_INLINE_UNIT_MARKER";
+        private const string StandardCoverageProbe = "PT_INLINE_STANDARD_COVERAGE_PROBE";
+        private const string StandardCoverageInclude = "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInlineStandardCoverage.hlsl";
         private const int EnumerateAllVariantsUpTo = 8;
 
         private static readonly Regex s_PathTracingTag = new(@"""LightMode""\s*=\s*""PathTracing""", RegexOptions.Compiled);
         private static readonly Regex s_KeywordPragma = new(@"^\s*#pragma\s+(shader_feature|multi_compile)(_local)?(_[a-z]+)?\s+(.*)$", RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly Regex s_LineDirectiveOrBlank = new(@"^[ \t]*(?:#line[^\n]*)?\n", RegexOptions.Compiled | RegexOptions.Multiline);
+        private static readonly Regex s_StandardCoverage = new(StandardCoverageProbe + @"\s+PathTracingStandardCoverage\s*\(([^()]*)\)", RegexOptions.Compiled);
+        private static readonly Regex s_Identifier = new(@"^[A-Za-z_]\w*$", RegexOptions.Compiled);
         private static readonly Regex s_MaterialShader = new(@"m_Shader:\s*\{[^}]*guid:\s*([0-9a-f]{32})", RegexOptions.Compiled);
 
         private sealed class PassSource
@@ -186,7 +190,7 @@ namespace Illusion.Rendering.Editor
                 cache.Save();
 
                 new GeneratorReport().Save();
-                Debug.Log($"[IllusionRP] Generated {units.Count} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged) in {stopwatch.ElapsedMilliseconds} ms (preprocess/transform {transformMs} ms).");
+                Debug.Log($"[IllusionRP] Generated {units.Count} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged, {accepted.Count(u => StandardCoverage(u.Unit) != null)} with standard coverage) in {stopwatch.ElapsedMilliseconds} ms (preprocess/transform {transformMs} ms).");
             }
             finally
             {
@@ -228,7 +232,7 @@ namespace Illusion.Rendering.Editor
             source.Append("#include \"").Append(PreludeInclude).Append("\"\n").Append(UnitMarker).Append('\n');
             foreach (string keyword in unit.Keywords)
                 source.Append("#define ").Append(keyword).Append(" 1\n");
-            source.Append(unit.Pass.Source);
+            source.Append(unit.Pass.Source).Append('\n').Append(StandardCoverageProbe).Append(" PATH_TRACING_STANDARD_COVERAGE\n");
 
             DxcCompiler.Result result = dxc.Preprocess(source.ToString(), unit.Pass.Path, args);
             unit.Files = GeneratorCache.Dependencies(result.Output, unit.Pass.Path);
@@ -243,7 +247,47 @@ namespace Illusion.Rendering.Editor
                 unit.Error = "unit marker missing from preprocessed output";
                 return;
             }
-            unit.Transformed = PathTracingInlineUnitTransform.Transform(result.Output, GeneratorCache.NamespacePlaceholder, marker + UnitMarker.Length);
+            string output = result.Output;
+            int probe = output.LastIndexOf(StandardCoverageProbe, StringComparison.Ordinal);
+            string standardCoverage = null;
+            if (probe > marker)
+            {
+                Match declaration = s_StandardCoverage.Match(output, probe);
+                if (declaration.Success && declaration.Index == probe)
+                    standardCoverage = declaration.Groups[1].Value;
+                output = output.Substring(0, probe);
+            }
+            unit.Transformed = PathTracingInlineUnitTransform.Transform(output, GeneratorCache.NamespacePlaceholder, marker + UnitMarker.Length);
+            unit.Transformed.StandardCoverage = standardCoverage;
+        }
+
+        // Expanded declaration: texture, its scale-offset property or 0, texture coordinate set, color, cutoff, then the alpha test,
+        // blend and full coverage keywords. A keyword argument that still reads as its own name is not defined.
+        private static uint[] StandardCoverage(PathTracingInlineUnitTransform.Unit unit)
+        {
+            if (unit.StandardCoverage == null)
+                return null;
+            string[] args = unit.StandardCoverage.Split(',').Select(a => a.Trim()).ToArray();
+            if (args.Length != 8 || !uint.TryParse(args[2], out uint uvSet) || uvSet > 3)
+                return null;
+            static bool On(string keyword) => keyword != "0" && !s_Identifier.IsMatch(keyword);
+            bool test = On(args[5]), blend = On(args[6]), full = blend && On(args[7]);
+            uint flags = 0x80000000u | (test ? 1u : 0u) | (blend ? 2u : 0u) | (full ? 4u : 0u) | uvSet << 4;
+            if (!test && !blend)
+                return new[] { flags, 0u, 0u, 0u };
+            int Offset(string name, int components)
+            {
+                int index = unit.Constants.FindIndex(c => c.Name == name);
+                if (index < 0)
+                    return -1;
+                PathTracingInlineUnitTransform.Constant c = unit.Constants[index];
+                return c.Components == components && c.Count <= 1 && ConstantKind(c.Type) == 0 && c.Offset < 0xFFFF ? c.Offset : -1;
+            }
+            int slot = unit.Textures.IndexOf(args[0]);
+            int scaleOffset = args[1] == "0" ? 0xFFFF : Offset(args[1], 4), color = Offset(args[3], 4), cutoff = test ? Offset(args[4], 1) : 0;
+            if (slot < 0 || scaleOffset < 0 || color < 0 || cutoff < 0)
+                return null;
+            return new[] { flags, (uint)slot, (uint)color | (uint)scaleOffset << 16, (uint)cutoff };
         }
 
         private static string Normalize(string text) =>
@@ -281,23 +325,39 @@ namespace Illusion.Rendering.Editor
             sb.Append("// Generated by IllusionRP from the PathTracing passes of the project's shaders. Do not edit.\n");
             sb.Append("#ifndef ILLUSION_PATH_TRACING_INLINE_EVALUATORS_INCLUDED\n#define ILLUSION_PATH_TRACING_INLINE_EVALUATORS_INCLUDED\n");
             sb.Append("#include \"").Append(PreludeInclude).Append("\"\n");
-            foreach (GeneratedUnit unit in units)
-                sb.Append(s_LineDirectiveOrBlank.Replace(anyHitOnly ? unit.Unit.AnyHitBody : unit.Unit.Body, string.Empty));
+            uint[][] standard = units.Select(u => StandardCoverage(u.Unit)).ToArray();
+            for (int i = 0; i < units.Count; i++)
+                if (!anyHitOnly || standard[i] == null)
+                    sb.Append(s_LineDirectiveOrBlank.Replace(anyHitOnly ? units[i].Unit.AnyHitBody : units[i].Unit.Body, string.Empty));
 
             sb.Append("#define PT_INLINE_EVALUATOR_COUNT ").Append(units.Count).Append("u\n");
+            bool anyStandard = standard.Any(s => s != null);
+            if (anyStandard)
+            {
+                sb.Append("#include \"").Append(StandardCoverageInclude).Append("\"\n");
+                sb.Append("static const uint4 g_PathTracingInlineStandardCoverage[PT_INLINE_EVALUATOR_COUNT] =\n{\n");
+                foreach (uint[] s in standard)
+                    sb.Append(s == null ? "    uint4(0u, 0u, 0u, 0u),\n" : $"    uint4(0x{s[0]:X}u, {s[1]}u, 0x{s[2]:X}u, {s[3]}u),\n");
+                sb.Append("};\n");
+            }
             sb.Append("void PathTracingInlineEvaluateClosestHit(uint evaluator, inout IllusionPathPayload payload, AttributeData attributes)\n{\n");
             if (hitContext != null)
                 sb.Append($"    g_PathTracingInlineCachedHit = {hitContext.Namespace}::PathTracingGetHitContext(attributes, payload);\n    g_PathTracingInlineHitContextReady = true;\n");
             sb.Append("    switch (evaluator)\n    {\n");
             for (int i = 0; i < units.Count; i++)
-                sb.Append($"        case {i}u: {units[i].Namespace}::PathTracingInlineClosestHit(payload, attributes); break;\n");
+                if (!anyHitOnly || standard[i] == null)
+                    sb.Append($"        case {i}u: {units[i].Namespace}::PathTracingInlineClosestHit(payload, attributes); break;\n");
             sb.Append("        default: break;\n    }\n");
             if (hitContext != null)
                 sb.Append("    g_PathTracingInlineHitContextReady = false;\n");
             sb.Append("}\n");
-            sb.Append("bool PathTracingInlineEvaluateAnyHit(uint evaluator, inout IllusionPathPayload payload, AttributeData attributes)\n{\n    switch (evaluator)\n    {\n");
+            sb.Append("bool PathTracingInlineEvaluateAnyHit(uint evaluator, inout IllusionPathPayload payload, AttributeData attributes)\n{\n");
+            if (anyStandard)
+                sb.Append("    uint4 standard = g_PathTracingInlineStandardCoverage[min(evaluator, PT_INLINE_EVALUATOR_COUNT - 1u)];\n")
+                    .Append("    if (evaluator < PT_INLINE_EVALUATOR_COUNT && standard.x != 0u)\n        return PathTracingInlineStandardCoverage(standard, payload, attributes);\n");
+            sb.Append("    switch (evaluator)\n    {\n");
             for (int i = 0; i < units.Count; i++)
-                if (units[i].Unit.HasAnyHit)
+                if (units[i].Unit.HasAnyHit && standard[i] == null)
                     sb.Append($"        case {i}u: return {units[i].Namespace}::PathTracingInlineAnyHit(payload, attributes);\n");
             sb.Append("        default: return true;\n    }\n}\n#endif\n");
             return sb.ToString();

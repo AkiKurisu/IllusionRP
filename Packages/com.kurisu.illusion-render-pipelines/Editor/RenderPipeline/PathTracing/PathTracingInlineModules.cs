@@ -36,7 +36,7 @@ namespace Illusion.Rendering.Editor
                 .Where(p => p.EndsWith(".hlsl", StringComparison.Ordinal) || p.EndsWith(".hlsli", StringComparison.Ordinal) || p.EndsWith(".h", StringComparison.Ordinal))
                 .OrderBy(p => p, StringComparer.Ordinal).Select(File.ReadAllText));
             string key = Hash128.Compute(Version + rulesVersion + toolchain + string.Join(" ", arguments) + shared +
-                string.Concat(materials.Select(m => m.Body + m.AnyHitBody)) + sources).ToString();
+                string.Concat(materials.Select(m => m.Body + m.AnyHitBody)) + sources + File.ReadAllText(PathTracingInlineGenerator.AnyHitEvaluatorsPath)).ToString();
             var cached = new[] { registry.Performance, registry.Quality, registry.CacheUpdate, registry.Reference, registry.Build, registry.Fill };
             if (registry.ModulesHash == key && cached.All(p => p?.Compute && p.RayGenSer && p.Coverage &&
                 p.Materials.Length == materials.Length && p.Materials.All(m => m.Code)))

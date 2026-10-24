@@ -74,6 +74,7 @@ struct PathTracingInstance
     uint renderingLayers;
 };
 StructuredBuffer<PathTracingInstance> _PathTracingInstanceData;
+StructuredBuffer<uint2> _PathTracingCulledSubMeshes;
 
 struct PathTracingMaterialData
 {

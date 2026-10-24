@@ -8,6 +8,10 @@
 #define HYBRID_LIT_PATH_TRACING_FILM
 #endif
 
+#if !defined(_PARALLAXMAP) && !defined(_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A)
+#define PATH_TRACING_STANDARD_COVERAGE PathTracingStandardCoverage(_BaseMap, _BaseMap_ST, 0, _BaseColor, _Cutoff, _ALPHATEST_ON, _SURFACE_TYPE_TRANSPARENT, _ALPHAPREMULTIPLY_ON)
+#endif
+
 float2 HybridLitPathTracingUV(PathTracingHitContext hit)
 {
     float2 uv = TRANSFORM_TEX(hit.vertex.texCoord0.xy, _BaseMap);
@@ -60,7 +64,7 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
         return;
     }
 #endif
-    PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
+    PathTracingHitContext hit = PathTracingGetCoverageContext(attributes, payload);
     g_PathTracingClipped = false;
     half alpha = Alpha(SampleAlbedoAlpha(HybridLitPathTracingUV(hit), TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap)).a, _BaseColor, _Cutoff);
     if (g_PathTracingClipped)

@@ -26,6 +26,7 @@ namespace Illusion.Rendering.Editor
             public string Body;
             public string AnyHitBody;
             public string SharedHitContext;
+            public string StandardCoverage;
             public readonly List<Constant> Constants = new();
             public readonly List<string> Textures = new();
             public readonly List<KeyValuePair<string, string>> Hoisted = new();

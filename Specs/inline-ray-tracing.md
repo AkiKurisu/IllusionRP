@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-22 |
+| Date | 2026-10-24 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Path Tracing](path-tracing.md), [Materials and Shaders](materials-and-shaders.md), [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Third-Party Source Imports](third-party-source-imports.md) |
 
 Inline ray tracing traces ray traced global illumination (RTGI) and path tracing without Unity ray tracing shaders. Unity prepares hit groups for every instance of every acceleration structure bound to its ray generation dispatches, on every dispatch, so that path's CPU cost grows with the size of the scene. Instead, each tracing stage is a ray generation program that the native backend dispatches. Rays traverse the scene with ray queries, and each accepted closest hit is shaded by its material's own module after the GPU regroups rays by the material they hit. The shader table holds one record per material evaluator, never one per instance. Each material is still evaluated from its own `PathTracing` pass source, so the result is the image that pass defines.
@@ -15,6 +15,7 @@ Inline ray tracing traces ray traced global illumination (RTGI) and path tracing
 - Closest-hit shading runs coherently: rays are regrouped by the material they hit before shading, on GPUs that support shader execution reordering, and each material's shading code runs only for its own hits.
 - Traversal stays inside the tracing program: deciding whether a candidate surface occludes a ray never leaves the ray generation program.
 - Every material is evaluated with its own material inputs, coverage and lighting rules. Converged RTGI and path tracing results do not depend on how rays are traced.
+- Candidate cost does not grow with the number of materials: the code that traversal runs for the common clipping case is the same for every material that uses it.
 - Materials are evaluated at the hit from their authored textures and properties. Nothing is baked, averaged or precomputed per material.
 - Inline evaluation depends only on geometry and material properties. It never depends on what an object represents in the application, its layer or its scene role.
 
@@ -29,7 +30,7 @@ Inline ray tracing traces ray traced global illumination (RTGI) and path tracing
 ## Non-goals
 
 - PRT baking. It keeps Unity ray tracing shaders.
-- A unified or hand-written material evaluator, coverage test included, that replaces the materials' own `PathTracing` source.
+- A unified or hand-written evaluator of material shading that replaces the materials' own `PathTracing` source. Coverage that follows the standard model is evaluated from captured material data instead (see [Standard coverage](#standard-coverage)); it is not a separate model of the material.
 - Baked material atlases, averaged material colors, screen-space coverage approximations, or any other per-material precomputation.
 - A hit-shader path for RTGI or path tracing.
 - Procedural and AABB geometry.
@@ -49,7 +50,7 @@ Tracing programs and compute stages trace the [ray tracing scene](ray-tracing-sc
 
 ## Ray traversal
 
-- **Coverage.** A candidate hit on non-opaque geometry runs its material's own coverage inside the traversal loop. The coverage of every material is compiled once into a shared coverage library that each tracing program links when its pipeline is created. Coverage, stochastic coverage, face culling, shadow-caster and shadow-layer rules and colored transmission are the same as the material's `PathTracing` rules for that ray kind ([Path Tracing](path-tracing.md#scene-and-material-inputs)). A candidate never calls into a material module, so traversal state stays with the program.
+- **Coverage.** A candidate hit on non-opaque geometry decides its coverage inside the traversal loop, in one of two forms. A material whose `PathTracing` pass declares [standard coverage](#standard-coverage) is decided by the shared standard evaluation from its captured coverage data. Any other material runs its own coverage, compiled once into a shared coverage library that each tracing program links when its pipeline is created. In both forms coverage, stochastic coverage, face culling, shadow-caster and shadow-layer rules and colored transmission are the same as the material's `PathTracing` rules for that ray kind ([Path Tracing](path-tracing.md#scene-and-material-inputs)). A candidate never calls into a material module, so traversal state stays with the program.
 - **Opaque geometry.** Geometry whose materials have no coverage is traversed as opaque and runs no candidate code.
 - **Closest hits.** A ray's accepted closest hit is shaded by its material's module. Rays are regrouped by the material they hit before the module runs, on GPUs that support shader execution reordering. Other GPUs shade in the original order with the same result.
 - **Visibility.** Visibility rays accumulate colored transmission through transmitting surfaces during traversal and need no closest-hit shading.
@@ -82,13 +83,23 @@ The ray tracing scene service owns a shader-visible resource table that tracing 
 - **Attributes.** Records describe the mesh's vertex layout and formats. Inline evaluation reconstructs the hit's interpolated attributes from them: positions, normals, tangents, texture coordinates and vertex color, with the precision a hit shader would receive. Read/Write import is not required.
 - **Deforming geometry.** Skinned, blend-shaped and in-place meshes reference the deformed data the acceleration structure was built from in the same frame. Each deformed buffer has its own entry. A renderer that alternates between deformed buffers from frame to frame switches its records between those entries every frame. Neither consumer needs previous-frame geometry at secondary surfaces.
 
+## Standard coverage
+
+Most clipped and blended surfaces decide coverage the same way, and differ only in their data. Those materials share one evaluation instead of each running a copy of its own.
+
+- **Model.** Coverage alpha is the alpha of one material texture, sampled at its finest level at one of the hit's texture coordinate sets, with the material's scale and offset when the pass applies one, times the alpha of one material color. Alpha-tested surfaces reject hits whose alpha is below the material's cutoff. Blended surfaces transmit `1 - alpha` to visibility rays and accept other rays stochastically by alpha, unless the material's own rules treat the surface as fully covering those rays. Shadow-caster and shadow-layer rules, face culling, transmission skipping and random-walk recording apply as they do for any coverage.
+- **Declaration.** A shader's `PathTracing` pass declares that its coverage follows the model and names the properties that supply the texture, its scale and offset, the texture coordinate set, color and cutoff, and the keywords that select alpha testing, blending and full coverage. Hand-written passes declare it in source; ASE templates expose it as a template option. A pass without the declaration keeps its own coverage.
+- **Data.** Each material's coverage inputs are captured into its material record with the rest of its inputs: the texture's resource table entry, scale and offset, the color and the cutoff. Change tracking recaptures them like any other input. The behavior follows from the variant's keywords.
+- **Equivalence.** For a declared pass, the standard evaluation decides the same coverage the pass's own coverage would, including the texture's filtering at its finest level. A pass whose coverage the model cannot express, such as hair, does not declare it.
+- **Cost.** The standard evaluation is one compact routine in the tracing programs and compute stages. Adding materials or variants that declare standard coverage adds data, not code.
+
 ## Inline material evaluation
 
-- **Single source.** A shader variant's `PathTracing` program is compiled once with its keywords and libraries. Its closest-hit entry point becomes the material module that shades accepted hits. Its coverage, the any-hit entry point, is compiled from the same source into the shared coverage library. No material family has separate evaluator code, and passes need no changes for it.
+- **Single source.** A shader variant's `PathTracing` program is compiled once with its keywords and libraries. Its closest-hit entry point becomes the material module that shades accepted hits. Its coverage, the any-hit entry point, is compiled from the same source into the shared coverage library unless the pass declares standard coverage. No material family has separate evaluator code, and passes need no changes for it.
 - **Code placement.** Tracing programs hold the stage's integration and the traversal; they link the materials' coverage and do not hold their shading. Each program traverses from a single site that its scattered and visibility rays share, so the linked coverage is merged into it once. Shading code lives only in the modules, so a module runs only for its own hits and has its own register budget, and a program does not grow with the materials' shading.
 - **Hit environment.** The inline environment stands in for everything a hit shader receives from Unity: ray and instance intrinsics, the geometry's vertex and index data, per-object transforms and the material's properties and textures. Evaluators of different shaders and variants are isolated from one another, while the scene and frame globals they share are declared once.
 - **Material inputs.** Material property values, texture scale and offset, and renderer property overrides are captured into material records. Change tracking recaptures them when the material or override content changes. Each hit reads its own record, so one module shades every material of its variant.
-- **Texture sampling.** Texture lookups resolve through the scene resource table. They keep each texture's filtering, including the anisotropic filtering that quality settings force, and its addressing, and use the same footprint and level selection as a hit shader would.
+- **Texture sampling.** Texture lookups resolve through the scene resource table. They keep each texture's filtering, including the anisotropic filtering that quality settings force, and its addressing, and use the same footprint and level selection as a hit shader would. Coverage samples at the finest level, as [path tracing](path-tracing.md#scene-and-material-inputs) defines.
 - **Variants.** A material's enabled `PathTracing` keywords select its evaluator variant. Evaluators are generated when shaders import, follow [Shader Variant Stripping](shader-variant-stripping.md), and are reachable in a build exactly when RTGI or path tracing is. A variant with no evaluator in a player is an exception.
 - **Generation.** Modules, the coverage library and tracing programs are regenerated when shader sources, their includes or the materials that select their variants change. A change to a material's coverage rebuilds the coverage library, not the tracing programs. A variant whose evaluator does not compile is reported with its compiler errors and becomes an exception. The other evaluators are unaffected. Outputs that no current program references are removed.
 
@@ -109,6 +120,7 @@ Reference and Realtime path tracing trace every path segment with their programs
   - scenes with textured, alpha-tested, dithered, emissive and property-overridden props
   - skinned characters in motion, including skin, hair cards and cloth
 - Alpha-tested and dithered geometry and hair cards occlude and transmit correctly for GI and visibility rays, with no call into a material module during traversal.
+- Materials that declare standard coverage render the same images as with their own coverage, and the coverage code that traversal runs does not grow with their number.
 - Exceptions render as the diagnostic surface and are reported.
 - Meshes without Read/Write participate in players.
 - Without the native backend or on unsupported devices, the reason is reported and no hit-shader path runs.
