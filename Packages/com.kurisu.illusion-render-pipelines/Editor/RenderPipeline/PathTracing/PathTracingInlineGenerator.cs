@@ -59,7 +59,18 @@ namespace Illusion.Rendering.Editor
         [MenuItem("Tools/IllusionRP/Regenerate Inline Evaluators")]
         private static void Regenerate() => Generate(true);
 
-        internal static bool IsEnabled => PathTracingInlineBackend.IsCompiled;
+        private static bool? s_RayTracingEnabled;
+
+        internal static bool IsEnabled => PathTracingInlineBackend.IsCompiled && (s_RayTracingEnabled ??= RayTracingEnabled());
+
+        internal static void InvalidateEnabled() => s_RayTracingEnabled = null;
+
+        private static bool RayTracingEnabled() => AssetDatabase.FindAssets("t:ScriptableRendererData")
+            .Select(guid => AssetDatabase.LoadAssetAtPath<UnityEngine.Rendering.Universal.ScriptableRendererData>(AssetDatabase.GUIDToAssetPath(guid)))
+            .Where(data => data)
+            .SelectMany(data => data.rendererFeatures)
+            .OfType<IllusionRendererFeature>()
+            .Any(feature => feature.isActive && (feature.pathTracing || feature.rayTracedGlobalIllumination));
 
         public static void Generate(bool force)
         {

@@ -1,5 +1,6 @@
 using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Illusion.Rendering.Editor
@@ -19,8 +20,10 @@ namespace Illusion.Rendering.Editor
             EditorApplication.delayCall += Install;
         }
 
-        private static void Install()
+        internal static void Install()
         {
+            if (!PathTracingInlineGenerator.IsEnabled)
+                return;
             string previousPath = InstalledFolder + "GfxPluginUnityRhiBindless.dll";
             if (AssetImporter.GetAtPath(previousPath) is PluginImporter previous)
             {
@@ -36,8 +39,16 @@ namespace Illusion.Rendering.Editor
             foreach (string file in s_RuntimeFiles)
                 changed |= Copy(file, false);
             changed |= Copy(PluginName, true);
-            if (changed)
+            if (!changed)
+                return;
+            const string message = "IllusionRP updated its ray tracing native plugin, which loads before the graphics device. Restart the Editor to use it.";
+            if (Application.isBatchMode || !EditorUtility.DisplayDialog("IllusionRP", message, "Restart", "Later"))
+            {
                 Debug.Log($"[IllusionRP] Updated the native plugin files in '{InstalledFolder}'. Restart the Editor so they load before the graphics device.");
+                return;
+            }
+            if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                EditorApplication.OpenProject(Directory.GetCurrentDirectory());
         }
 
         private static bool Copy(string file, bool editor)

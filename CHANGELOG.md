@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Replace `top.kuanmi.unityrhi` and `top.kuanmi.unityrhi.native` with `com.kurisu.unityrhi`, which ships its native plugins and the D3D12 Agility SDK runtime they need.
 - Sample alpha-test coverage at the texture's finest level in path tracing and ray traced global illumination, so what a ray can hit no longer depends on its distance or angle.
+- Turn path tracing off by default on new `Illusion Graphics` renderer features. The ray tracing native plugin is installed and inline programs are generated only once a renderer enables path tracing or ray traced global illumination.
 
 ### Fixed
 

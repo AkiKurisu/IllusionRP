@@ -22,11 +22,23 @@ namespace Illusion.Rendering.Editor
 
         private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
+            bool wasEnabled = PathTracingInlineGenerator.IsEnabled;
+            if (imported.Any(IsRendererData) || deleted.Any(path => path.EndsWith(".asset", StringComparison.OrdinalIgnoreCase)))
+                PathTracingInlineGenerator.InvalidateEnabled();
             if (!PathTracingInlineGenerator.IsEnabled)
                 return;
+            if (!wasEnabled)
+            {
+                EditorApplication.delayCall += PathTracingInlinePluginInstaller.Install;
+                Schedule();
+                return;
+            }
             if (Affects(imported) || Affects(deleted) || Affects(moved))
                 Schedule();
         }
+
+        private static bool IsRendererData(string path) =>
+            typeof(UnityEngine.Rendering.Universal.ScriptableRendererData).IsAssignableFrom(AssetDatabase.GetMainAssetTypeAtPath(path));
 
         private static bool Affects(string[] paths)
         {

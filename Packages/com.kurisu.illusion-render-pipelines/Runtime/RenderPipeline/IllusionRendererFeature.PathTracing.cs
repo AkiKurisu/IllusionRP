@@ -11,7 +11,7 @@ namespace Illusion.Rendering
         private const int RasterSuppressionFrames = 4;
 
         [SerializeField, Tooltip("Enable path tracing when its Volume is active and the device supports ray tracing.")]
-        public bool pathTracing = true;
+        public bool pathTracing;
 
         private PathTracingSharedScene _rayTracingScene;
 

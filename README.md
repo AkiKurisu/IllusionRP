@@ -265,7 +265,7 @@ Support <b>Shader Execution Reordering (SER)</b> on supported NVIDIA GPUs.
 Support <b>Opacity Micromaps (OMM)</b> to speed up rays through alpha-tested foliage.
 
 > [!NOTE]
-> Ray tracing requires Direct3D 12 and a GPU with ray tracing support. Restart the Editor when asked to load the native plugin.
+> Ray tracing requires Direct3D 12 and a GPU with ray tracing support.
 
 ## Neural Rendering
 
