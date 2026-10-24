@@ -5,27 +5,24 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [1.4.3] - 2026-10-19
+## [1.4.3] - 2026-10-24
 
 ### Added
 
-- Add inline ray queries and bindless material evaluation to path tracing and ray traced global illumination.
-- Support Shader Execution Reordering (SER) with bindless ray queries on supported NVIDIA hardware.
-- Add opacity micromaps for alpha-tested static geometry in Play Mode and players, so ray queries settle the plainly solid and plainly clear parts of foliage without running its coverage.
+- Add inline ray tracing to path tracing and ray traced global illumination. Materials are evaluated from their `PathTracing` passes with bindless ray queries, so tracing cost no longer grows with the number of instances in the scene.
+- Support Shader Execution Reordering (SER) on supported NVIDIA hardware.
+- Add opacity micromaps for alpha-tested static geometry in Play Mode and players, speeding up rays through foliage.
 
 ### Changed
 
-- Consolidate UnityRHI and its native plugins into `com.kurisu.unityrhi`.
-- Replace reflection-based backend loading with typed registration.
-- Remove per-frame render-thread waits from RTGI denoising.
-- Evaluate the coverage of materials whose `PathTracing` pass declares standard coverage, such as Hybrid Lit and SpeedTree, with one shared routine in inline ray tracing, and sample coverage textures at their finest level.
-- Trace the visibility rays of RTGI resampling and final shading from ray generation programs.
-- Ship the D3D12 Agility SDK 1.619 runtime with the UnityRHI native plugin, which selects it before Unity creates the graphics device.
+- Replace `top.kuanmi.unityrhi` and `top.kuanmi.unityrhi.native` with `com.kurisu.unityrhi`, which ships its native plugins and the D3D12 Agility SDK runtime they need.
+- Sample alpha-test coverage at the texture's finest level in path tracing and ray traced global illumination, so what a ray can hit no longer depends on its distance or angle.
 
 ### Fixed
 
-- Fix skinned meshes freezing during path tracing.
-- Fix Player path tracing failures when emissive meshes have Read/Write disabled.
+- Fix skinned meshes freezing in their last pose during path tracing.
+- Fix path tracing failing in players when emissive meshes have Read/Write disabled.
+- Fix the ray traced global illumination denoiser waiting for the render thread every frame.
 
 ## [1.4.2] - 2026-10-17
 

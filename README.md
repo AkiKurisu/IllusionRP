@@ -19,7 +19,7 @@ Unity high-definition graphics plugin for the Universal Render Pipeline, built f
 - Ground characters and reveal fine surface details with **per-object shadows, contact shadows, PCSS soft shadows, and ground-truth ambient occlusion**.
 - Shape the final image with **volumetric lighting, automatic exposure, convolution bloom, and advanced tonemapping**.
 - Build custom materials with **ready-to-use shaders and Amplify Shader Editor templates** integrated with IllusionRP lighting.
-- Explore **ray traced global illumination, reference and realtime path tracing, DLSS Ray Reconstruction, and experimental DLSS Neural Rendering** on supported hardware.
+- Explore **ray traced global illumination, reference and realtime path tracing, DLSS Ray Reconstruction, and experimental DLSS Neural Rendering** on supported hardware, traced with **inline ray queries, Shader Execution Reordering and opacity micromaps**.
 - Support **Unity 2022, Unity 2023, and Unity 6** through their respective version branches.
 
 # Demo
@@ -75,6 +75,12 @@ Use the package subpath URL in Unity Package Manager:
 
 ```text
 https://github.com/AkiKurisu/IllusionRP.git?path=Packages/com.kurisu.illusion-render-pipelines
+```
+
+Ray tracing features (RTGI, path tracing and DLSS) also need the UnityRHI package:
+
+```text
+https://github.com/AkiKurisu/IllusionRP.git?path=Packages/com.kurisu.unityrhi
 ```
 
 # Setup
@@ -249,6 +255,17 @@ Include <b>Advanced Tonemapping</b> with two kinds:
 Include <b>Path Tracing</b> based on [NVIDIA-RTX/RTXPT](https://github.com/NVIDIA-RTX/RTXPT) and [Kuan-Mi/UnityPathTracing](https://github.com/Kuan-Mi/UnityPathTracing), with <b>Reference</b> and <b>Realtime</b> (DLSS Ray Reconstruction) modes.
 
 ![Path Tracing](Documentations/images/path_tracing.png)
+
+## Ray Tracing
+
+RTGI and path tracing use <b>Inline Ray Queries</b> with bindless material evaluation, so their cost does not grow with the number of instances in the scene.
+
+Support <b>Shader Execution Reordering (SER)</b> on supported NVIDIA GPUs.
+
+Support <b>Opacity Micromaps (OMM)</b> to speed up rays through alpha-tested foliage.
+
+> [!NOTE]
+> Ray tracing requires Direct3D 12 and a GPU with ray tracing support. Restart the Editor when asked to load the native plugin.
 
 ## Neural Rendering
 
