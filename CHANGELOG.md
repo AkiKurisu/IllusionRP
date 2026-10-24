@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Add inline ray queries and bindless material evaluation to path tracing and ray traced global illumination.
 - Support Shader Execution Reordering (SER) with bindless ray queries on supported NVIDIA hardware.
+- Add opacity micromaps for alpha-tested static geometry in Play Mode and players, so ray queries settle the plainly solid and plainly clear parts of foliage without running its coverage.
 
 ### Changed
 
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Remove per-frame render-thread waits from RTGI denoising.
 - Evaluate the coverage of materials whose `PathTracing` pass declares standard coverage, such as Hybrid Lit and SpeedTree, with one shared routine in inline ray tracing, and sample coverage textures at their finest level.
 - Trace the visibility rays of RTGI resampling and final shading from ray generation programs.
+- Ship the D3D12 Agility SDK 1.619 runtime with the UnityRHI native plugin, which selects it before Unity creates the graphics device.
 
 ### Fixed
 

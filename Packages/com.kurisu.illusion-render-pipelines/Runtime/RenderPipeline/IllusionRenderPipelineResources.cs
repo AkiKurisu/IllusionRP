@@ -28,6 +28,8 @@ namespace Illusion.Rendering
 
         public ComputeShader pathTracingMotionCS;
 
+        public ComputeShader pathTracingOpacityMicromapCS;
+
         public ComputeShader pathTracingAccumulationCS;
 
         public ComputeShader pathTracingLightsBakerCS;

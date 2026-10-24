@@ -21,6 +21,8 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly ComputeShader _motionShader;
 
+        private readonly ComputeShader _micromapShader;
+
         private int _lastUsedFrame = -1;
 
         public PathTracingResources Resources { get; }
@@ -52,6 +54,7 @@ namespace Illusion.Rendering.PathTracing
             _rectangleLights = new PathTracingRectangleLights(resources.pathTracingRectangleLightShader);
             _emissiveShader = resources.pathTracingEmissiveCS;
             _motionShader = resources.pathTracingMotionCS;
+            _micromapShader = resources.pathTracingOpacityMicromapCS;
         }
 
         public static bool IsSupported => SystemInfo.supportsRayTracing && SystemInfo.supportsInlineRayTracing;
@@ -74,7 +77,7 @@ namespace Illusion.Rendering.PathTracing
             _rectangleLights.Update(Lights);
             if (!_worlds.TryGetValue(layerMask, out var world))
             {
-                world = new PathTracingWorld(_emissiveShader, _motionShader);
+                world = new PathTracingWorld(_emissiveShader, _motionShader, _micromapShader);
                 _worlds.Add(layerMask, world);
             }
             world.Update(camera, layerMask, trackMotion);

@@ -383,6 +383,7 @@ namespace Illusion.Rendering.Editor
                     Keywords = u.Keywords,
                     HasAnyHit = u.Unit.HasAnyHit,
                     RecordSize = u.Unit.RecordSize,
+                    StandardCoverage = StandardCoverage(u.Unit) ?? Array.Empty<uint>(),
                     Constants = u.Unit.Constants.Select(c => new PathTracingInlineRegistry.Constant
                     {
                         Name = c.Name,

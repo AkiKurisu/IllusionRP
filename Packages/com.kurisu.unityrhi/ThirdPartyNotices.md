@@ -7,6 +7,7 @@ FetchContent / NuGet), not committed.
 | Component | Location | License |
 |---|---|---|
 | NVRHI (API/design port) | native D3D12 backend | MIT — `ThirdParty/NVRHI-LICENSE.txt` |
+| D3D12 Agility SDK | fetched (`1.619.1`); packed into `com.kurisu.unityrhi` | Microsoft Software License Terms |
 | DirectX-Headers | fetched (`v1.717.0-preview`) | MIT |
 | DirectX Shader Compiler | fetched (`v1.9.2602`), shipped in `Plugins/x86_64` | LLVM + Microsoft |
 | NVAPI | linked into the native plugin; shader headers in `ShaderLibrary/NVAPI` | NVIDIA (headers retain their license notices) |

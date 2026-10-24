@@ -22,15 +22,18 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly ComputeShader _motionShader;
 
+        private readonly ComputeShader _micromapShader;
+
         public PathTracingInlineScene Inline { get; } = new();
 
         public int LastUsedFrame { get; private set; }
 
-        public PathTracingWorld(ComputeShader emissiveShader, ComputeShader motionShader)
+        public PathTracingWorld(ComputeShader emissiveShader, ComputeShader motionShader, ComputeShader micromapShader)
         {
             Emissive = new PathTracingEmissiveTable(emissiveShader);
             Motion = new PathTracingMotionHistory(motionShader);
             _motionShader = motionShader;
+            _micromapShader = micromapShader;
         }
 
         public void Update(Camera camera, int layerMask, bool trackMotion)
@@ -73,6 +76,7 @@ namespace Illusion.Rendering.PathTracing
             if (_builtFrame != frame)
             {
                 _builtFrame = frame;
+                Inline.RecordOpacityMicromaps(cmd, _micromapShader);
                 cmd.BuildRayTracingAccelerationStructure(Scene.AccelerationStructure);
             }
             if (_gatherPending)

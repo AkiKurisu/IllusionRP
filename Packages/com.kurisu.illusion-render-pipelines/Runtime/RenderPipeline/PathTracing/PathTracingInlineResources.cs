@@ -35,6 +35,7 @@ namespace Illusion.Rendering.PathTracing
         private static readonly Queue<(int[] Slots, GraphicsFence Fence)> s_Pending = new();
         private static int s_PendingSlots;
         private static readonly Dictionary<int, TextureEntry> s_Textures = new();
+        private static readonly Dictionary<int, int> s_SlotTextures = new();
         private static readonly Dictionary<int, MeshEntry> s_Meshes = new();
         private static readonly List<int> s_Changed = new();
         private static int s_NextSlot;
@@ -108,6 +109,8 @@ namespace Illusion.Rendering.PathTracing
                 if (slot < 0)
                     continue;
                 Release(entry.Slot, frame);
+                s_SlotTextures.Remove(entry.Slot);
+                s_SlotTextures[slot] = id;
                 entry.Slot = slot;
                 entry.Resource = resource;
                 SetTexture(slot, entry.Texture);
@@ -134,6 +137,7 @@ namespace Illusion.Rendering.PathTracing
                 return -1;
             }
             s_Textures.Add(id, new TextureEntry { Texture = texture, Slot = slot, UpdateCount = texture.updateCount, Resource = texture.GetNativeTexturePtr(), References = 1 });
+            s_SlotTextures[slot] = id;
             return slot;
         }
 
@@ -144,6 +148,7 @@ namespace Illusion.Rendering.PathTracing
             if (--entry.References > 0)
                 return;
             Release(entry.Slot, frame);
+            s_SlotTextures.Remove(entry.Slot);
             s_Textures.Remove(texture.GetInstanceID());
         }
 
@@ -152,7 +157,20 @@ namespace Illusion.Rendering.PathTracing
             if (!s_Textures.TryGetValue(textureId, out TextureEntry entry) || --entry.References > 0)
                 return;
             Release(entry.Slot, frame);
+            s_SlotTextures.Remove(entry.Slot);
             s_Textures.Remove(textureId);
+        }
+
+        public static bool TryGetTextureContent(int slot, out int content)
+        {
+            content = slot;
+            if (slot < DefaultTextureCount)
+                return true;
+            if (!s_SlotTextures.TryGetValue(slot, out int id) || !s_Textures.TryGetValue(id, out TextureEntry entry) || !entry.Texture ||
+                entry.Texture is RenderTexture)
+                return false;
+            content = HashCode.Combine(id, entry.Texture.updateCount);
+            return true;
         }
 
         public static bool AcquireMesh(Mesh mesh, int frame, out int[] vertexSlots, out int indexSlot)

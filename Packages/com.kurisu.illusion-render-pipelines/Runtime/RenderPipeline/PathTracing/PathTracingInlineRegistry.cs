@@ -44,6 +44,7 @@ namespace Illusion.Rendering
             public Texture[] Textures = Array.Empty<Texture>();
             public int RecordSize;
             public bool HasAnyHit;
+            public uint[] StandardCoverage = Array.Empty<uint>();
         }
 
         [Serializable]

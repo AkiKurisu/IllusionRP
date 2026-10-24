@@ -42,6 +42,7 @@ namespace Illusion.Rendering.PathTracing
         private readonly MaterialPropertyBlock _slotBlock = new();
         private readonly List<DeformingRenderer> _deforming = new();
         private readonly Dictionary<int, DeformingRenderer> _previousDeforming = new();
+        private readonly PathTracingOpacityMicromaps _micromaps = PathTracingOpacityMicromaps.Shared;
 
         private GraphicsBuffer _geometryBuffer;
         private GraphicsBuffer _instanceBuffer;
@@ -75,7 +76,9 @@ namespace Illusion.Rendering.PathTracing
                 _version = instances.Version;
                 _registry = registry;
                 _modulesHash = registry.ModulesHash;
+                _micromaps.BeginRebuild();
                 Rebuild(instances, registry, frame);
+                _micromaps.EndRebuild();
                 _generation = PathTracingInlineResources.Generation;
                 Upload();
             }
@@ -243,6 +246,8 @@ namespace Illusion.Rendering.PathTracing
                     geometry.Evaluator = (uint)evaluator;
                     geometry.MaterialData = MaterialRecord(registry.Evaluators[evaluator], evaluator, material, block, blockKey, frame);
                     EvaluatedGeometries++;
+                    if (renderer is MeshRenderer meshRenderer)
+                        _micromaps.Collect(this, meshRenderer, mesh, slot, _geometries.Count, registry.Evaluators[evaluator].StandardCoverage, geometry.MaterialData, _materialData);
                 }
                 _geometries.Add(geometry);
             }
@@ -497,8 +502,15 @@ namespace Illusion.Rendering.PathTracing
             shader.SetBuffer(cmd, ShaderIDs._PathTracingInlineBuffers, _placeholderRaw);
         }
 
+        public void RecordOpacityMicromaps(CommandBuffer cmd, ComputeShader bake)
+        {
+            if (IsReady)
+                _micromaps.Record(cmd, bake, this);
+        }
+
         public void Dispose()
         {
+            _micromaps.Forget(this);
             int frame = PathTracingFrame.Index;
             foreach (int texture in _textures)
                 PathTracingInlineResources.ReleaseTexture(texture, frame);
