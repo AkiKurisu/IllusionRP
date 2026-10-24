@@ -8,13 +8,9 @@ namespace Illusion.Rendering.PathTracing
 {
     internal sealed partial class PathTracingPass
     {
-        private const string BuildRayGenName = "RayGen_BUILD";
-
-        private const string FillRayGenName = "RayGen_FILL";
-
         private class RealtimeTracePassData : TracePassData
         {
-            internal RayTracingShader FillShader;
+            internal PathTracingInlineDispatcher InlineFill;
             internal PathTracingRealtimeTargets Targets;
             internal int SamplesPerPixel;
             internal TextureHandle StablePlanesHeader;
@@ -44,10 +40,6 @@ namespace Illusion.Rendering.PathTracing
             internal int Height;
         }
 
-        private RayTracingShader _buildShader;
-
-        private RayTracingShader _fillShader;
-
         private ComputeShader _realtimeShader;
 
         private int _denoiseSpecHitTKernel;
@@ -62,14 +54,13 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly ProfilingSampler _guidesSampler = new("Path Tracing Realtime Guides");
 
-        internal bool IsRayReconstructionAvailable => _rayReconstruction is { IsAvailable: true };
+        internal bool IsRayReconstructionAvailable =>
+            (_rayReconstruction ??= PathTracingRayReconstructionLoader.Create()) is { IsAvailable: true };
 
         private bool UsesRayReconstruction(PathTracing settings) => settings.rayReconstruction.value && IsRayReconstructionAvailable;
 
         private void InitializeRealtime(IllusionRenderPipelineResources resources)
         {
-            _buildShader = resources.pathTracingBuildRS;
-            _fillShader = resources.pathTracingFillRS;
             _realtimeShader = resources.pathTracingRealtimeCS;
             _denoiseSpecHitTKernel = _realtimeShader.FindKernel("DenoiseSpecHitT");
             _prepareKernel = _realtimeShader.FindKernel("PrepareRayReconstructionInputs");
@@ -157,8 +148,8 @@ namespace Illusion.Rendering.PathTracing
         {
             using var builder = renderGraph.AddUnsafePass<RealtimeTracePassData>("Path Tracing Realtime Trace", out var passData, _realtimeTraceSampler);
             FillTracePassData(renderGraph, passData, context, world, renderGraph.ImportTexture(context.Radiance), constants, cameraData, worldToClip);
-            passData.Shader = _buildShader;
-            passData.FillShader = _fillShader;
+            passData.InlineDispatch = _inlineBuild;
+            passData.InlineFill = _inlineFill;
             passData.Targets = targets;
             passData.SamplesPerPixel = samplesPerPixel;
             passData.StablePlanesHeader = stablePlanesHeader;
@@ -173,22 +164,26 @@ namespace Illusion.Rendering.PathTracing
                 PrepareScene(cmd, data);
 
                 data.Resources.UploadConstants(cmd, data.Constants, default);
-                BindTraceResources(cmd, data.Shader, data);
-                BindStablePlanes(cmd, data.Shader, data.Targets);
+                var build = data.InlineDispatch.Target;
+                BindTraceResources(cmd, build, data);
+                BindStablePlanes(cmd, build, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.StablePlanes))
-                    cmd.DispatchRays(data.Shader, BuildRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                {
+                    data.InlineDispatch.Dispatch(cmd, data.Width, data.Height);
+                }
                 using (new ProfilingScope(cmd, Samplers.LightFeedback))
                     data.LightBaker.UpdateEnd(cmd, data.Depth, data.MotionVectors, data.Width, data.Height);
 
-                BindTraceResources(cmd, data.FillShader, data);
-                BindStablePlanes(cmd, data.FillShader, data.Targets);
+                var fill = data.InlineFill.Target;
+                BindTraceResources(cmd, fill, data);
+                BindStablePlanes(cmd, fill, data.Targets);
                 using (new ProfilingScope(cmd, Samplers.Paths))
                 {
                     for (int i = 0; i < data.SamplesPerPixel; i++)
                     {
                         var miniConstants = new PathTracingSampleMiniConstants { Params = new Vector4Int { X = (uint)i } };
                         data.Resources.UploadConstants(cmd, data.Constants, miniConstants);
-                        cmd.DispatchRays(data.FillShader, FillRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                        data.InlineFill.Dispatch(cmd, data.Width, data.Height);
                     }
                 }
             });

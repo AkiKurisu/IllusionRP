@@ -1,0 +1,4 @@
+#define PATH_TRACER_MODE PATH_TRACER_MODE_REFERENCE
+#define RTXPT_PIPELINE_PERMUTATION_NAME REF
+
+#include "Packages/com.kurisu.illusion-render-pipelines/Shaders/PathTracing/PathTracingRayGen.hlsl"

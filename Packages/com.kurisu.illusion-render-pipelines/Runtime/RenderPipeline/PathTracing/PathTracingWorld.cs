@@ -20,12 +20,20 @@ namespace Illusion.Rendering.PathTracing
 
         public PathTracingMotionHistory Motion { get; }
 
+        private readonly ComputeShader _motionShader;
+
+        private readonly ComputeShader _micromapShader;
+
+        public PathTracingInlineScene Inline { get; } = new();
+
         public int LastUsedFrame { get; private set; }
 
-        public PathTracingWorld(ComputeShader emissiveShader, ComputeShader motionShader)
+        public PathTracingWorld(ComputeShader emissiveShader, ComputeShader motionShader, ComputeShader micromapShader)
         {
             Emissive = new PathTracingEmissiveTable(emissiveShader);
             Motion = new PathTracingMotionHistory(motionShader);
+            _motionShader = motionShader;
+            _micromapShader = micromapShader;
         }
 
         public void Update(Camera camera, int layerMask, bool trackMotion)
@@ -68,6 +76,7 @@ namespace Illusion.Rendering.PathTracing
             if (_builtFrame != frame)
             {
                 _builtFrame = frame;
+                Inline.RecordOpacityMicromaps(cmd, _micromapShader);
                 cmd.BuildRayTracingAccelerationStructure(Scene.AccelerationStructure);
             }
             if (_gatherPending)
@@ -77,20 +86,32 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
-        public void BindHitShaderGlobals(CommandBuffer cmd)
+        public void UpdateInline()
         {
-            cmd.SetGlobalBuffer(ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
-            cmd.SetGlobalInteger(ShaderIDs._PathTracingOpaqueShadowLayers, unchecked((int)Scene.Instances.OpaqueShadowLayers));
-            cmd.SetGlobalBuffer(ShaderIDs._PathTracingCulledSubMeshes, Scene.Instances.CulledSubMeshBuffer);
-            cmd.SetGlobalBuffer(ShaderIDs._PathTracingPreviousPositions, Motion.PreviousPositions);
-            cmd.SetGlobalBuffer(ShaderIDs._PathTracingMaterialRanges, Scene.Instances.MaterialTable.RangeBuffer);
-            cmd.SetGlobalBuffer(ShaderIDs._PathTracingSubMeshMaterials, Scene.Instances.MaterialTable.SubMeshBuffer);
-            Scene.Instances.MaterialTable.BindHitShaderGlobals(cmd);
+            Inline.Update(Scene.Instances, PathTracingFrame.Index);
+        }
+
+        public void CopyDeformedVertices(CommandBuffer cmd)
+        {
+            Inline.CopyDeformedVertices(cmd, PathTracingFrame.Index, _motionShader);
+        }
+
+        public void BindInline(CommandBuffer cmd, PathTracingShaderTarget shader)
+        {
+            Inline.Bind(cmd, shader);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInstanceData, Scene.Instances.Buffer);
+            shader.SetInt(cmd, ShaderIDs._PathTracingOpaqueShadowLayers, unchecked((int)Scene.Instances.OpaqueShadowLayers));
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingCulledSubMeshes, Scene.Instances.CulledSubMeshBuffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingPreviousPositions, Motion.PreviousPositions);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingMaterialRanges, Scene.Instances.MaterialTable.RangeBuffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingSubMeshMaterials, Scene.Instances.MaterialTable.SubMeshBuffer);
+            Scene.Instances.MaterialTable.Bind(cmd, shader);
         }
 
         public void Dispose()
         {
             Scene.Dispose();
+            Inline.Dispose();
             Emissive.Dispose();
             Motion.Dispose();
         }

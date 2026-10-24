@@ -22,40 +22,13 @@ void PathTracingClip(float4 value) { g_PathTracingClipped = g_PathTracingClipped
 #include "UnityRaytracingMeshUtils.cginc"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingPayload.hlsl"
 
-struct AttributeData
-{
-    float2 barycentrics;
-};
-
-struct PathTracingHitVertex
-{
-    float3 positionOS;
-    float3 normalOS;
-    float4 tangentOS;
-    float4 texCoord0;
-    float4 texCoord1;
-    float4 texCoord2;
-    float4 texCoord3;
-    float4 color;
-};
-
-struct PathTracingHitContext
-{
-    PathTracingHitVertex vertex;
-    float3 positionWS;
-    float3 viewDirWS;
-    float3 faceNormalWS;
-    float3 vertexNormalWS;
-    float4 tangentWS;
-    bool frontFacing;
-    uint3 indices;
-    float3 barycentrics;
-};
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHitContext.hlsl"
 
 ByteAddressBuffer _PathTracingPreviousPositions;
-StructuredBuffer<uint2> _PathTracingCulledSubMeshes;
 StructuredBuffer<uint2> _PathTracingMaterialRanges;
 StructuredBuffer<uint2> _PathTracingSubMeshMaterials;
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingHitRules.hlsl"
 
 uint PathTracingGetMaterialIndex()
 {
@@ -134,6 +107,14 @@ uint PathTracingGetTriangleIndex()
 
 PathTracingHitContext PathTracingGetHitContext(AttributeData attributes, IllusionPathPayload payload)
 {
+#if defined(PATH_TRACING_INLINE)
+    if (g_PathTracingInlineHitContextReady && all(attributes.barycentrics == g_PathTracingInlineCachedHit.barycentrics.yz))
+    {
+        float coneWidth = abs(payload.coneWidth + payload.coneSpread * RayTCurrent());
+        g_PathTracingUVFootprint = g_PathTracingInlineFootprintGeometry.x * coneWidth / g_PathTracingInlineFootprintGeometry.y;
+        return g_PathTracingInlineCachedHit;
+    }
+#endif
     uint3 indices = UnityRayTracingFetchTriangleIndices(PrimitiveIndex());
     PathTracingHitVertex v0 = PathTracingFetchVertex(indices.x);
     PathTracingHitVertex v1 = PathTracingFetchVertex(indices.y);
@@ -176,8 +157,21 @@ PathTracingHitContext PathTracingGetHitContext(AttributeData attributes, Illusio
     float uvArea = abs(uvEdge1.x * uvEdge2.y - uvEdge2.x * uvEdge1.y);
     float coneWidth = abs(payload.coneWidth + payload.coneSpread * RayTCurrent());
     float projection = max(abs(dot(rayDir, faceNormalWS)), 1e-4);
-    g_PathTracingUVFootprint = sqrt(uvArea / max(worldArea, 1e-20)) * coneWidth / projection;
+    float uvScale = sqrt(uvArea / max(worldArea, 1e-20));
+    g_PathTracingUVFootprint = uvScale * coneWidth / projection;
+#if defined(PATH_TRACING_INLINE)
+    if (!g_PathTracingInlineHitContextReady)
+        g_PathTracingInlineFootprintGeometry = float2(uvScale, projection);
+#endif
 
+    return hit;
+}
+
+// Coverage samples textures at their finest level; a zero footprint gives zero gradients.
+PathTracingHitContext PathTracingGetCoverageContext(AttributeData attributes, IllusionPathPayload payload)
+{
+    PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
+    g_PathTracingUVFootprint = 0.0;
     return hit;
 }
 
@@ -187,22 +181,6 @@ float3 PathTracingTangentToWorld(float3 normalTS, PathTracingHitContext hit)
     float3 t = hit.tangentWS.xyz;
     float3 b = cross(n, t) * hit.tangentWS.w;
     return SafeNormalize(t * normalTS.x + b * normalTS.y + n * normalTS.z);
-}
-
-uint PathTracingHash(uint h)
-{
-    h ^= h >> 16; h *= 0x7FEB352Du; h ^= h >> 15; h *= 0x846CA68Bu; h ^= h >> 16;
-    return h;
-}
-
-uint PathTracingHitHash(IllusionPathPayload payload, uint salt)
-{
-    return PathTracingHash((payload.rayKindAndSeed >> PT_RAY_SEED_SHIFT) ^ (PrimitiveIndex() * 0x9E3779B9u) ^ (InstanceIndex() * 0x85EBCA6Bu) ^ salt);
-}
-
-bool PathTracingAcceptCoverage(IllusionPathPayload payload, float alpha)
-{
-    return float(PathTracingHitHash(payload, 0u) & 0xFFFFFF) / 16777216.0 < alpha;
 }
 
 float PathTracingIorFromF0(float f0)
@@ -253,72 +231,18 @@ void PathTracingWriteGeometry(inout IllusionPathPayload payload, PathTracingHitC
     }
 }
 
-#define PT_CULL_BACK    1u
-#define PT_CULL_FRONT   2u
-
-bool PathTracingIsCulledFace()
-{
-    uint range = _PathTracingInstanceData[InstanceID()].culledSubMeshes;
-    uint first = range >> 8u;
-    uint end = first + (range & 0xFFu);
-    uint indexStart = GetMeshInfo().indexStart;
-    uint culled = 0u;
-    for (uint i = first; i < end; i++)
-    {
-        uint2 subMesh = _PathTracingCulledSubMeshes[i];
-        if (subMesh.x == indexStart)
-        {
-            culled = subMesh.y;
-            break;
-        }
-    }
-    if (culled == 0u)
-        return false;
-    uint3 indices = UnityRayTracingFetchTriangleIndices(PrimitiveIndex());
-    float3 p0 = UnityRayTracingFetchVertexAttribute3(indices.x, kVertexAttributePosition);
-    float3 p1 = UnityRayTracingFetchVertexAttribute3(indices.y, kVertexAttributePosition);
-    float3 p2 = UnityRayTracingFetchVertexAttribute3(indices.z, kVertexAttributePosition);
-    float3 faceNormalWS = mul(cross(p1 - p0, p2 - p0), (float3x3)WorldToObject3x4());
-    bool frontFacing = dot(faceNormalWS, WorldRayDirection()) < 0.0;
-    return (culled & (frontFacing ? PT_CULL_FRONT : PT_CULL_BACK)) != 0u;
-}
-
-// Shadow rays accept a caster only when it shares a shadow layer with the light; payload.parameters.x holds those layers.
-bool PathTracingAcceptShadowCaster(IllusionPathPayload payload)
-{
-    if (PathTracingGetRayKind(payload) != PT_RAY_VISIBILITY
-        || (_PathTracingInstanceData[InstanceID()].renderingLayers & payload.parameters.x) != 0)
-        return true;
-    IgnoreHit();
-    return false;
-}
-
-// Shadow rays carry their RGB transmission in diffuseOpacity and pass through surfaces that still transmit light.
-void PathTracingAccumulateShadowTransmission(inout IllusionPathPayload payload, float3 transmittance)
-{
-    float3 value = PathTracingUnpackHalf4(payload.diffuseOpacity).rgb * saturate(transmittance);
-    payload.diffuseOpacity = PathTracingPackHalf4(float4(value, 0.0));
-    if (any(value > 0.0))
-        IgnoreHit();
-}
-
-// Random walks exit through the nearest surface of their own scattering group; payload.parameters.w holds the group.
 void PathTracingRecordRandomWalk(inout IllusionPathPayload payload, AttributeData attributes)
 {
-    if (PathTracingGetRayKind(payload) != PT_RAY_RANDOM_WALK)
+    if (!PathTracingRandomWalkRecords(payload))
         return;
-    if (_PathTracingInstanceData[InstanceID()].scatteringGroup != payload.parameters.w)
-    {
-        IgnoreHit();
-        return;
-    }
-    if (RayTCurrent() < payload.hitT)
-    {
-        PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
-        payload.hitT = RayTCurrent();
-        payload.normalVertex = PathTracingPackNormal(hit.vertexNormalWS);
-        payload.instanceID = InstanceID();
-    }
+    PathTracingHitContext hit = PathTracingGetHitContext(attributes, payload);
+    payload.hitT = RayTCurrent();
+    payload.normalVertex = PathTracingPackNormal(hit.vertexNormalWS);
+    payload.instanceID = InstanceID();
 }
+
+#if defined(PATH_TRACING_INLINE)
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInlineMaterial.hlsl"
+#endif
 
 #endif

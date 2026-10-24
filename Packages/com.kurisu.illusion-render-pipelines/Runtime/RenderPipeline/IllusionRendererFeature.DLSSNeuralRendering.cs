@@ -33,7 +33,11 @@ namespace Illusion.Rendering
                     renderingData.cameraData.resolveFinalTarget, isPostProcessEnabled)
                 && volume != null
                 && volume.IsActive())
+            {
+                if (_dlssNeuralRenderingBackend == null)
+                    CreateDLSSNeuralRenderingBackend();
                 _dlssNeuralRenderingBackend?.Enqueue(renderer, ref renderingData);
+            }
         }
 
         public void ResetDLSSNeuralRenderingHistory()

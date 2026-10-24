@@ -131,16 +131,10 @@ namespace Illusion.Rendering.PathTracing
                 buffer.SetData(data);
         }
 
-        public void Bind(CommandBuffer cmd, RayTracingShader shader)
+        public void Bind(CommandBuffer cmd, PathTracingShaderTarget shader)
         {
-            cmd.SetRayTracingBufferParam(shader, MaterialBufferId, _buffer);
-            cmd.SetRayTracingIntParam(shader, MaterialCountId, _data.Count);
-        }
-
-        public void BindHitShaderGlobals(CommandBuffer cmd)
-        {
-            cmd.SetGlobalBuffer(MaterialBufferId, _buffer);
-            cmd.SetGlobalInt(MaterialCountId, _data.Count);
+            shader.SetBuffer(cmd, MaterialBufferId, _buffer);
+            shader.SetInt(cmd, MaterialCountId, _data.Count);
         }
 
         public void Dispose()

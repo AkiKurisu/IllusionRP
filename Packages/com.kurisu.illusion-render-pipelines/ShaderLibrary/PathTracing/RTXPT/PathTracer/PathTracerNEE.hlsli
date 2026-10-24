@@ -183,31 +183,11 @@ namespace PathTracer
         return ret;
     }
 
-    // This will ray cast and, if light visible, accumulate radiance properly, including doing weighted sum for 
-    void ProcessLightSample(inout NEEResult accum, LightSample lightSample, uint candidateSampleCount, uint fullSamples,
+    // @IllusionRP: split from its visibility trace.
+    void FinishLightSample(inout NEEResult accum, LightSample lightSample, float3 transmission, uint candidateSampleCount, uint fullSamples,
                                 const ShadingData shadingData, const ActiveBSDF bsdf, const PathState preScatterPath, LightSampler lightSampler,
                                 inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
     {
-        float3 transmission = 0.0;  // @IllusionRP
-
-        /*[branch]*/ if (lightSample.Valid())   // if sample's bad, skip; we tried casting the ray anyway but ignoring the results - didn't yield better perf
-        {
-            RayDesc ray = ComputeVisibilityRay(lightSample, shadingData, bsdf);  // @IllusionRP
-            // @IllusionRP: shadow rays follow the light's caster rules and return RGB transmission.
-            uint targetIndex = lightSample.LightIndex != RTXPT_INVALID_LIGHT_INDEX ? lightSampler.LoadLight(lightSample.LightIndex).Extended.TargetIndex : 0;
-            transmission = Bridge::traceVisibilityRay(ray, preScatterPath.rayCone, preScatterPath.getVertexIndex(), workingContext.Debug, preScatterPath.GetPixelPos(), targetIndex);
-        }
-
-        // if( workingContext.Debug.IsDebugPixel() )
-        //     DebugLine( shadingData.posW, shadingData.posW+lightSample.Direction*lightSample.Distance, float4(!visible,visible,0,1.0) );
-
-#if 0 && SER_USE_SORTING
-#if USE_NVAPI_REORDER_THREADS
-        NvReorderThread(visible?(1):(0), 16);
-#elif USE_DX_MAYBE_REORDER_THREADS
-        dx::MaybeReorderThread(visible?(1):(0), 16);
-#endif
-#endif
         /*[branch]*/ if (any(transmission > 0.0))  // @IllusionRP
         {
             // add compute grazing angle fadeout
@@ -280,39 +260,29 @@ namespace PathTracer
     
     #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingDirectionalNEE.hlsl"  // @IllusionRP
 
-    inline NEEResult HandleNEE_MultipleSamples(const PathState preScatterPath, const ShadingData shadingData, const ActiveBSDF bsdf, 
-                                            const LightSampler lightSampler, const uint fullSamples, inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
+    // @IllusionRP: directional lights are sampled apart from the light list, which may then be empty. NEE advances one
+    // visibility ray at a time; shadow rays follow the light's caster rules and return RGB transmission.
+    struct NEEVisibility
     {
-        #ifdef RTXPT_NEE_TOTAL_CANDIDATE_SAMPLE_COUNT
-        const uint candidateSampleCount = RTXPT_NEE_TOTAL_CANDIDATE_SAMPLE_COUNT;
-        #else
-        const uint candidateSampleCount = workingContext.PtConsts.NEECandidateSamples;
-        #endif
+        NEEResult result;
+        DirectionalNEESample directional;
+        LightSample lightSample;
+        uint candidateSampleCount;
+        uint fullSamples;
+        uint sampleIndex;
+        uint stage;
+        uint targetIndex;
+    };
 
-        NEEResult result = NEEResult::empty();
-        result.BSDFMISInfo.LightSamplingEnabled = true;
-        result.BSDFMISInfo.LightSamplingIsSSC   = lightSampler.IsScreenSpaceCoherent;
-        result.BSDFMISInfo.CandidateSamples     = candidateSampleCount;
-        result.BSDFMISInfo.FullSamples          = fullSamples;
-        
-        for (uint sampleIndex = 0; sampleIndex < fullSamples; sampleIndex++)
-        {
-            // @IllusionRP: directional lights are sampled apart from the light list, which may then be empty.
-            SampleDirectionalNEE(result, preScatterPath, shadingData, bsdf, fullSamples, sampleGenerator, workingContext);
-            if (lightSampler.IsEmpty())
-                continue;
-            LightSample lightSample = GenerateLightSample(workingContext, shadingData, bsdf, candidateSampleCount, sampleGenerator, lightSampler);
+    static const uint kNEEVisibilityDirectional = 0;
+    static const uint kNEEVisibilityLight = 1;
+    static const uint kNEEVisibilityNextSample = 2;
 
-            // this computes the BSDF throughput and (if throughput>0) then casts shadow ray and handles radiance summing up & weighted averaging for 'sample distance' used by denoiser
-            ProcessLightSample(result, lightSample, candidateSampleCount, fullSamples, shadingData, bsdf, preScatterPath, lightSampler, sampleGenerator, workingContext);
-        }
-        
-        return result;
-    }
-    
-    inline NEEResult HandleNEE(const PathState preScatterPath,
-                                    const ShadingData shadingData, const ActiveBSDF bsdf, inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
+    inline bool BeginNEE(const PathState preScatterPath, const ShadingData shadingData, const ActiveBSDF bsdf, const WorkingContext workingContext,
+        out NEEVisibility nee)
     {
+        nee = (NEEVisibility)0;
+        nee.result = NEEResult::empty();
         LightSampler lightSampler = Bridge::CreateLightSampler( preScatterPath.GetPixelPos(), preScatterPath.rayCone.getWidth(), preScatterPath.GetSceneLength() );
 
         // There's a cost to having these as a dynamic constant so an option for production code is to hard code
@@ -335,7 +305,7 @@ namespace PathTracer
         applyNEE &= workingContext.PtConsts.NEEEnabled != 0;  // @IllusionRP
 
         if (!applyNEE)
-            return NEEResult::empty();
+            return false;
 
         // Check if sample from RTXDI should be applied instead of NEE.
 #if PATH_TRACER_MODE==PATH_TRACER_MODE_FILL_STABLE_PLANES && PT_USE_RESTIR_DI
@@ -343,9 +313,8 @@ namespace PathTracer
         // NEE due to complexity, and also the future where ReSTIR DI might handle transmission.
         if (hasNonDeltaLobes && onDominantBranch && onStablePlane)
         {
-            NEEResult result = NEEResult::empty();
-            result.BSDFMISInfo.SkipEmissiveBRDF = true;
-            return result;
+            nee.result.BSDFMISInfo.SkipEmissiveBRDF = true;
+            return false;
         }
 #endif
 
@@ -353,16 +322,99 @@ namespace PathTracer
         // this code used to work for LD sampling in the past, leaving as a reference - you probably want to use the same stream for global and local samples this time, will make it easier
         // sampleGeneratorLightSampler = SampleGenerator::make( sgBase, SampleGeneratorEffectSeed::NextEventEstimationLightSamplerG, useLowDiscrepancyGen, globalNEESamples * workingContext.PtConsts.NEECandidateSamples );
 
-        return HandleNEE_MultipleSamples(preScatterPath, shadingData, bsdf, lightSampler, fullSamples, sampleGenerator, workingContext);
+        #ifdef RTXPT_NEE_TOTAL_CANDIDATE_SAMPLE_COUNT
+        nee.candidateSampleCount = RTXPT_NEE_TOTAL_CANDIDATE_SAMPLE_COUNT;
+        #else
+        nee.candidateSampleCount = workingContext.PtConsts.NEECandidateSamples;
+        #endif
+        nee.fullSamples = fullSamples;
+        nee.stage = kNEEVisibilityNextSample;
+
+        nee.result.BSDFMISInfo.LightSamplingEnabled = true;
+        nee.result.BSDFMISInfo.LightSamplingIsSSC   = lightSampler.IsScreenSpaceCoherent;
+        nee.result.BSDFMISInfo.CandidateSamples     = nee.candidateSampleCount;
+        nee.result.BSDFMISInfo.FullSamples          = fullSamples;
+        return true;
     }
-    
+
+    inline bool NextNEEVisibility(inout NEEVisibility nee, const PathState preScatterPath, const ShadingData shadingData, const ActiveBSDF bsdf,
+        inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext, out RayDesc ray, out bool trace)
+    {
+        ray = (RayDesc)0;
+        trace = false;
+        const LightSampler lightSampler = Bridge::CreateLightSampler( preScatterPath.GetPixelPos(), nee.result.BSDFMISInfo.LightSamplingIsSSC );
+        [loop]
+        while (true)
+        {
+            if (nee.stage == kNEEVisibilityNextSample)
+            {
+                if (nee.sampleIndex >= nee.fullSamples)
+                    return false;
+                nee.directional = PrepareDirectionalNEE(shadingData, bsdf, nee.fullSamples, sampleGenerator);
+                nee.stage = kNEEVisibilityDirectional;
+                trace = nee.directional.valid;
+                ray = DirectionalNEERay(nee.directional, shadingData, bsdf);
+                nee.targetIndex = nee.directional.targetIndex;
+                return true;
+            }
+            if (nee.stage == kNEEVisibilityDirectional && !lightSampler.IsEmpty())
+            {
+                nee.lightSample = GenerateLightSample(workingContext, shadingData, bsdf, nee.candidateSampleCount, sampleGenerator, lightSampler);
+                nee.stage = kNEEVisibilityLight;
+                trace = nee.lightSample.Valid();
+                ray = ComputeVisibilityRay(nee.lightSample, shadingData, bsdf);
+                nee.targetIndex = 0;
+                if (trace && nee.lightSample.LightIndex != RTXPT_INVALID_LIGHT_INDEX)
+                    nee.targetIndex = lightSampler.LoadLight(nee.lightSample.LightIndex).Extended.TargetIndex;
+                return true;
+            }
+            nee.sampleIndex++;
+            nee.stage = kNEEVisibilityNextSample;
+        }
+        return false;
+    }
+
+    inline void ConsumeNEEVisibility(inout NEEVisibility nee, float3 transmission, const PathState preScatterPath, const ShadingData shadingData,
+        const ActiveBSDF bsdf, inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
+    {
+        if (nee.stage == kNEEVisibilityDirectional)
+        {
+            FinishDirectionalNEE(nee.result, nee.directional, transmission, preScatterPath, shadingData, bsdf, nee.fullSamples, workingContext);
+            return;
+        }
+        const LightSampler lightSampler = Bridge::CreateLightSampler( preScatterPath.GetPixelPos(), nee.result.BSDFMISInfo.LightSamplingIsSSC );
+        FinishLightSample(nee.result, nee.lightSample, transmission, nee.candidateSampleCount, nee.fullSamples, shadingData, bsdf, preScatterPath, lightSampler, sampleGenerator, workingContext);
+    }
+
 #else // disabled NEE!
 
-inline NEEResult HandleNEE(const PathState preScatterPath, 
-                                const ShadingData shadingData, const ActiveBSDF bsdf, const SampleGeneratorVertexBase sgBase, const WorkingContext workingContext)
+struct NEEVisibility
 {
-    return NEEResult::empty();
+    NEEResult result;
+    uint targetIndex;
+};
+
+inline bool BeginNEE(const PathState preScatterPath, const ShadingData shadingData, const ActiveBSDF bsdf, const WorkingContext workingContext,
+    out NEEVisibility nee)
+{
+    nee = (NEEVisibility)0;
+    nee.result = NEEResult::empty();
+    return false;
 }
+
+inline bool NextNEEVisibility(inout NEEVisibility nee, const PathState preScatterPath, const ShadingData shadingData, const ActiveBSDF bsdf,
+    inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext, out RayDesc ray, out bool trace)
+{
+    ray = (RayDesc)0;
+    trace = false;
+    return false;
+}
+
+inline void ConsumeNEEVisibility(inout NEEVisibility nee, float3 transmission, const PathState preScatterPath, const ShadingData shadingData,
+    const ActiveBSDF bsdf, inout UniformSampleSequenceGenerator sampleGenerator, const WorkingContext workingContext)
+{
+}
+
 #endif
  
 }

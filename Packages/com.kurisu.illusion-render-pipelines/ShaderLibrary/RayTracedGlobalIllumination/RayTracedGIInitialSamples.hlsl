@@ -1,11 +1,10 @@
 #ifndef ILLUSION_RAY_TRACED_GI_INITIAL_SAMPLES_INCLUDED
 #define ILLUSION_RAY_TRACED_GI_INITIAL_SAMPLES_INCLUDED
 
-// Generates the initial ReSTIR GI sample of every receiver pixel, as the BrdfRayTracing and ShadeSecondarySurfaces passes of
-// the RTXDI sample do together: a ray from the receiver's lobes reaches a secondary surface, which path tracing lights
-// through its own material model and light sampling. With RAY_TRACED_GI_RADIANCE_CACHE, as SHaRC's render pass does,
-// eligible hits take their radiance from the radiance cache and the others continue the path. With
-// RAY_TRACED_GI_SKIP_TRANSMISSION, GI rays pass through every surface that transmits shadows.
+// Generates the initial ReSTIR GI sample of every receiver pixel: a ray from the receiver's lobes reaches a secondary
+// surface, which path tracing lights through its own material model and light sampling. With
+// RAY_TRACED_GI_RADIANCE_CACHE, eligible hits take their radiance from the radiance cache and the others continue the
+// path. With RAY_TRACED_GI_SKIP_TRANSMISSION, GI rays pass through every surface that transmits shadows.
 
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/PathTracingRayGenConfig.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/RTXPT/PathTracer/Config.h"
@@ -34,11 +33,10 @@ struct SecondarySample
     bool environment;
 };
 
-SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, float3 direction, float lobeRoughness)
+void BeginSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, float3 direction, out PathState path, out SecondarySample secondary)
 {
     const float coneSpread = g_GIConst.view.pixelConeSpreadAngle;
-    PathTracer::WorkingContext workingContext = GetWorkingContext();
-    PathState path = PathTracer::EmptyPathInitialize(pixel, coneSpread);
+    path = PathTracer::EmptyPathInitialize(pixel, coneSpread);
     path.setVertexIndex(1);
     path.setDeltaOnlyPath(false);
     path.setCounter(PackedCounters::DiffuseBounces, 1);
@@ -46,139 +44,342 @@ SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, 
     path.SetDir(direction);
     path.rayCone = RayCone::make(g_GIConst.view.pixelConeWidth + receiver.viewDepth * coneSpread, coneSpread);
 
-    SecondarySample secondary;
     secondary.position = path.GetOrigin() + direction * g_GIConst.view.environmentDistance;
     secondary.normal = -direction;
+    secondary.radiance = 0.0;
     secondary.environment = true;
-#if defined(RAY_TRACED_GI_RADIANCE_CACHE)
-    // SHaRC's spread estimate: the perceptual roughness of every specular lobe on the path, plus one for every diffuse lobe.
-    float pathRoughness = lobeRoughness;
-#endif
-
-    while (path.isActive())
-    {
-        RayDesc ray = path.getScatterRay().toRayDesc();
-        ray.TMin = 0.0;
-        ray.TMax = kMaxRayTravel;
-        const bool firstBounce = path.getVertexIndex() == 1;
-        IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER,
-            Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
-            path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
-#if defined(RAY_TRACED_GI_SKIP_TRANSMISSION)
-        PathTracingMarkSkipTransmission(payload);
-#endif
-        TraceRay(SceneBVH, RAY_FLAG_NONE, PT_INSTANCE_SCENE, 0, 1, 0, ray, payload);
-
-        if (payload.hitT == PT_NO_SURFACE_T)
-        {
-            PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
-        }
-        else if (payload.hitT < 0.0)
-        {
-            if (firstBounce)
-            {
-                // Raster lighting gives the receiver no environment term, so the lighting environment counts in full,
-                // without the directional discs that raster lights directly.
-                EnvMap envMap = Bridge::CreateEnvMap();
-                path.SetL(path.GetL() + float4(envMap.EvalLocal(envMap.ToLocal(ray.Direction), 0), 0));
-                path.terminate();
-            }
-            else
-            {
-                PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
-            }
-        }
-        else
-        {
-            // Raster lights the receiver directly from the emitters of its lights.
-            if (firstBounce && PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
-                payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
-            const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
-            const float3 hitPosition = ray.Origin + ray.Direction * payload.hitT;
-            const float3 hitNormal = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
-            const bool overlay = PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY;
-            if (firstBounce && !overlay)
-            {
-                secondary.position = hitPosition;
-                secondary.normal = hitNormal;
-                secondary.environment = false;
-            }
-#if defined(RAY_TRACED_GI_RADIANCE_CACHE)
-            // Emissive hits stay path tracing vertices, so that their emission keeps its weight against light sampling.
-            float3 cachedRadiance;
-            if (!overlay && !any(PathTracingUnpackHalf4(payload.emissionMetallic).rgb > 0.0)
-                && !PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER)
-                && RayTracedGIQueryCache(hitPosition, hitNormal, payload.hitT, pathRoughness, cachedRadiance))
-            {
-                path.SetL(path.GetL() + float4(path.GetThp() * cachedRadiance, 0.0));
-                path.terminate();
-                break;
-            }
-            const uint diffuseBounces = path.getCounter(PackedCounters::DiffuseBounces);
-#endif
-            PathTracer::HandleHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
-#if defined(RAY_TRACED_GI_RADIANCE_CACHE)
-            pathRoughness += path.getCounter(PackedCounters::DiffuseBounces) != diffuseBounces
-                ? 1.0 : PathTracingUnpackHalf4(payload.specularRoughness).a;
-#endif
-        }
-    }
-    secondary.radiance = path.GetL().rgb;
-    // As the RTXDI sample's secondary shading does, clamp the luminance of the sample, here relative to the radiance that
-    // exposure maps to middle gray, so that resampling does not spread fireflies.
-    float maxRadiance = g_GIConst.radianceClamp * workingContext.PtConsts.preExposedGrayLuminance;
-    float luminance = dot(secondary.radiance, float3(0.2126, 0.7152, 0.0722));
-    if (maxRadiance > 0.0 && luminance > maxRadiance)
-        secondary.radiance *= maxRadiance / luminance;
-    return secondary;
 }
 
-[shader("raygeneration")]
-void RayGen_InitialSamples()
+IllusionPathPayload CreateSecondaryPayload(PathState path)
 {
-    const uint2 reservoirPosition = DispatchRaysIndex().xy;
-    const uint2 pixel = RTXDI_ReservoirPosToPixelPos(reservoirPosition, g_GIConst.runtimeParams.activeCheckerboardField);
-    const RTXDI_GIParameters restirGI = g_GIConst.restirGI;
-    const uint pointer = RTXDI_ReservoirPositionToPointer(restirGI.reservoirBufferParams, reservoirPosition, 0);
+    IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_SCATTER,
+        Hash32Combine(path.GetId(), Bridge::getSampleIndex() * 0x9E3779B9u + path.getVertexIndex()),
+        path.rayCone.getWidth(), path.rayCone.getSpreadAngle());
+#if defined(RAY_TRACED_GI_SKIP_TRANSMISSION)
+    PathTracingMarkSkipTransmission(payload);
+#endif
+    return payload;
+}
 
+RayDesc SecondaryRay(PathState path)
+{
+    RayDesc ray = path.getScatterRay().toRayDesc();
+    ray.TMin = 0.0;
+    ray.TMax = kMaxRayTravel;
+    return ray;
+}
+
+// Raster lighting gives the receiver no environment term, so the lighting environment counts in full, without the
+// directional discs that raster lights directly.
+void HandleFirstBounceMiss(inout PathState path, float3 direction)
+{
+    EnvMap envMap = Bridge::CreateEnvMap();
+    path.SetL(path.GetL() + float4(envMap.EvalLocal(envMap.ToLocal(direction), 0), 0));
+    path.terminate();
+}
+
+// Raster lights the receiver directly from the emitters of its lights.
+void PrepareSecondaryHit(inout IllusionPathPayload payload, RayDesc ray, bool firstBounce, inout SecondarySample secondary)
+{
+    if (!firstBounce)
+        return;
+    if (PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER))
+        payload.emissionMetallic = PathTracingPackHalf4(float4(0.0, 0.0, 0.0, PathTracingUnpackHalf4(payload.emissionMetallic).a));
+    if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
+        return;
+    const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
+    secondary.position = ray.Origin + ray.Direction * payload.hitT;
+    secondary.normal = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
+    secondary.environment = false;
+}
+
+// Clamps the luminance of the sample relative to the radiance that exposure maps to middle gray, so that resampling
+// does not spread fireflies.
+float3 SecondaryRadiance(PathState path, PathTracer::WorkingContext workingContext)
+{
+    float3 radiance = path.GetL().rgb;
+    float maxRadiance = g_GIConst.radianceClamp * workingContext.PtConsts.preExposedGrayLuminance;
+    float luminance = dot(radiance, float3(0.2126, 0.7152, 0.0722));
+    if (maxRadiance > 0.0 && luminance > maxRadiance)
+        radiance *= maxRadiance / luminance;
+    return radiance;
+}
+
+#define RAY_TRACED_GI_SAMPLE_NONE 0u
+#define RAY_TRACED_GI_SAMPLE_BELOW_SURFACE 1u
+#define RAY_TRACED_GI_SAMPLE_TRACED 2u
+
+void StoreInitialSample(uint2 reservoirPosition, uint kind, SecondarySample secondary, float pdf)
+{
+    const RTXDI_GIParameters restirGI = g_GIConst.restirGI;
     SecondaryGBufferData record = (SecondaryGBufferData)0;
     RTXDI_GIReservoir reservoir = RTXDI_EmptyGIReservoir();
-
-    RayTracedGIReceiver receiver = LoadRayTracedGIReceiver(pixel, g_GIConst.view);
-    if (receiver.valid)
+    if (kind == RAY_TRACED_GI_SAMPLE_TRACED)
     {
-        RTXDI_RandomSamplerState rng = RTXDI_InitRandomSampler(pixel, g_GIConst.runtimeParams.frameIndex, RTXDI_GI_GENERATE_INITIAL_SAMPLES_RANDOM_SEED);
-        float pdf;
-        float lobeRoughness;
-        float3 direction = SampleReceiverLobes(rng, receiver, g_GIConst.specular != 0, pdf, lobeRoughness);
-        if (pdf > 0.0)
-        {
-            SecondarySample secondary = TraceSecondarySample(pixel, receiver, direction, lobeRoughness);
-            uint flags = secondary.environment ? kSecondaryGBuffer_IsEnvironmentMap : 0u;
-            record.worldPos = secondary.position;
-            record.normal = ndirToOctUnorm32(secondary.normal);
-            record.throughputAndFlags = Pack_R16G16B16A16_FLOAT(float4(1.0, 1.0, 1.0, 0.0));
-            record.throughputAndFlags.y |= flags << 16;
-            record.emission = secondary.radiance;
-            record.pdf = pdf;
-            reservoir = RTXDI_MakeGIReservoir(secondary.position, secondary.normal, secondary.radiance, pdf);
-        }
-        else
-        {
-            // A reflection below the surface contributes nothing, but it still counts as a sample, so that resampling
-            // averages over every sample the lobes generate, as the RTXDI sample's reservoirs do.
-            reservoir = RTXDI_MakeGIReservoir(receiver.positionWS + direction * g_GIConst.view.environmentDistance, -direction, 0.0, 0.0);
-        }
+        uint flags = secondary.environment ? kSecondaryGBuffer_IsEnvironmentMap : 0u;
+        record.worldPos = secondary.position;
+        record.normal = ndirToOctUnorm32(secondary.normal);
+        record.throughputAndFlags = Pack_R16G16B16A16_FLOAT(float4(1.0, 1.0, 1.0, 0.0));
+        record.throughputAndFlags.y |= flags << 16;
+        record.emission = secondary.radiance;
+        record.pdf = pdf;
+        reservoir = RTXDI_MakeGIReservoir(secondary.position, secondary.normal, secondary.radiance, pdf);
     }
-
-    u_SecondaryGBuffer[pointer] = record;
+    else if (kind == RAY_TRACED_GI_SAMPLE_BELOW_SURFACE)
+    {
+        // A reflection below the surface contributes nothing, but it still counts as a sample, so that resampling
+        // averages over every sample the lobes generate.
+        reservoir = RTXDI_MakeGIReservoir(secondary.position, secondary.normal, 0.0, 0.0);
+    }
+    u_SecondaryGBuffer[RTXDI_ReservoirPositionToPointer(restirGI.reservoirBufferParams, reservoirPosition, 0)] = record;
     RTXDI_StoreGIReservoir(reservoir, restirGI.reservoirBufferParams, reservoirPosition, restirGI.bufferIndices.secondarySurfaceReSTIRDIOutputBufferIndex);
 }
 
-[shader("miss")]
-void Miss_InitialSamples(inout IllusionPathPayload payload : SV_RayPayload)
+bool SampleInitialRay(uint2 pixel, out RayTracedGIReceiver receiver, out float3 direction, out float pdf, out float lobeRoughness)
 {
-    payload.hitT = PT_MISS_T;
+    receiver = LoadRayTracedGIReceiver(pixel, g_GIConst.view);
+    direction = 0.0;
+    pdf = 0.0;
+    lobeRoughness = 0.0;
+    if (!receiver.valid)
+        return false;
+    RTXDI_RandomSamplerState rng = RTXDI_InitRandomSampler(pixel, g_GIConst.runtimeParams.frameIndex, RTXDI_GI_GENERATE_INITIAL_SAMPLES_RANDOM_SEED);
+    direction = SampleReceiverLobes(rng, receiver, g_GIConst.specular != 0, pdf, lobeRoughness);
+    return true;
 }
+
+SecondarySample BelowSurfaceSample(RayTracedGIReceiver receiver, float3 direction)
+{
+    SecondarySample secondary = (SecondarySample)0;
+    secondary.position = receiver.positionWS + direction * g_GIConst.view.environmentDistance;
+    secondary.normal = -direction;
+    return secondary;
+}
+
+#if USE_RAY_QUERY
+
+bool RayTracedGIInDispatch(uint2 reservoirPosition)
+{
+    const uint2 viewport = uint2(g_GIConst.view.viewportSize);
+    const uint dispatchWidth = g_GIConst.runtimeParams.activeCheckerboardField != 0 ? (viewport.x + 1) / 2 : viewport.x;
+    return reservoirPosition.x < dispatchWidth && reservoirPosition.y < viewport.y;
+}
+
+void RayTracedGIInitialSamples(uint2 reservoirPosition)
+{
+    if (!RayTracedGIInDispatch(reservoirPosition))
+        return;
+    const uint2 pixel = RTXDI_ReservoirPosToPixelPos(reservoirPosition, g_GIConst.runtimeParams.activeCheckerboardField);
+    RayTracedGIReceiver receiver;
+    float3 direction;
+    float pdf;
+    float lobeRoughness;
+    if (!SampleInitialRay(pixel, receiver, direction, pdf, lobeRoughness))
+    {
+        StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_NONE, (SecondarySample)0, 0.0);
+        return;
+    }
+    if (!(pdf > 0.0))
+    {
+        StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_BELOW_SURFACE, BelowSurfaceSample(receiver, direction), 0.0);
+        return;
+    }
+
+    PathState path;
+    SecondarySample secondary;
+    BeginSecondarySample(pixel, receiver, direction, path, secondary);
+    PathTracer::WorkingContext workingContext = GetWorkingContext();
+    RayDesc ray = SecondaryRay(path);
+    IllusionPathPayload payload = CreateSecondaryPayload(path);
+    uint rayFlags = RAY_FLAG_NONE;
+    uint instanceMask = PT_INSTANCE_SCENE;
+    bool visibility = false;
+    PathTracer::SurfaceHit surface = (PathTracer::SurfaceHit)0;
+    PathTracer::NEEVisibility nee = (PathTracer::NEEVisibility)0;
+
+    [loop]
+    while (true)
+    {
+        PathTracingInlineHit hit;
+        const bool hitFound = PathTracingInlineTraceHit(SceneBVH, rayFlags, instanceMask, ray, payload, hit);
+        if (visibility)
+        {
+            PathTracer::ConsumeNEEVisibility(nee, Bridge::visibilityTransmission(payload), surface.preScatterPath, surface.shadingData,
+                surface.bsdf, surface.uniformSG, workingContext);
+        }
+        else
+        {
+            if (!hitFound)
+            {
+                HandleFirstBounceMiss(path, ray.Direction);
+                break;
+            }
+            payload = CreateSecondaryPayload(path);
+            PathTracingInlineShadeHit(SceneBVH, hit, ray, payload);
+            if (payload.hitT == PT_NO_SURFACE_T)
+            {
+                PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
+                break;
+            }
+            secondary = (SecondarySample)0;
+            PrepareSecondaryHit(payload, ray, true, secondary);
+            if (!PathTracer::BeginSurfaceHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext, surface))
+                break;
+            if (!PathTracer::BeginSurfaceNEE(surface, workingContext, nee))
+            {
+                PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+                break;
+            }
+            visibility = true;
+        }
+
+        if (!PathTracer::NextSurfaceVisibilityRay(surface, nee, workingContext, ray, payload))
+        {
+            PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            break;
+        }
+        rayFlags = Bridge::visibilityRayFlags(payload);
+        instanceMask = PT_INSTANCE_SHADOW;
+    }
+    secondary.radiance = SecondaryRadiance(path, workingContext);
+    StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_TRACED, secondary, pdf);
+}
+
+#else
+
+SecondarySample TraceSecondarySample(uint2 pixel, RayTracedGIReceiver receiver, float3 direction, float lobeRoughness)
+{
+    PathTracer::WorkingContext workingContext = GetWorkingContext();
+    PathState path;
+    SecondarySample secondary;
+    BeginSecondarySample(pixel, receiver, direction, path, secondary);
+#if defined(RAY_TRACED_GI_RADIANCE_CACHE)
+    // The spread estimate: the perceptual roughness of every specular lobe on the path, plus one for every diffuse lobe.
+    float pathRoughness = lobeRoughness;
+    uint diffuseBounces = 0;
+    float hitRoughness = 0.0;
+#endif
+    RayDesc ray = (RayDesc)0;
+    IllusionPathPayload payload = (IllusionPathPayload)0;
+    uint rayFlags = RAY_FLAG_NONE;
+    uint instanceMask = PT_INSTANCE_SCENE;
+    bool visibility = false;
+    PathTracer::SurfaceHit surface = (PathTracer::SurfaceHit)0;
+    PathTracer::NEEVisibility nee = (PathTracer::NEEVisibility)0;
+
+    [loop]
+    while (path.isActive() || visibility)
+    {
+        if (!visibility)
+        {
+            ray = SecondaryRay(path);
+            payload = CreateSecondaryPayload(path);
+            rayFlags = RAY_FLAG_NONE;
+            instanceMask = PT_INSTANCE_SCENE;
+        }
+        PathTracingInlineHit hit;
+        const bool hitFound = PathTracingInlineTraceHit(SceneBVH, rayFlags, instanceMask, ray, payload, hit);
+        bool surfaceDone = false;
+        if (visibility)
+        {
+            PathTracer::ConsumeNEEVisibility(nee, Bridge::visibilityTransmission(payload), surface.preScatterPath, surface.shadingData,
+                surface.bsdf, surface.uniformSG, workingContext);
+        }
+        else
+        {
+            const bool firstBounce = path.getVertexIndex() == 1;
+            if (hitFound)
+                PathTracingInlineShadeHit(SceneBVH, hit, ray, payload, path.isTerminatingAtNextBounce(), 1);
+            if (payload.hitT == PT_NO_SURFACE_T)
+            {
+                PathTracer::HandleDiagnosticHit(path, ray.Origin, ray.Direction, workingContext);
+            }
+            else if (payload.hitT < 0.0)
+            {
+                if (firstBounce)
+                    HandleFirstBounceMiss(path, ray.Direction);
+                else
+                    PathTracer::HandleMiss(path, ray.Origin, ray.Direction, kMaxRayTravel, workingContext);
+            }
+            else
+            {
+                PrepareSecondaryHit(payload, ray, firstBounce, secondary);
+                if (PathTracingGetFamily(payload) == PT_FAMILY_OVERLAY)
+                {
+                    PathTracer::HandleOverlayHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext);
+                    continue;
+                }
+#if defined(RAY_TRACED_GI_RADIANCE_CACHE)
+                // Emissive hits stay path tracing vertices, so that their emission keeps its weight against light sampling.
+                const float3 faceNormal = PathTracingUnpackNormal(payload.normalFace);
+                const float3 hitPosition = ray.Origin + ray.Direction * payload.hitT;
+                const float3 hitNormal = dot(faceNormal, ray.Direction) < 0.0 ? faceNormal : -faceNormal;
+                float3 cachedRadiance;
+                if (!any(PathTracingUnpackHalf4(payload.emissionMetallic).rgb > 0.0)
+                    && !PathTracingHasSurfaceFlag(payload, PT_SURFACE_LIGHT_EMITTER)
+                    && RayTracedGIQueryCache(hitPosition, hitNormal, payload.hitT, pathRoughness, cachedRadiance))
+                {
+                    path.SetL(path.GetL() + float4(path.GetThp() * cachedRadiance, 0.0));
+                    path.terminate();
+                    break;
+                }
+                diffuseBounces = path.getCounter(PackedCounters::DiffuseBounces);
+                hitRoughness = PathTracingUnpackHalf4(payload.specularRoughness).a;
+#endif
+                surfaceDone = !PathTracer::BeginSurfaceHit(path, ray.Origin, ray.Direction, payload.hitT, payload, workingContext, surface);
+                if (!surfaceDone)
+                {
+                    visibility = PathTracer::BeginSurfaceNEE(surface, workingContext, nee);
+                    if (!visibility)
+                    {
+                        PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+                        surfaceDone = true;
+                    }
+                }
+            }
+        }
+        if (visibility)
+        {
+            if (PathTracer::NextSurfaceVisibilityRay(surface, nee, workingContext, ray, payload))
+            {
+                rayFlags = Bridge::visibilityRayFlags(payload);
+                instanceMask = PT_INSTANCE_SHADOW;
+                continue;
+            }
+            PathTracer::FinishSurfaceHit(path, surface, nee.result, workingContext);
+            visibility = false;
+            surfaceDone = true;
+        }
+#if defined(RAY_TRACED_GI_RADIANCE_CACHE)
+        if (surfaceDone)
+            pathRoughness += path.getCounter(PackedCounters::DiffuseBounces) != diffuseBounces ? 1.0 : hitRoughness;
+#endif
+    }
+    secondary.radiance = SecondaryRadiance(path, workingContext);
+    return secondary;
+}
+
+void RayGen_InitialSamples(uint2 reservoirPosition)
+{
+    const uint2 viewport = uint2(g_GIConst.view.viewportSize);
+    const uint dispatchWidth = g_GIConst.runtimeParams.activeCheckerboardField != 0 ? (viewport.x + 1) / 2 : viewport.x;
+    if (reservoirPosition.x >= dispatchWidth || reservoirPosition.y >= viewport.y)
+        return;
+
+    const uint2 pixel = RTXDI_ReservoirPosToPixelPos(reservoirPosition, g_GIConst.runtimeParams.activeCheckerboardField);
+    RayTracedGIReceiver receiver;
+    float3 direction;
+    float pdf;
+    float lobeRoughness;
+    if (!SampleInitialRay(pixel, receiver, direction, pdf, lobeRoughness))
+        StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_NONE, (SecondarySample)0, 0.0);
+    else if (pdf > 0.0)
+        StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_TRACED, TraceSecondarySample(pixel, receiver, direction, lobeRoughness), pdf);
+    else
+        StoreInitialSample(reservoirPosition, RAY_TRACED_GI_SAMPLE_BELOW_SURFACE, BelowSurfaceSample(receiver, direction), 0.0);
+}
+
+
+#endif
 
 #endif

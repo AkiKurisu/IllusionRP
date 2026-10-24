@@ -31,11 +31,11 @@ namespace Illusion.Rendering.PathTracing
                 cmd.SetBufferData(_distantLights, lights.DistantLights);
         }
 
-        public void Bind(CommandBuffer cmd, RayTracingShader shader)
+        public void Bind(CommandBuffer cmd, PathTracingShaderTarget shader)
         {
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs._PathTracingLightTargets, _targets);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs._PathTracingDistantLights, _distantLights);
-            cmd.SetRayTracingIntParam(shader, ShaderIDs._PathTracingDistantLightCount, _distantLightCount);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingLightTargets, _targets);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingDistantLights, _distantLights);
+            shader.SetInt(cmd, ShaderIDs._PathTracingDistantLightCount, _distantLightCount);
         }
 
         public void Dispose()

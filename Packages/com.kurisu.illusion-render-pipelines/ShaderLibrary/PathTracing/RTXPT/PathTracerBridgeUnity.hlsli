@@ -414,13 +414,22 @@ float3 Bridge::computeSkyMotionVector( const uint2 pixelPos )
 
 // @IllusionRP: alpha testing, caster filtering and RGB shadow transmission run in the material any-hit shaders.
 
-float3 Bridge::traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos, uint targetIndex)
+IllusionPathPayload Bridge::createVisibilityPayload(const RayCone rayCone, const int pathVertexIndex, uint2 pixelPos, uint targetIndex)
 {
     IllusionPathPayload payload = PathTracingCreatePayload(PT_RAY_VISIBILITY, Hash32Combine(Hash32(pixelPos.x + (pixelPos.y << 16)), Bridge::getSampleIndex() * 0x9E3779B9u + pathVertexIndex), rayCone.getWidth(), rayCone.getSpreadAngle());
     payload.hitT = 0.0;
     payload.diffuseOpacity = PathTracingPackHalf4(float4(1.0, 1.0, 1.0, 0.0));
     payload.parameters.x = _PathTracingLightTargets[targetIndex].shadowLayers;
-    TraceRay(SceneBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | PathTracingShadowRayFlags(payload.parameters.x), PT_INSTANCE_SHADOW, 0, 1, 0, ray, payload);
+    return payload;
+}
+
+uint Bridge::visibilityRayFlags(const IllusionPathPayload payload)
+{
+    return RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | PathTracingShadowRayFlags(payload.parameters.x);
+}
+
+float3 Bridge::visibilityTransmission(const IllusionPathPayload payload)
+{
     return payload.hitT < 0.0 ? PathTracingUnpackHalf4(payload.diffuseOpacity).rgb : 0.0;
 }
 

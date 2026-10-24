@@ -50,13 +50,10 @@ namespace Illusion.Rendering.PathTracing
 
     internal static class PathTracingRayReconstructionLoader
     {
-        private const string BackendTypeName =
-            "Illusion.Rendering.PathTracing.UnityRHI.UnityRHIPathTracingRayReconstruction, Illusion.RenderPipelines.PathTracing.UnityRHI";
+        private static Func<IPathTracingRayReconstruction> _factory;
 
-        public static IPathTracingRayReconstruction Create()
-        {
-            Type type = Type.GetType(BackendTypeName, false);
-            return type == null ? null : Activator.CreateInstance(type) as IPathTracingRayReconstruction;
-        }
+        internal static void Register(Func<IPathTracingRayReconstruction> factory) => _factory = factory;
+
+        public static IPathTracingRayReconstruction Create() => _factory?.Invoke();
     }
 }

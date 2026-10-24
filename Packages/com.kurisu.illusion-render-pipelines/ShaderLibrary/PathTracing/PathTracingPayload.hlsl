@@ -61,6 +61,11 @@ struct IllusionPathPayload
     uint2   motion;
 };
 
+struct AttributeData
+{
+    float2 barycentrics;
+};
+
 struct PathTracingInstance
 {
     uint previousPositionBase;
@@ -69,6 +74,7 @@ struct PathTracingInstance
     uint renderingLayers;
 };
 StructuredBuffer<PathTracingInstance> _PathTracingInstanceData;
+StructuredBuffer<uint2> _PathTracingCulledSubMeshes;
 
 struct PathTracingMaterialData
 {

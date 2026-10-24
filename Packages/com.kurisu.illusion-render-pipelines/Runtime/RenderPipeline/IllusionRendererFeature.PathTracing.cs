@@ -58,8 +58,7 @@ namespace Illusion.Rendering
             RenderPipelineManager.beginContextRendering += ReleaseUnusedRayTracingResources;
             if (rayTracedGlobalIllumination && RayTracedGlobalIlluminationPass.HasResources(resources))
                 _rayTracedGlobalIlluminationPass = new RayTracedGlobalIlluminationPass(resources, _rendererData, _rayTracingScene);
-            if (!pathTracing || !resources.pathTracingRS || !resources.pathTracingAccumulationCS || !resources.pathTracingOutputShader
-                || !resources.pathTracingBuildRS || !resources.pathTracingFillRS || !resources.pathTracingRealtimeCS)
+            if (!pathTracing || !resources.pathTracingAccumulationCS || !resources.pathTracingOutputShader || !resources.pathTracingRealtimeCS)
                 return;
             _pathTracingPass = new PathTracingPass(resources, _rendererData, _rayTracingScene);
             RenderPipelineManager.beginContextRendering += RestoreStaleCameras;

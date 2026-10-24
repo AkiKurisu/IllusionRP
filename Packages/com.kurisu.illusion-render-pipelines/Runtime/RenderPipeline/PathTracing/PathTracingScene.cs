@@ -62,7 +62,7 @@ namespace Illusion.Rendering.PathTracing
                 {
                     renderQueueLowerBound = AlphaTestQueueMin,
                     renderQueueUpperBound = TransparentQueueMin - 1,
-                    optionalShaderKeywords = new[] { "_ALPHATEST_ON" }
+                    optionalShaderKeywords = new[] { "_ALPHATEST_ON", "GEOM_TYPE_FROND", "GEOM_TYPE_LEAF" }
                 },
                 transparentMaterialConfig = new RayTracingInstanceMaterialConfig
                 {

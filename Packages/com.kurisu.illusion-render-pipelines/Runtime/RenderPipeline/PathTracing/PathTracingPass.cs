@@ -93,7 +93,37 @@ namespace Illusion.Rendering.PathTracing
             var world = _scene.Update(camera, settings.layerMask.value, settings.directionalAngularDiameter.value, perObjectSelector,
                 _rendererData.PerObjectShadowRenderingLayer, realtime);
             _scene.SkinnedUpdates.Keep(world.Scene.Instances);
-
+            var registry = PathTracingInlineRegistry.Instance;
+            try
+            {
+                if (!SystemInfo.supportsInlineRayTracing) throw new NotSupportedException("The device does not support inline ray tracing.");
+                if (!PathTracingInlineResources.IsAvailable) throw new InvalidOperationException("The UnityRHI inline resource table is unavailable.");
+                if (!registry) throw new InvalidOperationException("Inline programs have not been generated.");
+                if (realtime)
+                {
+                    _inlineBuild.SetProgram(registry.Build);
+                    _inlineFill.SetProgram(registry.Fill);
+                    _inlineBuild.Prepare();
+                    _inlineFill.Prepare();
+                }
+                else
+                {
+                    _inlineReference.SetProgram(registry.Reference);
+                    _inlineReference.Prepare();
+                }
+                world.UpdateInline();
+                if (!world.Inline.IsReady) throw new InvalidOperationException("Inline scene records are unavailable.");
+                _inlineFailure = null;
+            }
+            catch (Exception e)
+            {
+                if (_inlineFailure != e.ToString()) Debug.LogError(_inlineFailure = e.ToString());
+                using var builder = renderGraph.AddRasterRenderPass<OutputPassData>("Path Tracing Inline Failed", out _);
+                builder.SetRenderAttachment(resourceData.activeColorTexture, 0, AccessFlags.Write);
+                builder.SetRenderFunc(static (OutputPassData data, RasterGraphContext ctx) =>
+                    ctx.cmd.ClearRenderTarget(RTClearFlags.Color, Color.black, 1, 0));
+                return;
+            }
             TextureHandle image = realtime
                 ? RecordRealtime(renderGraph, cameraData, settings, context, world)
                 : RecordReference(renderGraph, cameraData, settings, context, world);
@@ -177,12 +207,20 @@ namespace Illusion.Rendering.PathTracing
             }
         }
 
+        private string _inlineFailure;
+        private readonly PathTracingInlineDispatcher _inlineReference = new();
+        private readonly PathTracingInlineDispatcher _inlineBuild = new();
+        private readonly PathTracingInlineDispatcher _inlineFill = new();
+
         public void Dispose()
         {
             foreach (var context in _contexts.Values)
                 context.Dispose();
             _contexts.Clear();
             DisposeRealtime();
+            _inlineReference.Dispose();
+            _inlineBuild.Dispose();
+            _inlineFill.Dispose();
             CoreUtils.Destroy(_outputMaterial);
         }
     }

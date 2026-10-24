@@ -1,0 +1,152 @@
+#pragma kernel BakeOpacityMicromaps
+#pragma only_renderers d3d11
+#pragma use_dxc
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInline.hlsl"
+
+// One geometry record, its standard coverage descriptor, and the micromap layout: every triangle gets one 4-state micromap
+// of the same subdivision level, stored at triangle * bytes.
+uint _OpacityMicromapGeometry;
+uint4 _OpacityMicromapCoverage;
+uint _OpacityMicromapTriangles;
+uint _OpacityMicromapLevel;
+uint _OpacityMicromapGroupsX;
+RWByteAddressBuffer _OpacityMicromapData;
+RWByteAddressBuffer _OpacityMicromapDescs;
+RWByteAddressBuffer _OpacityMicromapIndices;
+
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/PathTracing/Inline/PathTracingInlineTable.hlsl"
+
+#define OMM_TRANSPARENT 0u
+#define OMM_OPAQUE 1u
+#define OMM_UNKNOWN_OPAQUE 3u
+#define OMM_FORMAT_4_STATE 2u
+#define OMM_MAX_FOOTPRINT 64
+
+uint EvenBits(uint x)
+{
+    x &= 0x55555555u;
+    x = (x | (x >> 1)) & 0x33333333u;
+    x = (x | (x >> 2)) & 0x0f0f0f0fu;
+    x = (x | (x >> 4)) & 0x00ff00ffu;
+    return (x | (x >> 8)) & 0x0000ffffu;
+}
+
+uint PrefixXor(uint x)
+{
+    x ^= x >> 1;
+    x ^= x >> 2;
+    x ^= x >> 4;
+    return x ^ (x >> 8);
+}
+
+// Corners, in triangle barycentrics, of a micro-triangle along the micromap's space-filling order.
+void MicroTriangle(uint index, uint level, out float2 b0, out float2 b1, out float2 b2)
+{
+    uint even = EvenBits(index);
+    uint odd = EvenBits(index >> 1);
+    uint fx = PrefixXor(even);
+    uint fy = PrefixXor(even & ~odd);
+    uint t = fy ^ odd;
+    uint mask = (1u << level) - 1u;
+    uint u = ((fx & ~t) | (even & ~t) | (~even & ~fx & t)) & mask;
+    uint v = (fy ^ even) & mask;
+    uint w = ((~fx & ~t) | (even & ~t) | (~even & fx & t)) & mask;
+    bool upright = ((u ^ v ^ w) & 1u) != 0u;
+    if (!upright)
+    {
+        u++;
+        v++;
+    }
+    float scale = 1.0 / float(1u << level);
+    float step = upright ? scale : -scale;
+    b0 = float2(u, v) * scale;
+    b1 = b0 + float2(step, 0.0);
+    b2 = b0 + float2(0.0, step);
+}
+
+int Address(int coordinate, int size, uint mode)
+{
+    if (mode == 1u)
+        return clamp(coordinate, 0, size - 1);
+    int period = mode == 2u ? 2 * size : size;
+    int wrapped = ((coordinate % period) + period) % period;
+    return wrapped < size ? wrapped : period - 1 - wrapped;
+}
+
+// Coverage is certain only when every texel that bilinear filtering at the finest level can touch inside the region agrees.
+uint Classify(Texture2D<float4> tex, uint addressMode, int2 size, float2 uv0, float2 uv1, float2 uv2, float colorAlpha, float cutoff)
+{
+    float2 lo = min(uv0, min(uv1, uv2)) * size - 0.5;
+    float2 hi = max(uv0, max(uv1, uv2)) * size - 0.5;
+    int2 first = int2(floor(lo)) - 1;
+    int2 last = int2(ceil(hi)) + 1;
+    if (any(last - first >= OMM_MAX_FOOTPRINT))
+        return OMM_UNKNOWN_OPAQUE;
+    float minimum = 1.0;
+    float maximum = 0.0;
+    for (int y = first.y; y <= last.y; y++)
+        for (int x = first.x; x <= last.x; x++)
+        {
+            float alpha = tex.Load(int3(Address(x, size.x, addressMode), Address(y, size.y, addressMode), 0)).a * colorAlpha;
+            minimum = min(minimum, alpha);
+            maximum = max(maximum, alpha);
+        }
+    if (minimum >= cutoff)
+        return OMM_OPAQUE;
+    if (maximum < cutoff)
+        return OMM_TRANSPARENT;
+    return OMM_UNKNOWN_OPAQUE;
+}
+
+[numthreads(64, 1, 1)]
+void BakeOpacityMicromaps(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
+{
+    uint id = (group.y * _OpacityMicromapGroupsX + group.x) * 64u + thread;
+    uint level = _OpacityMicromapLevel;
+    uint words = (1u << (2u * level)) / 16u;
+    uint triangleIndex = id / words;
+    if (triangleIndex >= _OpacityMicromapTriangles)
+        return;
+    uint word = id % words;
+    uint bytes = words * 4u;
+
+    g_PathTracingInlineGeometry = _PathTracingInlineGeometries[_OpacityMicromapGeometry];
+    g_PathTracingInlineMaterialBase = g_PathTracingInlineGeometry.materialData;
+    uint4 coverage = _OpacityMicromapCoverage;
+    uint3 indices = UnityRayTracingFetchTriangleIndices(triangleIndex);
+    uint attribute = kVertexAttributeTexCoord0 + ((coverage.x >> 4) & 3u);
+    uint base = g_PathTracingInlineMaterialBase;
+    float4 scaleOffset = float4(1.0, 1.0, 0.0, 0.0);
+    if ((coverage.z >> 16) != 0xFFFFu)
+        scaleOffset = asfloat(_PathTracingInlineMaterialData.Load4(base + (coverage.z >> 16)));
+    float2 t0 = UnityRayTracingFetchVertexAttribute2(indices.x, attribute) * scaleOffset.xy + scaleOffset.zw;
+    float2 t1 = UnityRayTracingFetchVertexAttribute2(indices.y, attribute) * scaleOffset.xy + scaleOffset.zw;
+    float2 t2 = UnityRayTracingFetchVertexAttribute2(indices.z, attribute) * scaleOffset.xy + scaleOffset.zw;
+    float colorAlpha = asfloat(_PathTracingInlineMaterialData.Load(base + (coverage.z & 0xFFFFu) + 12u));
+    float cutoff = asfloat(_PathTracingInlineMaterialData.Load(base + coverage.w));
+
+    uint entry = PathTracingInlineTextureEntry(coverage.y);
+    Texture2D<float4> tex = _PathTracingInlineTextures[NonUniformResourceIndex(entry & PT_INLINE_INDEX_MASK)];
+    uint addressMode = (PathTracingInlineSamplerState(entry, PT_INLINE_SAMPLER_DEFAULT) >> 2) & 3u;
+    uint width, height, mips;
+    tex.GetDimensions(0, width, height, mips);
+    int2 size = int2(width, height);
+
+    uint states = 0;
+    for (uint i = 0; i < 16u; i++)
+    {
+        float2 b0, b1, b2;
+        MicroTriangle(word * 16u + i, level, b0, b1, b2);
+        float2 uv0 = t0 * (1.0 - b0.x - b0.y) + t1 * b0.x + t2 * b0.y;
+        float2 uv1 = t0 * (1.0 - b1.x - b1.y) + t1 * b1.x + t2 * b1.y;
+        float2 uv2 = t0 * (1.0 - b2.x - b2.y) + t1 * b2.x + t2 * b2.y;
+        states |= Classify(tex, addressMode, size, uv0, uv1, uv2, colorAlpha, cutoff) << (2u * i);
+    }
+    _OpacityMicromapData.Store(triangleIndex * bytes + word * 4u, states);
+    if (word == 0u)
+    {
+        _OpacityMicromapDescs.Store2(triangleIndex * 8u, uint2(triangleIndex * bytes, level | OMM_FORMAT_4_STATE << 16));
+        _OpacityMicromapIndices.Store(triangleIndex * 4u, triangleIndex);
+    }
+}

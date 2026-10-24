@@ -16,9 +16,12 @@ Attributes PathTracingTemplateAttributes(PathTracingHitContext hit)
     return input;
 }
 
-PATH_TRACING_TEMPLATE_SURFACE PathTracingEvaluateTemplate(AttributeData attributes, IllusionPathPayload payload)
+PATH_TRACING_TEMPLATE_SURFACE PathTracingEvaluateTemplate(AttributeData attributes, IllusionPathPayload payload, bool coverage)
 {
-    g_PathTracingHit = PathTracingGetHitContext(attributes, payload);
+    if (coverage)
+        g_PathTracingHit = PathTracingGetCoverageContext(attributes, payload);
+    else
+        g_PathTracingHit = PathTracingGetHitContext(attributes, payload);
     g_PathTracingScreenPosition = PathTracingPseudoScreenPosition(payload);
     g_PathTracingClipped = false;
     return frag(vert(PathTracingTemplateAttributes(g_PathTracingHit)));
@@ -27,7 +30,7 @@ PATH_TRACING_TEMPLATE_SURFACE PathTracingEvaluateTemplate(AttributeData attribut
 [shader("closesthit")]
 void PathTracingClosestHit(inout IllusionPathPayload payload : SV_RayPayload, AttributeData attributes : SV_IntersectionAttributes)
 {
-    PATH_TRACING_TEMPLATE_SURFACE surface = PathTracingEvaluateTemplate(attributes, payload);
+    PATH_TRACING_TEMPLATE_SURFACE surface = PathTracingEvaluateTemplate(attributes, payload, false);
     PathTracingWriteTemplateSurface(payload, g_PathTracingHit, surface);
 }
 
@@ -55,7 +58,7 @@ void PathTracingAnyHit(inout IllusionPathPayload payload : SV_RayPayload, Attrib
         return;
     }
 #endif
-    PATH_TRACING_TEMPLATE_SURFACE surface = PathTracingEvaluateTemplate(attributes, payload);
+    PATH_TRACING_TEMPLATE_SURFACE surface = PathTracingEvaluateTemplate(attributes, payload, true);
     if (g_PathTracingClipped)
     {
         IgnoreHit();

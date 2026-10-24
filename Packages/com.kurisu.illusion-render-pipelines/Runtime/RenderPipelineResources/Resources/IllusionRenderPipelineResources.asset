@@ -36,11 +36,9 @@ MonoBehaviour:
   wetSurfaceBlurNormalsShader: {fileID: 4800000, guid: a0daef4086fc4367bb61798faefc5a36, type: 3}
   wetSurfaceSmoothnessShader: {fileID: 4800000, guid: 91a1584b9b8e448b85bc110e56016639, type: 3}
   wetSurfaceBlueNoise: {fileID: 2800000, guid: ef935f144fe14c57a17bcfb739c25b8f, type: 3}
-  pathTracingRS: {fileID: 4807578003741378534, guid: e85051369338ecd41b31c2ea8e526e19, type: 3}
-  pathTracingBuildRS: {fileID: 4807578003741378534, guid: 849733b963ad2024998aee576c95e08f, type: 3}
-  pathTracingFillRS: {fileID: 4807578003741378534, guid: df98a328f04b35f4183708c8bd6f3674, type: 3}
   pathTracingRealtimeCS: {fileID: 7200000, guid: ef2c19ecb7c2f3344a15560118a57be3, type: 3}
   pathTracingMotionCS: {fileID: 7200000, guid: c85e00506dd217f4b84ec5f27c264373, type: 3}
+  pathTracingOpacityMicromapCS: {fileID: 7200000, guid: 9ea7414901e9451bb1cc7d2633d56a5b, type: 3}
   pathTracingAccumulationCS: {fileID: 7200000, guid: 0fdf05cada7ae044b907c77b139e3f43, type: 3}
   pathTracingLightsBakerCS: {fileID: 7200000, guid: 18f67dc48caa71b4191e453512173984, type: 3}
   pathTracingEnvironmentCS: {fileID: 7200000, guid: ac83735eb16df064087cb2be463998fc, type: 3}
@@ -48,11 +46,7 @@ MonoBehaviour:
   pathTracingEmissiveCS: {fileID: 7200000, guid: 1b29db8336989754eb7a71f1cee933ec, type: 3}
   pathTracingRectangleLightShader: {fileID: 4800000, guid: 14de40849dc94b8095b86dc2b6f36fd2, type: 3}
   pathTracingOutputShader: {fileID: 4800000, guid: 22f5bcce2a1bc214ba7815741055f203, type: 3}
-  rayTracedGIInitialSamplesRS: {fileID: 4807578003741378534, guid: f23dce54e2a40cc4192a955f9871f952, type: 3}
-  rayTracedGIResamplingRS: {fileID: 4807578003741378534, guid: d633fe27df2a4f70a4adfa0d006d6131, type: 3}
   rayTracedGICompositeCS: {fileID: 7200000, guid: 4af58f3442d50cf42a384eb34952576f, type: 3}
-  rayTracedGIInitialSamplesQualityRS: {fileID: 4807578003741378534, guid: d7f92b244f107434d91870c176515469, type: 3}
-  rayTracedGIRadianceCacheUpdateRS: {fileID: 4807578003741378534, guid: 18ef558b42fdb8d4ead7328a4bfaef57, type: 3}
   rayTracedGIRadianceCacheCS: {fileID: 7200000, guid: 5606cd7582bfac444925849b31ebc1e1, type: 3}
   areaLightShadowClearShader: {fileID: 4800000, guid: 32b46714b5c24e46b554b9f31b673958, type: 3}
   filterAreaLightCookiesShader: {fileID: 4800000, guid: 7f323cb18e9e629060cebadd3c2b7f64, type: 3}

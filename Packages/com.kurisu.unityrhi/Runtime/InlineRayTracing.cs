@@ -1,0 +1,78 @@
+using System;
+using System.Runtime.InteropServices;
+using UnityEngine.Rendering;
+
+namespace UnityRhi
+{
+    public sealed class InlineRayTracing : IDisposable
+    {
+        private const string Plugin = "GfxPluginIllusionRHI";
+        private IntPtr _handle;
+        private readonly IntPtr _callback;
+        private readonly int _eventId;
+
+        [DllImport(Plugin)] private static extern int UnityRhiInitializeInlineRayTracing();
+        [DllImport(Plugin)] private static extern IntPtr UnityRhiGetInlineRayTracingCallback();
+        [DllImport(Plugin, CharSet = CharSet.Unicode)]
+        private static extern IntPtr UnityRhiCreateInlineRayTracing(byte[] code, int size, string entry, uint x, uint y);
+        [DllImport(Plugin, CharSet = CharSet.Unicode)]
+        private static extern int UnityRhiAddInlineRayTracingMaterial(IntPtr handle, byte[] code, int size, string closest);
+        [DllImport(Plugin)] private static extern int UnityRhiAddInlineRayTracingLibrary(IntPtr handle, byte[] code, int size);
+        [DllImport(Plugin)] private static extern void UnityRhiReleaseInlineRayTracing(IntPtr handle);
+        [DllImport(Plugin)] private static extern ulong UnityRhiGetInlineRayTracingDispatches(IntPtr handle, out int status);
+
+        public InlineRayTracing(byte[] code, string entry, uint threadsX, uint threadsY)
+        {
+            if (!RhiCore.IsD3D12Active) throw new NotSupportedException("Inline RayGen requires D3D12.");
+            if (code == null || code.Length == 0) throw new ArgumentException("Inline RayGen bytecode is missing.", nameof(code));
+            _eventId = UnityRhiInitializeInlineRayTracing();
+            if (_eventId == 0) throw new InvalidOperationException("Inline RayGen device or hook initialization failed.");
+            _callback = UnityRhiGetInlineRayTracingCallback();
+            if (_callback == IntPtr.Zero) throw new InvalidOperationException("Inline RayGen callback is missing.");
+            _handle = UnityRhiCreateInlineRayTracing(code, code.Length, entry, threadsX, threadsY);
+            if (_handle == IntPtr.Zero) throw new InvalidOperationException($"Inline RayGen '{entry}' creation failed.");
+#if UNITY_EDITOR
+            RhiDomainReload.RegisterOwner(this);
+#endif
+        }
+
+        public void AddMaterial(byte[] code, string closestHit)
+        {
+            if (!IsAvailable) throw new ObjectDisposedException(nameof(InlineRayTracing));
+            if (code == null || code.Length == 0) throw new ArgumentException("Material bytecode is missing.", nameof(code));
+            int status = UnityRhiAddInlineRayTracingMaterial(_handle, code, code.Length, closestHit);
+            if (status < 0) throw new InvalidOperationException($"Inline material '{closestHit}' registration failed (0x{status:X8}).");
+        }
+
+        public void AddLibrary(byte[] code)
+        {
+            if (!IsAvailable) throw new ObjectDisposedException(nameof(InlineRayTracing));
+            if (code == null || code.Length == 0) throw new ArgumentException("Library bytecode is missing.", nameof(code));
+            int status = UnityRhiAddInlineRayTracingLibrary(_handle, code, code.Length);
+            if (status < 0) throw new InvalidOperationException($"Inline library registration failed (0x{status:X8}).");
+        }
+
+        public bool IsAvailable => _handle != IntPtr.Zero;
+
+        public ulong GetDispatchCount(out int status)
+        {
+            status = unchecked((int)0x80070006);
+            return IsAvailable ? UnityRhiGetInlineRayTracingDispatches(_handle, out status) : 0;
+        }
+
+        public void Bind(CommandBuffer commandBuffer)
+        {
+            if (!IsAvailable) throw new ObjectDisposedException(nameof(InlineRayTracing));
+            GetDispatchCount(out int status);
+            if (status < 0) throw new InvalidOperationException($"Inline RayGen dispatch failed (0x{status:X8}).");
+            commandBuffer.IssuePluginEventAndData(_callback, _eventId, _handle);
+        }
+
+        public void Dispose()
+        {
+            if (_handle == IntPtr.Zero) return;
+            UnityRhiReleaseInlineRayTracing(_handle);
+            _handle = IntPtr.Zero;
+        }
+    }
+}

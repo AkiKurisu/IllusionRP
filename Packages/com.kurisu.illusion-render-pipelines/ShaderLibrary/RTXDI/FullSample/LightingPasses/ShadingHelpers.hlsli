@@ -133,9 +133,8 @@ void StoreShadingOutput(
     bool isFirstPass,
     bool isLastPass)
 {
-    uint2 lightingTexturePos = (g_Const.denoiserMode != DENOISER_MODE_OFF)
-        ? reservoirPosition
-        : pixelPosition;
+    // @IllusionRP: checkerboard requires denoising, so lighting always uses reservoir coordinates.
+    uint2 lightingTexturePos = reservoirPosition;
 
     float diffuseHitT = lightDistance;
     float specularHitT = lightDistance;
@@ -218,9 +217,7 @@ void StoreShadingOutput(
     bool isFirstPassSpecular,
     bool isLastPass)
 {
-    uint2 lightingTexturePos = (g_Const.denoiserMode != DENOISER_MODE_OFF)
-        ? reservoirPosition
-        : pixelPosition;
+    uint2 lightingTexturePos = reservoirPosition;
 
     if (!isFirstPassDiffuse)
     {

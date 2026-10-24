@@ -21,6 +21,8 @@ namespace Illusion.Rendering.PathTracing
 
         private readonly ComputeShader _motionShader;
 
+        private readonly ComputeShader _micromapShader;
+
         private int _lastUsedFrame = -1;
 
         public PathTracingResources Resources { get; }
@@ -52,9 +54,10 @@ namespace Illusion.Rendering.PathTracing
             _rectangleLights = new PathTracingRectangleLights(resources.pathTracingRectangleLightShader);
             _emissiveShader = resources.pathTracingEmissiveCS;
             _motionShader = resources.pathTracingMotionCS;
+            _micromapShader = resources.pathTracingOpacityMicromapCS;
         }
 
-        public static bool IsSupported => SystemInfo.supportsRayTracing && SystemInfo.supportsRayTracingShaders;
+        public static bool IsSupported => SystemInfo.supportsRayTracing && SystemInfo.supportsInlineRayTracing;
 
         public static bool HasResources(IllusionRenderPipelineResources resources)
         {
@@ -74,7 +77,7 @@ namespace Illusion.Rendering.PathTracing
             _rectangleLights.Update(Lights);
             if (!_worlds.TryGetValue(layerMask, out var world))
             {
-                world = new PathTracingWorld(_emissiveShader, _motionShader);
+                world = new PathTracingWorld(_emissiveShader, _motionShader, _micromapShader);
                 _worlds.Add(layerMask, world);
             }
             world.Update(camera, layerMask, trackMotion);
@@ -82,7 +85,6 @@ namespace Illusion.Rendering.PathTracing
         }
 
         /// <summary>
-        /// Prepares the environment, light buffers and acceleration structure, then binds the hit shader globals.
         /// The environment may change the view and projection matrices; callers restore their own.
         /// </summary>
         public void Prepare(CommandBuffer cmd, PathTracingWorld world, PathTracingLightBaker lightBaker, RenderTargetIdentifier exposureTexture,
@@ -98,77 +100,75 @@ namespace Illusion.Rendering.PathTracing
             }
             using (new ProfilingScope(cmd, Samplers.Scene))
                 world.Build(cmd, frame);
-            world.BindHitShaderGlobals(cmd);
         }
 
         /// <summary>
         /// Binds the scene, lights, environment, sampling tables and constants that path tracing ray generation reads,
         /// with placeholders for the realtime and debug outputs.
         /// </summary>
-        public void BindTraceInputs(CommandBuffer cmd, RayTracingShader shader, PathTracingWorld world, PathTracingLightBaker lightBaker,
+        public void BindTraceInputs(CommandBuffer cmd, PathTracingShaderTarget shader, PathTracingWorld world, PathTracingLightBaker lightBaker,
             IllusionRenderPipelineResources pipelineResources, in PathTracingDiffusionProfiles profiles, float subsurfaceRayBias,
             RenderTargetIdentifier exposureTexture, Vector4 cameraBackground, GraphicsBuffer constants, GraphicsBuffer miniConstants)
         {
-            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._OwenScrambledTexture, pipelineResources.owenScrambled256Tex);
-            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._ScramblingTileXSPP, pipelineResources.scramblingTile256SPP);
-            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._RankingTileXSPP, pipelineResources.rankingTile256SPP);
-            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._ScramblingTexture, pipelineResources.scramblingTex);
-            cmd.SetRayTracingFloatParam(shader, ShaderIDs._PathTracingSubsurfaceRayBias, subsurfaceRayBias);
+            shader.SetTexture(cmd, IllusionShaderProperties._OwenScrambledTexture, pipelineResources.owenScrambled256Tex);
+            shader.SetTexture(cmd, IllusionShaderProperties._ScramblingTileXSPP, pipelineResources.scramblingTile256SPP);
+            shader.SetTexture(cmd, IllusionShaderProperties._RankingTileXSPP, pipelineResources.rankingTile256SPP);
+            shader.SetTexture(cmd, IllusionShaderProperties._ScramblingTexture, pipelineResources.scramblingTex);
+            shader.SetFloat(cmd, ShaderIDs._PathTracingSubsurfaceRayBias, subsurfaceRayBias);
             ConstantBuffer.PushGlobal(cmd, profiles, ShaderIDs.ShaderVariablesSubsurface);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs._PreIntegratedFGD_GGXDisneyDiffuse, Resources.GetFGD(cmd));
-            cmd.SetRayTracingShaderPass(shader, PathTracingPass.MaterialPassName);
-            cmd.SetRayTracingAccelerationStructure(shader, ShaderIDs.SceneBVH, world.Scene.AccelerationStructure);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_PathTracingConstants, constants);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_PathTracingMiniConstants, miniConstants);
+            shader.SetTexture(cmd, ShaderIDs._PreIntegratedFGD_GGXDisneyDiffuse, Resources.GetFGD(cmd));
+            shader.SetAccelerationStructure(cmd, ShaderIDs.SceneBVH, world.Scene.AccelerationStructure);
+            shader.SetBuffer(cmd, ShaderIDs.t_PathTracingConstants, constants);
+            shader.SetBuffer(cmd, ShaderIDs.t_PathTracingMiniConstants, miniConstants);
             world.Emissive.Bind(cmd, shader);
             LightTables.Bind(cmd, shader);
             world.Scene.Instances.MaterialTable.Bind(cmd, shader);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs._PathTracingInstanceData, world.Scene.Instances.Buffer);
+            shader.SetBuffer(cmd, ShaderIDs._PathTracingInstanceData, world.Scene.Instances.Buffer);
 
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvironmentMap, Environment.Cube);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_PathTracingBackground, Environment.Background);
-            cmd.SetRayTracingVectorParam(shader, ShaderIDs._PathTracingBackgroundColor, cameraBackground);
-            cmd.SetRayTracingTextureParam(shader, IllusionShaderProperties._ExposureTexture, exposureTexture);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvironmentMapImportanceMap, Environment.ImportanceMap);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightsCB, lightBaker.ControlBuffer);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_Lights, lightBaker.LightsBuffer);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightsEx, lightBaker.LightsExBuffer);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightProxyCounters, lightBaker.ProxyCounters);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightProxyIndices, lightBaker.ProxyIndices);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.t_LightLocalSamplingBuffer, lightBaker.LocalSamplingBuffer);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.t_EnvLookupMap, lightBaker.EnvLightLookupMap);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_LightFeedbackTotalWeight, lightBaker.FeedbackTotalWeight);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_LightFeedbackCandidates, lightBaker.FeedbackCandidates);
+            shader.SetTexture(cmd, ShaderIDs.t_EnvironmentMap, Environment.Cube);
+            shader.SetTexture(cmd, ShaderIDs.t_PathTracingBackground, Environment.Background);
+            shader.SetVector(cmd, ShaderIDs._PathTracingBackgroundColor, cameraBackground);
+            shader.SetTexture(cmd, IllusionShaderProperties._ExposureTexture, exposureTexture);
+            shader.SetTexture(cmd, ShaderIDs.t_EnvironmentMapImportanceMap, Environment.ImportanceMap);
+            shader.SetBuffer(cmd, ShaderIDs.t_LightsCB, lightBaker.ControlBuffer);
+            shader.SetBuffer(cmd, ShaderIDs.t_Lights, lightBaker.LightsBuffer);
+            shader.SetBuffer(cmd, ShaderIDs.t_LightsEx, lightBaker.LightsExBuffer);
+            shader.SetBuffer(cmd, ShaderIDs.t_LightProxyCounters, lightBaker.ProxyCounters);
+            shader.SetBuffer(cmd, ShaderIDs.t_LightProxyIndices, lightBaker.ProxyIndices);
+            shader.SetBuffer(cmd, ShaderIDs.t_LightLocalSamplingBuffer, lightBaker.LocalSamplingBuffer);
+            shader.SetTexture(cmd, ShaderIDs.t_EnvLookupMap, lightBaker.EnvLightLookupMap);
+            shader.SetTexture(cmd, ShaderIDs.u_LightFeedbackTotalWeight, lightBaker.FeedbackTotalWeight);
+            shader.SetTexture(cmd, ShaderIDs.u_LightFeedbackCandidates, lightBaker.FeedbackCandidates);
 
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_ProcessedOutputColor, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_PostTonemapOutputColor, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_ScratchFloat1, Resources.DummyFloat);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_StablePlanesHeader, Resources.DummyUIntArray);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_StableRadiance, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_RRDiffuseAlbedo, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_RRSpecAlbedo, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_RRNormalsAndRoughness, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_RRSpecMotionVectors, Resources.DummyFloat2);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_RRTransparencyLayer, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_DenoisingAvgLayerRadiance, Resources.DummyFloat4);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_StablePlanesBuffer, Resources.DummyStructured);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_SurfaceData, Resources.DummyStructured);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_FeedbackBuffer, Resources.DummyStructured);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_DebugLinesBuffer, Resources.DummyStructured);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_DebugDeltaPathTree, Resources.DummyStructured);
-            cmd.SetRayTracingBufferParam(shader, ShaderIDs.u_DeltaPathSearchStack, Resources.DummyStructured);
+            shader.SetTexture(cmd, ShaderIDs.u_ProcessedOutputColor, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_PostTonemapOutputColor, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_ScratchFloat1, Resources.DummyFloat);
+            shader.SetTexture(cmd, ShaderIDs.u_StablePlanesHeader, Resources.DummyUIntArray);
+            shader.SetTexture(cmd, ShaderIDs.u_StableRadiance, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_RRDiffuseAlbedo, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_RRSpecAlbedo, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_RRNormalsAndRoughness, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_RRSpecMotionVectors, Resources.DummyFloat2);
+            shader.SetTexture(cmd, ShaderIDs.u_RRTransparencyLayer, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_DenoisingAvgLayerRadiance, Resources.DummyFloat4);
+            shader.SetBuffer(cmd, ShaderIDs.u_StablePlanesBuffer, Resources.DummyStructured);
+            shader.SetBuffer(cmd, ShaderIDs.u_SurfaceData, Resources.DummyStructured);
+            shader.SetBuffer(cmd, ShaderIDs.u_FeedbackBuffer, Resources.DummyStructured);
+            shader.SetBuffer(cmd, ShaderIDs.u_DebugLinesBuffer, Resources.DummyStructured);
+            shader.SetBuffer(cmd, ShaderIDs.u_DebugDeltaPathTree, Resources.DummyStructured);
+            shader.SetBuffer(cmd, ShaderIDs.u_DeltaPathSearchStack, Resources.DummyStructured);
         }
 
         /// <summary>
         /// Binds placeholders for the reference camera outputs of a ray generation shader that writes none of them.
         /// </summary>
-        public void BindOutputPlaceholders(CommandBuffer cmd, RayTracingShader shader)
+        public void BindOutputPlaceholders(CommandBuffer cmd, PathTracingShaderTarget shader)
         {
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_OutputColor, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_Depth, Resources.DummyFloat);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_MotionVectors, Resources.DummyFloat4);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_Throughput, Resources.DummyUInt);
-            cmd.SetRayTracingTextureParam(shader, ShaderIDs.u_SpecularHitT, Resources.DummyFloat);
+            shader.SetTexture(cmd, ShaderIDs.u_OutputColor, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_Depth, Resources.DummyFloat);
+            shader.SetTexture(cmd, ShaderIDs.u_MotionVectors, Resources.DummyFloat4);
+            shader.SetTexture(cmd, ShaderIDs.u_Throughput, Resources.DummyUInt);
+            shader.SetTexture(cmd, ShaderIDs.u_SpecularHitT, Resources.DummyFloat);
         }
 
         public void ReleaseUnused()

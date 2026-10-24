@@ -5,13 +5,24 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [1.4.3] - 2026-10-17
+## [1.4.3] - 2026-10-24
+
+### Added
+
+- Add inline ray tracing to path tracing and ray traced global illumination. Materials are evaluated from their `PathTracing` passes with bindless ray queries, so tracing cost no longer grows with the number of instances in the scene.
+- Support Shader Execution Reordering (SER) on supported NVIDIA hardware.
+- Add opacity micromaps for alpha-tested static geometry in Play Mode and players, speeding up rays through foliage.
+
+### Changed
+
+- Replace `top.kuanmi.unityrhi` and `top.kuanmi.unityrhi.native` with `com.kurisu.unityrhi`, which ships its native plugins and the D3D12 Agility SDK runtime they need.
+- Sample alpha-test coverage at the texture's finest level in path tracing and ray traced global illumination, so what a ray can hit no longer depends on its distance or angle.
 
 ### Fixed
 
-- Keep skinned meshes animating in path tracing; they no longer freeze in their last pose, such as eyes that stop following their look target.
-- Skip emissive meshes without Read/Write in emissive light sampling instead of failing the path tracing pass in players.
-- Stop the ray traced global illumination denoiser from waiting for the render thread every frame.
+- Fix skinned meshes freezing in their last pose during path tracing.
+- Fix path tracing failing in players when emissive meshes have Read/Write disabled.
+- Fix the ray traced global illumination denoiser waiting for the render thread every frame.
 
 ## [1.4.2] - 2026-10-17
 

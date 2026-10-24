@@ -4,8 +4,8 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Draft |
-| Date | 2026-10-18 |
-| Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
+| Date | 2026-10-24 |
+| Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Inline Ray Tracing](inline-ray-tracing.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 ## Rendering Modes
 
@@ -16,6 +16,8 @@ Path tracing is a camera mode sharing scene geometry and material assets with ra
 The Path Tracing Volume requests path tracing and its mode for a camera. A runtime switch gates path tracing as a whole: while it is off, every camera keeps raster rendering whatever the Volume requests. A second runtime switch makes Game cameras use Reference whatever mode the Volume requests. It selects an existing mode rather than visualizing intermediate data, so unlike debug views it is also available in players.
 
 Path tracing and RR availability can be queried, so an application offers Realtime only where it actually renders.
+
+Both modes trace with [inline ray tracing](inline-ray-tracing.md): rays are regrouped by the materials they hit before those surfaces are shaded, on GPUs that support shader execution reordering. Regrouping changes performance only. Other GPUs shade in the original order.
 
 ## Responsibilities and Data Boundaries
 
@@ -59,7 +61,7 @@ Use existing renderers, meshes, materials and property overrides with their orig
 
 [PRT baking](precomputed-radiance-transfer.md) shades its first hits with the same material evaluation, binding only the hit tables, not camera or frame state.
 
-Coverage decides whether a hit exists; physical transmission decides scattering after acceptance. Main, shadow and subsurface rays preserve the material's coverage contract. Shadow rays continue straight through uncovered/transmitting portions with colored transmission.
+Coverage decides whether a hit exists; physical transmission decides scattering after acceptance. Main, shadow and subsurface rays preserve the material's coverage contract. Shadow rays continue straight through uncovered/transmitting portions with colored transmission. Coverage samples its textures at their finest level, whatever the distance and angle at which a ray meets the surface, so the geometry a ray can hit does not depend on how it is traced; shading inputs follow the ray's footprint.
 
 Hair cards represent a collapsed hair volume: authored base color describes its overall albedo rather than a single strand's repeated-bounce mapping. Covered card transmission returns to the incident side; only uncovered coverage passes through the card. Raster roughness/specular and authored hair direction retain their meaning. Fabric uses the authored normal/tangent and specular/sheen relationship.
 

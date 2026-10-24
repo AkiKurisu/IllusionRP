@@ -8,11 +8,9 @@ namespace Illusion.Rendering.PathTracing
 {
     internal sealed partial class PathTracingPass
     {
-        private const string ReferenceRayGenName = "RayGen_REF";
-
         private class TracePassData
         {
-            internal RayTracingShader Shader;
+            internal PathTracingInlineDispatcher InlineDispatch;
             internal PathTracingWorld World;
             internal PathTracingDiffusionProfiles Profiles;
             internal float SubsurfaceRayBias;
@@ -49,8 +47,6 @@ namespace Illusion.Rendering.PathTracing
             internal float Weight;
         }
 
-        private RayTracingShader _referenceShader;
-
         private ComputeShader _accumulationShader;
 
         private int _accumulateKernel;
@@ -61,7 +57,6 @@ namespace Illusion.Rendering.PathTracing
 
         private void InitializeReference(IllusionRenderPipelineResources resources)
         {
-            _referenceShader = resources.pathTracingRS;
             _accumulationShader = resources.pathTracingAccumulationCS;
             _accumulateKernel = _accumulationShader.FindKernel("Accumulate");
         }
@@ -163,6 +158,7 @@ namespace Illusion.Rendering.PathTracing
         {
             data.Scene.Prepare(cmd, data.World, data.LightBaker, data.ExposureTexture, data.Camera.transform.position,
                 data.WorldToClip, data.Width, data.Height, data.Frame, true);
+            data.World.CopyDeformedVertices(cmd);
             cmd.SetViewProjectionMatrices(data.ViewMatrix, data.ProjectionMatrix);
         }
 
@@ -171,7 +167,7 @@ namespace Illusion.Rendering.PathTracing
         {
             using var builder = renderGraph.AddUnsafePass<TracePassData>("Path Tracing Trace", out var passData, _traceSampler);
             FillTracePassData(renderGraph, passData, context, world, radiance, constants, cameraData, worldToClip);
-            passData.Shader = _referenceShader;
+            passData.InlineDispatch = _inlineReference;
             passData.TraceTime = context.AccumulationTime;
             DeclareTraceTextures(builder, passData);
 
@@ -182,10 +178,13 @@ namespace Illusion.Rendering.PathTracing
                 using (new ProfilingScope(cmd, Samplers.LightFeedback))
                     data.LightBaker.UpdateEnd(cmd, data.Depth, data.MotionVectors, data.Width, data.Height);
                 data.Resources.UploadConstants(cmd, data.Constants, default);
-                BindTraceResources(cmd, data.Shader, data);
+                var target = data.InlineDispatch.Target;
+                BindTraceResources(cmd, target, data);
                 data.TraceTime.Push(cmd);
                 using (new ProfilingScope(cmd, Samplers.Paths))
-                    cmd.DispatchRays(data.Shader, ReferenceRayGenName, (uint)data.Width, (uint)data.Height, 1, data.Camera);
+                {
+                    data.InlineDispatch.Dispatch(cmd, data.Width, data.Height);
+                }
                 data.CurrentTime.Push(cmd);
             });
         }

@@ -22,7 +22,7 @@
   ],
   "versionDefines": [
     {
-      "name": "top.kuanmi.unityrhi",
+      "name": "com.kurisu.unityrhi",
       "expression": "[1.0.0,2.0.0)",
       "define": "ILLUSION_RAY_TRACED_GI_DENOISER"
     }

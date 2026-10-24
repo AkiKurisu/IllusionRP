@@ -81,8 +81,9 @@ namespace Bridge
 
     // There's a relatively high cost to this when used in large shaders just due to register allocation required for alphaTest, even if all geometries are opaque.
     // Consider simplifying alpha testing - perhaps splitting it up from the main geometry path, load it with fewer indirections or something like that.
-    // fix: pixelPos added for the ENABLE_DEBUG_LINES_VIZ debug-line path (stale no-arg IsDebugPixel() did not compile)
-    static float3 traceVisibilityRay(RayDesc ray, const RayCone rayCone, const int pathVertexIndex, DebugContext debug, uint2 pixelPos, uint targetIndex);  // @IllusionRP
+    static IllusionPathPayload createVisibilityPayload(const RayCone rayCone, const int pathVertexIndex, uint2 pixelPos, uint targetIndex);  // @IllusionRP
+    static uint visibilityRayFlags(const IllusionPathPayload payload);  // @IllusionRP
+    static float3 visibilityTransmission(const IllusionPathPayload payload);  // @IllusionRP
 
     // @IllusionRP: scatter rays are traced with TraceRay by the ray generation shader to invoke the material hit shaders.
 

@@ -12,7 +12,8 @@
 
 #pragma pack_matrix(row_major)
 
-#if USE_RAY_QUERY
+// @IllusionRP: ray generation programs have no thread groups to filter over.
+#if USE_RAY_QUERY && !defined(ILLUSION_INLINE_MODULES)
 #define RTXDI_ENABLE_BOILING_FILTER
 #define RTXDI_BOILING_FILTER_GROUP_SIZE RTXDI_SCREEN_SPACE_GROUP_SIZE
 #endif

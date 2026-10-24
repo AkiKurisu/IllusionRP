@@ -7,53 +7,74 @@ bool PathTracingIsDeltaDirectional(PathTracingDistantLight light)
     return cos(light.angularDiameter * 0.5) >= 1.0;
 }
 
-void SampleDirectionalNEE(inout NEEResult result, const PathState path, const ShadingData shadingData,
-    const ActiveBSDF bsdf, uint fullSamples, inout UniformSampleSequenceGenerator generator, const WorkingContext context)
+struct DirectionalNEESample
 {
+    bool valid;
+    float3 direction;
+    float pdf;
+    float selection;
+    float mis;
+    float3 color;
+    uint targetIndex;
+};
+
+DirectionalNEESample PrepareDirectionalNEE(const ShadingData shadingData, const ActiveBSDF bsdf, uint fullSamples,
+    inout UniformSampleSequenceGenerator generator)
+{
+    DirectionalNEESample sample = (DirectionalNEESample)0;
     if (_PathTracingDistantLightCount == 0)
-        return;
+        return sample;
     float3 random = float3(sampleNext2D(generator), sampleNext1D(generator));
     uint index = min((uint)(random.z * _PathTracingDistantLightCount), _PathTracingDistantLightCount - 1);
     PathTracingDistantLight light = _PathTracingDistantLights[index];
     if (!PathTracingLightAffects(light.targetIndex, shadingData.instanceID))
-        return;
+        return sample;
 
-    float selection = rcp((float)_PathTracingDistantLightCount);
-    float3 direction;
-    float pdf;
+    sample.selection = rcp((float)_PathTracingDistantLightCount);
     if (PathTracingIsDeltaDirectional(light))
     {
-        direction = -light.forward;
-        pdf = selection;
+        sample.direction = -light.forward;
+        sample.pdf = sample.selection;
     }
     else
     {
         float rcpPdf;
-        Illusion::SampleCone(random.xy, cos(light.angularDiameter * 0.5), direction, rcpPdf);
-        direction = normalize(direction.x * normalize(light.right) + direction.y * normalize(light.up) - direction.z * light.forward);
-        pdf = selection / rcpPdf;
+        Illusion::SampleCone(random.xy, cos(light.angularDiameter * 0.5), sample.direction, rcpPdf);
+        sample.direction = normalize(sample.direction.x * normalize(light.right) + sample.direction.y * normalize(light.up) - sample.direction.z * light.forward);
+        sample.pdf = sample.selection / rcpPdf;
     }
 
-    float mis = PathTracingIsDeltaDirectional(light) || bsdf.lightSampledLobesOnly() ? 1.0
-        : EvalMIS(RTXPT_NEE_MIS_HEURISTIC, fullSamples, pdf, 1, bsdf.evalPdf(shadingData, direction, kUseBSDFSampling));
+    sample.mis = PathTracingIsDeltaDirectional(light) || bsdf.lightSampledLobesOnly() ? 1.0
+        : EvalMIS(RTXPT_NEE_MIS_HEURISTIC, fullSamples, sample.pdf, 1, bsdf.evalPdf(shadingData, sample.direction, kUseBSDFSampling));
+    sample.color = light.color;
+    sample.targetIndex = light.targetIndex;
+    sample.valid = true;
+    return sample;
+}
 
+RayDesc DirectionalNEERay(DirectionalNEESample directional, const ShadingData shadingData, const ActiveBSDF bsdf)
+{
     LightSample sample = (LightSample)0;
-    sample.Direction = direction;
+    sample.Direction = directional.direction;
     sample.Distance = FLT_MAX;
-    RayDesc ray = ComputeVisibilityRay(sample, shadingData, bsdf);
-    float3 transmission = Bridge::traceVisibilityRay(ray, path.rayCone, path.getVertexIndex(), context.Debug, path.GetPixelPos(), light.targetIndex);
+    return ComputeVisibilityRay(sample, shadingData, bsdf);
+}
+
+void FinishDirectionalNEE(inout NEEResult result, DirectionalNEESample sample, float3 transmission, const PathState path,
+    const ShadingData shadingData, const ActiveBSDF bsdf, uint fullSamples, const WorkingContext context)
+{
     if (all(transmission <= 0.0))
         return;
 
     float fade = shadingData.shadowNoLFadeout > 0
-        ? ComputeLowGrazingAngleFalloff(direction, shadingData.vertexN, shadingData.shadowNoLFadeout, 2.0 * shadingData.shadowNoLFadeout) : 1.0;
-    float3 Li = transmission * light.color * (mis * fade / (selection * fullSamples));
-    float4 response = bsdf.eval(shadingData, direction);
+        ? ComputeLowGrazingAngleFalloff(sample.direction, shadingData.vertexN, shadingData.shadowNoLFadeout, 2.0 * shadingData.shadowNoLFadeout) : 1.0;
+    float3 Li = transmission * sample.color * (sample.mis * fade / (sample.selection * fullSamples));
+    float4 response = bsdf.eval(shadingData, sample.direction);
     float3 radiance = response.rgb * Li;
 #if RTXPT_FIREFLY_FILTER && PATH_TRACER_MODE!=PATH_TRACER_MODE_BUILD_STABLE_PLANES
     if (context.PtConsts.fireflyFilterThreshold != 0)
     {
-        float filterK = ComputeNewScatterFireflyFilterK(path.GetFireflyFilterK(), pdf, 1);
+        float filterK = ComputeNewScatterFireflyFilterK(path.GetFireflyFilterK(), sample.pdf, 1);
         radiance *= FireflyFilterShort(Average(radiance), context.PtConsts.fireflyFilterThreshold, filterK);
     }
 #endif

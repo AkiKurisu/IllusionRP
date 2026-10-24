@@ -4,14 +4,14 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-18 |
-| Related Specs | [Path Tracing](path-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Area Lights](area-lights.md), [Render Resources](render-resources.md), [Shader Variant Stripping](shader-variant-stripping.md) |
+| Date | 2026-10-22 |
+| Related Specs | [Path Tracing](path-tracing.md), [Inline Ray Tracing](inline-ray-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Area Lights](area-lights.md), [Render Resources](render-resources.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
 The ray tracing scene is the acceleration structure scene that [path tracing](path-tracing.md) and [ray traced global illumination](ray-traced-global-illumination.md) trace. Both consumers see the same instances, coverage, materials, lights and lighting environment, so RTGI traces the scene that path tracing renders.
 
 ## Ownership
 
-One scene service per renderer feature owns the acceleration structure, the instance and material tables, emissive geometry, the collected lights with their rectangle light proxies, and the environment importance data. It is a renderer-level service that either consumer can update; neither consumer depends on the other existing.
+One scene service per renderer feature owns the acceleration structure, the instance and material tables, emissive geometry, the collected lights with their rectangle light proxies, and the environment importance data. With the UnityRHI backend it also owns the scene resource table and the inline geometry and material records that tracing programs and compute work read ([Inline Ray Tracing](inline-ray-tracing.md)). It is a renderer-level service that either consumer can update; neither consumer depends on the other existing.
 
 Consumer-specific state stays with its consumer. Accumulation, stable planes, Ray Reconstruction and the adaptive light sampling feedback that path tracing derives from its own camera outputs belong to path tracing; reservoirs, radiance caches and denoiser history belong to RTGI.
 
