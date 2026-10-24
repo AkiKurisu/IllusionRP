@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using UnityEditor;
+using UnityEngine;
 
 namespace Illusion.Rendering.Editor
 {
@@ -33,7 +35,27 @@ namespace Illusion.Rendering.Editor
                 if (path.StartsWith(PathTracingInlineGenerator.OutputFolder, StringComparison.Ordinal))
                     continue;
                 if (path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase)
-                    || path.EndsWith(".raytrace", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
+                    || path.EndsWith(".hlsli", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".h", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".raytrace", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase)
+                    || MissesEmbeddedEvaluator(path))
+                    return true;
+            }
+            return false;
+        }
+
+        // An imported model regenerates only when one of its materials selects a path tracing variant without an evaluator.
+        private static bool MissesEmbeddedEvaluator(string path)
+        {
+            if (AssetImporter.GetAtPath(path) is not (ModelImporter or SpeedTreeImporter))
+                return false;
+            var registry = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(PathTracingInlineGenerator.RegistryPath);
+            foreach (Material material in AssetDatabase.LoadAllAssetsAtPath(path).OfType<Material>())
+            {
+                if (!material.shader)
+                    continue;
+                if (!registry)
+                    return true;
+                if (registry.PassKeywords.Any(entry => entry.Shader == material.shader) && registry.FindEvaluator(material) == PathTracingInlineRegistry.NoEvaluator)
                     return true;
             }
             return false;

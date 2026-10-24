@@ -562,7 +562,10 @@ namespace Illusion.Rendering.Editor
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
+                {
+                    CollectEmbeddedVariants(path, scanCache, variants);
                     continue;
+                }
                 string physical = FileUtil.GetPhysicalPath(path);
                 if (!File.Exists(physical))
                     continue;
@@ -603,6 +606,29 @@ namespace Illusion.Rendering.Editor
             }
             scanCache.Save();
             return variants;
+        }
+
+        // Models and SpeedTree assets carry their materials as sub-assets, which also depend on the importer settings.
+        private static void CollectEmbeddedVariants(string path, MaterialScanCache scanCache, Dictionary<string, HashSet<string>> variants)
+        {
+            string physical = FileUtil.GetPhysicalPath(path);
+            if (!File.Exists(physical))
+                return;
+            long stamp = GeneratorCache.Stamp(physical) * 31 + GeneratorCache.Stamp(physical + ".meta");
+            if (!scanCache.TryGet(path, stamp, out string shaders, out string keywords))
+            {
+                Material[] materials = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Material>().Where(m => m.shader).ToArray();
+                shaders = string.Join("|", materials.Select(m => AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(m.shader))));
+                keywords = string.Join("|", materials.Select(m => string.Join(" ", m.shaderKeywords)));
+                scanCache.Put(path, stamp, shaders, keywords);
+            }
+            if (shaders.Length == 0)
+                return;
+            string[] shaderGuids = shaders.Split('|');
+            string[] keywordSets = keywords.Split('|');
+            for (int i = 0; i < shaderGuids.Length; i++)
+                if (shaderGuids[i].Length > 0)
+                    Add(variants, shaderGuids[i], keywordSets[i]);
         }
 
         private static void Add(Dictionary<string, HashSet<string>> variants, string shader, string keywords)
