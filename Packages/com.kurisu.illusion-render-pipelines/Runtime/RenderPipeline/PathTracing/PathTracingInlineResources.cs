@@ -272,11 +272,11 @@ namespace Illusion.Rendering.PathTracing
             if (slot < DefaultTextureCount)
                 return;
             if (s_PendingSlots++ == 0)
-                RenderPipelineManager.endFrameRendering += Reclaim;
+                RenderPipelineManager.endContextRendering += Reclaim;
             s_Released.Add(slot);
         }
 
-        private static void Reclaim(ScriptableRenderContext context, Camera[] cameras)
+        private static void Reclaim(ScriptableRenderContext context, List<Camera> cameras)
         {
             while (s_Pending.Count > 0 && s_Pending.Peek().Fence.passed)
             {
@@ -294,7 +294,7 @@ namespace Illusion.Rendering.PathTracing
                 s_Released.Clear();
             }
             if (s_PendingSlots == 0)
-                RenderPipelineManager.endFrameRendering -= Reclaim;
+                RenderPipelineManager.endContextRendering -= Reclaim;
         }
 
         private static bool SetTexture(int slot, Texture texture)
