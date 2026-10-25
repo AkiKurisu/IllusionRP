@@ -33,7 +33,7 @@ namespace Illusion.Rendering.Editor
                 Schedule();
                 return;
             }
-            if (Affects(imported) || Affects(deleted) || Affects(moved))
+            if (AutoGenerate && (Affects(imported) || Affects(deleted) || Affects(moved)))
                 Schedule();
         }
 
@@ -72,9 +72,11 @@ namespace Illusion.Rendering.Editor
             return false;
         }
 
-        private static void Schedule()
+        private static bool AutoGenerate => IllusionRenderPipelineSettings.instance.autoGenerateInlineEvaluators;
+
+        internal static void Schedule()
         {
-            if (s_Scheduled)
+            if (s_Scheduled || !AutoGenerate)
                 return;
             s_Scheduled = true;
             EditorApplication.delayCall += () =>

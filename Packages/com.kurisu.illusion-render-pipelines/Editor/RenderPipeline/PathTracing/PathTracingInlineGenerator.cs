@@ -56,6 +56,9 @@ namespace Illusion.Rendering.Editor
             public string Error;
         }
 
+        [MenuItem("Tools/IllusionRP/Generate Inline Evaluators")]
+        private static void GenerateChanged() => Generate(false);
+
         [MenuItem("Tools/IllusionRP/Regenerate Inline Evaluators")]
         private static void Regenerate() => Generate(true);
 

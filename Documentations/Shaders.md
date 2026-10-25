@@ -131,3 +131,13 @@ To disable shader stripping:
 2. Uncheck **Strip Unused Variants**.
 
 ![Shader Stripping](./images/shader-stripping.png)
+
+## Inline Evaluator Generation
+
+While a renderer enables ray traced global illumination or path tracing, IllusionRP generates inline evaluators from each shader's `PathTracing` pass and regenerates them whenever shader sources change. To stop this while iterating on a shader:
+
+1. Open **Project Settings > Graphics > IllusionRP**.
+2. Uncheck **Auto Generate Evaluators**.
+3. Run **Tools > IllusionRP > Generate Inline Evaluators** to bring the evaluators up to date when you are done.
+
+**Regenerate Inline Evaluators** in the same menu rebuilds all of them from scratch.

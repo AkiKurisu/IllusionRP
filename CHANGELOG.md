@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.4.4] - 2026-10-24
 
+### Added
+
+- Add `Auto Generate Evaluators` to `Project Settings > Graphics > IllusionRP`. Turn it off to stop inline evaluators regenerating while you edit shaders, then run `Tools > IllusionRP > Generate Inline Evaluators` when you are ready.
+
 ### Changed
 
 - Write IllusionRP, UnityRHI and native plugin logs under one prefix per product and keep routine lifecycle and timing messages out of the Console. Turn on `Verbose Logging` in `Project Settings > Graphics > IllusionRP`, or set the `r.verboselog` runtime variable, to see them.
