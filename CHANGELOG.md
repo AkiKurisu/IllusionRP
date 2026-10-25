@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Light hair cards with direct diffuse light on both faces, so the side of a card turned away from the light is no longer black.
 - Write IllusionRP, UnityRHI and native plugin logs under one prefix per product and keep routine lifecycle and timing messages out of the Console. Turn on `Verbose Logging` in `Project Settings > Graphics > IllusionRP`, or set the `r.verboselog` runtime variable, to see them.
 
 ### Fixed

@@ -359,8 +359,8 @@ half3 HairLighting(BRDFData brdfData, half3 lightColor, half3 lightDirectionWS, 
 #if HAIR_MULTI_SCATTERING
     directDiffuseR += max(0.0, DIFFUSE_ATTENUATION(brdfData.albedo, lightDirectionWS, viewDirectionWS, normalWS, HairData));
 #else
-    // Double-sided Lambert.
-    directDiffuseR += saturate(ComputeDiffuseColor(brdfData.albedo, HairData.Metallic)) * NdotL;
+    // Hair cards are thin sheets lit from either side.
+    directDiffuseR += saturate(ComputeDiffuseColor(brdfData.albedo, HairData.Metallic)) * abs(dot(normalWS, lightDirectionWS));
 #endif
     
     half3 directSpecularT = HairVolumetricBacklitScatter(brdfData.albedo, lightDirectionWS, viewDirectionWS, HairData.GeomNormal, HairData);
