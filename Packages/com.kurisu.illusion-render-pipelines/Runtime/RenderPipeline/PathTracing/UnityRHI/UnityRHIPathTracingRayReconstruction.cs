@@ -87,7 +87,7 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
                     if (data.Owner._reportedFailure)
                         return;
                     data.Owner._reportedFailure = true;
-                    Debug.LogError($"[PathTracing] DLSS Ray Reconstruction failed. {exception}");
+                    IllusionLog.Error($"Path Tracing: DLSS Ray Reconstruction failed. {exception}");
                 }
             });
         }

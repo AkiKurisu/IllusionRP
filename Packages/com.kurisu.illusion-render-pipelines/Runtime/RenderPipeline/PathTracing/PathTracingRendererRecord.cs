@@ -157,7 +157,7 @@ namespace Illusion.Rendering.PathTracing
             if (!_checkedMaterials.Add(material.GetInstanceID()) || !material.shader
                 || material.FindPass(PathTracingPass.MaterialPassName) >= 0 || !ReportedShaders.Add(material.shader))
                 return;
-            Debug.LogWarning($"[PathTracing] Shader '{material.shader.name}' has no {PathTracingPass.MaterialPassName} pass and renders as a diagnostic surface.", material);
+            IllusionLog.Warning($"Path Tracing: Shader '{material.shader.name}' has no {PathTracingPass.MaterialPassName} pass and renders as a diagnostic surface.", material);
         }
 
         private static int HashBlock(Material material, MaterialPropertyBlock block)

@@ -76,7 +76,7 @@ namespace UnityRhi
         {
             if (Handle != IntPtr.Zero)
             {
-                Debug.LogWarning($"UnityRHI: {GetType().Name} '{_debugName}' was garbage-collected " +
+                RhiLog.Warning($"{GetType().Name} '{_debugName}' was garbage-collected " +
                                  "without Dispose(); releasing from the finalizer.");
                 ReleaseHandle(captureDisposeStack: false);
             }

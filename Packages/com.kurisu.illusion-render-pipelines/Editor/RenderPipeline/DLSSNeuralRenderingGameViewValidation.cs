@@ -54,7 +54,7 @@ namespace Illusion.Rendering.Editor
             Directory.CreateDirectory(Path.GetFullPath("Snapshots"));
             EditorApplication.update -= Update;
             EditorApplication.update += Update;
-            Debug.Log("[IllusionRP.DLSS Neural Rendering.GameView] Started non-Play-Mode A/B validation.");
+            IllusionLog.Verbose("DLSS Neural Rendering: Started the Game View A/B validation outside Play Mode.");
         }
 
         private static void Update()
@@ -76,7 +76,7 @@ namespace Illusion.Rendering.Editor
                     if (status.LastCreateResult > 0 && status.LastEvaluateResult > 0)
                     {
                         CaptureGameView("Snapshots/DLSSNeuralRendering-GameView-On.png");
-                        Debug.Log($"[IllusionRP.DLSS Neural Rendering.GameView] playMode={EditorApplication.isPlaying}, " +
+                        IllusionLog.Verbose($"DLSS Neural Rendering: Game View validation playMode={EditorApplication.isPlaying}, " +
                                   $"available={status.RuntimeAvailable}, " +
                                   $"create=0x{unchecked((uint)status.LastCreateResult):X8}, " +
                                   $"evaluate=0x{unchecked((uint)status.LastEvaluateResult):X8}");
@@ -109,7 +109,7 @@ namespace Illusion.Rendering.Editor
                 else if (_stage == 4 && EditorApplication.timeSinceStartup - _stageStartedAt >= 1d)
                 {
                     CaptureGameView("Snapshots/DLSSNeuralRendering-Debug-LinearDepth.png");
-                    Debug.Log("[IllusionRP.DLSS Neural Rendering.GameView] Captured Color, MotionVectors and LinearEyeDepth inputs.");
+                    IllusionLog.Info("DLSS Neural Rendering: Game View validation captured Color, MotionVectors and LinearEyeDepth inputs.");
                     Finish(0);
                 }
             }

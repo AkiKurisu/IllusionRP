@@ -121,7 +121,7 @@ namespace Illusion.Rendering.AreaLights
         {
             if (m_MaterialFilterAreaLights == null)
             {
-                Debug.LogError("FilterAreaLightTexture has an invalid shader. Can't filter area light cookie.");
+                IllusionLog.ErrorOnce("AreaLights.FilterShader", "Area Lights: The cookie filter shader is invalid, so area light cookies are not filtered.");
                 return null;
             }
 
@@ -207,7 +207,7 @@ namespace Illusion.Rendering.AreaLights
 
             if (!m_CookieAtlas.RelayoutEntries())
             {
-                Debug.LogError($"No more space in the 2D Cookie Texture Atlas. To solve this issue, increase the resolution of the area light cookie atlas in the Illusion Renderer Feature.");
+                IllusionLog.Error($"Area Lights: No more space in the 2D Cookie Texture Atlas. To solve this issue, increase the resolution of the area light cookie atlas in the Illusion Renderer Feature.");
                 m_NoMoreSpace = true;
             }
         }
@@ -218,7 +218,7 @@ namespace Illusion.Rendering.AreaLights
                 return Vector4.zero;
 
             if (!m_CookieAtlas.IsCached(out var scaleBias, cookie) && !m_NoMoreSpace)
-                Debug.LogError($"Area Light cookie texture {cookie} can't be fetched without having reserved. You can try to increase the area light cookie atlas resolution in the Illusion Renderer Feature.");
+                IllusionLog.ErrorOnce($"AreaLights.Cookie.{cookie.GetInstanceID()}", $"Area Lights: Cookie texture {cookie} can't be fetched without having reserved. You can try to increase the area light cookie atlas resolution in the Illusion Renderer Feature.");
 
             int currentID = m_CookieAtlas.GetTextureID(cookie);
             //RTHandle existingTexture;

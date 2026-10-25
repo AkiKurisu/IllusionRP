@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.4.4] - 2026-10-24
 
+### Changed
+
+- Write IllusionRP, UnityRHI and native plugin logs under one prefix per product and keep routine lifecycle and timing messages out of the Console. Turn on `Verbose Logging` in `Project Settings > Graphics > IllusionRP`, or set the `r.verboselog` runtime variable, to see them.
+
 ### Fixed
 
 - Fix flickering bright speckles in ray traced global illumination with the RELAX denoiser by enabling its firefly suppression.

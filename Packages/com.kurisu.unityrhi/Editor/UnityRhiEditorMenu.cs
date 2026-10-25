@@ -12,23 +12,23 @@ namespace UnityRhi.EditorTools
         {
             if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D12)
             {
-                Debug.LogWarning(
-                    "UnityRHI requires Direct3D12, but the editor is running "
+                RhiLog.Warning("Direct3D12 is required, but the editor is running "
                     + SystemInfo.graphicsDeviceType
                     + ". Set Player Settings > Other Settings > Graphics APIs for Windows to Direct3D12 and restart the editor.");
                 return;
             }
 
             // Unity loads native plugins lazily, on the first P/Invoke. Touch the
-            // DLL here so UnityPluginLoad (and the [UnityRHI] init logs) run as
-            // soon as scripts are loaded rather than at first use.
+            // DLL here so UnityPluginLoad runs as soon as scripts are loaded
+            // rather than at first use.
             try
             {
-                Debug.Log($"UnityRHI: native plugin loaded, apiVersion={RhiCore.NativeApiVersion}, d3d12Active={RhiCore.IsD3D12Active}");
+                int apiVersion = RhiCore.NativeApiVersion;
+                RhiLog.Verbose($"Native plugin loaded, apiVersion={apiVersion}, d3d12Active={RhiCore.IsD3D12Active}");
             }
             catch (System.DllNotFoundException)
             {
-                Debug.LogError("UnityRHI: UnityRHI.dll not found in Packages/com.kurisu.unityrhi/Plugins/x86_64. Run build_dll.bat.");
+                RhiLog.Error("UnityRHI.dll not found in Packages/com.kurisu.unityrhi/Plugins/x86_64. Run build_dll.bat.");
             }
         }
     }
@@ -71,7 +71,7 @@ namespace UnityRhi.EditorTools
                         + stats.LiveBindingLayouts + stats.LiveBindingSets + stats.LiveComputePipelines;
             if (live > 0)
             {
-                Debug.LogWarning($"UnityRHI: {live} resource(s) still alive entering domain reload (see report below).");
+                RhiLog.Warning($"{live} resource(s) still alive entering domain reload (see report below).");
                 device.ReportLiveResources();
             }
         }

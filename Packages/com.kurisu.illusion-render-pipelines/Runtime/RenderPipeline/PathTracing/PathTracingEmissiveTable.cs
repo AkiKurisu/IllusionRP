@@ -83,7 +83,7 @@ namespace Illusion.Rendering.PathTracing
                     });
                     recordCount = checked(recordCount + subMesh.IndexCount / 3);
                     if (recordCount > PathTracingLightingConfig.MaxLights)
-                        throw new InvalidOperationException("[PathTracing] Emissive triangles exceed RTXPT's light capacity.");
+                        throw new InvalidOperationException("Emissive triangles exceed RTXPT's light capacity.");
                 }
             }
 
@@ -105,14 +105,14 @@ namespace Illusion.Rendering.PathTracing
             if (!TryReadEmission(material, block, out var emission, out var texture, out var st))
                 return false;
             if (subMesh >= mesh.subMeshCount)
-                throw new NotSupportedException($"[PathTracing] Emissive renderer '{renderer.name}' has more material slots than submeshes.");
+                throw new NotSupportedException($"Emissive renderer '{renderer.name}' has more material slots than submeshes.");
             var sub = mesh.GetSubMesh(subMesh);
             if (sub.topology != MeshTopology.Triangles || sub.indexCount % 3 != 0 || sub.indexStart % 3 != 0)
-                throw new NotSupportedException($"[PathTracing] Emissive submesh '{renderer.name}/{subMesh}' requires triangle topology and triangle-aligned indices.");
+                throw new NotSupportedException($"Emissive submesh '{renderer.name}/{subMesh}' requires triangle topology and triangle-aligned indices.");
             if (!CanReadGpuGeometry(mesh))
             {
                 if (UnreadableMeshes.Add(mesh.GetInstanceID()))
-                    Debug.LogWarning($"[PathTracing] Emissive mesh '{mesh.name}' is not readable and its GPU buffers lack raw access; it is excluded from emissive light sampling. Enable Read/Write to sample it.");
+                    IllusionLog.Warning($"Path Tracing: Emissive mesh '{mesh.name}' is not readable and its GPU buffers lack raw access; it is excluded from emissive light sampling. Enable Read/Write to sample it.");
                 return false;
             }
             ValidateLayout(renderer, mesh, texture != null);
@@ -139,21 +139,21 @@ namespace Illusion.Rendering.PathTracing
             if (contract == "PBR" && !material.IsKeywordEnabled("_EMISSION"))
                 return false;
             if (!material.HasProperty(ShaderIDs.EmissionColor))
-                throw new InvalidOperationException($"[PathTracing] Shader '{material.shader.name}' declares an emission contract without _EmissionColor.");
+                throw new InvalidOperationException($"Shader '{material.shader.name}' declares an emission contract without _EmissionColor.");
             emission = block.HasProperty(ShaderIDs.EmissionColor)
                 ? block.GetVector(ShaderIDs.EmissionColor) : material.GetVector(ShaderIDs.EmissionColor);
             if (!float.IsFinite(emission.x) || !float.IsFinite(emission.y) || !float.IsFinite(emission.z))
-                throw new InvalidOperationException($"[PathTracing] Non-finite emission on '{material.name}'.");
+                throw new InvalidOperationException($"Non-finite emission on '{material.name}'.");
             if (Mathf.Max(emission.x, Mathf.Max(emission.y, emission.z)) <= 0)
                 return false;
             if (contract == "Constant")
                 return true;
             if (material.IsKeywordEnabled("_PARALLAXMAP"))
-                throw new NotSupportedException($"[PathTracing] Emissive material '{material.name}' uses parallax UVs outside the reference emission contract.");
+                throw new NotSupportedException($"Emissive material '{material.name}' uses parallax UVs outside the reference emission contract.");
             texture = block.HasProperty(ShaderIDs.EmissionMap) ? block.GetTexture(ShaderIDs.EmissionMap)
                 : material.HasProperty(ShaderIDs.EmissionMap) ? material.GetTexture(ShaderIDs.EmissionMap) : null;
             if (texture && texture.dimension != TextureDimension.Tex2D)
-                throw new NotSupportedException($"[PathTracing] Emission map '{texture.name}' must be a 2D texture.");
+                throw new NotSupportedException($"Emission map '{texture.name}' must be a 2D texture.");
             if (block.HasProperty(ShaderIDs.BaseMapST))
                 st = block.GetVector(ShaderIDs.BaseMapST);
             else if (material.HasProperty(ShaderIDs.BaseMap))
@@ -163,7 +163,7 @@ namespace Illusion.Rendering.PathTracing
                 st = new Vector4(scale.x, scale.y, offset.x, offset.y);
             }
             if (!float.IsFinite(st.x) || !float.IsFinite(st.y) || !float.IsFinite(st.z) || !float.IsFinite(st.w))
-                throw new InvalidOperationException($"[PathTracing] Non-finite emission UV transform on '{material.name}'.");
+                throw new InvalidOperationException($"Non-finite emission UV transform on '{material.name}'.");
             return true;
         }
 
@@ -181,15 +181,15 @@ namespace Illusion.Rendering.PathTracing
             if (!mesh.HasVertexAttribute(VertexAttribute.Position)
                 || mesh.GetVertexAttributeFormat(VertexAttribute.Position) != VertexAttributeFormat.Float32
                 || mesh.GetVertexAttributeDimension(VertexAttribute.Position) < 3)
-                throw new NotSupportedException($"[PathTracing] Emissive mesh '{mesh.name}' requires Float32 positions.");
+                throw new NotSupportedException($"Emissive mesh '{mesh.name}' requires Float32 positions.");
             if (textured)
             {
                 if (!mesh.HasVertexAttribute(VertexAttribute.TexCoord0)
                     || mesh.GetVertexAttributeDimension(VertexAttribute.TexCoord0) < 2)
-                    throw new NotSupportedException($"[PathTracing] Textured emissive mesh '{mesh.name}' requires UV0.");
+                    throw new NotSupportedException($"Textured emissive mesh '{mesh.name}' requires UV0.");
                 var format = mesh.GetVertexAttributeFormat(VertexAttribute.TexCoord0);
                 if (format != VertexAttributeFormat.Float32 && format != VertexAttributeFormat.Float16)
-                    throw new NotSupportedException($"[PathTracing] Emissive mesh '{mesh.name}' has unsupported UV0 format {format}.");
+                    throw new NotSupportedException($"Emissive mesh '{mesh.name}' has unsupported UV0 format {format}.");
             }
             if ((mesh.vertexBufferTarget & GraphicsBuffer.Target.Raw) == 0)
                 mesh.vertexBufferTarget |= GraphicsBuffer.Target.Raw;
@@ -230,12 +230,12 @@ namespace Illusion.Rendering.PathTracing
                     if (sub.topology != MeshTopology.Triangles || sub.indexCount == 0)
                         continue;
                     if (sub.indexStart % 3 != 0 || sub.indexCount % 3 != 0)
-                        throw new NotSupportedException($"[PathTracing] Mesh '{batch.Mesh.name}' has non-aligned triangle ranges.");
+                        throw new NotSupportedException($"Mesh '{batch.Mesh.name}' has non-aligned triangle ranges.");
                     int start = sub.indexStart / 3;
                     int end = checked(start + sub.indexCount / 3);
                     foreach (var range in used)
                         if (start < range.y && end > range.x)
-                            throw new NotSupportedException($"[PathTracing] Mesh '{batch.Mesh.name}' has overlapping submesh triangle identities.");
+                            throw new NotSupportedException($"Mesh '{batch.Mesh.name}' has overlapping submesh triangle identities.");
                     used.Add(new Vector2Int(start, end));
                     span = Mathf.Max(span, end);
                 }
@@ -291,7 +291,7 @@ namespace Illusion.Rendering.PathTracing
         public void WriteLights(CommandBuffer cmd, GraphicsBuffer lights, GraphicsBuffer lightsEx, int baseIndex, int count)
         {
             if (count != TriangleCount)
-                throw new InvalidOperationException($"[PathTracing] Light buffer can hold {count} of {TriangleCount} emissive triangles; refusing a truncated reference table.");
+                throw new InvalidOperationException($"Light buffer can hold {count} of {TriangleCount} emissive triangles; refusing a truncated reference table.");
             cmd.SetComputeBufferParam(_shader, _kernel, ShaderIDs.Lights, lights);
             cmd.SetComputeBufferParam(_shader, _kernel, ShaderIDs.LightsEx, lightsEx);
             foreach (var batch in _batches)
@@ -305,7 +305,7 @@ namespace Illusion.Rendering.PathTracing
                     if (positions == null || positions.stride < 12 || positions.count < mesh.vertexCount)
                     {
                         positions?.Dispose();
-                        throw new InvalidOperationException($"[PathTracing] Current skinned GPU positions are unavailable for emissive renderer '{skinned.name}'.");
+                        throw new InvalidOperationException($"Current skinned GPU positions are unavailable for emissive renderer '{skinned.name}'.");
                     }
                     positionStride = positions.stride;
                     positionOffset = 0;
@@ -318,11 +318,11 @@ namespace Illusion.Rendering.PathTracing
                     positionOffset = mesh.GetVertexAttributeOffset(VertexAttribute.Position);
                 }
                 if (positions == null)
-                    throw new InvalidOperationException($"[PathTracing] GPU positions are unavailable for emissive mesh '{mesh.name}'.");
+                    throw new InvalidOperationException($"GPU positions are unavailable for emissive mesh '{mesh.name}'.");
                 _meshBuffers.Add(positions);
                 var indices = mesh.GetIndexBuffer();
                 if (indices == null)
-                    throw new InvalidOperationException($"[PathTracing] GPU indices are unavailable for emissive mesh '{mesh.name}'.");
+                    throw new InvalidOperationException($"GPU indices are unavailable for emissive mesh '{mesh.name}'.");
                 _meshBuffers.Add(indices);
                 var uvs = _emptyRaw;
                 int uvStride = 0, uvOffset = 0, uvHalf = 0;
@@ -331,14 +331,14 @@ namespace Illusion.Rendering.PathTracing
                     int stream = mesh.GetVertexAttributeStream(VertexAttribute.TexCoord0);
                     uvs = mesh.GetVertexBuffer(stream);
                     if (uvs == null)
-                        throw new InvalidOperationException($"[PathTracing] GPU UV0 is unavailable for emissive mesh '{mesh.name}'.");
+                        throw new InvalidOperationException($"GPU UV0 is unavailable for emissive mesh '{mesh.name}'.");
                     _meshBuffers.Add(uvs);
                     uvStride = mesh.GetVertexBufferStride(stream);
                     uvOffset = mesh.GetVertexAttributeOffset(VertexAttribute.TexCoord0);
                     uvHalf = mesh.GetVertexAttributeFormat(VertexAttribute.TexCoord0) == VertexAttributeFormat.Float16 ? 1 : 0;
                 }
                 if ((positionStride & 3) != 0 || (positionOffset & 3) != 0 || (uvStride & 3) != 0 || (uvOffset & 3) != 0)
-                    throw new NotSupportedException($"[PathTracing] Mesh '{mesh.name}' has unaligned raw vertex attributes.");
+                    throw new NotSupportedException($"Mesh '{mesh.name}' has unaligned raw vertex attributes.");
                 cmd.SetComputeBufferParam(_shader, _kernel, ShaderIDs.Indices, indices);
                 cmd.SetComputeBufferParam(_shader, _kernel, ShaderIDs.Positions, positions);
                 cmd.SetComputeBufferParam(_shader, _kernel, ShaderIDs.UVs, uvs);

@@ -55,7 +55,7 @@ namespace Illusion.Rendering.Editor
             renderers = SelectHighestDetailLodRenderers(renderers, UObject.FindObjectsByType<LODGroup>(FindObjectsSortMode.None));
             _scene = new PRTBakeScene(renderers);
             if (_scene.emptyGeometry.Length > 0)
-                Debug.Log($"[PRT Capture] Empty geometry: {string.Join("; ", _scene.emptyGeometry)}.");
+                IllusionLog.Verbose($"PRT: Capture skipped empty geometry: {string.Join("; ", _scene.emptyGeometry)}.");
             _tracer = new PRTBakeTracer(_traceShader, _scene.instances, _sceneTime);
         }
 

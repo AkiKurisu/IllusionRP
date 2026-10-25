@@ -159,7 +159,7 @@ namespace Illusion.Rendering.AreaLights
             if (_supportsShadows && !_hasRenderContext && !_missingContextReported)
             {
                 _missingContextReported = true;
-                Debug.LogWarning("[IllusionRP] Area light shadows need the ScriptableRenderContext from RenderPipelineManager.beginContextRendering, shadows are skipped.");
+                IllusionLog.Warning("Area Lights: Shadows need the ScriptableRenderContext from RenderPipelineManager.beginContextRendering, shadows are skipped.");
             }
 
             // Imported once so the cookie write and the global bind share one render graph resource.

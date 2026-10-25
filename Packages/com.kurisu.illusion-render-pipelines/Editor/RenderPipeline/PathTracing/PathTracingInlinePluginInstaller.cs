@@ -44,7 +44,7 @@ namespace Illusion.Rendering.Editor
             const string message = "IllusionRP updated its ray tracing native plugin, which loads before the graphics device. Restart the Editor to use it.";
             if (Application.isBatchMode || !EditorUtility.DisplayDialog("IllusionRP", message, "Restart", "Later"))
             {
-                Debug.Log($"[IllusionRP] Updated the native plugin files in '{InstalledFolder}'. Restart the Editor so they load before the graphics device.");
+                IllusionLog.Warning($"Inline Ray Tracing: Updated the native plugin files in '{InstalledFolder}'. Restart the Editor so they load before the graphics device.");
                 return;
             }
             if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
@@ -67,7 +67,7 @@ namespace Illusion.Rendering.Editor
             }
             catch (IOException)
             {
-                Debug.LogWarning($"[IllusionRP] Could not update '{installed}' while the Editor uses it; close the Editor and copy it from '{SourceFolder + file}'.");
+                IllusionLog.Warning($"Inline Ray Tracing: Could not update '{installed}' while the Editor uses it; close the Editor and copy it from '{SourceFolder + file}'.");
                 return false;
             }
             AssetDatabase.ImportAsset(installed);

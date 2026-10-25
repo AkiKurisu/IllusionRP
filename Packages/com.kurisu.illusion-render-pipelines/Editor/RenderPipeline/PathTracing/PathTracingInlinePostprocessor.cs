@@ -55,7 +55,6 @@ namespace Illusion.Rendering.Editor
             return false;
         }
 
-        // A material, model or SpeedTree asset regenerates only when one of its materials selects a path tracing variant without an evaluator.
         private static bool MissesEvaluator(string path)
         {
             if (!path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) && AssetImporter.GetAtPath(path) is not (ModelImporter or SpeedTreeImporter))

@@ -67,7 +67,7 @@ namespace Illusion.Rendering
 
             while (DiffusionProfileHashes.ContainsValue(hash))
             {
-                Debug.LogWarning("Collision found in asset: " + asset + ", generating a new hash, previous hash: " + hash);
+                IllusionLog.Warning("Diffusion Profiles: Collision found in asset: " + asset + ", generating a new hash, previous hash: " + hash);
                 hash++;
             }
 

@@ -547,7 +547,7 @@ namespace Illusion.Rendering
             bool wetFormatSupported = !wetSurfaceRequested || ForwardGBufferPass.SupportsWetSurfaceFormat();
             if (wetSurfaceRequested && !wetFormatSupported && !_reportedUnsupportedWetFormat)
             {
-                Debug.LogError("Wet Surface requires a blendable RGBA8 Forward GBuffer format.");
+                IllusionLog.Error("Wet Surface: A blendable RGBA8 Forward GBuffer format is required.");
                 _reportedUnsupportedWetFormat = true;
             }
             bool useWetSurface = wetSurfaceRequested && wetFormatSupported;

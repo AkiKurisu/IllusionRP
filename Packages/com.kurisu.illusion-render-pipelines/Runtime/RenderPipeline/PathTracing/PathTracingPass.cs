@@ -117,7 +117,7 @@ namespace Illusion.Rendering.PathTracing
             }
             catch (Exception e)
             {
-                if (_inlineFailure != e.ToString()) Debug.LogError(_inlineFailure = e.ToString());
+                if (_inlineFailure != e.ToString()) IllusionLog.Error("Path Tracing: " + (_inlineFailure = e.ToString()));
                 using var builder = renderGraph.AddRasterRenderPass<OutputPassData>("Path Tracing Inline Failed", out _);
                 builder.SetRenderAttachment(resourceData.activeColorTexture, 0, AccessFlags.Write);
                 builder.SetRenderFunc(static (OutputPassData data, RasterGraphContext ctx) =>

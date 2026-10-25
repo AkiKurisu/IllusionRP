@@ -127,7 +127,7 @@ IllusionRP automatically strips unused shader variants to reduce compilation tim
 
 To disable shader stripping:
 
-1. Open **Project Settings > Graphics > IllusionRP Global Settings**.
+1. Open **Project Settings > Graphics > IllusionRP**.
 2. Uncheck **Strip Unused Variants**.
 
 ![Shader Stripping](./images/shader-stripping.png)

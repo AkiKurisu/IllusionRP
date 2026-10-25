@@ -43,7 +43,7 @@ namespace UnityRhi.Nrd
             }
 
             _buffer = new NativeArray<NrdFrameData>(BufferCount, Allocator.Persistent);
-            Debug.Log($"[NRD] Created Denoiser Instance {_nrdInstanceId} | camera={_cameraName} | type={desc.denoiser} (id={desc.identifier}, enum={(uint)desc.denoiser})");
+            RhiLog.Verbose($"NRD: Created Denoiser Instance {_nrdInstanceId} | camera={_cameraName} | type={desc.denoiser} (id={desc.identifier}, enum={(uint)desc.denoiser})");
         }
 
 
@@ -100,7 +100,7 @@ namespace UnityRhi.Nrd
             if (_buffer.IsCreated) _buffer.Dispose();
             if (_resourceCache.IsCreated) _resourceCache.Dispose();
             NrdDenoiserHelper.DestroyDenoiserInstance(_nrdInstanceId);
-            Debug.Log($"[NRD] Destroyed Denoiser Instance {_nrdInstanceId} for Camera {_cameraName}");
+            RhiLog.Verbose($"NRD: Destroyed Denoiser Instance {_nrdInstanceId} for Camera {_cameraName}");
         }
     }
 }

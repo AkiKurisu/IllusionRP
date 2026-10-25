@@ -66,7 +66,7 @@ namespace UnityRhi.Dlsr
             _instanceId = CreateDLSRInstance();
             _cameraName = camName;
             _buffer     = new NativeArray<DlsrFrameData>(BufferCount, Allocator.Persistent);
-            Debug.Log($"[DLSR] Created Upscaler Instance {_instanceId} for Camera {_cameraName}");
+            RhiLog.Verbose($"DLSR: Created Upscaler Instance {_instanceId} for Camera {_cameraName}");
         }
 
         private DlsrFrameData BuildFrameData(DlsrFrameInput fi, DlsrResources res, float resolutionScale, DlsrSettings settings)
@@ -112,7 +112,7 @@ namespace UnityRhi.Dlsr
                 _buffer.Dispose();
 
             DestroyDLSRInstance(_instanceId);
-            Debug.Log($"[DLSR] Destroyed Upscaler Instance {_instanceId} for Camera {_cameraName}");
+            RhiLog.Verbose($"DLSR: Destroyed Upscaler Instance {_instanceId} for Camera {_cameraName}");
         }
     }
 }

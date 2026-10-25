@@ -9,6 +9,14 @@ namespace Illusion.Rendering.Editor
     {
         public bool stripUnusedVariants = true;
 
+        public bool verboseLogging;
+
+        [InitializeOnLoadMethod]
+        private static void ApplyVerboseLogging()
+        {
+            IllusionLog.VerboseEnabled = instance.verboseLogging;
+        }
+
         public static void SaveSettings()
         {
             instance.Save(true);
@@ -23,6 +31,9 @@ namespace Illusion.Rendering.Editor
         {
             public static readonly GUIContent StripUnusedVariantsLabel =
                 EditorGUIUtility.TrTextContent("Strip Unused Variants", "Controls whether strip disabled keyword variants if the feature is enabled.");
+
+            public static readonly GUIContent VerboseLoggingLabel =
+                EditorGUIUtility.TrTextContent("Verbose Logging", "Write IllusionRP and UnityRHI lifecycle, timing and diagnostic details to the Console.");
         }
 
         private IllusionRenderPipelineSettingsProvider(string path, SettingsScope scope = SettingsScope.User) : base(path, scope) { }
@@ -38,17 +49,24 @@ namespace Illusion.Rendering.Editor
             GUILayout.Label("Shader Stripping", titleStyle);
             GUILayout.BeginVertical(GUI.skin.box);
             EditorGUILayout.PropertyField(_settingsObject.FindProperty(nameof(IllusionRenderPipelineSettings.stripUnusedVariants)), Styles.StripUnusedVariantsLabel);
+            GUILayout.EndVertical();
+
+            GUILayout.Label("Diagnostics", titleStyle);
+            GUILayout.BeginVertical(GUI.skin.box);
+            EditorGUILayout.PropertyField(_settingsObject.FindProperty(nameof(IllusionRenderPipelineSettings.verboseLogging)), Styles.VerboseLoggingLabel);
+            GUILayout.EndVertical();
+
             if (_settingsObject.ApplyModifiedPropertiesWithoutUndo())
             {
                 IllusionRenderPipelineSettings.SaveSettings();
+                IllusionLog.VerboseEnabled = IllusionRenderPipelineSettings.instance.verboseLogging;
             }
-            GUILayout.EndVertical();
         }
 
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
         {
-            var provider = new IllusionRenderPipelineSettingsProvider("Project/Graphics/IllusionRP Global Settings", SettingsScope.Project)
+            var provider = new IllusionRenderPipelineSettingsProvider("Project/Graphics/IllusionRP", SettingsScope.Project)
             {
                 keywords = GetSearchKeywordsFromGUIContentProperties<Styles>()
             };

@@ -143,7 +143,7 @@ namespace Illusion.Rendering
             {
                 if (!_reportedMissingResources)
                 {
-                    Debug.LogError("Wet Surface resources are missing from IllusionRenderPipelineResources.");
+                    IllusionLog.Error("Wet Surface: Resources are missing from IllusionRenderPipelineResources.");
                     _reportedMissingResources = true;
                 }
                 return;
@@ -153,7 +153,7 @@ namespace Illusion.Rendering
             {
                 if (!_reportedMissingResources)
                 {
-                    Debug.LogError("Wet Surface depth, normal, or forward material data are unavailable.");
+                    IllusionLog.Error("Wet Surface: Depth, normal, or forward material data are unavailable.");
                     _reportedMissingResources = true;
                 }
                 return;
@@ -165,7 +165,7 @@ namespace Illusion.Rendering
             var descriptor = camera.cameraTargetDescriptor;
             if (!SystemInfo.IsFormatSupported(GraphicsFormat.R32_SFloat, GraphicsFormatUsage.Blend))
             {
-                Debug.LogError("Wet Surface requires R32_SFloat blending on this device.");
+                IllusionLog.ErrorOnce("WetSurface.R32Blend", "Wet Surface: R32_SFloat blending is required on this device.");
                 return;
             }
 

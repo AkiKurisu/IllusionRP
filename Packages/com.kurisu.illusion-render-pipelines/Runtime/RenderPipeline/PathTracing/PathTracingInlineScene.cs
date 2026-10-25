@@ -304,7 +304,7 @@ namespace Illusion.Rendering.PathTracing
             string keywords = string.Join(" ", material.shaderKeywords);
             if (!s_ReportedExceptions.Add((material.shader.GetInstanceID(), keywords)))
                 return;
-            Debug.LogWarning($"[PathTracing] '{material.shader.name}' ({keywords}) has no inline evaluator and renders as the diagnostic surface in inline ray tracing.", material);
+            IllusionLog.Warning($"Inline Ray Tracing: '{material.shader.name}' ({keywords}) has no inline evaluator and renders as the diagnostic surface in inline ray tracing.", material);
         }
 
         private unsafe PathTracingInlineGeometry Template(Mesh mesh, int[] vertexSlots, int indexSlot)

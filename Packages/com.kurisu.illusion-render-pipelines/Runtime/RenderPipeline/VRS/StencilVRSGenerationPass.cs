@@ -33,7 +33,7 @@ namespace Illusion.Rendering
         {
             if (!ShadingRateInfo.supportsPerImageTile) 
             {
-                Debug.Log("VRS is not supported!");
+                IllusionLog.WarningOnce("VRS.Unsupported", "VRS: Per-image tile shading rate is not supported on this device, so variable rate shading is skipped.");
                 return;
             }
 

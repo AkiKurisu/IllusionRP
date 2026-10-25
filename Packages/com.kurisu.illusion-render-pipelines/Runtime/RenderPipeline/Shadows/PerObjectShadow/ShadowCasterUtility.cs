@@ -293,7 +293,7 @@ namespace Illusion.Rendering.Shadows
                 case 0b111: return;
 
                 // Unreachable
-                default: Debug.LogError("Unknown triangleInsideInfo"); return;
+                default: return;
             }
 
             if (isOnePointInside)

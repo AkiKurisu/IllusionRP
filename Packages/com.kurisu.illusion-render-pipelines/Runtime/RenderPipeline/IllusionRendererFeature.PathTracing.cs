@@ -139,7 +139,7 @@ namespace Illusion.Rendering
                 if (!_rayReconstructionReported)
                 {
                     _rayReconstructionReported = true;
-                    Debug.LogWarning("[PathTracing] Realtime mode needs DLSS Ray Reconstruction, which is not available (UnityRHI package, Direct3D 12 and an NVIDIA RTX GPU are required); the camera stays raster. Turn Ray Reconstruction off in the Path Tracing Volume to see the raw Realtime frame.");
+                    IllusionLog.Warning("Path Tracing: Realtime mode needs DLSS Ray Reconstruction, which is not available (UnityRHI package, Direct3D 12 and an NVIDIA RTX GPU are required); the camera stays raster. Turn Ray Reconstruction off in the Path Tracing Volume to see the raw Realtime frame.");
                 }
                 return false;
             }

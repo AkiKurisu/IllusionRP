@@ -44,7 +44,7 @@ namespace Illusion.Rendering.Editor
             if (registry.ModulesHash == key && shading.Concat(visibility).All(p => p?.Compute && p.RayGenSer && p.Coverage) &&
                 shading.All(p => p.Materials.Length == materials.Length && p.Materials.All(m => m.Code)) && visibility.All(p => p.Materials.Length == 0))
             {
-                Debug.Log("[IllusionRP] Reused all inline RayGen, material modules and binding carriers.");
+                IllusionLog.Verbose("Inline Ray Tracing: Reused all RayGen, material modules and binding carriers.");
                 return;
             }
             var jobs = new List<Job>();
@@ -121,7 +121,7 @@ namespace Illusion.Rendering.Editor
                     job.Code = result.Bytecode;
                     File.WriteAllBytes(cachePath, job.Code);
                     System.Threading.Interlocked.Increment(ref compiled);
-                    Debug.Log($"[IllusionRP] Compiled {job.Name} in {watch.ElapsedMilliseconds} ms.");
+                    IllusionLog.Verbose($"Inline Ray Tracing: Compiled {job.Name} in {watch.ElapsedMilliseconds} ms.");
                 }
                 job.Changed = !File.Exists(job.Path) || !File.ReadAllBytes(job.Path).SequenceEqual(job.Code);
                 job.Reflection = dxc.Reflect(job.Code, true);
@@ -173,7 +173,7 @@ namespace Illusion.Rendering.Editor
                     ? modules[entry.RayGen.Native16].Select(m => new PathTracingInlineProgram.MaterialModule { Code = Import(m), ClosestHit = m.Closest }).ToArray()
                     : Array.Empty<PathTracingInlineProgram.MaterialModule>();
             }
-            Debug.Log($"[IllusionRP] Material modules: {compiled} compiled, {unique.Length - compiled} reused in {timer.ElapsedMilliseconds} ms.");
+            IllusionLog.Verbose($"Inline Ray Tracing: Material modules: {compiled} compiled, {unique.Length - compiled} reused in {timer.ElapsedMilliseconds} ms.");
             registry.ModulesHash = key;
             EditorUtility.SetDirty(registry);
 

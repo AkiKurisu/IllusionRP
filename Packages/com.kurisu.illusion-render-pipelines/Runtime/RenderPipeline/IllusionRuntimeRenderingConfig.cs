@@ -141,6 +141,16 @@ namespace Illusion.Rendering
         [ConfigVariable("r.vrs", IsEditor = true)]
         public bool EnableVrs { get; set; } = true;
 
+        /// <summary>
+        /// Whether write verbose IllusionRP and UnityRHI logs.
+        /// </summary>
+        [ConfigVariable("r.verboselog")]
+        public bool EnableVerboseLog
+        {
+            get => IllusionLog.VerboseEnabled;
+            set => IllusionLog.VerboseEnabled = value;
+        }
+
         // =================================== Debug ========================================= //
         [ConfigVariable("r.debug.velocity", IsEditor = true)]
         public bool EnableMotionVectorsDebug { get; set; }

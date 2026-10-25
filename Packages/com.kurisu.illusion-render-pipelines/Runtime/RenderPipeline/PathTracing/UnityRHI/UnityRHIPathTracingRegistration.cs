@@ -15,6 +15,11 @@ namespace Illusion.Rendering.PathTracing.UnityRHI
             PathTracingRayReconstructionLoader.Register(() => new UnityRHIPathTracingRayReconstruction());
             PathTracingInlineDispatchBackend.Register(program => new UnityRHIPathTracingInlineDispatch(program));
             PathTracingOpacityMicromapBackend.Register(() => new UnityRHIPathTracingOpacityMicromaps());
+            IllusionLog.VerboseEnabledChanged -= ForwardVerboseEnabled;
+            IllusionLog.VerboseEnabledChanged += ForwardVerboseEnabled;
+            ForwardVerboseEnabled(IllusionLog.VerboseEnabled);
         }
+
+        private static void ForwardVerboseEnabled(bool enabled) => global::UnityRhi.RhiLog.VerboseEnabled = enabled;
     }
 }

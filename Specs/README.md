@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-10-25 |
 
 Core design principles, rendering flows and source workflows for IllusionRP. These specifications explain how the system fits together and the behaviors that changes must preserve.
 
@@ -49,4 +49,5 @@ Keep an interface or resource name only when it identifies a necessary integrati
 | [Ray Traced Global Illumination](ray-traced-global-illumination.md) | Indirect diffuse and specular for raster cameras: receivers, secondary surfaces, radiance cache, ReSTIR GI resampling, NRD denoising and composition. |
 | [Inline Ray Tracing](inline-ray-tracing.md) | RTGI and path tracing without Unity hit groups: native ray generation programs with ray query traversal and inline coverage, material modules shaded after reordering, the scene resource table and evaluation from each material's own `PathTracing` source. |
 | [ASE Shader Workflow](ase-shader-workflow.md) | Ownership of templates, graphs, functions and generated shaders, and export convergence. |
+| [Logging](logging.md) | Log sources, levels, deduplication and the verbose logging switch. |
 | [Third-Party Source Imports](third-party-source-imports.md) | Source pinning, import commits, license notices, host adaptation and difference markers. |

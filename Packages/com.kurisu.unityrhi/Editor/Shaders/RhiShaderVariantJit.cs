@@ -38,8 +38,7 @@ namespace UnityRhi.EditorTools
             }
             catch (Exception exception)
             {
-                Debug.LogError($"[UnityRHI.Shaders] On-demand compile of '{shader?.name}' " +
-                    $"variant '{keywords?.Key}' failed: {exception.Message}");
+                RhiLog.Error($"Shaders: On-demand compile of '{shader?.name}' variant '{keywords?.Key}' failed: {exception.Message}");
                 return null;
             }
         }
@@ -103,8 +102,7 @@ namespace UnityRhi.EditorTools
             Directory.CreateDirectory(CacheRoot);
             WriteAtomically(cachePath, result.Bytecode);
             Memory[key] = result.Bytecode;
-            Debug.Log($"[UnityRHI.Shaders] Compiled '{importer.assetPath}' variant " +
-                $"'{keywords?.Key ?? ""}' on demand.");
+            RhiLog.Verbose($"Shaders: Compiled '{importer.assetPath}' variant '{keywords?.Key ?? ""}' on demand.");
             return result.Bytecode;
         }
 

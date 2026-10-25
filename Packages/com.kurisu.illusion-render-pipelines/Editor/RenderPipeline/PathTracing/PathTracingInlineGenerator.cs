@@ -94,7 +94,7 @@ namespace Illusion.Rendering.Editor
                 }
                 var compileArgs = new List<string>(preprocessArgs) { "-D", "SHADER_STAGE_COMPUTE=1" };
 
-                Debug.Log("[IllusionRP] Inline toolchain: " + DxcCompiler.ToolchainVersion);
+                IllusionLog.Verbose("Inline Ray Tracing: Toolchain " + DxcCompiler.ToolchainVersion);
                 GeneratorCache cache = GeneratorCache.Load();
                 var units = new List<GeneratedUnit>();
                 var pending = new List<GeneratedUnit>();
@@ -180,7 +180,7 @@ namespace Illusion.Rendering.Editor
                         DxcCompiler.Result source = dxc.Preprocess(prefix + "#include \"" + PreludeInclude + "\"\n#include \"" + consumer + "\"\n", consumer, compileArgs);
                         if (source.Succeeded)
                             return PathTracingInlineUnitTransform.RemoveDeclared(source.Output, declaredBefore);
-                        Debug.LogError($"[IllusionRP] Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
+                        IllusionLog.Error($"Inline Ray Tracing: Failed to preprocess '{consumer}' for its inline kernel.\n{FirstErrors(source.Errors)}");
                         return null;
                     }
                     PathTracingInlineModules.Write(registry, shared, accepted.Select(u => (u.Unit.Body, u.Unit.AnyHitBody, u.Namespace)).ToArray(), PreprocessConsumer, dxc, compileArgs, cache.Version);
@@ -200,7 +200,7 @@ namespace Illusion.Rendering.Editor
                 cache.Save();
 
                 new GeneratorReport().Save();
-                Debug.Log($"[IllusionRP] Generated {units.Count} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged, {accepted.Count(u => StandardCoverage(u.Unit) != null)} with standard coverage) in {stopwatch.ElapsedMilliseconds} ms (preprocess/transform {transformMs} ms).");
+                IllusionLog.Info($"Inline Ray Tracing: Generated {units.Count} path tracing inline evaluators from {passes.Count} shaders ({reused} unchanged, {accepted.Count(u => StandardCoverage(u.Unit) != null)} with standard coverage) in {stopwatch.ElapsedMilliseconds} ms (preprocess/transform {transformMs} ms).");
             }
             finally
             {
@@ -471,7 +471,7 @@ namespace Illusion.Rendering.Editor
                 return;
             var failed = new List<string>();
             AssetDatabase.MoveAssetsToTrash(obsolete, failed);
-            Debug.Log($"[IllusionRP] Moved {obsolete.Length - failed.Count} obsolete inline outputs to the trash: {string.Join(", ", obsolete.Except(failed).Select(Path.GetFileName))}");
+            IllusionLog.Verbose($"Inline Ray Tracing: Moved {obsolete.Length - failed.Count} obsolete inline outputs to the trash: {string.Join(", ", obsolete.Except(failed).Select(Path.GetFileName))}");
         }
 
         internal static bool WriteIfChanged(string path, string content)

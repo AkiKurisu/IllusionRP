@@ -262,7 +262,7 @@ namespace Illusion.Rendering.PathTracing
             if (!s_OverflowReported)
             {
                 s_OverflowReported = true;
-                Debug.LogWarning($"[PathTracing] The scene resource table is full ({s_Capacity} entries); further resources fall back to the diagnostic surface inline.");
+                IllusionLog.Warning($"Inline Ray Tracing: The scene resource table is full ({s_Capacity} entries); further resources fall back to the diagnostic surface inline.");
             }
             return -1;
         }

@@ -66,7 +66,7 @@ namespace Illusion.Rendering.UnityRHI
                 if (!_warnedUnavailable)
                 {
                     _warnedUnavailable = true;
-                    Debug.LogWarning($"[UnityRHI.DLSS Neural Rendering] Pass disabled: D3D12/NR runtime unavailable " +
+                    IllusionLog.Warning($"DLSS Neural Rendering: Pass disabled: D3D12/NR runtime unavailable " +
                         $"(init=0x{unchecked((uint)RhiCore.DlssNrInitResult):X8}).");
                 }
                 return;
@@ -219,7 +219,7 @@ namespace Illusion.Rendering.UnityRHI
                     if (!_feature._warnedHdr)
                     {
                         _feature._warnedHdr = true;
-                        Debug.LogWarning("[UnityRHI.DLSS Neural Rendering] HDR Output is not supported by the full-resolution SDR post-process; bypassing.");
+                        IllusionLog.Warning("DLSS Neural Rendering: HDR Output is not supported by the full-resolution SDR post-process; bypassing.");
                     }
                     return;
                 }
@@ -228,7 +228,7 @@ namespace Illusion.Rendering.UnityRHI
                     if (!_feature._warnedXr)
                     {
                         _feature._warnedXr = true;
-                        Debug.LogWarning("[UnityRHI.DLSS Neural Rendering] XR texture arrays are not supported yet; bypassing.");
+                        IllusionLog.Warning("DLSS Neural Rendering: XR texture arrays are not supported yet; bypassing.");
                     }
                     return;
                 }
@@ -267,7 +267,7 @@ namespace Illusion.Rendering.UnityRHI
                     if (!_feature._warnedFailure)
                     {
                         _feature._warnedFailure = true;
-                        Debug.LogError($"[UnityRHI.DLSS Neural Rendering] Resource initialization failed; bypassing. {exception}");
+                        IllusionLog.Error($"DLSS Neural Rendering: Resource initialization failed; bypassing. {exception}");
                     }
                     return;
                 }
@@ -377,7 +377,7 @@ namespace Illusion.Rendering.UnityRHI
                             if (!data.Feature._warnedFailure)
                             {
                                 data.Feature._warnedFailure = true;
-                                Debug.LogError($"[UnityRHI.DLSS Neural Rendering] Dispatch failed. {exception}");
+                                IllusionLog.Error($"DLSS Neural Rendering: Dispatch failed. {exception}");
                             }
                         }
                     });

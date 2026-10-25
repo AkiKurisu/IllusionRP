@@ -63,7 +63,7 @@ namespace Illusion.Rendering.Editor
                     {
                         if (parameter.arraySize >= DiffusionProfileAsset.DIFFUSION_PROFILE_COUNT - 1)
                         {
-                            Debug.LogError("Limit of 15 diffusion profiles reached.");
+                            IllusionLog.Warning("Diffusion Profiles: Limit of 15 diffusion profiles reached.");
                             return;
                         }
 

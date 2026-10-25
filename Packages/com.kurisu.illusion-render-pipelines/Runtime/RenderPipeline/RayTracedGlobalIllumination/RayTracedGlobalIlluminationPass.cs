@@ -298,7 +298,7 @@ namespace Illusion.Rendering
             if (!_reportedDenoiser)
             {
                 _reportedDenoiser = true;
-                Debug.LogWarning("[RayTracedGI] The NRD denoiser needs the UnityRHI package and Direct3D 12; ray traced global illumination is off.");
+                IllusionLog.Warning("Ray Traced GI: The NRD denoiser needs the UnityRHI package and Direct3D 12; ray traced global illumination is off.");
             }
             return false;
         }
@@ -310,7 +310,7 @@ namespace Illusion.Rendering
             if (!_reportedCache)
             {
                 _reportedCache = true;
-                Debug.LogWarning("[RayTracedGI] Quality mode needs native 16-bit shader types and 64-bit buffer atomics; ray traced global illumination runs in Performance mode.");
+                IllusionLog.Warning("Ray Traced GI: Quality mode needs native 16-bit shader types and 64-bit buffer atomics; ray traced global illumination runs in Performance mode.");
             }
             return false;
         }
@@ -343,7 +343,7 @@ namespace Illusion.Rendering
             }
             if (reason == null)
                 return;
-            throw new InvalidOperationException($"[RayTracedGI] Inline stopped because {reason}.");
+            throw new InvalidOperationException($"Inline stopped because {reason}.");
         }
 
         private void SetInlinePrograms(PathTracingInlineRegistry registry, bool radianceCache)
@@ -410,7 +410,7 @@ namespace Illusion.Rendering
             }
             catch (Exception e)
             {
-                if (_inlineFailure != e.ToString()) Debug.LogError(_inlineFailure = e.ToString());
+                if (_inlineFailure != e.ToString()) IllusionLog.Error("Ray Traced GI: " + (_inlineFailure = e.ToString()));
                 return;
             }
 

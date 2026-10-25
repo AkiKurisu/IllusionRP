@@ -43,9 +43,9 @@ namespace Illusion.Rendering.Editor
             try
             {
                 await action(_cancellation.Token);
-                Debug.Log($"[{label}] Completed in {stopwatch.Elapsed.TotalSeconds:F3}s.");
+                IllusionLog.Info($"{label} completed in {stopwatch.Elapsed.TotalSeconds:F3}s.");
             }
-            catch (OperationCanceledException) { Debug.Log($"[{label}] Cancelled; incomplete transport was not saved."); }
+            catch (OperationCanceledException) { IllusionLog.Info($"{label} cancelled; incomplete transport was not saved."); }
             catch (Exception exception) { Debug.LogException(exception); }
             finally
             {
@@ -101,7 +101,7 @@ namespace Illusion.Rendering.Editor
         private static bool InitializeProbeVolumeData(PRTProbeVolume volume)
         {
             string scenePath = SceneManager.GetActiveScene().path;
-            if (string.IsNullOrEmpty(scenePath)) { Debug.LogError("Save the scene before baking PRT transport."); return false; }
+            if (string.IsNullOrEmpty(scenePath)) { IllusionLog.Error("PRT: Save the scene before baking transport."); return false; }
             string folder = Path.Combine(Path.GetDirectoryName(scenePath), Path.GetFileNameWithoutExtension(scenePath)).Replace('\\', '/');
             if (!Directory.Exists(folder)) { Directory.CreateDirectory(folder); AssetDatabase.Refresh(); }
             var asset = ScriptableObject.CreateInstance<PRTProbeVolumeAsset>();

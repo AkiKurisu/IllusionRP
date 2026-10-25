@@ -295,7 +295,7 @@ namespace UnityRhi.EditorTools
         private static void LogProcessIdentityOnce()
         {
             if (Interlocked.Exchange(ref s_loggedProcessIdentity, 1) != 0) return;
-            Debug.Log("[UnityRHI.Shaders] Importing in " +
+            RhiLog.Verbose("Shaders: Importing in " +
                 (AssetDatabase.IsAssetImportWorkerProcess() ? "asset import worker" : "main editor") +
                 $" process {System.Diagnostics.Process.GetCurrentProcess().Id}.");
         }

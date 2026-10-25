@@ -89,12 +89,11 @@ namespace UnityRhi.EditorTools
             BuildManifest manifest = CollectManifest();
             if (manifest.shaders.Length == 0)
             {
-                Debug.LogWarning("[UnityRHI.Shaders] No RHI shader variants were " +
-                    "requested for this player build.");
+                RhiLog.Verbose("Shaders: No RHI shader variants were requested for this player build.");
                 return;
             }
             ValidateExternalShaders(manifest);
-            Debug.Log("[UnityRHI.Shaders] Reusing staged player shader bytecode.");
+            RhiLog.Verbose("Shaders: Reusing staged player shader bytecode.");
         }
 
         /// <summary>
@@ -114,15 +113,13 @@ namespace UnityRhi.EditorTools
             BuildManifest manifest = CollectManifest();
             if (manifest.shaders.Length == 0)
             {
-                Debug.LogWarning("[UnityRHI.Shaders] No RHI shader variants were " +
-                    "requested while preparing player artifacts.");
+                RhiLog.Verbose("Shaders: No RHI shader variants were requested while preparing player artifacts.");
                 return;
             }
 
             int variantCount = manifest.shaders.Sum(shader =>
                 shader.variantKeys?.Length ?? 0);
-            Debug.Log($"[UnityRHI.Shaders] Preparing {manifest.shaders.Length} " +
-                $"shaders ({variantCount} variants) before the player build.");
+            RhiLog.Info($"Shaders: Preparing {manifest.shaders.Length} shaders ({variantCount} variants) before the player build.");
 
             Directory.CreateDirectory(StagingPath);
             foreach (ShaderEntry entry in manifest.shaders)
@@ -322,8 +319,7 @@ namespace UnityRhi.EditorTools
             }
             catch (Exception exception)
             {
-                Debug.LogWarning("[UnityRHI.Shaders] Ignoring invalid build variant " +
-                    $"manifest: {exception.Message}");
+                RhiLog.Warning($"Shaders: Ignoring invalid build variant manifest: {exception.Message}");
                 return null;
             }
         }

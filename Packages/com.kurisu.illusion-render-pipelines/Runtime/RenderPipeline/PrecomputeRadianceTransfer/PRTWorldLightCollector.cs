@@ -26,7 +26,7 @@ namespace Illusion.Rendering.PRTGI
                 if (light.type != LightType.Directional && light.type != LightType.Point && light.type != LightType.Spot) continue;
                 if (light.type != LightType.Directional && (light.range <= 0 || bounds.SqrDistance(light.transform.position) > light.range * light.range)) continue;
                 if (light.cookie && _reportedCookies.Add(light.GetInstanceID()))
-                    Debug.LogWarning($"[PRTGI] World relight does not evaluate the cookie on '{light.name}'.", light);
+                    IllusionLog.Warning($"PRT: World relight does not evaluate the cookie on '{light.name}'.", light);
                 var matrix = Matrix4x4.TRS(light.transform.position, light.transform.rotation, Vector3.one);
                 UniversalRenderPipeline.GetLightAttenuationAndSpotDirection(light.type, light.range, matrix,
                     light.spotAngle, light.innerSpotAngle, out var attenuation, out _);
