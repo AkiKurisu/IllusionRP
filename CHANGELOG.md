@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Add a `Rim Power` input to the Hair template for the exponent of its grazing-angle rim light. It defaults to the previous fixed exponent, so existing hair keeps its look.
 - Add `Auto Generate Evaluators` to `Project Settings > Graphics > IllusionRP`. Turn it off to stop inline evaluators regenerating while you edit shaders, then run `Tools > IllusionRP > Generate Inline Evaluators` when you are ready.
 
 ### Changed

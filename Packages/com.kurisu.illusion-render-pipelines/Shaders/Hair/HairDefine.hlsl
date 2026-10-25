@@ -50,6 +50,7 @@ struct HairData
     half Roughness;
     half Shadow;
     half Backlit;
+    half RimPower;
     half Area;
     half Wet;
     half WetDiffuseFactor;

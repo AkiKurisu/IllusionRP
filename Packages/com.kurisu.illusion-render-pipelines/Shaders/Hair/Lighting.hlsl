@@ -132,7 +132,7 @@ half3 HairVolumetricBacklitScatter(half3 albedo, half3 L, half3 V, half3 N, Hair
     half CosThetaL = saturate(abs(NdotL));
     half CosThetaV = saturate(abs(NdotV));
     
-    half3 scatterFresnel = pow(1.0 - CosThetaV, ScatterPower);
+    half3 scatterFresnel = pow(1.0 - CosThetaV, hairData.RimPower);
     half3 scatterLight = pow(saturate(-VdotL), ScatterPower) * 
                         (1.0 - CosThetaV) *
                         saturate(1.0 - CosThetaL);

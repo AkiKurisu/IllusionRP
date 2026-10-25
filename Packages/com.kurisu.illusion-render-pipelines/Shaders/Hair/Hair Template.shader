@@ -879,6 +879,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				float Wet = /*ase_frag_out:Wet;Float;24;-1;_Wet*/0/*end*/;
 				float Backlit = /*ase_frag_out:Backlit;Float;25;-1;_Backlit*/0.5f/*end*/;
 				float Shadow = /*ase_frag_out:Shadow;Float;26;-1;_Shadow*/1.0f/*end*/;
+				float RimPower = /*ase_frag_out:Rim Power;Float;27;-1;_RimPower*/9/*end*/;
 
 				#if defined( _ALPHATEST_ON )
 					ClipHair(ScreenPos, Alpha, _OpaqueAlphaCutoff);
@@ -976,6 +977,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				hairData.Metallic = saturate(Metallic);
 				hairData.Tangent = Tangent;
 				hairData.Backlit = Backlit;
+				hairData.RimPower = RimPower;
 				hairData.Shadow = Shadow;
 				hairData.Area = 0.0f;
 				hairData.Roughness = saturate(0.25f - HighLight * 0.1334f);
@@ -1396,6 +1398,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				float Wet = /*ase_frag_out:Wet;Float;24;-1;_Wet*/0/*end*/;
 				float Backlit = /*ase_frag_out:Backlit;Float;25;-1;_Backlit*/0.5f/*end*/;
 				float Shadow = /*ase_frag_out:Shadow;Float;26;-1;_Shadow*/1.0f/*end*/;
+				float RimPower = /*ase_frag_out:Rim Power;Float;27;-1;_RimPower*/9/*end*/;
 
 				#ifdef _ALPHATEST_ON
 					#ifdef _HAIR_ORDER_INDEPENDENT
@@ -1497,6 +1500,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				hairData.Metallic = saturate(Metallic);
 				hairData.Tangent = Tangent;
 				hairData.Backlit = Backlit;
+				hairData.RimPower = RimPower;
 				hairData.Shadow = Shadow;
 				hairData.Area = 0.0f;
 				hairData.Roughness = saturate(0.25f - HighLight * 0.1334f);
@@ -3465,6 +3469,7 @@ Shader /*ase_name*/ "Hidden/Universal/Hair" /*end*/
 				float Wet = /*ase_frag_out:Wet;Float;24;-1;_Wet*/0/*end*/;
 				float Backlit = /*ase_frag_out:Backlit;Float;25;-1;_Backlit*/0.5f/*end*/;
 				float Shadow = /*ase_frag_out:Shadow;Float;26;-1;_Shadow*/1.0f/*end*/;
+				float RimPower = /*ase_frag_out:Rim Power;Float;27;-1;_RimPower*/9/*end*/;
 
 				PathTracingHairSurface surface = PathTracingInitHairSurface();
 
