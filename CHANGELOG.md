@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Fix flickering bright speckles in ray traced global illumination with the RELAX denoiser by enabling its firefly suppression.
 - Fix inline evaluator generation running on every material save. Only a material that selects a path tracing variant without an evaluator regenerates.
+- Fix inline ray tracing rebuilding its pipelines after every script reload and Play Mode change.
 
 ## [1.4.3] - 2026-10-24
 
