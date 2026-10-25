@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Draft |
-| Date | 2026-10-24 |
+| Date | 2026-10-25 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Path Tracing](path-tracing.md), [Materials and Shaders](materials-and-shaders.md), [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Third-Party Source Imports](third-party-source-imports.md) |
 
 Inline ray tracing traces ray traced global illumination (RTGI) and path tracing without Unity ray tracing shaders. Unity prepares hit groups for every instance of every acceleration structure bound to its ray generation dispatches, on every dispatch, so that path's CPU cost grows with the size of the scene. Instead, each tracing stage is a ray generation program that the native backend dispatches. Rays traverse the scene with ray queries, and each accepted closest hit is shaded by its material's own module after the GPU regroups rays by the material they hit. The shader table holds one record per material evaluator, never one per instance. Each material is still evaluated from its own `PathTracing` pass source, so the result is the image that pass defines.
@@ -117,7 +117,7 @@ Alpha-tested surfaces such as foliage spend most of their traversal on candidate
 - **Material inputs.** Material property values, texture scale and offset, and renderer property overrides are captured into material records. Change tracking recaptures them when the material or override content changes. Each hit reads its own record, so one module shades every material of its variant.
 - **Texture sampling.** Texture lookups resolve through the scene resource table. They keep each texture's filtering, including the anisotropic filtering that quality settings force, and its addressing, and use the same footprint and level selection as a hit shader would. Coverage samples at the finest level, as [path tracing](path-tracing.md#scene-and-material-inputs) defines.
 - **Variants.** A material's enabled `PathTracing` keywords select its evaluator variant. Evaluators are generated when shaders import, follow [Shader Variant Stripping](shader-variant-stripping.md), and are reachable in a build exactly when RTGI or path tracing is. A variant with no evaluator in a player is an exception.
-- **Generation.** Generation runs only while a renderer in the project enables RTGI or path tracing. Turning both off keeps the existing outputs and stops regenerating them. Modules, the coverage library and tracing programs are regenerated when shader sources, their includes or the materials that select their variants change. A change to a material's coverage rebuilds the coverage library, not the tracing programs. A variant whose evaluator does not compile is reported with its compiler errors and becomes an exception. The other evaluators are unaffected. Outputs that no current program references are removed.
+- **Generation.** Generation runs only while a renderer in the project enables RTGI or path tracing. Turning both off keeps the existing outputs and stops regenerating them. Modules, the coverage library and tracing programs are regenerated when shader sources or their includes change, or when a material selects a variant that has no evaluator. Saving a material whose variant already has one does not regenerate. A change to a material's coverage rebuilds the coverage library, not the tracing programs. A variant whose evaluator does not compile is reported with its compiler errors and becomes an exception. The other evaluators are unaffected. Outputs that no current program references are removed.
 
 ## RTGI integration
 

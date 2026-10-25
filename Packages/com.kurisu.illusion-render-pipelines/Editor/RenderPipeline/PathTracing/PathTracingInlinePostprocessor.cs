@@ -48,17 +48,17 @@ namespace Illusion.Rendering.Editor
                     continue;
                 if (path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase)
                     || path.EndsWith(".hlsli", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".h", StringComparison.OrdinalIgnoreCase)
-                    || path.EndsWith(".raytrace", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase)
-                    || MissesEmbeddedEvaluator(path))
+                    || path.EndsWith(".raytrace", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase)
+                    || MissesEvaluator(path))
                     return true;
             }
             return false;
         }
 
-        // An imported model regenerates only when one of its materials selects a path tracing variant without an evaluator.
-        private static bool MissesEmbeddedEvaluator(string path)
+        // A material, model or SpeedTree asset regenerates only when one of its materials selects a path tracing variant without an evaluator.
+        private static bool MissesEvaluator(string path)
         {
-            if (AssetImporter.GetAtPath(path) is not (ModelImporter or SpeedTreeImporter))
+            if (!path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) && AssetImporter.GetAtPath(path) is not (ModelImporter or SpeedTreeImporter))
                 return false;
             var registry = AssetDatabase.LoadAssetAtPath<PathTracingInlineRegistry>(PathTracingInlineGenerator.RegistryPath);
             foreach (Material material in AssetDatabase.LoadAllAssetsAtPath(path).OfType<Material>())
