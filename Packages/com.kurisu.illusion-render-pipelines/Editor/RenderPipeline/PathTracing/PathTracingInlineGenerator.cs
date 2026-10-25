@@ -59,9 +59,6 @@ namespace Illusion.Rendering.Editor
         [MenuItem("Tools/IllusionRP/Generate Inline Evaluators")]
         private static void GenerateChanged() => Generate(false);
 
-        [MenuItem("Tools/IllusionRP/Regenerate Inline Evaluators")]
-        private static void Regenerate() => Generate(true);
-
         private static bool? s_RayTracingEnabled;
 
         internal static bool IsEnabled => PathTracingInlineBackend.IsCompiled && (s_RayTracingEnabled ??= RayTracingEnabled());

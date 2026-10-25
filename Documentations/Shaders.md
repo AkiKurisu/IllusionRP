@@ -140,4 +140,4 @@ While a renderer enables ray traced global illumination or path tracing, Illusio
 2. Uncheck **Auto Generate Evaluators**.
 3. Run **Tools > IllusionRP > Generate Inline Evaluators** to bring the evaluators up to date when you are done.
 
-**Regenerate Inline Evaluators** in the same menu rebuilds all of them from scratch.
+To rebuild every evaluator ignoring the cache, select the inline registry asset and click **Rebuild All** in its Inspector.
