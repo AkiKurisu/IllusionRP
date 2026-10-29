@@ -27,7 +27,7 @@ MonoBehaviour:
     LensFlareScreenSpacePS: {fileID: 4800000, guid: 701880fecb344ea4c9cd0db3407ab287, type: 3}
     scalingSetupPS: {fileID: 4800000, guid: e8ee25143a34b8c4388709ea947055d1, type: 3}
     easuPS: {fileID: 4800000, guid: 562b7ae4f629f144aa97780546fce7c6, type: 3}
-    uberPostPS: {fileID: 4800000, guid: e7857e9d0c934dc4f83f270f8447b006, type: 3}
+    uberPostPS: {fileID: 4800000, guid: 1f336ca32f5a4efeb3202d5d337ce53b, type: 3}
     finalPostPassPS: {fileID: 4800000, guid: c49e63ed1bbcb334780a3bd19dfed403, type: 3}
     m_ShaderResourcesVersion: 0
   textures:
