@@ -50,6 +50,7 @@ Shader "Hidden/UberPost"
         TEXTURE2D(_UserLut);
         TEXTURE2D(_BlueNoise_Texture);
         TEXTURE2D_X(_OverlayUITexture);
+        TEXTURE2D(_ConvolutionBloom_Texture);
 
         float4 _BloomTexture_TexelSize;
         float4 _Lut_Params;
@@ -71,6 +72,7 @@ Shader "Hidden/UberPost"
         float4 _Dithering_Params;
         float4 _HDROutputLuminanceParams;
         float4 _OffscreenUIViewportParams;
+        float4 _ConvolutionBloom_Params;
 
         #define DistCenter              _Distortion_Params1.xy
         #define DistAxis                _Distortion_Params1.zw
@@ -223,6 +225,18 @@ Shader "Hidden/UberPost"
                 #endif
             }
             #endif
+
+            UNITY_BRANCH
+            if (_ConvolutionBloom_Params.x > 0)
+            {
+                float2 fftExtend = _ConvolutionBloom_Params.yz;
+                float2 uvConvolution = (SCREEN_COORD_REMOVE_SCALEBIAS(uvDistorted) + fftExtend) * (1 - 2 * fftExtend);
+                color += SAMPLE_TEXTURE2D(_ConvolutionBloom_Texture, sampler_LinearClamp, uvConvolution).xyz * _ConvolutionBloom_Params.x;
+
+                #if _ENABLE_ALPHA_OUTPUT
+                inputColor.xyz = color.xyz;
+                #endif
+            }
 
             // To save on variants we'll use an uniform branch for vignette. Lower end platforms
             // don't like these but if we're running Uber it means we're running more expensive

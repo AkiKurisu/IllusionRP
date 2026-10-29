@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-10-29 |
 | Related Specs | [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 IllusionRP extends URP's Universal Renderer through a renderer feature rather than owning a separate raster pipeline. Forward and Forward+ are the supported material paths. URP retains its standard stages; IllusionRP inserts feature work and publishes the state its materials consume.
@@ -46,6 +46,8 @@ Global names form a shader interface but neither own resources nor establish gra
 | After transparents | OIT; post-depth restore; stencil VRS and transparent overdraw; color pyramid and required depth/normal history. |
 | Before post-processing | Sun shafts; volumetric fog; automatic exposure; history-color copy; convolution bloom. |
 | After post-processing | VRS debug and history bookkeeping; optional DLSS Neural Rendering; final debug views. |
+
+Convolution bloom must not see temporal jitter. With a valid resolved TAA history and IllusionRP's uber post shader, bloom filters the previous frame's resolved TAA output and the uber pass adds it after TAA, before grading; history bookkeeping clears that input after post-processing. Otherwise bloom filters the current camera color and blends before post-processing.
 
 New dependencies use explicit recorded resource chains or distinct injection points, not incidental enqueue order. URP's own stages remain at their standard points. Per-object source selection and temporary light-layer changes happen before culling and are restored when the camera ends.
 

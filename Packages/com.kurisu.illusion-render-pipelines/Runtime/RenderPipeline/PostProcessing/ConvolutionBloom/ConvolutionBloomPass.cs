@@ -44,6 +44,10 @@ namespace Illusion.Rendering.PostProcessing
 
         private readonly ConvolutionBloomOtfState _otfState = new();
 
+        private Shader _uberPostShader;
+
+        private bool _isIllusionUberPost;
+
         public ConvolutionBloomPass(IllusionRendererData rendererData)
         {
             _fftKernel = new FFTKernel(rendererData.RuntimeResources.fastFourierTransformCS,
@@ -149,6 +153,12 @@ namespace Illusion.Rendering.PostProcessing
             internal TextureHandle Source;
         }
 
+        private class UberPostCompositePassData
+        {
+            internal Vector4 Params;
+            internal TextureHandle Source;
+        }
+
         private class OTFUpdatePassData
         {
             internal Material PsfRemapMaterial;
@@ -185,7 +195,13 @@ namespace Illusion.Rendering.PostProcessing
             bool otfResourceCreated = _otf?.rt != null && _otf.rt.IsCreated();
 
             var resource = frameData.Get<UniversalResourceData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
             TextureHandle colorTexture = resource.activeColorTexture;
+
+            // Feed bloom with the resolved TAA output so jitter does not reach the kernel, and add it in uber post after TAA.
+            bool compositeInUberPost = UniversalRenderingUtility.TryGetTemporalAAHistory(cameraData, out var taaHistory)
+                                       && IsIllusionUberPost(UniversalRenderingUtility.GetUberPostShader(cameraData.renderer));
+            TextureHandle bloomSource = compositeInUberPost ? renderGraph.ImportTexture(taaHistory) : colorTexture;
 
             // Import the OTF exactly once so RenderGraph can track PSF -> FFT -> convolution dependencies.
             TextureHandle otfHandle = renderGraph.ImportTexture(_otf);
@@ -205,14 +221,46 @@ namespace Illusion.Rendering.PostProcessing
             TextureHandle fftTargetHandle = renderGraph.ImportTexture(_fftTarget);
 
             // Pass 1: Bright mask extraction
-            fftTargetHandle = RenderBrightMaskPass(renderGraph, colorTexture, fftTargetHandle, threshold, thresholdKnee, clampMax, fftExtend);
+            fftTargetHandle = RenderBrightMaskPass(renderGraph, bloomSource, fftTargetHandle, threshold, thresholdKnee, clampMax, fftExtend);
 
             // Pass 2: FFT Convolution
             fftTargetHandle = RenderConvolutionPass(renderGraph, fftTargetHandle, otfHandle,
                 bloomParams, highQuality);
 
             // Pass 3: Bloom blend
-            RenderBloomBlendPass(renderGraph, fftTargetHandle, colorTexture, intensity, fftExtend);
+            if (compositeInUberPost)
+                RenderUberPostCompositePass(renderGraph, fftTargetHandle, intensity, fftExtend);
+            else
+                RenderBloomBlendPass(renderGraph, fftTargetHandle, colorTexture, intensity, fftExtend);
+        }
+
+        private bool IsIllusionUberPost(Shader shader)
+        {
+            if (!ReferenceEquals(shader, _uberPostShader))
+            {
+                _uberPostShader = shader;
+                _isIllusionUberPost = shader && shader.name == IllusionShaders.UberPost;
+            }
+            return _isIllusionUberPost;
+        }
+
+        private void RenderUberPostCompositePass(RenderGraph renderGraph, TextureHandle source, float intensity, Vector2 fftExtend)
+        {
+            using (var builder = renderGraph.AddUnsafePass<UberPostCompositePassData>("Convolution Bloom Uber Post Composite", out var passData, _bloomBlendSampler))
+            {
+                passData.Params = new Vector4(intensity, fftExtend.x, fftExtend.y, 0);
+                passData.Source = source;
+                builder.UseTexture(source);
+
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+
+                builder.SetRenderFunc(static (UberPostCompositePassData data, UnsafeGraphContext context) =>
+                {
+                    context.cmd.SetGlobalTexture(IllusionShaderProperties._ConvolutionBloom_Texture, data.Source);
+                    context.cmd.SetGlobalVector(IllusionShaderProperties._ConvolutionBloom_Params, data.Params);
+                });
+            }
         }
 
         private TextureHandle RenderBrightMaskPass(RenderGraph renderGraph, TextureHandle source,

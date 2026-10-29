@@ -30,6 +30,10 @@ namespace UnityEngine.Rendering.Universal
         
         private static FieldInfo _shadowSliceDataFieldInfo;
 
+        private static FieldInfo _postProcessPassFieldInfo;
+
+        private static FieldInfo _postProcessMaterialsFieldInfo;
+
         /// <summary>
         /// Get UniversalRenderer depth texture that actually written to.
         /// </summary>
@@ -176,6 +180,49 @@ namespace UnityEngine.Rendering.Universal
         public static void SetTemporalAAQuality(UniversalAdditionalCameraData additionalCameraData, int quality)
         {
             additionalCameraData.taaSettings.quality = (TemporalAAQuality)quality;
+        }
+
+        /// <summary>
+        /// Get the resolved TAA output of the previous frame, if the camera has a valid one.
+        /// </summary>
+        /// <param name="cameraData"></param>
+        /// <param name="history"></param>
+        /// <returns></returns>
+        public static bool TryGetTemporalAAHistory(UniversalCameraData cameraData, out RTHandle history)
+        {
+            history = null;
+            if (!cameraData.IsTemporalAAEnabled() || cameraData.IsSTPEnabled() || cameraData.taaHistory == null
+                || cameraData.taaSettings.resetHistoryFrames != 0)
+                return false;
+
+            int eyeIndex = 0;
+#if ENABLE_VR && ENABLE_XR_MODULE
+            eyeIndex = cameraData.xr.multipassId;
+#endif
+            int version = cameraData.taaHistory.GetAccumulationVersion(eyeIndex);
+            if (version < 0 || version == Time.frameCount)
+                return false;
+
+            history = cameraData.taaHistory.GetAccumulationTexture(eyeIndex);
+            return history != null && history.rt != null && history.rt.IsCreated();
+        }
+
+        /// <summary>
+        /// Get the shader used by the renderer's uber post-processing pass.
+        /// </summary>
+        /// <param name="sr"></param>
+        /// <returns></returns>
+        public static Shader GetUberPostShader(ScriptableRenderer sr)
+        {
+            if (sr is not UniversalRenderer universalRenderer) return null;
+            _postProcessPassFieldInfo ??= typeof(UniversalRenderer).GetField("m_PostProcessPassRenderGraph",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            _postProcessMaterialsFieldInfo ??= typeof(PostProcessPassRenderGraph).GetField("m_Materials",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var postProcessPass = _postProcessPassFieldInfo?.GetValue(universalRenderer);
+            if (postProcessPass == null) return null;
+            var materials = _postProcessMaterialsFieldInfo?.GetValue(postProcessPass) as PostProcessMaterialLibrary;
+            return materials?.uber ? materials.uber.shader : null;
         }
 
         /// <summary>

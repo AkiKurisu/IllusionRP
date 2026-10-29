@@ -33,6 +33,8 @@ namespace Illusion.Rendering
 
         public const string ApplyExposure = "Hidden/ApplyExposure";
 
+        public const string UberPost = "Hidden/UberPost";
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         internal const string DebugExposure = "Hidden/DebugExposure";
         
@@ -234,6 +236,10 @@ namespace Illusion.Rendering
         public static readonly int _ValidRange = MemberNameHelpers.ShaderPropertyID();
 
         public static readonly int _RcpGlobalScaleFactor = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _ConvolutionBloom_Texture = MemberNameHelpers.ShaderPropertyID();
+
+        public static readonly int _ConvolutionBloom_Params = MemberNameHelpers.ShaderPropertyID();
     }
 
     /// <summary>

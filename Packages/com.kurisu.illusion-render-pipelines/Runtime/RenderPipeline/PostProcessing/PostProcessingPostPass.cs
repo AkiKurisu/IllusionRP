@@ -1,4 +1,5 @@
-﻿using UnityEngine.Rendering;
+﻿using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 
@@ -25,10 +26,13 @@ namespace Illusion.Rendering.PostProcessing
             using (var builder = renderGraph.AddUnsafePass<PostProcessingPostPassData>("Post Processing Post", out var passData, profilingSampler))
             {
                 builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
                 passData.RendererData = _rendererData;
 
-                builder.SetRenderFunc(static (PostProcessingPostPassData data, UnsafeGraphContext _) =>
+                builder.SetRenderFunc(static (PostProcessingPostPassData data, UnsafeGraphContext context) =>
                 {
+                    context.cmd.SetGlobalVector(IllusionShaderProperties._ConvolutionBloom_Params, Vector4.zero);
+
                     data.RendererData.DidResetPostProcessingHistoryInLastFrame = data.RendererData.ResetPostProcessingHistory;
 
                     data.RendererData.ResetPostProcessingHistory = false;
