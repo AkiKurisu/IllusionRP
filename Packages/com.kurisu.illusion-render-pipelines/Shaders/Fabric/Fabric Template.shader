@@ -21,7 +21,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 		[Header(Sheen)]_Sheen_Color("Sheen Color", Color) = (1, 1, 1, 1)
 		[Toggle(_SHEEN_VELET)] _Velvet("Velet Surface", Float) = 0.0
 		_Sheen_Intensity("Sheen Intensity", Range(0, 1)) = 0.0
-		[Header (Anisotropy)][Toggle(_ANISOTROPY_ON)] _Anisotropy_On("Anisotropy Surface", Float) = 0
+		[Header (Anisotropy)][KeywordEnum(Off, GGX, Fiber)] _Anisotropy_Mode("Anisotropy", Float) = 0
 		_Anisotropy_Intensity("Anisotropy Intensity", Range(-1, 1)) = 0.9
 		_NormalAniso("Normal Anisotropy", Range(0, 1)) = 1
 
@@ -623,7 +623,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 			#pragma multi_compile_fragment _ AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
 			#pragma multi_compile_fragment _ _TRANSPARENT_PER_OBJECT_SHADOWS
 			
-			#pragma shader_feature_local _ANISOTROPY_ON
+			#pragma shader_feature_local _ _ANISOTROPY_MODE_GGX _ANISOTROPY_MODE_FIBER
 			#pragma shader_feature_local _SHEEN_VELET
 			// @IllusionRP End
 
@@ -742,7 +742,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -990,6 +990,8 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				#endif
 				
 				float3 SheenNormal = /*ase_frag_out:Sheen Normal;Float3;21;-1;_SheenNormal*/float3(0, 0, 1)/*end*/;
+				float3 FiberDirection = /*ase_frag_out:Fiber Direction;Float3;22;-1;_FiberDirection*/float3(1, 0, 0)/*end*/;
+				float FiberShift = /*ase_frag_out:Fiber Shift;Float;23;-1;_FiberShift*/0/*end*/;
 
 				#if defined( _ALPHATEST_ON )
 					AlphaDiscard( Alpha, AlphaClipThreshold );
@@ -1088,7 +1090,10 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 					ApplyDecalToSurfaceData(input.positionCS, surfaceData, inputData);
 				#endif
 
-				#ifdef _ANISOTROPY_ON
+				#if defined(_ANISOTROPY_MODE_FIBER)
+					half3 T = NormalizeNormalPerPixel(TransformTangentToWorld(FiberDirection, half3x3(TangentWS, BitangentWS, NormalWS)));
+					half3 B = BitangentWS;
+				#elif defined(_ANISOTROPY_MODE_GGX)
 					// Calculate anisotropy T and B
 				    half3 tangentTS = normalize(surfaceData.normalTS.x * half3(0, 0, 1) * _NormalAniso  + half3(1, 0, 0));
 				    half3 T = TransformTangentToWorld(tangentTS, half3x3(TangentWS, BitangentWS, NormalWS));
@@ -1105,6 +1110,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				AnisotropyData.T = T;
 				AnisotropyData.B = B;
 				AnisotropyData.Anisotropy = _Anisotropy_Intensity;
+				AnisotropyData.Shift = FiberShift;
 
 				//  Convert ASE tangent space normal output to world space
 				half3 SheenNormalWS = TransformTangentToWorld(SheenNormal, half3x3(TangentWS, BitangentWS, NormalWS));
@@ -1342,7 +1348,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -1638,7 +1644,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -1915,7 +1921,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -2179,7 +2185,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -2508,7 +2514,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -2959,7 +2965,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3185,7 +3191,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3431,7 +3437,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3727,7 +3733,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 
 
 
-			#pragma shader_feature_local_raytracing _ANISOTROPY_ON
+			#pragma shader_feature_local_raytracing _ _ANISOTROPY_MODE_GGX _ANISOTROPY_MODE_FIBER
 			#pragma shader_feature_local_raytracing _SHEEN_VELET
 
 			#define SHADERPASS SHADERPASS_PATH_TRACING
@@ -3780,7 +3786,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float _TessEdgeLength;
 				float _TessMaxDisp;
 			#endif
-			half _Anisotropy_On;
+			half _Anisotropy_Mode;
 			half _Anisotropy_Intensity;
 			half _Sheen_Intensity;
 			half _NormalAniso;
@@ -3852,6 +3858,7 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 				float3 Transmission = /*ase_frag_out:Transmission;Float3;14;-1;_Transmission*/1/*end*/;
 				float3 Translucency = /*ase_frag_out:Translucency;Float3;15;-1;_Translucency*/1/*end*/;
 				float3 SheenNormal = /*ase_frag_out:Sheen Normal;Float3;21;-1;_SheenNormal*/float3(0, 0, 1)/*end*/;
+				float3 FiberDirection = /*ase_frag_out:Fiber Direction;Float3;22;-1;_FiberDirection*/float3(1, 0, 0)/*end*/;
 
 				#if defined( _ALPHATEST_ON )
 					AlphaDiscard( Alpha, AlphaClipThreshold );
@@ -3882,7 +3889,12 @@ Shader /*ase_name*/ "Hidden/Universal/Fabric" /*end*/
 #if defined(_SHEEN_VELET)
                 surface.velvet = true;
 #endif
-#if defined(_ANISOTROPY_ON)
+#if defined(_ANISOTROPY_MODE_FIBER)
+                // The fiber cone and its shift are raster only; path tracing stretches the GGX lobe across the fiber.
+                surface.silk = true;
+                surface.anisotropy = -abs( _Anisotropy_Intensity );
+                surface.tangentWS = SafeNormalize( TransformTangentToWorld( FiberDirection, half3x3( TangentWS, BitangentWS, NormalWS ) ) );
+#elif defined(_ANISOTROPY_MODE_GGX)
                 surface.silk = true;
                 surface.anisotropy = _Anisotropy_Intensity;
 #if _NORMAL_DROPOFF_TS

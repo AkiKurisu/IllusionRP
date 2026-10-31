@@ -19,6 +19,10 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/ForwardLightLoop.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
 
+#if defined(_ANISOTROPY_MODE_GGX) || defined(_ANISOTROPY_MODE_FIBER)
+    #define FABRIC_ANISOTROPIC_LIGHTING
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////
 //                      Lighting Functions                                   //
 ///////////////////////////////////////////////////////////////////////////////
@@ -79,7 +83,12 @@ half3 AnisoFabricLighting(BRDFData brdfData, half3 lightColor, half3 lightDirect
     if (!specularHighlightsOff)
     {
         // Anisotropy Specular
+    #ifdef _ANISOTROPY_MODE_FIBER
+        half DV = DV_FiberCone(anisotropyData.T, normalWS, lightDirectionWS, viewDirectionWS, clampedNdotL, NoV,
+                               anisotropyData.Shift, brdfData.roughness);
+    #else
         half DV = DV_SmithJointGGXAniso_Patch(ToH, BoH, NoH, ToV, BoV,NoV, ToL,BoL, clampedNdotL, aT, aB);
+    #endif
 
     #if REAL_IS_HALF
         DV  = DV  - HALF_MIN;
@@ -299,7 +308,7 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
                                               wetSurface.originalBRDF, wetSurface.originalNormal,
                                               wetSurface.ambientFactor, wetSurface.hasWet);
     
-#ifdef _ANISOTROPY_ON
+#ifdef FABRIC_ANISOTROPIC_LIGHTING
     // Calculate anisotropy bent normal
     half3 anisotropicDirection = AnisotropyData.Anisotropy >= 0.0 ? AnisotropyData.B : AnisotropyData.T;
     half3 anisotropicTangent = cross(anisotropicDirection, inputData.viewDirectionWS);
@@ -313,7 +322,7 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
     #endif
     {
         // Since we use sheen light, clear coat is no need in cloth shader
-        #ifdef _ANISOTROPY_ON
+        #ifdef FABRIC_ANISOTROPIC_LIGHTING
         lightingData.mainLightColor = AnisoFabricLighting(brdfData, mainLight, inputData, surfaceData,
                                                     specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
         #else
@@ -336,7 +345,7 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
     #endif
         {
-    #ifdef _ANISOTROPY_ON
+    #ifdef FABRIC_ANISOTROPIC_LIGHTING
             lightingData.additionalLightsColor += AnisoFabricLighting(brdfData, light, inputData, surfaceData,
                                                     specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
     #else
@@ -354,7 +363,7 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
     #endif
         {
-    #ifdef _ANISOTROPY_ON
+    #ifdef FABRIC_ANISOTROPIC_LIGHTING
             lightingData.additionalLightsColor += AnisoFabricLighting(brdfData, light, inputData, surfaceData,
                                                     specularHighlightsOff, AnisotropyData, SheenData, brdfOcclusionFactor);
     #else

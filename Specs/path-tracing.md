@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Draft |
-| Date | 2026-10-24 |
+| Date | 2026-10-31 |
 | Related Specs | [Ray Tracing Scene](ray-tracing-scene.md), [Inline Ray Tracing](inline-ray-tracing.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md) |
 
 ## Rendering Modes
@@ -54,7 +54,7 @@ Use existing renderers, meshes, materials and property overrides with their orig
 | Model | Contract |
 |---|---|
 | Lit | Surface reflection, coat, transmission and absorption where authored. |
-| Fabric | Specular/cloth response with tangent-based Silk anisotropy and authored sheen. |
+| Fabric | Specular/cloth response with tangent-based Silk anisotropy and authored sheen. Fiber materials use the Silk response across their fiber direction; the raster fiber bend is not traced. |
 | Skin | Dual-lobe reflection and closed-volume subsurface scattering. |
 | Hair | Card geometry with fiber-direction scattering and card-volume color semantics. |
 | Unlit | Presentation color and emission, without a lit scattering model. |

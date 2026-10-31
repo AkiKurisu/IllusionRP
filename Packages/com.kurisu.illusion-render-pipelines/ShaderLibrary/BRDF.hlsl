@@ -141,6 +141,20 @@ half DV_SmithJointGGXAniso_Patch(half TdotH, half BdotH, float NdotH,
                                        roughnessT, roughnessB, partLambdaV);
 }
 
+// [Heidrich and Seidel 1999, "Realistic, Hardware-accelerated Shading and Lighting"]
+// Specular cone of a fiber along T, bent toward N by shift; the exponent follows the GGX roughness.
+// Includes NdotL; not energy normalized.
+float DV_FiberCone(float3 T, float3 N, float3 L, float3 V, float NdotL, float NdotV, float shift, float roughness)
+{
+    T = ShiftTangent(T, N, shift);
+    float TdotL = dot(T, L);
+    float TdotV = dot(T, V);
+    float cone = saturate(sqrt(saturate(1.0 - TdotL * TdotL)) * sqrt(saturate(1.0 - TdotV * TdotV)) - TdotL * TdotV);
+    float n = max(2.0 / max(roughness * roughness, 1e-4) - 2.0, 1e-4);
+    float D = (n + 1.0) * INV_FOUR_PI * 0.25 * PositivePow(cone, n) * NdotL;
+    return D * V_SmithJointGGX(NdotL, NdotV, roughness);
+}
+
 // [Portsmouth et al. 2025, "EON: A Practical Energy-Preserving Rough Diffuse BRDF"]
 half3 Diffuse_EON_NoPI(half3 DiffuseColor, half Roughness, half NoV, half NoL, half VoL)
 {

@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Add a `Fiber` choice to Fabric anisotropy: a highlight cone around a fiber direction, bent toward the normal by a shift, for satin-like cloth. Graphs drive it through the new `Fiber Direction` and `Fiber Shift` ports. Path tracing renders it as Silk anisotropy across the fiber.
 - Add a `Rim Power` input to the Hair template for the exponent of its grazing-angle rim light. It defaults to the previous fixed exponent, so existing hair keeps its look.
 - Add `Auto Generate Evaluators` to `Project Settings > Graphics > IllusionRP`. Turn it off to stop inline evaluators regenerating while you edit shaders, then run `Tools > IllusionRP > Generate Inline Evaluators` when you are ready.
 
 ### Changed
 
+- Replace the Fabric `Anisotropy Surface` toggle with an `Anisotropy` option (`Off`, `GGX`, `Fiber`). Materials that enabled the toggle must select `GGX`.
 - Light hair cards with direct diffuse light on both faces, so the side of a card turned away from the light is no longer black.
 - Write IllusionRP, UnityRHI and native plugin logs under one prefix per product and keep routine lifecycle and timing messages out of the Console. Turn on `Verbose Logging` in `Project Settings > Graphics > IllusionRP`, or set the `r.verboselog` runtime variable, to see them.
 

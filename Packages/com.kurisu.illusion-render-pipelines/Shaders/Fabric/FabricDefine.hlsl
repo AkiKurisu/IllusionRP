@@ -7,6 +7,7 @@ struct AnisotropyData
     half3 T;
     half3 B;
     half Anisotropy;
+    half Shift;
 };
 
 struct SheenData
