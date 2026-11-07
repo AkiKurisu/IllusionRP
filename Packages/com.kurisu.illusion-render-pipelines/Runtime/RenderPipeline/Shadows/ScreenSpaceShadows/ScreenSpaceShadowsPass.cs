@@ -301,8 +301,14 @@ namespace Illusion.Rendering.Shadows
         {
             var pcssParams = VolumeManager.instance.stack.GetComponent<PercentageCloserSoftShadows>();
             var rendererData = data.RendererData;
-            
-            if (data.ShadowData.supportsSoftShadows)
+            var slices = rendererData.ShadowData.MainSlices;
+            int cascadeCount = Math.Min(slices.Length,
+                Math.Min(data.ShadowData.mainLightShadowCascadesCount, IllusionRendererData.ShadowCascadeCount));
+            Array.Clear(data.CascadeOffsetScales, 0, data.CascadeOffsetScales.Length);
+            Array.Clear(data.DirLightPcssParams0, 0, data.DirLightPcssParams0.Length);
+            Array.Clear(data.DirLightPcssParams1, 0, data.DirLightPcssParams1.Length);
+
+            if (cascadeCount > 0)
             {
                 float renderTargetWidth = data.ShadowData.mainLightShadowmapWidth;
                 float renderTargetHeight = data.ShadowData.mainLightShadowCascadesCount == 2
@@ -310,8 +316,7 @@ namespace Illusion.Rendering.Shadows
                     : data.ShadowData.mainLightShadowmapHeight;
                 float invShadowAtlasWidth = 1.0f / renderTargetWidth;
                 float invShadowAtlasHeight = 1.0f / renderTargetHeight;
-                var slices = rendererData.ShadowData.MainSlices;
-                for (int i = 0; i < data.CascadeOffsetScales.Length; i++)
+                for (int i = 0; i < cascadeCount; i++)
                 {
                     data.CascadeOffsetScales[i] = new Vector4(
                         slices[i].offsetX * invShadowAtlasWidth,
@@ -319,9 +324,9 @@ namespace Illusion.Rendering.Shadows
                         slices[i].resolution * invShadowAtlasWidth,
                         slices[i].resolution * invShadowAtlasHeight);
                 }
-
-                cmd.SetGlobalVectorArray(ShaderProperties.CascadeOffsetScales, data.CascadeOffsetScales);
             }
+
+            cmd.SetGlobalVectorArray(ShaderProperties.CascadeOffsetScales, data.CascadeOffsetScales);
 
             cmd.SetGlobalFloat(ShaderProperties.FindBlockerSampleCount, pcssParams.findBlockerSampleCount.value);
             cmd.SetGlobalFloat(ShaderProperties.PcfSampleCount, pcssParams.pcfSampleCount.value);
@@ -344,7 +349,7 @@ namespace Illusion.Rendering.Shadows
             float halfMinFilterAngularDiameterTangent = Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(minFilterAngularDiameter, lightAngularDiameter));
             float halfBlockerSearchAngularDiameterTangent = Mathf.Tan(0.5f * Mathf.Deg2Rad * Mathf.Max(pcssParams.blockerSearchAngularDiameter.value, lightAngularDiameter));
 
-            for (int i = 0; i < IllusionRendererData.ShadowCascadeCount; ++i)
+            for (int i = 0; i < cascadeCount; ++i)
             {
                 float shadowmapDepth2RadialScale = Mathf.Abs(rendererData.ShadowData.DeviceProjections[i].m00 / rendererData.ShadowData.DeviceProjections[i].m22);
                 

@@ -40,6 +40,14 @@ float PCF(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 shadowCoo
 float SampleShadowmapPCSS(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), float4 shadowCoord,
     float4 shadowMapSize, float2 screenCoord)
 {
+    int cascadeIndex = (int)shadowCoord.w;
+    if (cascadeIndex >= MAX_SHADOW_CASCADES)
+        return 1.0;
+
+    float2 shadowmapInAtlasScale = _CascadeOffsetScales[cascadeIndex].zw;
+    if (any(shadowmapInAtlasScale <= 0.0))
+        return 1.0;
+
     UNITY_BRANCH
     if (_UsePenumbraMask > 0.5)
     {
@@ -50,11 +58,9 @@ float SampleShadowmapPCSS(TEXTURE2D_SHADOW_PARAM(ShadowMap, sampler_ShadowMap), 
             return SAMPLE_TEXTURE2D_SHADOW(ShadowMap, sampler_ShadowMap, shadowCoord.xyz);
     }
 
-    int cascadeIndex = (int)shadowCoord.w;
     float receiverDepth = shadowCoord.z;
 
     float2 shadowmapInAtlasOffset = _CascadeOffsetScales[cascadeIndex].xy;
-    float2 shadowmapInAtlasScale = _CascadeOffsetScales[cascadeIndex].zw;
     float2 minCoord = shadowmapInAtlasOffset;
     float2 maxCoord = shadowmapInAtlasOffset + shadowmapInAtlasScale;
     float texelSize = shadowMapSize.x / shadowmapInAtlasScale.x;

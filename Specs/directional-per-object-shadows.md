@@ -37,6 +37,8 @@ Overflow reduces lower-priority allocations rather than exceeding the atlas. Gua
 
 Bias derives from the selected source and actual tile scale. Soft-shadow quality follows the source and pipeline support, independently of whether URP allocated an atlas for it. PCSS runs in screen-space production when enabled; direct material sampling uses PCF.
 
+An absent standard main atlas contributes neutral visibility, clears its PCSS parameters for the current camera, and does not disable per-object or contact shadows. Only active cascades contribute projection and atlas parameters.
+
 Shared comparison samplers are valid only when they match the atlas's actual filtering and addressing. Platforms that force point-filtered shadow allocation retain matching sampling rather than inheriting a linear sampler.
 
 ## Main atlas caster split
