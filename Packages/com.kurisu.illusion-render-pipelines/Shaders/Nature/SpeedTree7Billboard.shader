@@ -83,6 +83,9 @@ Shader "Universal Render Pipeline/Hybrid SpeedTree7 Billboard"
 
             HLSLPROGRAM
 
+            #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
+            #pragma multi_compile_vertex _ _SHADOW_BIAS_FRAGMENT
+
             #pragma vertex SpeedTree7VertDepth
             #pragma fragment SpeedTree7FragDepth
 

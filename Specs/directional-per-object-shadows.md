@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-06 |
+| Date | 2026-11-07 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Transparency](transparency.md), [World Scale](world-scale.md) |
 
 Per-object shadows add a camera-local quality layer for registered casters on top of URP shadowing. One directional source owns the layer; screen-space production and material sampling preserve that source's identity.
@@ -23,6 +23,10 @@ Active caster registrations supply renderer groups. Registration is shared, whil
 
 Culling and priority favor important visible casters within the atlas capacity. Projection uses the source direction and [world-scale](world-scale.md) distance convention.
 
+## Bias
+
+Per-object receivers follow the shared [surface shadow-bias contract](materials-and-shaders.md#shadow-bias). Their normal offset uses the actual allocated projection and resolution, independently of standard-atlas availability. Caster bias parameters and receiver coefficients are distinct; disabling receiver bias preserves caster behavior. Screen-space production and direct atlas sampling apply the same offset once.
+
 ## Atlas allocation
 
 Fixed allocation gives casters equal tiles. Adaptive allocation distributes bounded atlas space according to projected coverage and priority. Identical inputs produce stable allocation; quality increases respond promptly while decreases use hysteresis to avoid oscillation.
@@ -32,6 +36,8 @@ Overflow reduces lower-priority allocations rather than exceeding the atlas. Gua
 ## Producer parameters
 
 Bias derives from the selected source and actual tile scale. Soft-shadow quality follows the source and pipeline support, independently of whether URP allocated an atlas for it. PCSS runs in screen-space production when enabled; direct material sampling uses PCF.
+
+An absent standard main atlas contributes neutral visibility, clears its PCSS parameters for the current camera, and does not disable per-object or contact shadows. Only active cascades contribute projection and atlas parameters.
 
 Shared comparison samplers are valid only when they match the atlas's actual filtering and addressing. Platforms that force point-filtered shadow allocation retain matching sampling rather than inheriting a linear sampler.
 

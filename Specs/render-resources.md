@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-11-07 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Area Lights](area-lights.md), [Ray Tracing Scene](ray-tracing-scene.md) |
 
 IllusionRP resources connect producers, material consumers and temporal rendering. [Rendering Pipeline](rendering-pipeline.md) owns frame order; feature specifications own the meaning of their outputs.
@@ -45,6 +45,8 @@ The renderer resource asset references the shaders, lookup textures and meshes r
 | PRT publication | Committed relighting → material sampling; transport residency and camera publication are separate lifetimes. See [PRT](precomputed-radiance-transfer.md). |
 
 Producer and consumer must agree on resource meaning, coordinate space and encoding. Internal scratch formats and buffer layouts belong to source code, not this specification.
+
+Host shadow state is read through a compile-time typed bridge within its owning assembly. Per-camera receiver updates and PRT shadow reuse do not perform reflective member access or boxed value reads. Shadow arrays remain host-owned and are read without copying.
 
 ## Depth
 

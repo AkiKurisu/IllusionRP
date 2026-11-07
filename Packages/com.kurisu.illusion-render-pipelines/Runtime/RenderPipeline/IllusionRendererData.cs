@@ -366,14 +366,7 @@ namespace Illusion.Rendering
 
         public const int ShadowCascadeCount = 4;
 
-        public readonly Matrix4x4[] MainLightShadowDeviceProjectionMatrixs = new Matrix4x4[ShadowCascadeCount];
-
-        public readonly Vector4[] MainLightShadowDeviceProjectionVectors = new Vector4[ShadowCascadeCount];
-        
-        // Keep a zero no-op entry for positions outside all shadow cascades.
-        public readonly Vector4[] MainLightShadowCascadeBiases = new Vector4[ShadowCascadeCount + 1];
-
-        public ShadowSliceData[] MainLightShadowSliceData { get; private set; }
+        internal readonly ShadowReceiverData ShadowData = new();
         
         public RTHandle DebugExposureTexture;
 
@@ -674,7 +667,6 @@ namespace Illusion.Rendering
             _currentCameraState.BeginFrame();
             _currentCameraState.IsFirstFrame = false;
             PruneStaleCameraStates();
-            UpdateShadowData(cameraData, lightData, shadowData);
             UpdateRenderTextures(cameraData);
             UpdateDebugSettings(cameraData);
             UpdateVolumeParameters();
@@ -725,7 +717,6 @@ namespace Illusion.Rendering
 
         internal void PushGlobalBuffers(RasterCommandBuffer cmd, UniversalCameraData cameraData, UniversalLightData lightData, bool yFlip)
         {
-            PushShadowData(cmd);
             PrepareGlobalVariables(cameraData, lightData, yFlip);
             ConstantBuffer.PushGlobal(cmd, _shaderVariablesGlobal, IllusionShaderProperties.ShaderVariablesGlobal);
         }
@@ -777,11 +768,6 @@ namespace Illusion.Rendering
             _shaderVariablesGlobal.IndirectDiffuseLightingLayers = layers;
         }
 
-        private void PushShadowData(RasterCommandBuffer cmd)
-        {
-            cmd.SetGlobalVectorArray(IllusionShaderProperties._MainLightShadowCascadeBiases, MainLightShadowCascadeBiases);
-        }
-        
         private void GetMainLightIndirectIntensityAndRenderingLayers(UniversalLightData lightData,
             out float intensity, out uint renderingLayers)
         {
@@ -809,37 +795,6 @@ namespace Illusion.Rendering
             else
             {
                 IsLightingActive = true;
-            }
-        }
-
-        private void UpdateShadowData(UniversalCameraData cameraData, UniversalLightData lightData, UniversalShadowData shadowData)
-        {
-            Array.Clear(MainLightShadowCascadeBiases, 0, MainLightShadowCascadeBiases.Length);
-
-            var mainLightShadowCasterPass = UniversalRenderingUtility.GetMainLightShadowCasterPass(cameraData.renderer);
-            MainLightShadowSliceData = UniversalRenderingUtility.GetMainLightShadowSliceData(mainLightShadowCasterPass);
-            
-            // deviceProjection will potentially inverse-Z
-            for (int i = 0; i < MainLightShadowSliceData.Length && i < ShadowCascadeCount; ++i)
-            {
-                MainLightShadowDeviceProjectionMatrixs[i] = GL.GetGPUProjectionMatrix(MainLightShadowSliceData[i].projectionMatrix, false);
-                MainLightShadowDeviceProjectionVectors[i] = new Vector4(MainLightShadowDeviceProjectionMatrixs[i].m00, MainLightShadowDeviceProjectionMatrixs[i].m11,
-                    MainLightShadowDeviceProjectionMatrixs[i].m22, MainLightShadowDeviceProjectionMatrixs[i].m23);
-            }
-            
-            int shadowLightIndex = lightData.mainLightIndex;
-            if (shadowLightIndex == -1)
-                return;
-
-            if (shadowData.bias == null || shadowLightIndex >= shadowData.bias.Count)
-                return;
-
-            VisibleLight shadowLight = lightData.visibleLights[shadowLightIndex];
-            int cascadeCount = Math.Min(shadowData.mainLightShadowCascadesCount,
-                Math.Min(MainLightShadowSliceData.Length, ShadowCascadeCount));
-            for (int i = 0; i < cascadeCount; ++i)
-            {
-                MainLightShadowCascadeBiases[i] = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, shadowData, MainLightShadowSliceData[i].projectionMatrix, MainLightShadowSliceData[i].resolution);
             }
         }
 

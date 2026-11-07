@@ -20,9 +20,8 @@
 
 // Properties
 float4 _MainLightShadowCascadeBiases[MAX_SHADOW_CASCADES + 1];
+float4 _AdditionalLightShadowReceiverBiases[MAX_VISIBLE_LIGHTS];
 
-// Ref: ApplyShadowBias
-// Should be used in fragment shader instead of vertex shader
 float3 IllusionApplyShadowBias(float3 positionWS, float3 normalWS, float3 lightDirection)
 {
 #ifdef _MAIN_LIGHT_SHADOWS_CASCADE
@@ -31,15 +30,7 @@ float3 IllusionApplyShadowBias(float3 positionWS, float3 normalWS, float3 lightD
     half cascadeIndex = half(0.0);
 #endif
 
-    float4 shadowBias = _MainLightShadowCascadeBiases[cascadeIndex];
-    
-    float invNdotL = 1.0 - saturate(dot(lightDirection, normalWS));
-    float scale = -invNdotL * shadowBias.y;
-
-    // In fragment shadow bias, bias direction is reversed
-    positionWS = -lightDirection * shadowBias.xxx + positionWS;
-    positionWS = normalWS * scale.xxx + positionWS;
-    return positionWS;
+    return positionWS + EvalShadow_NormalBiasOrtho(_MainLightShadowCascadeBiases[cascadeIndex].x, 1.0, normalWS);
 }
 
 float4 IllusionTransformWorldToShadowCoord(float3 positionWS)
@@ -137,7 +128,7 @@ half IllusionMainLightShadow(float4 shadowCoord, float3 positionWS, float3 norma
 #endif
 
 #ifdef MAIN_LIGHT_CALCULATE_SHADOWS
-    half shadowFade = GetMainLightShadowFade(biasPositionWS);
+    half shadowFade = GetMainLightShadowFade(positionWS);
 #else
     half shadowFade = half(1.0);
 #endif

@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.3 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-11-07 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md) |
 
 PRT provides diffuse indirect lighting for fixed baked geometry and materials under changing lights and environment. Baking traces transport with hardware ray tracing; runtime raster/compute relighting does not require it. Probe interpolation and patch averaging are explicit approximations.
@@ -41,6 +41,8 @@ Relighting selects world-space lights against each sector's geometry bounds, not
 Lighting changes and visibility changes are tracked independently. Color changes retain valid visibility; light identity, geometry of the light, shadow settings and layers invalidate incompatible cached visibility. Cache entries cannot migrate accidentally between lights after reordering.
 
 PRT reuses existing URP shadow coverage and never renders its own shadow maps. A compatible covered sample refreshes visibility. Outside coverage, a valid sample for the same light state remains usable; samples carry no age. Missing coverage uses an explicitly unknown, unoccluded approximation for that evaluation without promoting it to valid cached visibility. Unknown coverage does not block publication.
+
+Surface shadow queries use the same [receiver normal-bias contract](materials-and-shaders.md#shadow-bias) and source settings as direct lighting, calculated from the reused shadow face's actual projection and resolution. Orthographic and perspective faces use their respective distance scaling; caster depth bias is not reapplied at the receiver.
 
 Geometry and surface materials remain fixed by the bake. Runtime observation covers lights, environment, probe settings and existing shadow coverage; geometry or material changes require rebaking.
 

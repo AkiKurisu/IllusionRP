@@ -139,6 +139,7 @@ Shader "Universal Render Pipeline/Hybrid SpeedTree7"
 
             // This is used during shadow map generation to differentiate between directional and punctual light shadows, as they use different formulas to apply Normal Bias
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
+            #pragma multi_compile_vertex _ _SHADOW_BIAS_FRAGMENT
 
             #include "SpeedTree7Input.hlsl"
             #include "SpeedTree7CommonPasses.hlsl"

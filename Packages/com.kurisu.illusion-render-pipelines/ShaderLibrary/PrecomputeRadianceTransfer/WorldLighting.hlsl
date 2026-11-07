@@ -2,6 +2,7 @@
 #define PRT_WORLD_LIGHTING_INCLUDED
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Shadow/ShadowReceiverBias.hlsl"
 
 struct PRTWorldLight
 {
@@ -48,15 +49,15 @@ void PRTWorldStat(uint index)
         InterlockedAdd(_PRTWorldLightingStats[index], 1);
 }
 
-bool PRTWorldSampleFace(PRTWorldShadowFace face, float3 positionWS, float3 normalWS, float3 direction, out float visibility)
+bool PRTWorldSampleFace(PRTWorldShadowFace face, float3 positionWS, float3 normalWS, float distanceScale, out float visibility)
 {
     visibility = 0;
     if (face.sphere.w > 0 && dot(positionWS - face.sphere.xyz, positionWS - face.sphere.xyz) >= face.sphere.w)
         return false;
     if (face.receiverBias.z != 0)
     {
-        float scale = -(1 - saturate(dot(direction, normalWS))) * face.receiverBias.y;
-        positionWS += -direction * face.receiverBias.x + normalWS * scale;
+        positionWS += EvalShadow_NormalBiasProj(face.receiverBias.x, 1.0, normalWS,
+            face.receiverBias.y != 0 ? distanceScale : 1.0);
     }
     float4 projected = mul(face.worldToShadow, float4(positionWS, 1));
     if (!all(isfinite(projected)) || projected.w <= 0) return false;
@@ -70,7 +71,7 @@ bool PRTWorldSampleFace(PRTWorldShadowFace face, float3 positionWS, float3 norma
     return isfinite(visibility);
 }
 
-float PRTWorldVisibility(PRTWorldLight light, uint surfelIndex, float3 positionWS, float3 normalWS, float3 direction)
+float PRTWorldVisibility(PRTWorldLight light, uint surfelIndex, float3 positionWS, float3 normalWS, float lightDistance)
 {
     PRTWorldStat(0);
     uint index = light.cacheOffset + surfelIndex;
@@ -78,7 +79,7 @@ float PRTWorldVisibility(PRTWorldLight light, uint surfelIndex, float3 positionW
     {
         PRTWorldShadowFace face = _PRTWorldShadowFaces[light.faceOffset + i];
         float visibility;
-        if (!PRTWorldSampleFace(face, positionWS, normalWS, direction, visibility)) continue;
+        if (!PRTWorldSampleFace(face, positionWS, normalWS, lightDistance, visibility)) continue;
         visibility = saturate(visibility);
         _PRTWorldShadowCache[index] = (light.visibilityEpoch << 8) | uint(round(visibility * 255.0));
         PRTWorldStat(4);
@@ -114,7 +115,7 @@ float3 EvaluatePRTWorldLighting(float3 position, float3 normal, uint renderingLa
         float visibility = 1;
         if ((light.flags & 1u) != 0)
         {
-            visibility = PRTWorldVisibility(light, surfelIndex, position, normal, direction);
+            visibility = PRTWorldVisibility(light, surfelIndex, position, normal, sqrt(distanceSqr));
             visibility = lerp(1, visibility, saturate(light.colorShadowStrength.w));
         }
         lighting += light.colorShadowStrength.rgb * (cosine * attenuation * visibility);
