@@ -310,7 +310,7 @@ namespace Illusion.Rendering.Shadows
                     : data.ShadowData.mainLightShadowmapHeight;
                 float invShadowAtlasWidth = 1.0f / renderTargetWidth;
                 float invShadowAtlasHeight = 1.0f / renderTargetHeight;
-                var slices = rendererData.MainLightShadowSliceData;
+                var slices = rendererData.ShadowData.MainSlices;
                 for (int i = 0; i < data.CascadeOffsetScales.Length; i++)
                 {
                     data.CascadeOffsetScales[i] = new Vector4(
@@ -346,7 +346,7 @@ namespace Illusion.Rendering.Shadows
 
             for (int i = 0; i < IllusionRendererData.ShadowCascadeCount; ++i)
             {
-                float shadowmapDepth2RadialScale = Mathf.Abs(rendererData.MainLightShadowDeviceProjectionMatrixs[i].m00 / rendererData.MainLightShadowDeviceProjectionMatrixs[i].m22);
+                float shadowmapDepth2RadialScale = Mathf.Abs(rendererData.ShadowData.DeviceProjections[i].m00 / rendererData.ShadowData.DeviceProjections[i].m22);
                 
                 // Reuse arrays from data
                 data.DirLightPcssParams0[i].x = dirlightDepth2Radius * shadowmapDepth2RadialScale;
@@ -363,7 +363,7 @@ namespace Illusion.Rendering.Shadows
 
             cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssParams0, data.DirLightPcssParams0);
             cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssParams1, data.DirLightPcssParams1);
-            cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssProjs, rendererData.MainLightShadowDeviceProjectionVectors);
+            cmd.SetGlobalVectorArray(ShaderProperties.DirLightPcssProjs, rendererData.ShadowData.DeviceProjectionVectors);
         }
         
         private static class ShaderProperties

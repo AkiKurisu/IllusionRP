@@ -642,7 +642,7 @@ namespace Illusion.Rendering.Shadows
                 VisibleLight shadowLight = data.LightData.VisibleLight;
                 Vector4 shadowBias = GetDirectionalShadowBias(ref shadowLight, data.ShadowBias,
                     data.SoftShadowQuality, projectionMatrix, allocation.Resolution);
-                data.ShadowBiases[i] = shadowBias;
+                data.ShadowBiases[i] = ShadowReceiverData.GetBias(shadowLight.light, projectionMatrix, allocation.Resolution, false);
                 ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
 
                 DrawShadow(cmd, data, casterIndex, allocation.Viewport, in viewMatrix, in projectionMatrix);

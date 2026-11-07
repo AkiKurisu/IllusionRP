@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.0 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-06 |
+| Date | 2026-11-07 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Transparency](transparency.md), [World Scale](world-scale.md) |
 
 Per-object shadows add a camera-local quality layer for registered casters on top of URP shadowing. One directional source owns the layer; screen-space production and material sampling preserve that source's identity.
@@ -22,6 +22,10 @@ Source identity and mode are established per camera even when no caster is visib
 Active caster registrations supply renderer groups. Registration is shared, while culling, allocation and history are camera-local. Eligible renderers draw their normal ShadowCaster material pass; the added atlas does not remove that pass or replace standard shadow support.
 
 Culling and priority favor important visible casters within the atlas capacity. Projection uses the source direction and [world-scale](world-scale.md) distance convention.
+
+## Bias
+
+Per-object receivers follow the shared [surface shadow-bias contract](materials-and-shaders.md#shadow-bias). Their normal offset uses the actual allocated projection and resolution, independently of standard-atlas availability. Caster bias parameters and receiver coefficients are distinct; disabling receiver bias preserves caster behavior. Screen-space production and direct atlas sampling apply the same offset once.
 
 ## Atlas allocation
 

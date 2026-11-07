@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-31 |
+| Date | 2026-11-07 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Area Lights](area-lights.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -48,6 +48,12 @@ Pass LightModes are the public boundary between shaders, renderer lists and buil
 | `DepthOnly`, motion and baking passes | URP depth, motion and lightmap requirements; none replaces Forward GBuffer. |
 
 Transparent Hybrid Lit and Complex Lit use either their main color pass or OIT, never both, and do not write Forward GBuffer. Opaque materials restore the main pass and Forward GBuffer and disable OIT. Hair intentionally uses both color owners for disjoint core/fringe coverage; see [Transparency](transparency.md#hair-fringe).
+
+## Shadow bias
+
+Receiver bias uses the same normal-offset contract for all supported shadowed surface lighting. Orthographic projections use the world-space shadow texel size; perspective projections scale that size by receiver distance to the light. Each lookup applies the offset once, before shadow projection, without changing lighting attenuation, cookies, baked visibility or distance fading. Filter quality does not multiply the normal offset. Receiver parameters are refreshed per camera after standard shadow allocation, before shadow reception, so atlas resizing and light reordering cannot reuse another frame or camera's coefficients.
+
+With receiver bias enabled, ShadowCaster vertices remain unoffset and rasterization retains its depth and slope-scale bias. Standard lights follow their pipeline or per-light normal-bias settings; depth bias does not translate the receiver along the light direction. With receiver bias disabled, standard lights retain URP caster bias. Area-light filtering retains its own receiver contract, including the absence of normal offset for EVSM.
 
 ## Forward GBuffer
 

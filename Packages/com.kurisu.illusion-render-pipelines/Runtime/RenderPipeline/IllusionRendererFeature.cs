@@ -287,6 +287,8 @@ namespace Illusion.Rendering
 
         private SetupPass _setupPass;
 
+        private ShadowDataPass _shadowDataPass;
+
         private PerObjectShadowMainLightCasterScope _mainLightCasterScope;
 
         private AdvancedTonemappingPass _advancedTonemappingPass;
@@ -419,6 +421,7 @@ namespace Illusion.Rendering
             CreateRayTracingPasses();
 
             _setupPass = new SetupPass(this, _rendererData);
+            _shadowDataPass = new ShadowDataPass(_rendererData);
             _transparentStencilVRSPass = new StencilVRSGenerationPass(IllusionRenderPassEvent.TransparentStencilVRSPass);
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
@@ -561,6 +564,7 @@ namespace Illusion.Rendering
 
             // Setup pass must run first
             renderer.EnqueuePass(_setupPass);
+            renderer.EnqueuePass(_shadowDataPass);
 
             // BeforeRendering
             renderer.EnqueuePass(_ggxAndDisneyDiffusePass);

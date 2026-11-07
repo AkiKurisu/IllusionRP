@@ -28,8 +28,6 @@ namespace UnityEngine.Rendering.Universal
         
         private static FieldInfo _activeRenderPassQueueFieldInfo;
         
-        private static FieldInfo _shadowSliceDataFieldInfo;
-
         private static FieldInfo _postProcessPassFieldInfo;
 
         private static FieldInfo _postProcessMaterialsFieldInfo;
@@ -89,22 +87,7 @@ namespace UnityEngine.Rendering.Universal
         /// <returns></returns>
         internal static MainLightShadowCasterPass GetMainLightShadowCasterPass(ScriptableRenderer sr)
         {
-            return UniversalRenderPassField<MainLightShadowCasterPass>.Get(sr);
-        }
-        
-        /// <summary>
-        /// Get UniversalRenderer main light shadow caster shadow slice data.
-        /// </summary>
-        /// <param name="pass"></param>
-        /// <returns></returns>
-        internal static ShadowSliceData[] GetMainLightShadowSliceData(MainLightShadowCasterPass pass)
-        {
-            if (_shadowSliceDataFieldInfo == null)
-            {
-                _shadowSliceDataFieldInfo = typeof(MainLightShadowCasterPass).GetField("m_CascadeSlices",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-            }
-            return _shadowSliceDataFieldInfo!.GetValue(pass) as ShadowSliceData[];
+            return sr is UniversalRenderer renderer ? renderer.MainLightShadowPass : null;
         }
         
         /// <summary>
@@ -114,7 +97,7 @@ namespace UnityEngine.Rendering.Universal
         /// <returns></returns>
         internal static AdditionalLightsShadowCasterPass GetAdditionalLightsShadowCasterPass(ScriptableRenderer sr)
         {
-            return UniversalRenderPassField<AdditionalLightsShadowCasterPass>.Get(sr);
+            return sr is UniversalRenderer renderer ? renderer.AdditionalLightsShadowPass : null;
         }
 
         /// <summary>

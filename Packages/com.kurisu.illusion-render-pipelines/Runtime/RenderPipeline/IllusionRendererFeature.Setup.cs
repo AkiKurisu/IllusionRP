@@ -9,6 +9,39 @@ namespace Illusion.Rendering
 {
     public partial class IllusionRendererFeature
     {
+        private sealed class ShadowDataPass : ScriptableRenderPass
+        {
+            private readonly IllusionRendererData _rendererData;
+
+            internal ShadowDataPass(IllusionRendererData rendererData)
+            {
+                _rendererData = rendererData;
+                renderPassEvent = RenderPassEvent.AfterRenderingShadows;
+                profilingSampler = new ProfilingSampler("Shadow Receiver Data");
+            }
+
+            private class PassData
+            {
+                internal IllusionRendererData RendererData;
+            }
+
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
+                var resources = frameData.Get<UniversalResourceData>();
+                // URP allocates this camera's shadow slices after BeforeRendering passes are recorded.
+                _rendererData.ShadowData.Update(frameData.Get<UniversalCameraData>(),
+                    frameData.Get<UniversalLightData>(), frameData.Get<UniversalShadowData>(), resources);
+                using var builder = renderGraph.AddRasterRenderPass<PassData>("Shadow Receiver Data", out var data, profilingSampler);
+                data.RendererData = _rendererData;
+                if (resources.mainShadowsTexture.IsValid()) builder.UseTexture(resources.mainShadowsTexture);
+                if (resources.additionalShadowsTexture.IsValid()) builder.UseTexture(resources.additionalShadowsTexture);
+                builder.AllowPassCulling(false);
+                builder.AllowGlobalStateModification(true);
+                builder.SetRenderFunc(static (PassData pass, RasterGraphContext context) =>
+                    pass.RendererData.ShadowData.Push(context.cmd));
+            }
+        }
+
         /// <summary>
         /// Setup pass that handles renderer configuration and setup logic.
         /// </summary>

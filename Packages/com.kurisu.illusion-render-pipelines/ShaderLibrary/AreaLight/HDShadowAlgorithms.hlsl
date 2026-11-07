@@ -89,15 +89,7 @@ float3 EvalShadow_GetTexcoordsAtlas(HDShadowData sd, float2 atlasSizeRcp, float3
     return EvalShadow_GetTexcoordsAtlas(sd, atlasSizeRcp, positionWS, ndc, perspProj);
 }
 
-float3 EvalShadow_NormalBiasOrtho(float worldTexelSize, float normalBiasFactor, float3 normalWS)
-{
-    return normalWS * normalBiasFactor * worldTexelSize;
-}
-
-float3 EvalShadow_NormalBiasProj(float worldTexelSize, float normalBiasFactor, float3 normalWS, float L_dist)
-{
-    return EvalShadow_NormalBiasOrtho(worldTexelSize, normalBiasFactor, normalWS) * L_dist;
-}
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Shadow/ShadowReceiverBias.hlsl"
 
 void EvalShadow_MinMaxCoords(HDShadowData sd, float2 texelSize, out float2 minCoord, out float2 maxCoord, int blurPassesScale = 1)
 {

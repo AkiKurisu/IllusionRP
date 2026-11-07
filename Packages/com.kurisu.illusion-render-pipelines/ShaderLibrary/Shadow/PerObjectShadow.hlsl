@@ -41,6 +41,8 @@ float4 _PerObjSceneShadowLightDirection;
 float4x4 _PerObjSceneShadowMatrices[MAX_PER_OBJECT_SHADOW_COUNT];
 float4 _PerObjSceneShadowMapRects[MAX_PER_OBJECT_SHADOW_COUNT];
 float _PerObjSceneShadowCasterIds[MAX_PER_OBJECT_SHADOW_COUNT];
+#include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/Shadow/ShadowReceiverBias.hlsl"
+
 float4 _PerObjShadowBiases[MAX_PER_OBJECT_SHADOW_COUNT];
 
 float4 _PerObjSceneShadowOffset0;
@@ -193,18 +195,9 @@ ShadowSamplingData GetMainLightPerObjectSceneShadowSamplingData(half softShadowQ
     return shadowSamplingData;
 }
 
-// Ref: ApplyShadowBias
 float3 ApplyPerObjectShadowBias(float3 positionWS, float3 normalWS, float3 lightDirection, int index)
 {
-    float4 shadowBias = _PerObjShadowBiases[index];
-    
-    float invNdotL = 1.0 - saturate(dot(lightDirection, normalWS));
-    float scale = -invNdotL * shadowBias.y;
-
-    // In fragment shadow bias, bias direction is reversed
-    positionWS = -lightDirection * shadowBias.xxx + positionWS;
-    positionWS = normalWS * scale.xxx + positionWS;
-    return positionWS;
+    return positionWS + EvalShadow_NormalBiasOrtho(_PerObjShadowBiases[index].x, 1.0, normalWS);
 }
 
 float PerObjectDirectionalShadow(float3 positionWS, float3 normalWS, half3 lightDir)

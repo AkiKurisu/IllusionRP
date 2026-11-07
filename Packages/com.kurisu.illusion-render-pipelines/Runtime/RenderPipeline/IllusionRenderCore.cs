@@ -197,6 +197,7 @@ namespace Illusion.Rendering
         public static readonly int _PrevExposureTexture = MemberNameHelpers.ShaderPropertyID();
         
         public static readonly int _MainLightShadowCascadeBiases = MemberNameHelpers.ShaderPropertyID();
+        public static readonly int _AdditionalLightShadowReceiverBiases = MemberNameHelpers.ShaderPropertyID();
 
         // Area lights
         public static readonly int _AreaLightCount = MemberNameHelpers.ShaderPropertyID();
