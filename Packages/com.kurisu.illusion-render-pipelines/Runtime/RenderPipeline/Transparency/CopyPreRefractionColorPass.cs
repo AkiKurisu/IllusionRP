@@ -33,6 +33,7 @@ namespace Illusion.Rendering
         public void Setup(bool enabled)
         {
             _enabled = enabled;
+            ConfigureInput(enabled ? ScriptableRenderPassInput.Color : ScriptableRenderPassInput.None);
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)

@@ -77,7 +77,7 @@ namespace Illusion.Rendering.Editor
         {
             LitGUI.SetMaterialKeywords(material);
 
-            SynchronizePasses(material);
+            HybridLitMaterialState.SynchronizePasses(material);
             
             int stencilRefDepth = 0;
             int stencilWriteMaskDepth = (int)IllusionStencilUsage.ForwardGBufferWriteMask;
@@ -105,28 +105,6 @@ namespace Illusion.Rendering.Editor
                 material.SetInt(IllusionShaderProperties.StencilRefDepth, stencilRefDepth);
                 material.SetInt(IllusionShaderProperties.StencilWriteMaskDepth, stencilWriteMaskDepth);
             }
-        }
-
-        public static bool SynchronizePasses(Material material)
-        {
-            if (!material.HasProperty("_Surface"))
-                return false;
-            bool transparent = (SurfaceType)material.GetFloat("_Surface") == SurfaceType.Transparent;
-            bool orderIndependent = transparent
-                && material.HasProperty(IllusionShaderProperties.OrderIndependent)
-                && Mathf.Approximately(material.GetFloat(IllusionShaderProperties.OrderIndependent), 1f);
-            bool changed = material.GetShaderPassEnabled("ForwardGBuffer") != !transparent
-                || material.GetShaderPassEnabled("OIT") != orderIndependent
-                || material.GetShaderPassEnabled("UniversalForward") != !orderIndependent
-                || material.GetShaderPassEnabled("UniversalForwardOnly") != !orderIndependent;
-            if (changed)
-            {
-                material.SetShaderPassEnabled("ForwardGBuffer", !transparent);
-                material.SetShaderPassEnabled("OIT", orderIndependent);
-                material.SetShaderPassEnabled("UniversalForward", !orderIndependent);
-                material.SetShaderPassEnabled("UniversalForwardOnly", !orderIndependent);
-            }
-            return changed;
         }
 
         // material main surface options

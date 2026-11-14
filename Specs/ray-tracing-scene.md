@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-22 |
+| Date | 2026-11-14 |
 | Related Specs | [Path Tracing](path-tracing.md), [Inline Ray Tracing](inline-ray-tracing.md), [Ray Traced Global Illumination](ray-traced-global-illumination.md), [Area Lights](area-lights.md), [Render Resources](render-resources.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
 The ray tracing scene is the acceleration structure scene that [path tracing](path-tracing.md) and [ray traced global illumination](ray-traced-global-illumination.md) trace. Both consumers see the same instances, coverage, materials, lights and lighting environment, so RTGI traces the scene that path tracing renders.
@@ -24,6 +24,10 @@ The Path Tracing Volume's participation layers and directional light angular siz
 - **Once per frame.** Each participation configuration is built at most once per frame, by whichever consumer requests it first. Its LOD selection follows that first camera.
 - **Before raster culling.** A raster camera that consumes the scene requests it before URP culls the camera, because adding skinned renderers to the acceleration structure after the camera's shadow casters are culled invalidates that culling. Path tracing cameras cull no raster shadow casters and request it while the render graph records.
 - **GPU build.** The scene's GPU build is declared as the first work of the first consumer in the frame, so every later consumer reads a complete scene.
+
+## Material inputs
+
+Scalar optical inputs are read only from scalar material properties, with property-block overrides taking precedence. Vector properties used for unrelated surface effects do not supply a physical refractive index. Materials without a scalar optical input use the model default. An authored refractive index must remain finite and positive.
 
 ## Change tracking
 

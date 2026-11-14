@@ -91,7 +91,7 @@ namespace Illusion.Rendering.PathTracing
         private static float ReadFloat(Material material, MaterialPropertyBlock block, string name, float fallback)
         {
             int id = Shader.PropertyToID(name);
-            if (!material.HasProperty(id))
+            if (!material.HasFloat(id))
                 return fallback;
             return block.HasFloat(id) ? block.GetFloat(id) : material.GetFloat(id);
         }

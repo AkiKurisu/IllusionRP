@@ -78,6 +78,23 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 				Simple:RemoveDefine:GBuffer:pragma multi_compile_local_fragment _ENVIRONMENTREFLECTIONS_OFF
 				Simple:RemoveDefine:Forward:pragma shader_feature_local_fragment _ENVIRONMENTREFLECTIONS_OFF
 				Simple:RemoveDefine:GBuffer:pragma shader_feature_local_fragment _ENVIRONMENTREFLECTIONS_OFF
+			Option:Color Pass Role:Main,Extra:Main
+				Main:RefreshOption:Forward Only
+				Extra:SetOption:Forward Only,1
+				Extra:SetPropertyOnPass:Forward:ChangeTagValue,LightMode,SRPDefaultUnlit
+			Option:Custom Lighting:false,true:false
+				true:SetDefine:Forward:ILLUSION_LIT_CUSTOM_LIGHTING
+				true:ShowPort:Forward:Custom Lighting 0
+				true:ShowPort:Forward:Custom Lighting 1
+				true:ShowPort:Forward:Custom Lighting 2
+				true:ShowPort:Forward:Custom Lighting 3
+				true:ShowPort:Forward:Custom Lighting 4
+				false,disable:RemoveDefine:Forward:ILLUSION_LIT_CUSTOM_LIGHTING
+				false,disable:HidePort:Forward:Custom Lighting 0
+				false,disable:HidePort:Forward:Custom Lighting 1
+				false,disable:HidePort:Forward:Custom Lighting 2
+				false,disable:HidePort:Forward:Custom Lighting 3
+				false,disable:HidePort:Forward:Custom Lighting 4
 			Option:Workflow:Specular,Metallic:Metallic
 				Specular:SetDefine:_SPECULAR_SETUP 1
 				Specular:ShowPort:Forward:Specular
@@ -151,9 +168,9 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 				World:SetDefine:_NORMAL_DROPOFF_WS 1
 				World:SetPortName:Forward:1,World Normal
 			Option:Forward Only:false,true:false
-				false,disable:SetPropertyOnPass:Forward:ChangeTagValue,LightMode,UniversalForward
+				false,disable?Color Pass Role=Main:SetPropertyOnPass:Forward:ChangeTagValue,LightMode,UniversalForward
 				false,disable:IncludePass:GBuffer
-				true:SetPropertyOnPass:Forward:ChangeTagValue,LightMode,UniversalForwardOnly
+				true?Color Pass Role=Main:SetPropertyOnPass:Forward:ChangeTagValue,LightMode,UniversalForwardOnly
 				true:ExcludePass:GBuffer
 			Option:Transmission:false,true:false
 				true:SetOption:Forward Only,1
@@ -994,6 +1011,13 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 				float RefractionIndex = /*ase_frag_out:Refraction Index;Float;13;-1;_RefractionIndex*/1/*end*/;
 				float3 Transmission = /*ase_frag_out:Transmission;Float3;14;-1;_Transmission*/1/*end*/;
 				float3 Translucency = /*ase_frag_out:Translucency;Float3;15;-1;_Translucency*/1/*end*/;
+				#if defined(ILLUSION_LIT_CUSTOM_LIGHTING)
+				float4 CustomLighting0 = /*ase_frag_out:Custom Lighting 0;Float4;43;-1;_CustomLighting0*/0/*end*/;
+				float4 CustomLighting1 = /*ase_frag_out:Custom Lighting 1;Float4;44;-1;_CustomLighting1*/0/*end*/;
+				float4 CustomLighting2 = /*ase_frag_out:Custom Lighting 2;Float4;45;-1;_CustomLighting2*/0/*end*/;
+				float4 CustomLighting3 = /*ase_frag_out:Custom Lighting 3;Float4;46;-1;_CustomLighting3*/0/*end*/;
+				float4 CustomLighting4 = /*ase_frag_out:Custom Lighting 4;Float4;47;-1;_CustomLighting4*/0/*end*/;
+				#endif
 
 				#if defined( ASE_DEPTH_WRITE_ON )
 					float DeviceDepth = /*ase_frag_out:Depth;Float;17;-1;_DepthValue*/ClipPos.z/*end*/;
@@ -1104,7 +1128,11 @@ Shader /*ase_name*/ "Hidden/Universal/Hybrid Lit" /*end*/
 				#ifdef ASE_LIGHTING_SIMPLE
 					half4 color = UniversalFragmentBlinnPhong( inputData, surfaceData);
 				#else
-					half4 color = UniversalFragmentPBR( inputData, surfaceData);
+					half4 color = UniversalFragmentPBR(inputData, surfaceData
+					#if defined(ILLUSION_LIT_CUSTOM_LIGHTING)
+						, float4x4(CustomLighting0, CustomLighting1, CustomLighting2, CustomLighting3), CustomLighting4
+					#endif
+					);
 				#endif
 
 				#ifdef ASE_TRANSMISSION

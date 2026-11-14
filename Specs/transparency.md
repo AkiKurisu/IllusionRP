@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-11-14 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Render Resources](render-resources.md), [Materials and Shaders](materials-and-shaders.md), [Water](water.md) |
 
 IllusionRP preserves URP conventional transparency and adds depth, refraction, transparent reflections and weighted blended OIT around it. These are coordinated producer chains, not an exact global transparency sorter.
@@ -73,3 +73,5 @@ This mitigates OIT bleed-through but blends every passing conventional pixel aga
 ## Limitations
 
 Refraction contains neither skybox nor previous transparent draws. SSR is limited to on-screen opaque hit geometry and historical color, so motion and disocclusion can artifact. Multiple water layers share the nearest surface's reflection. High alpha, intersecting media, refraction and exact cross-owner ordering are not guaranteed by OIT or overdraw.
+
+Ordered multi-pass transparency has no material-specific overdraw bypass and is outside the supported material paths.

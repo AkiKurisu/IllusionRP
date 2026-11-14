@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.4.3 |
+| Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-10-18 |
+| Date | 2026-11-14 |
 | Related Specs | [Materials and Shaders](materials-and-shaders.md), [Shader Variant Stripping](shader-variant-stripping.md) |
 
 ASE authoring separates reusable rendering contracts from material inputs. Changes must reach both their source assets and generated shader output without replacing authored graph intent.
@@ -24,6 +24,10 @@ Direct edits to generated code are overwritten. Implement changes in the owning 
 ## Templates and functions
 
 The package supplies Lit, Unlit, Skin, Hair, Fabric and Water templates. Templates are also application authoring interfaces: their ports, options, properties and passes must remain meaningful for external graphs. Shared functions preserve asset identity so referencing graphs resolve the intended source.
+
+Default graph export preserves authored subshader culling. Per-pass overrides belong to explicit material-family choices.
+
+Lit custom-lighting inputs belong to the forward color pass. Auxiliary and path-tracing passes keep their own surface contracts. The color-pass role selects a main or extra native forward pass. Changing that role must update the generated LightMode. A hand-written composition shader may reuse generated passes while their ASE graphs remain the source of truth. Supported composition boundaries follow [Materials and Shaders](materials-and-shaders.md#pass-contract).
 
 ## Impact
 

@@ -523,10 +523,13 @@ namespace Illusion.Rendering.Editor
                 if (!File.Exists(physical))
                     continue;
                 string text = File.ReadAllText(physical);
-                if (!s_PathTracingTag.IsMatch(text))
+                if (!s_PathTracingTag.IsMatch(text) && !text.Contains("UsePass"))
                     continue;
                 var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
                 if (!shader)
+                    continue;
+                if (!s_PathTracingTag.IsMatch(text) && !Enumerable.Range(0, shader.passCount)
+                    .Any(i => shader.FindPassTagValue(i, new UnityEngine.Rendering.ShaderTagId("LightMode")).name == "PathTracing"))
                     continue;
                 PassSource pass = ExtractPass(text);
                 if (pass == null)
@@ -538,12 +541,39 @@ namespace Illusion.Rendering.Editor
             return passes.OrderBy(p => p.Path, StringComparer.Ordinal).ToList();
         }
 
-        private static PassSource ExtractPass(string text)
+        private static ShaderCodePassNode ResolvePathTracingPass(string text, string passName, HashSet<string> references)
         {
             var shader = ShaderSource.ParseShaderLab(text);
-            var selected = shader.SubShaders.SelectMany(s => s.Passes).OfType<ShaderCodePassNode>()
-                .FirstOrDefault(p => p.Commands.OfType<ShaderLabCommandTagsNode>()
-                    .Any(t => t.Tags.TryGetValue("LightMode", out string mode) && mode == "PathTracing"));
+            foreach (var candidate in shader.SubShaders.SelectMany(s => s.Passes))
+            {
+                if (candidate is ShaderCodePassNode code)
+                {
+                    if (passName != null && !code.Commands.OfType<ShaderLabCommandNameNode>()
+                            .Any(n => string.Equals(n.Name, passName, StringComparison.OrdinalIgnoreCase))) continue;
+                    if (code.Commands.OfType<ShaderLabCommandTagsNode>()
+                        .Any(t => t.Tags.TryGetValue("LightMode", out string mode) && mode == "PathTracing")) return code;
+                }
+                else if (candidate is ShaderUsePassNode use)
+                {
+                    int separator = use.PassName.LastIndexOf('/');
+                    if (separator < 0) continue;
+                    string referencedName = use.PassName.Substring(separator + 1);
+                    if (passName != null && !string.Equals(referencedName, passName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!references.Add(use.PassName)) continue;
+                    var referencedShader = Shader.Find(use.PassName.Substring(0, separator));
+                    string path = referencedShader ? AssetDatabase.GetAssetPath(referencedShader) : "";
+                    string physical = path.Length > 0 ? FileUtil.GetPhysicalPath(path) : "";
+                    if (!File.Exists(physical)) continue;
+                    var resolved = ResolvePathTracingPass(File.ReadAllText(physical), referencedName, references);
+                    if (resolved != null) return resolved;
+                }
+            }
+            return null;
+        }
+
+        private static PassSource ExtractPass(string text)
+        {
+            var selected = ResolvePathTracingPass(text, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
             if (selected?.ProgramBlock == null) return null;
             var pass = new PassSource { Source = selected.ProgramBlock.Value.FullCode.Replace("#include_with_pragmas", "#include") };
             foreach (Match pragma in s_KeywordPragma.Matches(pass.Source))

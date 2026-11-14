@@ -5,6 +5,18 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2026-11-14
+
+### Added
+
+- Add opt-in custom Lit lighting and native extra color-pass authoring.
+- Share material pass synchronization with runtime editors.
+
+### Fixed
+
+- Support reused passes, helper resource parameters and anisotropic samplers in inline evaluators.
+- Fix optical input types, refraction color requirements and destroyed shadow materials.
+
 ## [1.4.4] - 2026-11-01
 
 ### Added
