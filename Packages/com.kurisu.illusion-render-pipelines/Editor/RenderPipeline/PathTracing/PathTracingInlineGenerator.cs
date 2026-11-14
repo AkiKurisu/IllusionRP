@@ -39,6 +39,7 @@ namespace Illusion.Rendering.Editor
         {
             public Shader Shader;
             public string Path;
+            public string OriginPath;
             public string Source;
             public List<string[]> KeywordSets = new();
             public HashSet<string> Keywords = new();
@@ -104,7 +105,7 @@ namespace Illusion.Rendering.Editor
                     {
                         var unit = new GeneratedUnit { Pass = pass, Keywords = keywords, Namespace = $"PathTracingInlineUnit{units.Count}" };
                         units.Add(unit);
-                        unit.Key = Hash(cache.Version + "\n" + pass.Path + "\n" + string.Join(" ", keywords) + "\n" + pass.Source);
+                        unit.Key = Hash(cache.Version + "\n" + pass.Path + "\n" + pass.OriginPath + "\n" + string.Join(" ", keywords) + "\n" + pass.Source);
                         if (cache.TryGet(unit.Key, out GeneratorCache.Entry cached))
                         {
                             unit.Unit = cached.ToUnit(unit.Namespace);
@@ -244,8 +245,9 @@ namespace Illusion.Rendering.Editor
                 source.Append("#define ").Append(keyword).Append(" 1\n");
             source.Append(unit.Pass.Source).Append('\n').Append(StandardCoverageProbe).Append(" PATH_TRACING_STANDARD_COVERAGE\n");
 
-            DxcCompiler.Result result = dxc.Preprocess(source.ToString(), unit.Pass.Path, args);
-            unit.Files = GeneratorCache.Dependencies(result.Output, unit.Pass.Path);
+            string origin = Path.GetFullPath(FileUtil.GetPhysicalPath(unit.Pass.OriginPath));
+            DxcCompiler.Result result = dxc.Preprocess(source.ToString(), origin, args);
+            unit.Files = GeneratorCache.Dependencies(result.Output, origin, FileUtil.GetPhysicalPath(unit.Pass.Path));
             if (!result.Succeeded || string.IsNullOrEmpty(result.Output))
             {
                 unit.Error = result.Errors;
@@ -531,7 +533,7 @@ namespace Illusion.Rendering.Editor
                 if (!s_PathTracingTag.IsMatch(text) && !Enumerable.Range(0, shader.passCount)
                     .Any(i => shader.FindPassTagValue(i, new UnityEngine.Rendering.ShaderTagId("LightMode")).name == "PathTracing"))
                     continue;
-                PassSource pass = ExtractPass(text);
+                PassSource pass = ExtractPass(text, path);
                 if (pass == null)
                     continue;
                 pass.Shader = shader;
@@ -541,7 +543,8 @@ namespace Illusion.Rendering.Editor
             return passes.OrderBy(p => p.Path, StringComparer.Ordinal).ToList();
         }
 
-        private static ShaderCodePassNode ResolvePathTracingPass(string text, string passName, HashSet<string> references)
+        private static (ShaderCodePassNode Pass, string OriginPath) ResolvePathTracingPass(
+            string text, string sourcePath, string passName, HashSet<string> references)
         {
             var shader = ShaderSource.ParseShaderLab(text);
             foreach (var candidate in shader.SubShaders.SelectMany(s => s.Passes))
@@ -551,7 +554,7 @@ namespace Illusion.Rendering.Editor
                     if (passName != null && !code.Commands.OfType<ShaderLabCommandNameNode>()
                             .Any(n => string.Equals(n.Name, passName, StringComparison.OrdinalIgnoreCase))) continue;
                     if (code.Commands.OfType<ShaderLabCommandTagsNode>()
-                        .Any(t => t.Tags.TryGetValue("LightMode", out string mode) && mode == "PathTracing")) return code;
+                        .Any(t => t.Tags.TryGetValue("LightMode", out string mode) && mode == "PathTracing")) return (code, sourcePath);
                 }
                 else if (candidate is ShaderUsePassNode use)
                 {
@@ -564,18 +567,18 @@ namespace Illusion.Rendering.Editor
                     string path = referencedShader ? AssetDatabase.GetAssetPath(referencedShader) : "";
                     string physical = path.Length > 0 ? FileUtil.GetPhysicalPath(path) : "";
                     if (!File.Exists(physical)) continue;
-                    var resolved = ResolvePathTracingPass(File.ReadAllText(physical), referencedName, references);
-                    if (resolved != null) return resolved;
+                    var resolved = ResolvePathTracingPass(File.ReadAllText(physical), path, referencedName, references);
+                    if (resolved.Pass != null) return resolved;
                 }
             }
-            return null;
+            return default;
         }
 
-        private static PassSource ExtractPass(string text)
+        private static PassSource ExtractPass(string text, string path)
         {
-            var selected = ResolvePathTracingPass(text, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-            if (selected?.ProgramBlock == null) return null;
-            var pass = new PassSource { Source = selected.ProgramBlock.Value.FullCode.Replace("#include_with_pragmas", "#include") };
+            var selected = ResolvePathTracingPass(text, path, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            if (selected.Pass?.ProgramBlock == null) return null;
+            var pass = new PassSource { OriginPath = selected.OriginPath, Source = selected.Pass.ProgramBlock.Value.FullCode.Replace("#include_with_pragmas", "#include") };
             foreach (Match pragma in s_KeywordPragma.Matches(pass.Source))
             {
                 string stage = pragma.Groups[3].Value;

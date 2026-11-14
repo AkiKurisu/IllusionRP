@@ -183,9 +183,9 @@ namespace Illusion.Rendering.Editor
             Entries = _byKey.Values.Where(e => keep.Contains(e.Key)).ToList();
         }
 
-        public static string[] Dependencies(string preprocessed, string sourcePath)
+        public static string[] Dependencies(string preprocessed, params string[] sourcePaths)
         {
-            var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var files = new HashSet<string>(sourcePaths.Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrEmpty(preprocessed))
             {
                 foreach (Match m in s_LineDirective.Matches(preprocessed))

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Support reused passes, helper resource parameters and anisotropic samplers in inline evaluators.
+- Support reused passes with source-relative includes, helper resource parameters and anisotropic samplers in inline evaluators.
 - Fix optical input types, refraction color requirements and destroyed shadow materials.
 
 ## [1.4.4] - 2026-11-01

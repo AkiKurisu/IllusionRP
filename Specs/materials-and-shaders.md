@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-11-14 |
+| Date | 2026-11-15 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Area Lights](area-lights.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -62,7 +62,7 @@ Opaque and alpha-tested ordered color materials may use an explicit `SRPDefaultU
 
 Ordered transparent compositions are not a supported material path. Native extra-pass scheduling does not resolve their ordering with OIT, and material tags do not bypass transparent overdraw.
 
-Inline material generation resolves reused PathTracing passes through their declared shader and pass names. Evaluators and keyword variants remain registered against the consuming material shader, including ordered compositions.
+Inline material generation resolves reused PathTracing passes through their declared shader and pass names. Relative includes retain the defining pass's source directory, including through chained reuse. Generation tracks both the consuming shader and resolved source dependencies. Evaluators and keyword variants remain registered against the consuming material shader, including ordered compositions.
 
 Pass synchronization preserves the ordered material's authored auxiliary-pass selection. A front-surface prepass must not occlude an earlier back-surface color pass. Such compositions omit Forward GBuffer.
 
