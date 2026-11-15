@@ -18,6 +18,18 @@
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/WetSurface.hlsl"
 #include "Packages/com.kurisu.illusion-render-pipelines/ShaderLibrary/AreaLight/AreaLightEvaluation.hlsl"
 
+#if defined(ILLUSION_LIT_CUSTOM_LIGHTING)
+    #define ILLUSION_LIT_LIGHTING_PARAMETERS , float4x4 customLightingData, float4 customLightingExtra
+    #define ILLUSION_LIT_LIGHTING_ARGUMENTS , customLightingData, customLightingExtra
+    half3 IllusionCustomDirectBRDF(BRDFData brdfData, half3 diffuseTerm, half3 specularTerm, half3 specularOcclusion,
+        half3 normalWS, half3 lightDirectionWS, half3 viewDirectionWS, half3 lightRadiance,
+        float4x4 customLightingData, float4 customLightingExtra);
+    void IllusionCustomComposeLighting(InputData inputData, SurfaceData surfaceData, BRDFData brdfData,
+        inout LightingData lightingData, float4x4 customLightingData, float4 customLightingExtra);
+#else
+    #define ILLUSION_LIT_LIGHTING_PARAMETERS
+    #define ILLUSION_LIT_LIGHTING_ARGUMENTS
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //                      Lighting Functions                                   //
@@ -37,7 +49,7 @@ half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat,
     half3 lightColor, half3 lightDirectionWS, 
     float lightAttenuation, half occlusion,
     half3 normalWS, half3 viewDirectionWS,
-    half clearCoatMask, bool specularHighlightsOff, BRDFOcclusionFactor aoFactor)
+    half clearCoatMask, bool specularHighlightsOff, BRDFOcclusionFactor aoFactor ILLUSION_LIT_LIGHTING_PARAMETERS)
 {
     float3 h = SafeNormalize(float3(viewDirectionWS) + float3(lightDirectionWS));
     half NdotL = dot(normalWS, lightDirectionWS);
@@ -60,11 +72,29 @@ half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat,
 #endif
 
     half3 brdf = diffuseTerm * aoFactor.directAmbientOcclusion;
+
+#if defined(ILLUSION_LIT_CUSTOM_LIGHTING)
+    half3 specularTerm = 0;
+    half3 specularOcclusion = 0;
+    #ifndef _SPECULARHIGHLIGHTS_OFF
+    [branch] if (!specularHighlightsOff)
+    {
+        specularOcclusion = aoFactor.directSpecularOcclusion;
+        specularTerm = LitSpecular(brdfData, normalWS, lightDirectionWS, viewDirectionWS)
+            * specularOcclusion;
+    }
+    #endif
+    brdf = IllusionCustomDirectBRDF(brdfData, brdf, specularTerm, specularOcclusion,
+        normalWS, lightDirectionWS, viewDirectionWS, lightColor * lightAttenuation,
+        customLightingData, customLightingExtra);
+#endif
     
 #ifndef _SPECULARHIGHLIGHTS_OFF
     [branch] if (!specularHighlightsOff)
     {
-        brdf +=  LitSpecular(brdfData, normalWS, lightDirectionWS, viewDirectionWS) * aoFactor.directSpecularOcclusion;
+        #if !defined(ILLUSION_LIT_CUSTOM_LIGHTING)
+        brdf += LitSpecular(brdfData, normalWS, lightDirectionWS, viewDirectionWS) * aoFactor.directSpecularOcclusion;
+        #endif
 
 #if defined(_CLEARCOAT) || defined(_CLEARCOATMAP)
         // Clear coat evaluates the specular a second timw and has some common terms with the base specular.
@@ -89,12 +119,12 @@ half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat,
 
 half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat, Light light, 
     InputData inputData, SurfaceData surfaceData,
-    bool specularHighlightsOff, BRDFOcclusionFactor aoFactor)
+    bool specularHighlightsOff, BRDFOcclusionFactor aoFactor ILLUSION_LIT_LIGHTING_PARAMETERS)
 {
     return LightingPhysicallyBased(brdfData, brdfDataClearCoat, light.color, light.direction,
         light.distanceAttenuation * light.shadowAttenuation, surfaceData.occlusion,
         inputData.normalWS,
-        inputData.viewDirectionWS, surfaceData.clearCoatMask, specularHighlightsOff, aoFactor);
+        inputData.viewDirectionWS, surfaceData.clearCoatMask, specularHighlightsOff, aoFactor ILLUSION_LIT_LIGHTING_ARGUMENTS);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -105,7 +135,7 @@ half3 LightingPhysicallyBased(BRDFData brdfData, BRDFData brdfDataClearCoat, Lig
 ////////////////////////////////////////////////////////////////////////////////
 /// PBR lighting...
 ////////////////////////////////////////////////////////////////////////////////
-half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
+half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData ILLUSION_LIT_LIGHTING_PARAMETERS)
 {
 #if defined(_SPECULARHIGHLIGHTS_OFF)
     bool specularHighlightsOff = true;
@@ -165,7 +195,7 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
     {
         lightingData.mainLightColor = LightingPhysicallyBased(brdfData, brdfDataClearCoat, mainLight,
                                                               inputData, surfaceData, 
-                                                              specularHighlightsOff, brdfOcclusionFactor);
+                                                              specularHighlightsOff, brdfOcclusionFactor ILLUSION_LIT_LIGHTING_ARGUMENTS);
     }
 
     #if defined(_ADDITIONAL_LIGHTS)
@@ -184,7 +214,7 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
         {
             lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
                                                                           inputData, surfaceData, 
-                                                                          specularHighlightsOff, brdfOcclusionFactor);
+                                                                          specularHighlightsOff, brdfOcclusionFactor ILLUSION_LIT_LIGHTING_ARGUMENTS);
         }
     }
     #endif
@@ -198,7 +228,7 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
         {
             lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
                                                                           inputData, surfaceData,
-                                                                          specularHighlightsOff, brdfOcclusionFactor);
+                                                                          specularHighlightsOff, brdfOcclusionFactor ILLUSION_LIT_LIGHTING_ARGUMENTS);
         }
     LIGHT_LOOP_END
     #endif
@@ -256,6 +286,10 @@ half4 UniversalFragmentPBR(InputData inputData, SurfaceData surfaceData)
     #if defined(_ADDITIONAL_LIGHTS_VERTEX)
     lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;
     #endif
+
+#if defined(ILLUSION_LIT_CUSTOM_LIGHTING)
+    IllusionCustomComposeLighting(inputData, surfaceData, brdfData, lightingData, customLightingData, customLightingExtra);
+#endif
 
 #if REAL_IS_HALF
     // Clamp any half.inf+ to HALF_MAX

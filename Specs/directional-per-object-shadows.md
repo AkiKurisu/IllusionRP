@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-11-07 |
+| Date | 2026-11-14 |
 | Related Specs | [Rendering Pipeline](rendering-pipeline.md), [Transparency](transparency.md), [World Scale](world-scale.md) |
 
 Per-object shadows add a camera-local quality layer for registered casters on top of URP shadowing. One directional source owns the layer; screen-space production and material sampling preserve that source's identity.
@@ -20,6 +20,8 @@ Source identity and mode are established per camera even when no caster is visib
 ## Casters
 
 Active caster registrations supply renderer groups. Registration is shared, while culling, allocation and history are camera-local. Eligible renderers draw their normal ShadowCaster material pass; the added atlas does not remove that pass or replace standard shadow support.
+
+Material-slot changes refresh the owning caster's draw list. Between destruction and that refresh, drawing skips destroyed material references rather than aborting the camera render.
 
 Culling and priority favor important visible casters within the atlas capacity. Projection uses the source direction and [world-scale](world-scale.md) distance convention.
 

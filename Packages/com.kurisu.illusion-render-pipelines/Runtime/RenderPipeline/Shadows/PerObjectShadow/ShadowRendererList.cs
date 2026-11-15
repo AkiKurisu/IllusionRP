@@ -163,6 +163,7 @@ namespace Illusion.Rendering.Shadows
             for (int i = entry.DrawCallIndexStartInclusive; i < entry.DrawCallIndexEndExclusive; i++)
             {
                 DrawCallData dc = m_DrawCalls[i];
+                if (!dc.Material) continue;
                 cmd.DrawRenderer(entry.Renderer, dc.Material, dc.SubmeshIndex, dc.ShaderPass);
             }
         }

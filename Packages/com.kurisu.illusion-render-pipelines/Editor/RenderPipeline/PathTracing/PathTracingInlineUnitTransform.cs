@@ -180,9 +180,20 @@ namespace Illusion.Rendering.Editor
                         var node = declaration.Node;
                         code = ShaderSource.Code(document.Source, node);
                         if (node is FunctionNode function)
-                            code = ShaderSource.Edit(code, function.Attributes
+                        {
+                            var edits = function.Attributes
                                 .Where(a => a.Name.Identifier == "shader")
-                                .Select(a => (a.Span.StartIndex - node.Span.StartIndex, a.Span.Length, "")));
+                                .Select(a => (a.Span.StartIndex - node.Span.StartIndex, a.Span.Length, "")).ToList();
+                            foreach (var parameter in function.Parameters)
+                            {
+                                string type = ShaderSource.Code(document.Source, parameter.ParamType);
+                                string marker = MarkerType(type);
+                                if (marker != type)
+                                    edits.Add((parameter.ParamType.Span.StartIndex - node.Span.StartIndex,
+                                        parameter.ParamType.Span.Length, marker));
+                            }
+                            code = ShaderSource.Edit(code, edits);
+                        }
                     }
                     if (!string.IsNullOrEmpty(declaration.Node.Span.FileName))
                         body.Append($"#line {declaration.Node.Span.Start.Line} \"{declaration.Node.Span.FileName}\"\n");
@@ -334,10 +345,11 @@ namespace Illusion.Rendering.Editor
             }
 
             string lower = name.ToLowerInvariant();
-            bool named = lower.Contains("point") || lower.Contains("linear") || lower.Contains("trilinear");
+            bool anisotropic = lower.Contains("aniso");
+            bool named = anisotropic || lower.Contains("point") || lower.Contains("linear") || lower.Contains("trilinear");
             if (!named)
                 return "0u";
-            uint filter = lower.Contains("point") ? 0u : lower.Contains("trilinear") ? 2u : 1u;
+            uint filter = anisotropic ? 3u : lower.Contains("point") ? 0u : lower.Contains("trilinear") ? 2u : 1u;
             uint wrap = lower.Contains("mirror") ? 2u : lower.Contains("clamp") ? 1u : 0u;
             return $"(PT_INLINE_SAMPLER_STATE | {filter | (wrap << 2)}u)";
         }

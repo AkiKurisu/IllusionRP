@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-11-07 |
+| Date | 2026-11-15 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Area Lights](area-lights.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -14,6 +14,7 @@ IllusionRP materials target Forward and Forward+. This contract connects materia
 - Templates own pass topology and fixed rendering contracts; graphs own material inputs; shared shading code owns surface and lighting evaluation. Generated shaders follow [ASE Shader Workflow](ase-shader-workflow.md).
 - Main color and OIT are the final-color owners. Depth, normals, motion, shadows, subsurface diffuse and water data are auxiliary outputs.
 - Material inspectors and asset import pipelines must keep surface options and enabled passes consistent. Programmatic import must not depend on an inspector having been opened. Pass synchronization alone does not replace keyword, queue or stencil normalization.
+- Runtime material editing and Editor tools share the material family's pass synchronization. The owner retains the same surface and color-pass rules in both contexts. Source-property conversion remains separate.
 - Diffusion profile binding preserves both the profile asset identity and its runtime lookup identity. Clearing a profile clears both; an unsaved or incompatible binding is invalid.
 
 ## Shader families
@@ -23,6 +24,12 @@ Lit and Complex Lit share the general surface contract. Skin splits diffuse ligh
 Glass and Thin Glass are Lit graphs for transmissive surfaces such as drinking glasses and windows. Path tracing transmits light tinted by the base color: Glass refracts into and out of a closed volume at the material's index of refraction, and Thin Glass passes straight through a single surface. Base color alpha is the surface opacity for Glass in both raster and path tracing, so Glass transmits the share of unreflected light that alpha leaves; Thin Glass transmits all unreflected light and uses alpha as coverage. Raster draws both as transparent with screen-space refraction.
 
 Template options select auxiliary passes such as shadows, motion and baking. Features that require Forward-only lighting keep that choice consistent across authored options and generated output.
+
+### Custom Lit lighting
+
+Lit graphs may opt into custom punctual BRDF evaluation and lighting composition at compile time. The material supplies its custom inputs and evaluation functions. The shared loop retains ownership of light selection, attenuation, shadows, light layers and exposure. Custom inputs default to zero and are opaque to the shared loop. Graphs without this option retain the standard Lit response.
+
+Environment reflection evaluation remains shared. Rectangle lights retain the existing LTC response unless their material family explicitly defines another response. Raster custom-lighting inputs do not imply a new path-tracing scattering model.
 
 ### SpeedTree7
 
@@ -49,6 +56,16 @@ Pass LightModes are the public boundary between shaders, renderer lists and buil
 
 Transparent Hybrid Lit and Complex Lit use either their main color pass or OIT, never both, and do not write Forward GBuffer. Opaque materials restore the main pass and Forward GBuffer and disable OIT. Hair intentionally uses both color owners for disjoint core/fringe coverage; see [Transparency](transparency.md#hair-fringe).
 
+Surface classification follows authored coverage and depth ownership, not queue or blending tags alone. Dithered depth-writing coverage and non-depth-writing alpha blending are distinct contracts. Template selection preserves that distinction across color and auxiliary passes. Changing shared participation for a single imported material must not redefine existing families.
+
+Opaque and alpha-tested ordered color materials may use an explicit `SRPDefaultUnlit` extra pass followed by `UniversalForwardOnly`, with each pass owning its culling, blending and depth state. The material family owns pass synchronization. The general Hybrid Lit synchronizer does not classify custom compositions. Both color passes remain enabled and OIT remains disabled. Auxiliary passes do not repeat color composition.
+
+Ordered transparent compositions are not a supported material path. Native extra-pass scheduling does not resolve their ordering with OIT, and material tags do not bypass transparent overdraw.
+
+Inline material generation resolves reused PathTracing passes through their declared shader and pass names. Relative includes retain the defining pass's source directory, including through chained reuse. Generation tracks both the consuming shader and resolved source dependencies. Evaluators and keyword variants remain registered against the consuming material shader, including ordered compositions.
+
+Pass synchronization preserves the ordered material's authored auxiliary-pass selection. A front-surface prepass must not occlude an earlier back-surface color pass. Such compositions omit Forward GBuffer.
+
 ## Shadow bias
 
 Receiver bias uses the same normal-offset contract for all supported shadowed surface lighting. Orthographic projections use the world-space shadow texel size; perspective projections scale that size by receiver distance to the light. Each lookup applies the offset once, before shadow projection, without changing lighting attenuation, cookies, baked visibility or distance fading. Filter quality does not multiply the normal offset. Receiver parameters are refreshed per camera after standard shadow allocation, before shadow reception, so atlas resizing and light reordering cannot reuse another frame or camera's coefficients.
@@ -59,7 +76,7 @@ With receiver bias enabled, ShadowCaster vertices remain unoffset and rasterizat
 
 The renderer draws enabled Forward GBuffer passes before screen-space lighting. This is the material depth/normal prepass, not a Deferred lighting buffer. It owns opaque depth, world-space normals and smoothness, clears its camera-local output, and publishes it consistently to consumers.
 
-Every contributing pass matches main-color geometry, alpha clipping, LOD transitions and culling. Transparent materials do not contribute; opaque-queue Hair cores do. Optional graph overrides may simplify screen-space normal and smoothness but cannot change coverage, stencil or depth.
+Every contributing pass matches main-color geometry, coverage, LOD transitions and culling. Non-depth-writing alpha-blended surfaces do not contribute. Opaque, alpha-tested and explicitly depth-writing dithered coverage can. Opaque-queue Hair cores contribute their core coverage. Optional graph overrides may simplify screen-space normal and smoothness but cannot change coverage, stencil or depth.
 
 Wet surfaces extend the surface description and update it before screen-space consumers; see [Wet Surface Decals](wet-surface-decals.md). [PRT baking](precomputed-radiance-transfer.md) reuses authored material inputs through the path tracing pass and keeps its output separate from normal rendering.
 
