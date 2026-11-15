@@ -1,9 +1,17 @@
 # Half Precision
 
-To optimize ALU in mobile platform, shader should use <b>Half Precision</b> (FP16).
+Use **half** (FP16) for lighting math on mobile.
 
-However, you may meet bug without strict precision conversion.
-
-IllusionRP modify ASE's source code in order to ensure each node's precision is correct, always setting the precision of variables passed to the UV port to <b>Float</b>.
+IllusionRP patches Amplify Shader Editor so each node's precision is explicit, and a value plugged into a UV port stays in **float**.
 
 ![Force use float precision](./images/force_use_float_precision.png)
+
+Keep texture coordinates and texture indices in float.
+
+# World Scale
+
+**World Scale** on Illusion Graphics is Unity units per logical meter. `10` means one logical meter is ten Unity units. Contact-shadow length, volumetric distance and subsurface radius use logical meters.
+
+# Variable Rate Shading
+
+**Enable Stencil VRS** builds a shading-rate image from the stencil after the transparent passes. It requires per-image-tile shading-rate support. Volumetric fog reads it through **Shading Rate**.

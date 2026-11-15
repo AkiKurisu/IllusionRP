@@ -334,6 +334,30 @@ Receivers sample this screen-space shadow mask instead of the standard shadow ma
 > [!TIP]
 > For transparent objects that need high-quality shadows, consider using Per-Object Shadows with the `transparentReceivePerObjectShadows` option enabled in the renderer feature.
 
+# Contact Shadows
+
+Ray march the depth buffer from the shaded point toward the light, and composite the hit into the screen-space shadow mask. With PCSS **Temporal Accumulation**, contact shadows are applied after the history resolve.
+
+![Contact Shadows](./images/contact_shadows.png)
+
+## Enabling Contact Shadows
+
+1. Enable **Contact Shadows** on **Illusion Graphics**.
+2. Add **Illusion/Contact Shadows** and set **Enable** on.
+
+## Properties
+
+| Property | Description |
+|----------|-------------|
+| **Length** | Ray length in meters, scaled by **World Scale** and by **Distance Scale Factor** with the receiver's depth. |
+| **Distance Scale Factor** | How much the ray grows with linear depth (0-1). |
+| **Min Distance** / **Max Distance** | Camera distances where the effect fades in and out. |
+| **Fade In Distance** / **Fade Distance** | Width of those fades. |
+| **Ray Bias** | Bias along the ray (0-1). |
+| **Thickness Scale** | Thickness of a depth hit. |
+| **Sample Count** | Ray-march samples (4-64). |
+| **Shadow Denoiser** | **None**, or **Spatial**. Spatial runs a follow-up filter of **Filter Size Traced** pixels. |
+
 # Percentage Closer Soft Shadows (PCSS)
 
 Percentage Closer Soft Shadows (PCSS) adds physically-motivated soft penumbrae to shadows. The penumbra size varies based on the distance between the occluder and receiver, producing more realistic shadow edges.
@@ -364,6 +388,10 @@ Percentage Closer Soft Shadows (PCSS) adds physically-motivated soft penumbrae t
 | **Find Blocker Sample Count** | Number of samples used in the blocker search step (4-64). Higher values improve quality but cost more. |
 | **PCF Sample Count** | Number of samples used in the PCF filtering step (4-64). |
 | **Penumbra Mask Scale** | Downscale factor for the penumbra mask texture (1-32). Higher values use smaller textures (faster, lower quality). |
+| **Use Penumbra Mask** | Skips PCSS away from detected shadow edges. |
+| **Temporal Accumulation** | Accumulates the screen-space shadow mask across frames. Contact shadows are composited after the history resolve. |
+| **Spatial Denoise** | Bilateral filter applied after temporal accumulation. |
+| **Denoise Kernel Size** | Radius of that bilateral filter (1-16). |
 
 ## Performance Considerations
 
@@ -371,9 +399,36 @@ Percentage Closer Soft Shadows (PCSS) adds physically-motivated soft penumbrae t
 - **Find Blocker Sample Count** and **PCF Sample Count** directly affect quality and cost. Start with lower values (16-24) and increase if needed.
 - For large outdoor scenes, start with a modest **Angular Diameter** to avoid overly soft shadows that lose definition.
 
+# Area Lights
+
+Rectangle lights. Color, intensity, size, range and shadow casting stay on the Unity **Light**. **Rendering/Illusion Additional Light Data** adds the dimmer, diffuse and specular toggles, range attenuation and shadow filtering.
+
+![Area Lights](./images/area_lights.png)
+
+## Enabling Area Lights
+
+1. Enable **Area Lights** on **Illusion Graphics** and choose **Medium** or **High** filtering.
+2. Add **Illusion/Area Lighting** and set **Enable** on.
+3. Create a **Rectangle** light.
+
+## Properties
+
+| Property | Description |
+|----------|-------------|
+| **Shadow Atlas Resolution** | Resolution of the atlas that holds every area-light shadow this frame. |
+| **Max Shadow Resolution** | Maximum resolution of one area-light shadow. |
+| **Shadow Atlas Depth Bits** | Depth format of the atlas. |
+| **Max Shadow Requests** | Maximum shadowed area lights per camera (1-32). |
+
+`r.debug.arealightshadowatlas` overlays the atlas in the Editor.
+
+# Micro Shadows
+
+Darkens direct lighting from normal-map detail on directional lights. Add **Illusion/Micro Shadows** and set **State** on. **Opacity** fades the result from 0 to 1.
+
 # Precomputed Radiance Transfer Global Illumination
 
-Precomputed Radiance Transfer Global Illumination (PRTGI) provides stable, low-quality but dynamic indirect lighting by baking precomputed radiance into probe volumes. It is particularly well-suited for large outdoor environments and can be combined with SSGI for enhanced local bounce lighting.
+Precomputed Radiance Transfer Global Illumination (PRTGI) provides stable, low-frequency dynamic indirect lighting by baking transport into probe volumes and relighting them from the current shadow maps. It fits large outdoor environments and combines with SSGI for the local bounce.
 
 ## Setting Up a PRT Probe Volume
 
@@ -523,6 +578,37 @@ The renderer only runs SSGI when the renderer feature toggle, runtime config, an
 - **Max Ray Steps** and **Denoiser Radius** directly affect cost.
 - On PC/consoles, you can afford full-resolution SSGI with higher ray steps; on mobile, prefer half resolution with a smaller denoiser radius.
 - Disabling the second denoiser pass can save significant performance with acceptable quality loss in many scenes.
+
+# Ray Traced Global Illumination (RTGI)
+
+Replaces SSGI while its Volume is active. Traced layers and the directional light's angular size come from the Path Tracing Volume.
+
+![RTGI](./images/rtgi.png)
+
+## Enabling RTGI
+
+1. Enable **Ray Traced Global Illumination** on **Illusion Graphics**.
+2. Add **Illusion/Ray Traced Global Illumination** and set **Enable** on.
+
+Direct3D 12, a ray tracing GPU and the UnityRHI package are required. The pass runs on a base Game camera and in the Scene view.
+
+## Properties
+
+| Property | Description |
+|----------|-------------|
+| **Mode** | **Performance** is one bounce. **Quality** continues into the SHaRC cache (160 MiB per camera, native 16-bit shader types, 64-bit buffer atomics). |
+| **Half Resolution** | Traces, resamples and denoises at half resolution, then upsamples with depth. |
+| **Checkerboard** | While a denoiser is running, traces half of the GI pixels each frame and lets the denoiser fill the rest. |
+| **Specular** | Also traces indirect specular. It fills what screen-space reflection missed, before reflection probes. |
+| **Resampling Mode** | **None**, **Temporal**, **Spatial**, or **Temporal And Spatial**. |
+| **Temporal Bias Correction** / **Spatial Bias Correction** | **Off**, **Basic**, or **Ray Traced**. Ray-traced correction shoots a visibility ray for reused samples. |
+| **Max History Length** | Frames a reservoir accumulates before older samples lose weight (1-64). |
+| **Max Reservoir Age** | Frames a pixel keeps its history before restarting (1-255). |
+| **Spatial Samples** / **Spatial Radius** | Neighbors drawn per pixel, and the pixel radius they are drawn from. |
+| **Radiance Clamp** | Maximum secondary-sample luminance relative to middle gray. 0 disables the clamp. |
+| **Denoiser** | **None**, **RELAX**, or **REBLUR**. RELAX and REBLUR are NRD denoisers and need UnityRHI. |
+
+`r.debug.rtgi.accumulate` averages frames while the view stays still. `r.debug.rtgi.view` shows the hash-grid debug overlay.
 
 # Global Illumination Control
 

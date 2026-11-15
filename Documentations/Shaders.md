@@ -118,8 +118,11 @@ Some lighting features require both shader support and pipeline configuration:
 | Screen Space SSS | Skin Template with `_DiffusionProfile` | Enable **Subsurface Scattering** in Illusion Graphics + add **Diffusion Profile** Volume component |
 | Screen Space Reflection | ForwardGBuffer pass (avoid Forward Only) | Enable **Screen Space Reflection** in Illusion Graphics + add **SSR** Volume component |
 | Screen Space GI | ForwardGBuffer pass (avoid Forward Only) | Enable **Screen Space Global Illumination** in Illusion Graphics + add **SSGI** Volume component |
+| Ray Traced GI | `PathTracing` pass on the hit shader | **Ray Traced Global Illumination** and the RTGI Volume |
 | OIT Hair | Hair Template with Multi Pass enabled | Enable **Order Independent Transparency** in Illusion Graphics |
 | Dual Lobe Specular | Skin Template | Configure `_Smoothness1`, `_Smoothness2`, `_LobeWeight` material properties |
+| Area Lights | Forward or Forward+ | **Area Lights** and the Area Lighting Volume |
+| Wet Surface | Forward GBuffer, blendable RGBA8 | **Wet Surface Decals**, with decals registered on `WetSurfaceDecalRegistry` |
 
 ## Shader Stripping
 

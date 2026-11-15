@@ -1,95 +1,66 @@
 # Render Pipeline
 
-IllusionRP is completely based on Scriptable Render Pipelines (SRP) architecture.
+Passes are ordered by `IllusionRenderPassEvent`. SSGI and RTGI are alternatives: an active RTGI Volume replaces SSGI on that camera.
 
-All passes are inserted into the rendering process according to certain order. See `IllusionRenderPassEvent` for more details.
+```mermaid
+flowchart TD
+  subgraph Depth
+    ForwardGBuffer
+    CopyPreDepth
+    DepthPyramid
+    TransparentDepth
+  end
 
-Following is the pipeline graph:
+  subgraph ScreenSpace
+    GTAO
+    SSR
+  end
 
-```mermaid 
-graph TD
+  subgraph Shadows
+    PerObjectShadows
+    ContactShadows
+    AreaLightShadows
+    ScreenSpaceShadows
+  end
 
-subgraph Prepass Depth
-  DepthNormalPostPass[Transparent Post Depth Normal]
-  CopyPreDepth[Transparent Copy Pre Depth]
-  DepthPyramid[Depth Pyramid]
-  DepthPostPass[Transparent Post Depth]
-end
+  subgraph Indirect
+    PRTRelight
+    SSGI
+    RTGI
+  end
 
-subgraph Prepass GBuffer
-  ForwardGBuffer[Forward GBuffer]
-  MotionVectorsPrepass[Early Motion Vectors]
-end
+  subgraph AfterOpaque
+    Subsurface
+    RefractionColor
+    TransparentSSR
+  end
 
-subgraph Prepass Screen Space Lighting
-  GTAO[Ground Truth Ambient Occlusion]
-  SSR[Screen Space Reflection]
-end
+  subgraph AfterTransparent
+    OIT
+    TransparentOverdraw
+    ColorPyramid
+  end
 
-subgraph Prepass Shadows Part
-  PerObjectShadows[Per Object Shadows]
-  ContactShadows[Contact Shadows]
-  PCSS[PCSS Filtering]
-  ScreenSpaceShadows[Screen Space Shadows]
-end
+  subgraph BeforePostProcessing
+    SunShafts
+    VolumetricFog
+    Exposure
+    Bloom
+  end
 
-subgraph Prepass Global Illumination
-  PRTRelight[Precompute Radiance Transfer Relight]
-  SSGI[Screen Space Global Illumination]
-end
+  subgraph AfterPostProcessing
+    DLSSNeuralRendering
+  end
 
-subgraph After Rendering Gbuffer
-  Subsurface[Subsurface Scattering]
-end
-
-subgraph After Transparent
-  OIT[OIT]
-  CopyPostDepth[Transparent Copy Post Depth]
-  TransparentVrs[Transparent VRS Generation]
-  TransparentOverdraw[Transparent Overdraw]
-  ColorPyramid[Color Pyramid]
-end
-
-subgraph Before Post Processing
-  DownsampleDepth[Downsample Depth]
-  VolumetricLight[Volumetric Light]
-  Exposure[Atomatic Exposure]
-  Bloom[Convolution Bloom]
-end
-
-subgraph After Rendering
-  Debug[Full Screen Debug]
-end
-
-%% Flow Arrows
-DepthNormalPostPass --> CopyPreDepth
-CopyPreDepth --> DepthPyramid
-DepthPyramid --> DepthPostPass
-DepthPostPass --> ForwardGBuffer
-ForwardGBuffer --> MotionVectorsPrepass
-MotionVectorsPrepass --> GTAO
-GTAO --> SSR
-SSR --> MainLightShadow
-MainLightShadow --> AdditionalLightShadows
-AdditionalLightShadows --> PerObjectShadows
-PerObjectShadows --> ContactShadows
-ContactShadows --> PCSS
-PCSS --> ScreenSpaceShadows
-ScreenSpaceShadows --> PRTRelight
-PRTRelight --> SSGI
-SSGI --> Subsurface
-Subsurface --> OIT
-OIT --> CopyPostDepth
-CopyPostDepth --> TransparentVrs
-TransparentVrs --> TransparentOverdraw
-TransparentOverdraw --> ColorPyramid
-ColorPyramid --> DownsampleDepth
-DownsampleDepth --> VolumetricLight
-VolumetricLight --> Exposure
-Exposure --> Bloom
-Bloom --> Debug
+  ForwardGBuffer --> CopyPreDepth --> DepthPyramid --> TransparentDepth --> GTAO --> SSR
+  SSR --> PerObjectShadows --> ContactShadows --> AreaLightShadows --> PRTRelight
+  PRTRelight --> SSGI --> RTGI --> ScreenSpaceShadows --> Subsurface
+  Subsurface --> RefractionColor --> TransparentSSR --> OIT --> TransparentOverdraw --> ColorPyramid
+  ColorPyramid --> SunShafts --> VolumetricFog --> Exposure --> Bloom --> DLSSNeuralRendering
 ```
+
+An active Path Tracing Volume replaces this chain for that camera and runs exposure and convolution bloom.
 
 ## Limitations
 
-Due to the limitations of URP design, `Native Render Pass` requires the number of custom passes to be less than 20 (see `ScriptableRenderer.kRenderPassMaxCount`), and the number used by IllusionRP far exceeds this threshold. Therefore, you cannot check `Native Render Pass` in RendererAsset after turning on IllusionRP.
+`Native Render Pass` allows fewer than 20 custom passes (`ScriptableRenderer.kRenderPassMaxCount`). IllusionRP exceeds that. Leave **Native Render Pass** disabled on the renderer asset after enabling IllusionRP.
