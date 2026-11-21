@@ -184,7 +184,7 @@ half3 FabricLighting(BRDFData brdfData, Light light,
 half3 FabricGlobalIllumination(BRDFData brdfData, half3 bakedGI,
     BRDFOcclusionFactor aoFactor, float3 positionWS,
     half3 normalWS, half3 viewDirectionWS, float2 normalizedScreenSpaceUV, uint renderingLayers,
-    BRDFData ambientBRDF, half3 ambientNormalWS, half ambientFactor, bool hasWet)
+    BRDFData ambientBRDF, half3 ambientNormalWS, half ambientFactor, bool hasWet, half sheen)
 {
     half3 reflectVector = reflect(-viewDirectionWS, normalWS);
     half NoV = saturate(dot(normalWS, viewDirectionWS));
@@ -213,6 +213,12 @@ half3 FabricGlobalIllumination(BRDFData brdfData, half3 bakedGI,
     #else
         GetPreIntegratedFGDCharlieAndFabricLambert(NoV, brdfData.perceptualRoughness, brdfData.specular,
             specularFGD, diffuseFGD, reflectivity);
+        #if defined(_ANISOTROPY_MODE_FIBER)
+            float3 baseSpecularFGD, baseDiffuseFGD, baseReflectivity;
+            GetPreIntegratedFGDGGXAndDisneyDiffuse(NoV, brdfData.perceptualRoughness, brdfData.specular,
+                baseSpecularFGD, baseDiffuseFGD, baseReflectivity);
+            specularFGD = lerp(baseSpecularFGD, specularFGD, saturate(sheen));
+        #endif
     #endif
     if (hasWet)
     {
@@ -306,7 +312,7 @@ half4 FabricFragmentPBR(InputData inputData, SurfaceData surfaceData, Anisotropy
                                               inputData.normalWS, inputData.viewDirectionWS,
                                               inputData.normalizedScreenSpaceUV, meshRenderingLayers,
                                               wetSurface.originalBRDF, wetSurface.originalNormal,
-                                              wetSurface.ambientFactor, wetSurface.hasWet);
+                                              wetSurface.ambientFactor, wetSurface.hasWet, SheenData.Sheen);
     
 #ifdef FABRIC_ANISOTROPIC_LIGHTING
     // Calculate anisotropy bent normal

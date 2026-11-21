@@ -4,7 +4,7 @@
 |---|---|
 | Version | 1.4.4 |
 | Status | Living |
-| Date | 2026-11-15 |
+| Date | 2026-11-21 |
 | Related Specs | [ASE Shader Workflow](ase-shader-workflow.md), [Shader Variant Stripping](shader-variant-stripping.md), [Transparency](transparency.md), [Wet Surface Decals](wet-surface-decals.md), [Area Lights](area-lights.md), [Rendering Pipeline](rendering-pipeline.md) |
 
 IllusionRP materials target Forward and Forward+. This contract connects material authoring, auxiliary rendering, screen-space consumers and build reachability. Existing URP GBuffer passes do not establish a supported Deferred material path.
@@ -111,3 +111,5 @@ Renderer-capability keywords remain stable while runtime switches and Volumes co
 Anisotropy affects punctual direct lighting and follows the material's tangent frame, normal and smoothness. It blends consistently with the cloth sheen response. Environment reflections remain isotropic; [area lights](area-lights.md#material-shading) do not apply anisotropy. Energy normalization is applied once at the shading-convention boundary.
 
 Fabric has two anisotropic responses, selected by one material option: off, microfacet or fiber, never both. The microfacet response stretches the specular lobe along the material tangent frame. The fiber response is a highlight cone around a per-pixel fiber direction from the graph, optionally bent toward the shading normal; its width follows smoothness. It is a declared, non-energy-conserving character look that replaces the microfacet lobe for punctual direct lighting only. Path tracing renders a fiber material with the microfacet response stretched across the fiber and without the bend.
+
+Fiber uses GGX for its base environment specular response. Charlie sheen blends into that response by the authored sheen weight. Ambient diffuse keeps the Fabric response.
