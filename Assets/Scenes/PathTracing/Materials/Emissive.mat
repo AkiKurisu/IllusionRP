@@ -21,7 +21,8 @@ Material:
   m_CustomRenderQueue: -1
   stringTagMap:
     RenderType: Opaque
-  disabledShaderPasses: []
+  disabledShaderPasses:
+  - OIT
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
