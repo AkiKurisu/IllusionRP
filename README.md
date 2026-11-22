@@ -43,6 +43,8 @@ IllusionRP was first designed to re-render game characters from @ILLUSION, open 
 
 Remaster is WIP, stay tuned.
 
+![AIChara Remaster](Documentations/images/aichara_remaster.png)
+
 ![Showcase](Documentations/images/showcase.png)
 
 # Notice
