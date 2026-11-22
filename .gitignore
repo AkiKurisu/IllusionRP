@@ -86,3 +86,5 @@ References~
 # The local DLSS Neural Rendering runtime is intentionally not tracked.
 /Packages/com.kurisu.unityrhi/Plugins/x86_64/nvngx_dlssnr.dll
 /Packages/com.kurisu.unityrhi/Plugins/x86_64/nvngx_dlssnr.dll.meta
+/Assets/IllusionRP.Generated
+Assets/IllusionRP.Generated.meta
