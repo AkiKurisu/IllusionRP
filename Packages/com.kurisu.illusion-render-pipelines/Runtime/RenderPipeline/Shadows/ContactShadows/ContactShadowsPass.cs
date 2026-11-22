@@ -78,6 +78,12 @@ namespace Illusion.Rendering.Shadows
             // Import contact shadow RT
             TextureHandle contactShadowHandle = renderGraph.ImportTexture(_rendererData.ContactShadowsRT);
             TextureHandle depthHandle = resource.cameraDepthTexture;
+            if (frameData.Contains<TransparentDepthData>())
+            {
+                var transparentDepthData = frameData.Get<TransparentDepthData>();
+                if (transparentDepthData.PreDepthTexture.IsValid())
+                    depthHandle = transparentDepthData.PreDepthTexture;
+            }
 
             using (var builder = renderGraph.AddComputePass<ContactShadowPassData>("Contact Shadow", out var passData, _contactShadowMapProfile))
             {

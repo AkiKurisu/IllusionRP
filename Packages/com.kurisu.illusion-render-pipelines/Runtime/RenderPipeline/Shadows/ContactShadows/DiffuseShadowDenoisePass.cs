@@ -100,6 +100,12 @@ namespace Illusion.Rendering.Shadows
 
             // Import depth and normal textures
             TextureHandle depthHandle = resource.cameraDepthTexture;
+            if (frameData.Contains<TransparentDepthData>())
+            {
+                var transparentDepthData = frameData.Get<TransparentDepthData>();
+                if (transparentDepthData.PreDepthTexture.IsValid())
+                    depthHandle = transparentDepthData.PreDepthTexture;
+            }
             TextureHandle normalHandle = resource.cameraNormalsTexture;
 
             // Import input and output textures
